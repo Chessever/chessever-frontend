@@ -11,6 +11,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/search/search_feeds.dart';
 import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -32,7 +33,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// root tab starts; everything under it is the page. With nothing typed the
 /// page is the landing: the recent searches, the events in play, the top
 /// players, the main openings and the built-in smart events, the events
-/// coming up. Typing turns it into the results: players, openings, events.
+/// coming up, the collections and the news, each section a row read on as
+/// it scrolls. Typing turns it into the results: players, openings, events.
 /// Every one is drawn in the card the app already draws it in (event cards,
 /// player cards, Rankings rows, smart event cards) with that card's own tap
 /// and long-press, so a pick here behaves as it does everywhere else. The
@@ -76,6 +78,15 @@ class SearchTabScreen extends HookConsumerWidget {
     ref.listen(searchTopPlayersProvider, (_, __) {});
     ref.listen(searchLandingOpeningsProvider, (_, __) {});
     ref.listen(searchUpcomingProvider, (_, __) {});
+    // The sections' pages read on from those heads, and the two read from
+    // their first page; with the sections opened in place, they last as
+    // long as the tab, so a row read far on is still there after a search.
+    ref.listen(searchTopPlayersFeedProvider, (_, __) {});
+    ref.listen(searchOpeningsFeedProvider, (_, __) {});
+    ref.listen(searchComingUpFeedProvider, (_, __) {});
+    ref.listen(searchCollectionsFeedProvider, (_, __) {});
+    ref.listen(searchNewsFeedProvider, (_, __) {});
+    ref.listen(searchExpandedSectionsProvider, (_, __) {});
 
     // Coming up is one read, read again while the tab lives: when one of
     // its events starts (it has moved to Live now; the read's spare events
@@ -114,6 +125,14 @@ class SearchTabScreen extends HookConsumerWidget {
       }
       if (ref.read(searchLiveNowProvider.notifier).lookupFailed) {
         ref.invalidate(searchLiveNowProvider);
+      }
+      // A section whose first page failed is not shown: arriving reads it
+      // again.
+      if (searchFeedFirstPageFailed(ref.read(searchCollectionsFeedProvider))) {
+        ref.invalidate(searchCollectionsFeedProvider);
+      }
+      if (searchFeedFirstPageFailed(ref.read(searchNewsFeedProvider))) {
+        ref.invalidate(searchNewsFeedProvider);
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;

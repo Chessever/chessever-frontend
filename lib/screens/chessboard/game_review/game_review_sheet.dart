@@ -1097,8 +1097,10 @@ class _PlayerColumnState extends State<_PlayerColumn> {
                       TextSpan(text: _playerLastName(player)),
                     ],
                   ),
+                  // One fixed size; a surname too wide fades at its end.
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: context.colors.textPrimary,

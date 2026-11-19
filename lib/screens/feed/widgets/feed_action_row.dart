@@ -5,7 +5,9 @@ import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
+import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -17,6 +19,12 @@ const int kFeedLikeCountFloor = 3;
 /// viewer is among them.
 String feedLikeLabel(int likes) =>
     likes >= kFeedLikeCountFloor ? formatCompactCount(likes) : 'Like';
+
+/// The number under the rail's heart: the like count from
+/// [kFeedLikeCountFloor] up ("12", "1.2K"), otherwise nothing (the heart
+/// alone is the button).
+String? feedLikeCount(int likes) =>
+    likes >= kFeedLikeCountFloor ? formatCompactCount(likes) : null;
 
 /// What a screen reader hears on the Like button.
 String feedLikeSemantics({required bool liked, required int likes}) {
@@ -94,27 +102,19 @@ class FeedActionRail extends StatelessWidget {
     final ink = colors.textPrimary;
     final like = onLike;
     final save = onSave;
-    final likeLabel = feedLikeLabel(shownLikes ?? likes);
+    final likeCount = feedLikeCount(shownLikes ?? likes);
     final saveLabel = feedSaveLabel(saved: saved);
-    final fontSize = feedRailFontSize(
-      context,
-      labels: [
-        'Analyze',
-        'Share',
-        if (save != null) saveLabel,
-        if (like != null) likeLabel,
-      ],
-    );
 
     Widget cell({
       required Key key,
-      required String label,
       required Widget icon,
       required VoidCallback onTap,
       required String semanticsLabel,
       String? semanticsHint,
       bool? selected,
       Key? cellKey,
+      String? count,
+      bool haptic = true,
     }) => SizedBox(
       key: cellKey,
       height: cellHeight,
@@ -124,14 +124,10 @@ class FeedActionRail extends StatelessWidget {
         semanticsLabel: semanticsLabel,
         semanticsHint: semanticsHint,
         selected: selected,
+        springPress: true,
+        pressHaptic: haptic,
         onTap: onTap,
-        child: FeedActionLabel(
-          fontSize: fontSize,
-          label: label,
-          glyphExtent: FeedLayout.railGlyph,
-          glyphGap: FeedLayout.railGlyphGap,
-          icon: icon,
-        ),
+        child: FeedRailMark(icon: icon, count: count),
       ),
     );
 
@@ -147,7 +143,6 @@ class FeedActionRail extends StatelessWidget {
       children: [
         cell(
           key: const ValueKey('feed_analyze_button'),
-          label: 'Analyze',
           semanticsLabel: 'Analyze',
           semanticsHint: 'Open game on the board',
           onTap: onAnalyze,
@@ -155,7 +150,6 @@ class FeedActionRail extends StatelessWidget {
         ),
         cell(
           key: const ValueKey('feed_share_button'),
-          label: 'Share',
           semanticsLabel: 'Share',
           onTap: onShare,
           icon: glyph(FeedGlyphs.share),
@@ -163,7 +157,6 @@ class FeedActionRail extends StatelessWidget {
         if (save != null)
           cell(
             key: const ValueKey('feed_save_button'),
-            label: saveLabel,
             semanticsLabel: saveLabel,
             semanticsHint: saved
                 ? 'Choose the databases it is saved in'
@@ -178,7 +171,9 @@ class FeedActionRail extends StatelessWidget {
           cell(
             cellKey: const ValueKey('feed_like_action'),
             key: const ValueKey('feed_like_button'),
-            label: likeLabel,
+            count: likeCount,
+            // The heart's landing has its own haptic.
+            haptic: false,
             semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
             selected: liked,
             onTap: like,
@@ -272,6 +267,49 @@ class _LikeGlyphState extends State<_LikeGlyph>
       child: glyph,
       builder: (context, child) =>
           Transform.scale(scale: _scale.value, child: child),
+    );
+  }
+}
+
+/// One cell of a Feed rail: the bare glyph, centred in its target, with an
+/// optional count under it (the heart's likes). No word: the marks are the
+/// buttons, as in the bottom bar, and each says its name to a screen reader.
+class FeedRailMark extends StatelessWidget {
+  const FeedRailMark({required this.icon, this.count, super.key});
+
+  final Widget icon;
+  final String? count;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = this.count;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: FeedLayout.railGlyph,
+            child: Center(child: icon),
+          ),
+          if (count != null) ...[
+            const SizedBox(height: FeedLayout.railGlyphGap),
+            MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.15,
+              child: Text(
+                count,
+                maxLines: 1,
+                style: AppTypography.textXsMedium.copyWith(
+                  fontSize: 11,
+                  height: 13 / 11,
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.textPrimary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -384,8 +422,19 @@ class FeedPressable extends StatefulWidget {
     this.inMutuallyExclusiveGroup,
     this.expanded,
     this.enabled = true,
+    this.springPress = false,
+    this.pressHaptic = true,
     super.key,
   });
+
+  /// With [springPress], the selection haptic on a tap; off for an action
+  /// with a haptic of its own (Like's heart lands with one).
+  final bool pressHaptic;
+
+  /// The bottom bar's press: the mark dips to 0.86 under the finger and
+  /// springs back with a little overshoot, with the selection haptic. For
+  /// the rails' bare glyphs; text buttons keep the quiet dim.
+  final bool springPress;
 
   final String semanticsLabel;
 
@@ -439,8 +488,17 @@ class _FeedPressableState extends State<FeedPressable> {
         onTapDown: _enabled ? (_) => _setPressed(true) : null,
         onTapCancel: () => _setPressed(false),
         onTapUp: (_) => _setPressed(false),
-        onTap: _enabled ? widget.onTap : null,
-        child: reduceMotion
+        onTap: _enabled
+            ? (widget.springPress && widget.pressHaptic
+                  ? () {
+                      HapticFeedbackService.selection();
+                      widget.onTap!();
+                    }
+                  : widget.onTap)
+            : null,
+        child: widget.springPress && _enabled
+            ? PressSpring(pressedScale: 0.86, child: widget.child)
+            : reduceMotion
             ? Opacity(opacity: pressed ? 0.7 : 1, child: widget.child)
             : SingleMotionBuilder(
                 value: pressed ? 1.0 : 0.0,

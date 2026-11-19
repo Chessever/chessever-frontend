@@ -281,13 +281,15 @@ class StreakShareCard extends StatelessWidget {
                   const SizedBox(height: _gapLevel),
                   Text(level, style: levelStyle),
                   const SizedBox(height: _gapName),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      player.displayName,
-                      maxLines: 1,
-                      style: nameStyle,
-                    ),
+                  // Player names keep one size everywhere: a name too long
+                  // for the card fades at its end, it never shrinks.
+                  Text(
+                    player.displayName,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    textAlign: TextAlign.center,
+                    style: nameStyle,
                   ),
                   const SizedBox(height: _gapMeta),
                   FittedBox(

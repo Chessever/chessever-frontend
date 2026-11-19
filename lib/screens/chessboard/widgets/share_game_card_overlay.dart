@@ -26,6 +26,8 @@ import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/icons/fen_position_icon.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart'
+    show playerNameLabel;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 import 'package:chessground/chessground.dart';
@@ -317,13 +319,13 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     if (_isGeneratingGif) return;
     _cancelled = false;
     // Read before any await: the GIF matches the card the user is looking at.
-    final gifTheme =
-        context.isLightTheme
-            ? CloudflareGifTheme.light
-            : CloudflareGifTheme.dark;
+    final gifTheme = context.isLightTheme
+        ? CloudflareGifTheme.light
+        : CloudflareGifTheme.dark;
 
-    final existingPath =
-        _generatedGifTheme == gifTheme ? _generatedGifPath : null;
+    final existingPath = _generatedGifTheme == gifTheme
+        ? _generatedGifPath
+        : null;
     if (existingPath == null && _generatedGifPath != null) {
       final stalePath = _generatedGifPath;
       setState(() {
@@ -406,13 +408,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           if (!mounted) return;
           setState(() {
             _gifProgressLabel = _cloudGifProgressText(progress);
-            _gifProgress =
-                progress.totalFrames > 0
-                    ? (progress.completedFrames / progress.totalFrames).clamp(
-                      0.0,
-                      1.0,
-                    )
-                    : null;
+            _gifProgress = progress.totalFrames > 0
+                ? (progress.completedFrames / progress.totalFrames).clamp(
+                    0.0,
+                    1.0,
+                  )
+                : null;
           });
         },
       );
@@ -710,19 +711,17 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               Icon(
                 Icons.analytics_outlined,
                 size: 16.sp,
-                color:
-                    _showEvalBar
-                        ? context.colors.accentText
-                        : context.colors.textPrimaryMuted,
+                color: _showEvalBar
+                    ? context.colors.accentText
+                    : context.colors.textPrimaryMuted,
               ),
               SizedBox(width: 8.w),
               Text(
                 'Eval Bar',
                 style: TextStyle(
-                  color:
-                      _showEvalBar
-                          ? context.colors.textPrimary
-                          : context.colors.textPrimaryMuted,
+                  color: _showEvalBar
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimaryMuted,
                   fontSize: 13.sp,
                   fontWeight: FontWeight.w500,
                 ),
@@ -756,12 +755,11 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       ),
                     ),
                     child: Align(
-                      alignment:
-                          Alignment.lerp(
-                            Alignment.centerLeft,
-                            Alignment.centerRight,
-                            on,
-                          )!,
+                      alignment: Alignment.lerp(
+                        Alignment.centerLeft,
+                        Alignment.centerRight,
+                        on,
+                      )!,
                       child: knob,
                     ),
                   );
@@ -772,10 +770,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   height: 18.h,
                   decoration: BoxDecoration(
                     // Paper knob on the teal track; ink knob elsewhere.
-                    color:
-                        isLight && _showEvalBar
-                            ? context.colors.surface
-                            : context.colors.textPrimary,
+                    color: isLight && _showEvalBar
+                        ? context.colors.surface
+                        : context.colors.textPrimary,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -802,11 +799,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     bool enabled = true,
     String? disabledMessage,
   }) {
-    final effectiveOnTap =
-        enabled
-            ? onTap
-            : () =>
-                _showMessage(disabledMessage ?? 'Not available', isError: true);
+    final effectiveOnTap = enabled
+        ? onTap
+        : () => _showMessage(disabledMessage ?? 'Not available', isError: true);
 
     final content = Container(
       // 6.w sits just inside the label's natural gutter at 1.0x on every
@@ -816,10 +811,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       decoration: BoxDecoration(
         color: isPrimary ? kPrimaryColor : context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(8.br),
-        border:
-            isPrimary
-                ? null
-                : Border.all(color: context.colors.divider, width: 1),
+        border: isPrimary
+            ? null
+            : Border.all(color: context.colors.divider, width: 1),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1058,10 +1052,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     return Material(
       type: MaterialType.transparency,
       child: Container(
-        color:
-            context.isLightTheme
-                ? context.colors.scrim
-                : Colors.black.withValues(alpha: 0.7),
+        color: context.isLightTheme
+            ? context.colors.scrim
+            : Colors.black.withValues(alpha: 0.7),
         child: Stack(
           children: [
             Positioned.fill(
@@ -1089,8 +1082,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                           _rotationY =
                               (details.localPosition.dx / 350.w - 0.5) * 0.15;
                           _rotationX =
-                              -(details.localPosition.dy / 600.h - 0.5) *
-                              0.15;
+                              -(details.localPosition.dy / 600.h - 0.5) * 0.15;
                         });
                       },
                       onPanEnd: (details) {
@@ -1103,60 +1095,52 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       // Tracks the finger on a quick spring, then settles
                       // back flat; snapToEnd lands on the exact identity.
                       child: MotionBuilder<Offset>(
-                        motion:
-                            _isTilting
-                                ? _ShareMotion.tiltTrack
-                                : _ShareMotion.tiltSettle,
+                        motion: _isTilting
+                            ? _ShareMotion.tiltTrack
+                            : _ShareMotion.tiltSettle,
                         value: Offset(_rotationX, _rotationY),
                         converter: const OffsetMotionConverter(),
                         active: !_reduceMotion(context),
-                        builder:
-                            (context, tilt, card) => Transform(
-                              transform:
-                                  Matrix4.identity()
-                                    ..setEntry(3, 2, 0.001)
-                                    ..rotateX(tilt.dx)
-                                    ..rotateY(tilt.dy),
-                              alignment: Alignment.center,
-                              child: card,
-                            ),
-                        child:
-                            !_showGifPreview || _generatedGifPath == null
-                                ? _ShareCard(
-                                  boardSettings: widget.boardSettings,
-                                  positionFen: widget.positionFen,
-                                  lastMove: widget.lastMove,
-                                  boardImageBytes: widget.boardImageBytes,
-                                  onClose: widget.onClose,
-                                  pgn: widget.pgn,
-                                  moveSans: widget.moveSans,
-                                  whitePlayerName: widget.whitePlayerName,
-                                  blackPlayerName: widget.blackPlayerName,
-                                  whitePlayerCountry:
-                                      widget.whitePlayerCountry,
-                                  blackPlayerCountry:
-                                      widget.blackPlayerCountry,
-                                  whitePlayerElo: widget.whitePlayerElo,
-                                  blackPlayerElo: widget.blackPlayerElo,
-                                  whitePlayerTitle: widget.whitePlayerTitle,
-                                  blackPlayerTitle: widget.blackPlayerTitle,
-                                  whitePlayerClock: widget.whitePlayerClock,
-                                  blackPlayerClock: widget.blackPlayerClock,
-                                  tournamentName: widget.tournamentName,
-                                  roundInfo: widget.roundInfo,
-                                  currentMoveIndex: widget.currentMoveIndex,
-                                  evaluation: widget.evaluation,
-                                  mate: widget.mate,
-                                  isFlipped: widget.isFlipped,
-                                  gameStatus: widget.gameStatus,
-                                  isAtGameEnd: widget.isAtGameEnd,
-                                  isPreview: true,
-                                  showEvalBar: _showEvalBar,
-                                  gameId: widget.gameId,
-                                )
-                                : _buildGeneratedGifPreview(
-                                  _generatedGifPath!,
-                                ),
+                        builder: (context, tilt, card) => Transform(
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, 0.001)
+                            ..rotateX(tilt.dx)
+                            ..rotateY(tilt.dy),
+                          alignment: Alignment.center,
+                          child: card,
+                        ),
+                        child: !_showGifPreview || _generatedGifPath == null
+                            ? _ShareCard(
+                                boardSettings: widget.boardSettings,
+                                positionFen: widget.positionFen,
+                                lastMove: widget.lastMove,
+                                boardImageBytes: widget.boardImageBytes,
+                                onClose: widget.onClose,
+                                pgn: widget.pgn,
+                                moveSans: widget.moveSans,
+                                whitePlayerName: widget.whitePlayerName,
+                                blackPlayerName: widget.blackPlayerName,
+                                whitePlayerCountry: widget.whitePlayerCountry,
+                                blackPlayerCountry: widget.blackPlayerCountry,
+                                whitePlayerElo: widget.whitePlayerElo,
+                                blackPlayerElo: widget.blackPlayerElo,
+                                whitePlayerTitle: widget.whitePlayerTitle,
+                                blackPlayerTitle: widget.blackPlayerTitle,
+                                whitePlayerClock: widget.whitePlayerClock,
+                                blackPlayerClock: widget.blackPlayerClock,
+                                tournamentName: widget.tournamentName,
+                                roundInfo: widget.roundInfo,
+                                currentMoveIndex: widget.currentMoveIndex,
+                                evaluation: widget.evaluation,
+                                mate: widget.mate,
+                                isFlipped: widget.isFlipped,
+                                gameStatus: widget.gameStatus,
+                                isAtGameEnd: widget.isAtGameEnd,
+                                isPreview: true,
+                                showEvalBar: _showEvalBar,
+                                gameId: widget.gameId,
+                              )
+                            : _buildGeneratedGifPreview(_generatedGifPath!),
                       ),
                     ),
                   ),
@@ -1326,12 +1310,11 @@ class _ShareEntrance extends StatelessWidget {
         value: 1.0,
         // Never from nothing: the card starts at 95%, already visible.
         from: still ? null : 0.95,
-        builder:
-            (context, scale, child) => Transform.scale(
-              scale: scale,
-              alignment: Alignment.center,
-              child: child,
-            ),
+        builder: (context, scale, child) => Transform.scale(
+          scale: scale,
+          alignment: Alignment.center,
+          child: child,
+        ),
         child: child,
       );
     }
@@ -1339,9 +1322,8 @@ class _ShareEntrance extends StatelessWidget {
       motion: _ShareMotion.rise(step),
       value: 0.0,
       from: still ? null : _ShareMotion.riseFrom(step),
-      builder:
-          (context, dy, child) =>
-              Transform.translate(offset: Offset(0, dy), child: child),
+      builder: (context, dy, child) =>
+          Transform.translate(offset: Offset(0, dy), child: child),
       child: child,
     );
   }
@@ -1528,8 +1510,9 @@ class _ShareCard extends ConsumerWidget {
                 );
 
                 String displaySurname = surname;
-                String displayFirstName =
-                    firstName.isNotEmpty ? ', $firstName' : '';
+                String displayFirstName = firstName.isNotEmpty
+                    ? ', $firstName'
+                    : '';
 
                 if (surname.isNotEmpty) {
                   // Strategy 1: Try full surname + full first name + rating
@@ -1573,25 +1556,41 @@ class _ShareCard extends ConsumerWidget {
                   }
                 }
 
+                // The label as it will be drawn, and the rating on its own:
+                // a surname too wide even alone fades at its end (the size
+                // never changes), with the rating kept beside it.
+                textPainter.text = TextSpan(
+                  children: [
+                    if (title.isNotEmpty)
+                      TextSpan(text: '$title ', style: titleStyle),
+                    if (displaySurname.isNotEmpty)
+                      TextSpan(text: displaySurname, style: nameStyle),
+                    if (displayFirstName.isNotEmpty)
+                      TextSpan(text: displayFirstName, style: nameStyle),
+                    TextSpan(text: rating, style: ratingStyle),
+                  ],
+                );
+                textPainter.layout();
+                final labelWidth = textPainter.width;
+                textPainter.text = TextSpan(text: rating, style: ratingStyle);
+                textPainter.layout();
+                final ratingWidth = textPainter.width;
                 textPainter.dispose();
-                return FittedBox(
-                  fit: BoxFit.scaleDown,
+                return Align(
                   alignment: Alignment.centerLeft,
-                  child: RichText(
-                    maxLines: 1,
-                    softWrap: false,
-                    text: TextSpan(
-                      style: nameStyle,
-                      children: [
-                        if (title.isNotEmpty)
-                          TextSpan(text: '$title ', style: titleStyle),
-                        if (displaySurname.isNotEmpty)
-                          TextSpan(text: displaySurname, style: nameStyle),
-                        if (displayFirstName.isNotEmpty)
-                          TextSpan(text: displayFirstName, style: nameStyle),
-                        TextSpan(text: rating, style: ratingStyle),
-                      ],
-                    ),
+                  heightFactor: 1,
+                  child: playerNameLabel(
+                    titlePrefix: title.isNotEmpty ? '$title ' : '',
+                    surname: displaySurname,
+                    firstName: displayFirstName,
+                    rating: rating,
+                    titleStyle: titleStyle,
+                    nameStyle: nameStyle,
+                    ratingStyle: ratingStyle,
+                    fits: labelWidth <= constraints.maxWidth,
+                    keepRating:
+                        rating.isNotEmpty &&
+                        ratingWidth < constraints.maxWidth / 2,
                   ),
                 );
               },
@@ -1610,18 +1609,16 @@ class _ShareCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Use the actual moveSans from analysis state instead of parsing PGN
 
-    final whiteCountry =
-        whitePlayerCountry != null
-            ? ref
-                .read(locationServiceProvider)
-                .getValidCountryCode(whitePlayerCountry!)
-            : '';
-    final blackCountry =
-        blackPlayerCountry != null
-            ? ref
-                .read(locationServiceProvider)
-                .getValidCountryCode(blackPlayerCountry!)
-            : '';
+    final whiteCountry = whitePlayerCountry != null
+        ? ref
+              .read(locationServiceProvider)
+              .getValidCountryCode(whitePlayerCountry!)
+        : '';
+    final blackCountry = blackPlayerCountry != null
+        ? ref
+              .read(locationServiceProvider)
+              .getValidCountryCode(blackPlayerCountry!)
+        : '';
     final boardOrientation = isFlipped ? Side.black : Side.white;
 
     // Determine which player info to show at top and bottom based on isFlipped
@@ -1659,15 +1656,15 @@ class _ShareCard extends ConsumerWidget {
         boxShadow: [
           isLight
               ? BoxShadow(
-                color: context.colors.shadow,
-                offset: const Offset(0, 2),
-                blurRadius: 6,
-              )
+                  color: context.colors.shadow,
+                  offset: const Offset(0, 2),
+                  blurRadius: 6,
+                )
               : BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                offset: Offset(0, 4),
-                blurRadius: 12,
-              ),
+                  color: Colors.black.withValues(alpha: 0.5),
+                  offset: Offset(0, 4),
+                  blurRadius: 12,
+                ),
         ],
       ),
       child: Column(
@@ -1722,8 +1719,9 @@ class _ShareCard extends ConsumerWidget {
                 final availableWidth = constraints.maxWidth;
                 final boardSize = math.max(1.0, availableWidth - reservedWidth);
                 final fenParts = positionFen.split(' ');
-                final overlayWhiteToMove =
-                    fenParts.length > 1 ? fenParts[1] == 'w' : true;
+                final overlayWhiteToMove = fenParts.length > 1
+                    ? fenParts[1] == 'w'
+                    : true;
 
                 // Calculate game ending data for overlays — only at the actual final position
                 final gameEndingData = _calculateShareGameEndingData(
@@ -1759,32 +1757,30 @@ class _ShareCard extends ConsumerWidget {
                   settings: StaticChessboardSettings.fromBoardSettings(
                     boardSettings,
                   ),
-                  squareHighlights:
-                      showGameEndingEffect
-                          ? (gameEndingData?.squareHighlights.unlock ??
-                              const <Square, SquareHighlight>{})
-                          : const <Square, SquareHighlight>{},
+                  squareHighlights: showGameEndingEffect
+                      ? (gameEndingData?.squareHighlights.unlock ??
+                            const <Square, SquareHighlight>{})
+                      : const <Square, SquareHighlight>{},
                 );
 
                 // A board-screen share reuses the exact rendered board pixels so
                 // annotations, arrows, highlights, coordinates, orientation, theme
                 // and piece set cannot drift in the cleaned card. The capture is a
                 // square boundary drawn into a square box, so `fill` never warps it.
-                final Widget chessboard =
-                    boardImageBytes != null
-                        ? Image.memory(
-                          boardImageBytes!,
-                          width: boardSize,
-                          height: boardSize,
-                          fit: BoxFit.fill,
-                          filterQuality: FilterQuality.high,
-                          gaplessPlayback: true,
-                          // A share card must never render Flutter's broken-image
-                          // glyph, so an undecodable capture falls back to the
-                          // rebuilt board instead of shipping a grey box.
-                          errorBuilder: (_, _, _) => reconstructedBoard,
-                        )
-                        : reconstructedBoard;
+                final Widget chessboard = boardImageBytes != null
+                    ? Image.memory(
+                        boardImageBytes!,
+                        width: boardSize,
+                        height: boardSize,
+                        fit: BoxFit.fill,
+                        filterQuality: FilterQuality.high,
+                        gaplessPlayback: true,
+                        // A share card must never render Flutter's broken-image
+                        // glyph, so an undecodable capture falls back to the
+                        // rebuilt board instead of shipping a grey box.
+                        errorBuilder: (_, _, _) => reconstructedBoard,
+                      )
+                    : reconstructedBoard;
 
                 // The captured board already contains its visible overlays; only
                 // reconstructed boards need the share-card ending effects added.
@@ -1807,10 +1803,9 @@ class _ShareCard extends ConsumerWidget {
                   final effectiveRank = isFlipped ? rank : 7 - rank;
 
                   // Get piece image from board settings
-                  final pieceKind =
-                      loserSide == Side.white
-                          ? PieceKind.whiteKing
-                          : PieceKind.blackKing;
+                  final pieceKind = loserSide == Side.white
+                      ? PieceKind.whiteKing
+                      : PieceKind.blackKing;
                   final pieceImage = boardSettings.pieceAssets[pieceKind];
 
                   boardWidget = Stack(
@@ -1878,17 +1873,16 @@ class _ShareCard extends ConsumerWidget {
                         child: _ShareEvalRail(
                           width: reservedWidth,
                           height: boardSize,
-                          builder:
-                              (width, height) => EvaluationBarWidget(
-                                width: width,
-                                height: height,
-                                evaluation: evaluation,
-                                mate: mate != 0 ? mate : null,
-                                isEvaluating: evaluation == null && mate == 0,
-                                isFlipped: isFlipped,
-                                isWhiteToMove: overlayWhiteToMove,
-                                positionKey: positionFen,
-                              ),
+                          builder: (width, height) => EvaluationBarWidget(
+                            width: width,
+                            height: height,
+                            evaluation: evaluation,
+                            mate: mate != 0 ? mate : null,
+                            isEvaluating: evaluation == null && mate == 0,
+                            isFlipped: isFlipped,
+                            isWhiteToMove: overlayWhiteToMove,
+                            positionKey: positionFen,
+                          ),
                         ),
                       ),
                     ),
@@ -1952,10 +1946,9 @@ class _ShareCard extends ConsumerWidget {
                 child: Container(
                   padding: EdgeInsets.all(6.w),
                   decoration: BoxDecoration(
-                    color:
-                        isLight
-                            ? context.colors.surfaceRecessed
-                            : Colors.black.withValues(alpha: 0.4),
+                    color: isLight
+                        ? context.colors.surfaceRecessed
+                        : Colors.black.withValues(alpha: 0.4),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -2211,28 +2204,26 @@ class _ShareFallenKingOverlayState extends State<_ShareFallenKingOverlay> {
         height: widget.squareSize,
         child: Center(
           // Reduced motion shows the fallen king already down.
-          child:
-              widget.animate && !_reduceMotion(context)
-                  ? SingleMotionBuilder(
-                    motion: const CupertinoMotion.bouncy(),
-                    value:
-                        _animate
-                            ? -math.pi / 4
-                            : 0.0, // -45 degrees when animated
-                    builder: (context, rotation, child) {
-                      return Transform.rotate(
-                        angle: rotation,
-                        alignment: Alignment.center,
-                        child: child,
-                      );
-                    },
-                    child: Image(image: widget.pieceImage, fit: BoxFit.contain),
-                  )
-                  : Transform.rotate(
-                    angle: -math.pi / 4, // -45 degrees (static)
-                    alignment: Alignment.center,
-                    child: Image(image: widget.pieceImage, fit: BoxFit.contain),
-                  ),
+          child: widget.animate && !_reduceMotion(context)
+              ? SingleMotionBuilder(
+                  motion: const CupertinoMotion.bouncy(),
+                  value: _animate
+                      ? -math.pi / 4
+                      : 0.0, // -45 degrees when animated
+                  builder: (context, rotation, child) {
+                    return Transform.rotate(
+                      angle: rotation,
+                      alignment: Alignment.center,
+                      child: child,
+                    );
+                  },
+                  child: Image(image: widget.pieceImage, fit: BoxFit.contain),
+                )
+              : Transform.rotate(
+                  angle: -math.pi / 4, // -45 degrees (static)
+                  alignment: Alignment.center,
+                  child: Image(image: widget.pieceImage, fit: BoxFit.contain),
+                ),
         ),
       ),
     );
@@ -2300,22 +2291,21 @@ class _SharePeaceIconState extends State<_SharePeaceIcon> {
           1,
       top: effectiveRank * widget.squareSize + 1,
       // Reduced motion shows the marker at full size straight away.
-      child:
-          widget.animate && !_reduceMotion(context)
-              ? SingleMotionBuilder(
-                motion: const CupertinoMotion.bouncy(),
-                // Springs up from a visible half size, never from nothing.
-                value: _animate ? 1.0 : 0.5,
-                builder: (context, scale, child) {
-                  return Transform.scale(
-                    scale: scale,
-                    alignment: Alignment.topRight,
-                    child: child,
-                  );
-                },
-                child: _buildIcon(containerSize),
-              )
-              : _buildIcon(containerSize),
+      child: widget.animate && !_reduceMotion(context)
+          ? SingleMotionBuilder(
+              motion: const CupertinoMotion.bouncy(),
+              // Springs up from a visible half size, never from nothing.
+              value: _animate ? 1.0 : 0.5,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  alignment: Alignment.topRight,
+                  child: child,
+                );
+              },
+              child: _buildIcon(containerSize),
+            )
+          : _buildIcon(containerSize),
     );
   }
 
@@ -2379,15 +2369,13 @@ class ShareDrawGlyphPainter extends CustomPainter {
       textScaler: TextScaler.noScaling,
     )..layout();
     final metrics = painter.computeLineMetrics();
-    final baseline =
-        metrics.isEmpty ? painter.height * 0.8 : metrics.first.baseline;
+    final baseline = metrics.isEmpty
+        ? painter.height * 0.8
+        : metrics.first.baseline;
     final inkCenterY = baseline - _capHeight * fontSize / 2;
     painter.paint(
       canvas,
-      Offset(
-        (size.width - painter.width) / 2,
-        size.height / 2 - inkCenterY,
-      ),
+      Offset((size.width - painter.width) / 2, size.height / 2 - inkCenterY),
     );
     painter.dispose();
   }

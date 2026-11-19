@@ -135,8 +135,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final baseGameModel = chessBoardState?.game ?? gamesTourModel;
     final scopedClockGame =
         showClock && !isReplay && baseGameModel.gameStatus.isOngoing
-            ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
-            : null;
+        ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
+        : null;
     final effectiveGameModel = scopedClockGame ?? baseGameModel;
     // "No spoilers" is keyed by broadcast tour id. Archive sources (gamebase,
     // TWIC, saved) put an event *name* in tourId, so the lookup never applies —
@@ -145,10 +145,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // games do load it while ongoing because No Spoilers also hides live evals.
     final isArchiveSource = effectiveGameModel.source != GameSource.supabase;
     final needsSpoilerLookup = !isArchiveSource && !ignoreNoSpoilers;
-    final spoilerState =
-        needsSpoilerLookup
-            ? ref.watch(eventNoSpoilersProvider(effectiveGameModel.tourId))
-            : null;
+    final spoilerState = needsSpoilerLookup
+        ? ref.watch(eventNoSpoilersProvider(effectiveGameModel.tourId))
+        : null;
     final hideEventEvaluation =
         spoilerState != null &&
         shouldHideEventEvaluation(
@@ -157,12 +156,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         );
     final spoilersRevealedForGame =
         needsSpoilerLookup && effectiveGameModel.gameStatus.isFinished
-            ? ref.watch(
-              eventNoSpoilersRevealedGamesProvider.select(
-                (gameIds) => gameIds.contains(effectiveGameModel.gameId),
-              ),
-            )
-            : false;
+        ? ref.watch(
+            eventNoSpoilersRevealedGamesProvider.select(
+              (gameIds) => gameIds.contains(effectiveGameModel.gameId),
+            ),
+          )
+        : false;
     final revealSpoilers =
         isArchiveSource ||
         ignoreNoSpoilers ||
@@ -171,36 +170,35 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         (spoilerState != null &&
             !spoilerState.isLoading &&
             !spoilerState.enabled);
-    final currentPosition =
-        chessBoardState?.isAnalysisMode == true
-            ? chessBoardState?.analysisState.position
-            : chessBoardState?.position;
-    final effectiveMoveIndex =
-        chessBoardState?.isAnalysisMode == true
-            ? chessBoardState!.analysisState.currentMoveIndex
-            : chessBoardState?.currentMoveIndex ?? -1;
-    final latestMainlineIndex =
-        chessBoardState == null ? -1 : chessBoardState!.moveSans.length - 1;
-    final isShowingLivePosition =
-        isReplay
-            ? false
-            : chessBoardState == null
-            ? true
-            : isShowingLiveBoardPosition(
-              currentFen: currentPosition?.fen,
-              liveFen: effectiveGameModel.fen,
-              currentMoveIndex: effectiveMoveIndex,
-              latestMainlineIndex: latestMainlineIndex,
-              isInAnalysisVariation:
-                  chessBoardState!.analysisState.isInAnalysisVariation,
-            );
+    final currentPosition = chessBoardState?.isAnalysisMode == true
+        ? chessBoardState?.analysisState.position
+        : chessBoardState?.position;
+    final effectiveMoveIndex = chessBoardState?.isAnalysisMode == true
+        ? chessBoardState!.analysisState.currentMoveIndex
+        : chessBoardState?.currentMoveIndex ?? -1;
+    final latestMainlineIndex = chessBoardState == null
+        ? -1
+        : chessBoardState!.moveSans.length - 1;
+    final isShowingLivePosition = isReplay
+        ? false
+        : chessBoardState == null
+        ? true
+        : isShowingLiveBoardPosition(
+            currentFen: currentPosition?.fen,
+            liveFen: effectiveGameModel.fen,
+            currentMoveIndex: effectiveMoveIndex,
+            latestMainlineIndex: latestMainlineIndex,
+            isInAnalysisVariation:
+                chessBoardState!.analysisState.isInAnalysisVariation,
+          );
     final liveActivePlayer = effectiveGameModel.activePlayer;
     final isLiveCurrentPlayer =
         liveActivePlayer != null &&
         ((isWhitePlayer && liveActivePlayer == Side.white) ||
             (!isWhitePlayer && liveActivePlayer == Side.black));
-    final visibleIsCurrentPlayer =
-        isShowingLivePosition ? isLiveCurrentPlayer : isCurrentPlayer;
+    final visibleIsCurrentPlayer = isShowingLivePosition
+        ? isLiveCurrentPlayer
+        : isCurrentPlayer;
     final playerCard = useMemoized(() {
       return isWhitePlayer
           ? effectiveGameModel.whitePlayer
@@ -255,26 +253,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           if (gamebasePlayer != null) {
             final resolvedFideId = int.tryParse(gamebasePlayer.fideId);
             enrichedCard = enrichedCard.copyWith(
-              title:
-                  enrichedCard.title.trim().isNotEmpty
-                      ? enrichedCard.title
-                      : ChessTitleUtils.normalize(gamebasePlayer.title),
-              countryCode:
-                  enrichedCard.countryCode.trim().isNotEmpty
-                      ? enrichedCard.countryCode
-                      : gamebasePlayer.fed,
-              rating:
-                  enrichedCard.rating > 0
-                      ? enrichedCard.rating
-                      : (gamebasePlayer.ratingClassical ??
-                          gamebasePlayer.highestRating ??
-                          0),
-              fideId:
-                  (enrichedCard.fideId != null && enrichedCard.fideId! > 0)
-                      ? enrichedCard.fideId
-                      : (resolvedFideId != null && resolvedFideId > 0)
-                      ? resolvedFideId
-                      : enrichedCard.fideId,
+              title: enrichedCard.title.trim().isNotEmpty
+                  ? enrichedCard.title
+                  : ChessTitleUtils.normalize(gamebasePlayer.title),
+              countryCode: enrichedCard.countryCode.trim().isNotEmpty
+                  ? enrichedCard.countryCode
+                  : gamebasePlayer.fed,
+              rating: enrichedCard.rating > 0
+                  ? enrichedCard.rating
+                  : (gamebasePlayer.ratingClassical ??
+                        gamebasePlayer.highestRating ??
+                        0),
+              fideId: (enrichedCard.fideId != null && enrichedCard.fideId! > 0)
+                  ? enrichedCard.fideId
+                  : (resolvedFideId != null && resolvedFideId > 0)
+                  ? resolvedFideId
+                  : enrichedCard.fideId,
             );
           }
         }
@@ -316,37 +310,39 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
 
     // Calculate move time from state if available, otherwise use game model's time
-    final moveTime = useMemoized(() {
-      // Historical clock display is tied to the last move made by this player
-      // up to the currently navigated mainline ply (placeholders skipped, so a
-      // partially-clocked PGN falls back to an earlier real sample). Archived
-      // games open at the initial position (move index -1): there the side's
-      // earliest PGN clock sample is the initial display.
-      var calculatedMoveTime = clockDisplayAtMove(
-        replayMoveTimes ?? chessBoardState?.moveTimes ?? const <String>[],
-        moveIndex: isReplay ? replayMoveIndex : effectiveMoveIndex,
-        isWhitePlayer: isWhitePlayer,
-      );
+    final moveTime = useMemoized(
+      () {
+        // Historical clock display is tied to the last move made by this player
+        // up to the currently navigated mainline ply (placeholders skipped, so a
+        // partially-clocked PGN falls back to an earlier real sample). Archived
+        // games open at the initial position (move index -1): there the side's
+        // earliest PGN clock sample is the initial display.
+        var calculatedMoveTime = clockDisplayAtMove(
+          replayMoveTimes ?? chessBoardState?.moveTimes ?? const <String>[],
+          moveIndex: isReplay ? replayMoveIndex : effectiveMoveIndex,
+          isWhitePlayer: isWhitePlayer,
+        );
 
-      // Final fallback to a usable game snapshot supplied by the database.
-      if (calculatedMoveTime == null) {
-        final snapshotTime =
-            isWhitePlayer
-                ? effectiveGameModel.whiteTimeDisplay
-                : effectiveGameModel.blackTimeDisplay;
-        if (hasUsableClockDisplay(snapshotTime)) {
-          calculatedMoveTime = snapshotTime;
+        // Final fallback to a usable game snapshot supplied by the database.
+        if (calculatedMoveTime == null) {
+          final snapshotTime = isWhitePlayer
+              ? effectiveGameModel.whiteTimeDisplay
+              : effectiveGameModel.blackTimeDisplay;
+          if (hasUsableClockDisplay(snapshotTime)) {
+            calculatedMoveTime = snapshotTime;
+          }
         }
-      }
 
-      return calculatedMoveTime;
-    }, [
-      chessBoardState,
-      isWhitePlayer,
-      effectiveGameModel,
-      replayMoveTimes,
-      replayMoveIndex,
-    ]);
+        return calculatedMoveTime;
+      },
+      [
+        chessBoardState,
+        isWhitePlayer,
+        effectiveGameModel,
+        replayMoveTimes,
+        replayMoveIndex,
+      ],
+    );
 
     // Game-level check: does this game have ANY clock data? Must be stable
     // across move navigation — keying visibility off the currently navigated
@@ -360,136 +356,127 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         hasUsableClockDisplay(moveTime) ||
         (isWhitePlayer
             ? effectiveGameModel.whiteClockSeconds != null ||
-                effectiveGameModel.whiteClockCentiseconds > 0
+                  effectiveGameModel.whiteClockCentiseconds > 0
             : effectiveGameModel.blackClockSeconds != null ||
-                effectiveGameModel.blackClockCentiseconds > 0);
+                  effectiveGameModel.blackClockCentiseconds > 0);
 
     // Harmonized text styles for consistent visual hierarchy
     final fontOverride = fontSizeOverride;
-    final rankStyleBase =
-        playerView == PlayerView.listView
-            ? TextStyle(
-              fontSize: 8.5.f,
-              fontWeight: FontWeight.w600,
-              color: context.colors.titleAccent,
-              height: 1.15,
-              letterSpacing: 0,
-            )
-            : playerView == PlayerView.gridView
-            ? TextStyle(
-              fontSize: 8.f,
-              fontWeight: FontWeight.w600,
-              color: context.colors.titleAccent,
-              height: 1.15,
-              letterSpacing: -0.15,
-            )
-            : AppTypography.textXsMedium.copyWith(
-              color: context.colors.titleAccent,
-              fontWeight: FontWeight.w700,
-              fontSize: 14.f,
-              height: 1.2,
-            );
+    final rankStyleBase = playerView == PlayerView.listView
+        ? TextStyle(
+            fontSize: 8.5.f,
+            fontWeight: FontWeight.w600,
+            color: context.colors.titleAccent,
+            height: 1.15,
+            letterSpacing: 0,
+          )
+        : playerView == PlayerView.gridView
+        ? TextStyle(
+            fontSize: 8.f,
+            fontWeight: FontWeight.w600,
+            color: context.colors.titleAccent,
+            height: 1.15,
+            letterSpacing: -0.15,
+          )
+        : AppTypography.textXsMedium.copyWith(
+            color: context.colors.titleAccent,
+            fontWeight: FontWeight.w700,
+            fontSize: 14.f,
+            height: 1.2,
+          );
 
-    final nameStyleBase =
-        playerView == PlayerView.listView
-            ? TextStyle(
-              fontSize: 8.5.f,
-              fontWeight: FontWeight.w500,
-              color: context.colors.textPrimary,
-              height: 1.15,
-              letterSpacing: 0,
-            )
-            : playerView == PlayerView.gridView
-            ? TextStyle(
-              fontSize: 8.f,
-              fontWeight: FontWeight.w600,
-              color: context.colors.textPrimary,
-              height: 1.15,
-              letterSpacing: -0.15,
-            )
-            : AppTypography.textXsMedium.copyWith(
-              color: context.colors.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 14.f,
-              height: 1.2,
-            );
+    final nameStyleBase = playerView == PlayerView.listView
+        ? TextStyle(
+            fontSize: 8.5.f,
+            fontWeight: FontWeight.w500,
+            color: context.colors.textPrimary,
+            height: 1.15,
+            letterSpacing: 0,
+          )
+        : playerView == PlayerView.gridView
+        ? TextStyle(
+            fontSize: 8.f,
+            fontWeight: FontWeight.w600,
+            color: context.colors.textPrimary,
+            height: 1.15,
+            letterSpacing: -0.15,
+          )
+        : AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 14.f,
+            height: 1.2,
+          );
 
-    final ratingStyleBase =
-        playerView == PlayerView.listView
-            ? TextStyle(
-              fontSize: 8.5.f,
-              fontWeight: FontWeight.w500,
-              color: context.colors.textPrimaryMuted,
-              height: 1.15,
-              letterSpacing: 0,
-            )
-            : playerView == PlayerView.gridView
-            ? TextStyle(
-              fontSize: 7.5.f,
-              fontWeight: FontWeight.w500,
-              color: context.colors.textPrimaryMuted,
-              height: 1.15,
-              letterSpacing: -0.15,
-            )
-            : AppTypography.textXsMedium.copyWith(
-              color: context.colors.textPrimaryMuted,
-              fontWeight: FontWeight.w600,
-              fontSize: 14.f,
-              height: 1.2,
-            );
+    final ratingStyleBase = playerView == PlayerView.listView
+        ? TextStyle(
+            fontSize: 8.5.f,
+            fontWeight: FontWeight.w500,
+            color: context.colors.textPrimaryMuted,
+            height: 1.15,
+            letterSpacing: 0,
+          )
+        : playerView == PlayerView.gridView
+        ? TextStyle(
+            fontSize: 7.5.f,
+            fontWeight: FontWeight.w500,
+            color: context.colors.textPrimaryMuted,
+            height: 1.15,
+            letterSpacing: -0.15,
+          )
+        : AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+            fontWeight: FontWeight.w600,
+            fontSize: 14.f,
+            height: 1.2,
+          );
 
     // Proportional flag sizing for visual consistency
-    final flagHeight =
-        fontOverride != null
-            ? 12.h
-            : playerView == PlayerView.listView
-            ? 10.h
-            : playerView == PlayerView.gridView
-            ? 12.h
-            : 12.h;
-    final flagWidth =
-        fontOverride != null
-            ? 16.w
-            : playerView == PlayerView.listView
-            ? 12.w
-            : playerView == PlayerView.gridView
-            ? 16.w
-            : 16.w;
+    final flagHeight = fontOverride != null
+        ? 12.h
+        : playerView == PlayerView.listView
+        ? 10.h
+        : playerView == PlayerView.gridView
+        ? 12.h
+        : 12.h;
+    final flagWidth = fontOverride != null
+        ? 16.w
+        : playerView == PlayerView.listView
+        ? 12.w
+        : playerView == PlayerView.gridView
+        ? 16.w
+        : 16.w;
 
-    final timeStyleBase =
-        playerView == PlayerView.listView
-            ? TextStyle(
-              fontSize: 8.5.f,
-              fontWeight: FontWeight.w500,
-              color:
-                  visibleIsCurrentPlayer
-                      ? context.colors.textPrimary
-                      : context.colors.textPrimaryMuted,
-              height: 1.15,
-              letterSpacing: 0,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            )
-            : playerView == PlayerView.gridView
-            ? TextStyle(
-              fontSize: 8.f,
-              fontWeight: FontWeight.w600,
-              color:
-                  visibleIsCurrentPlayer
-                      ? context.colors.textPrimary
-                      : context.colors.textPrimaryMuted,
-              height: 1.15,
-              letterSpacing: -0.2,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            )
-            : AppTypography.textXsMedium.copyWith(
-              color:
-                  visibleIsCurrentPlayer
-                      ? context.colors.textPrimary
-                      : context.colors.textPrimaryMuted,
-              fontSize: 14.f,
-              fontWeight: FontWeight.w500,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            );
+    final timeStyleBase = playerView == PlayerView.listView
+        ? TextStyle(
+            fontSize: 8.5.f,
+            fontWeight: FontWeight.w500,
+            color: visibleIsCurrentPlayer
+                ? context.colors.textPrimary
+                : context.colors.textPrimaryMuted,
+            height: 1.15,
+            letterSpacing: 0,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          )
+        : playerView == PlayerView.gridView
+        ? TextStyle(
+            fontSize: 8.f,
+            fontWeight: FontWeight.w600,
+            color: visibleIsCurrentPlayer
+                ? context.colors.textPrimary
+                : context.colors.textPrimaryMuted,
+            height: 1.15,
+            letterSpacing: -0.2,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          )
+        : AppTypography.textXsMedium.copyWith(
+            color: visibleIsCurrentPlayer
+                ? context.colors.textPrimary
+                : context.colors.textPrimaryMuted,
+            fontSize: 14.f,
+            fontWeight: FontWeight.w500,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          );
 
     // A caller that owns the row's height (the Feed) can lift the whole
     // row to a reading size; every part scales together, so the title,
@@ -521,23 +508,21 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // ListView: 0 (container already has 24.sp padding via ChessBoardFromFENNew)
     // GridView: 0 (no container padding)
     // BoardView: 16.sp (matches container margin in chess_board_screen_new)
-    final boardMargin =
-        playerView == PlayerView.listView
-            ? 0.sp
-            : // NO margin - container has padding!
-            playerView == PlayerView.gridView
-            ? 0.sp
-            : 16.sp; // BoardView needs margin
+    final boardMargin = playerView == PlayerView.listView
+        ? 0.sp
+        : // NO margin - container has padding!
+          playerView == PlayerView.gridView
+        ? 0.sp
+        : 16.sp; // BoardView needs margin
 
     final endPadding = boardMargin; // Right margin matches left margin
 
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final engineGaugeWidth = useMemoized(
       () {
-        final showGaugeForSurface =
-            playerView == PlayerView.boardView
-                ? engineSettings?.shouldShowEngineGaugeOnBoard ?? true
-                : engineSettings?.shouldShowEngineGaugeInGrid ?? true;
+        final showGaugeForSurface = playerView == PlayerView.boardView
+            ? engineSettings?.shouldShowEngineGaugeOnBoard ?? true
+            : engineSettings?.shouldShowEngineGaugeInGrid ?? true;
         // The focused board's computer-analysis toggle gates its gauge. Grid and
         // list cards instead follow their dedicated Grid View preference.
         final showEvalBarInSettings =
@@ -579,10 +564,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       // Create fallback player model from game data - always has fideId if available
       final fallbackPlayer = PlayerStandingModel(
         countryCode: effectivePlayerCard.countryCode,
-        title:
-            effectivePlayerCard.title.isNotEmpty
-                ? effectivePlayerCard.title
-                : null,
+        title: effectivePlayerCard.title.isNotEmpty
+            ? effectivePlayerCard.title
+            : null,
         name: effectivePlayerCard.name,
         score: effectivePlayerCard.rating,
         scoreChange: 0,
@@ -594,11 +578,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       // Try to find player in tournament standings, otherwise use fallback
       var playerStanding =
           standingsAsync.whenOrNull(
-            data:
-                (standings) => standings.firstWhere(
-                  (player) => player.name == effectivePlayerCard.name,
-                  orElse: () => fallbackPlayer,
-                ),
+            data: (standings) => standings.firstWhere(
+              (player) => player.name == effectivePlayerCard.name,
+              orElse: () => fallbackPlayer,
+            ),
           ) ??
           fallbackPlayer;
 
@@ -629,18 +612,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               .getPlayerByFideId(playerStanding.fideId!);
           if (chessPlayer != null) {
             playerStanding = playerStanding.copyWith(
-              title:
-                  (playerStanding.title?.trim().isNotEmpty ?? false)
-                      ? playerStanding.title
-                      : chessPlayer.title,
-              countryCode:
-                  playerStanding.countryCode.trim().isNotEmpty
-                      ? playerStanding.countryCode
-                      : (chessPlayer.country ?? ''),
-              score:
-                  playerStanding.score > 0
-                      ? playerStanding.score
-                      : (chessPlayer.rating ?? playerStanding.score),
+              title: (playerStanding.title?.trim().isNotEmpty ?? false)
+                  ? playerStanding.title
+                  : chessPlayer.title,
+              countryCode: playerStanding.countryCode.trim().isNotEmpty
+                  ? playerStanding.countryCode
+                  : (chessPlayer.country ?? ''),
+              score: playerStanding.score > 0
+                  ? playerStanding.score
+                  : (chessPlayer.rating ?? playerStanding.score),
             );
           }
         } catch (_) {
@@ -672,22 +652,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 0;
 
             playerStanding = playerStanding.copyWith(
-              fideId:
-                  (resolvedFideId != null && resolvedFideId > 0)
-                      ? resolvedFideId
-                      : playerStanding.fideId,
-              title:
-                  (playerStanding.title?.trim().isNotEmpty ?? false)
-                      ? playerStanding.title
-                      : (normalizedTitle.isNotEmpty ? normalizedTitle : null),
-              countryCode:
-                  currentCountry.isNotEmpty
-                      ? currentCountry
-                      : gamebasePlayer.fed,
-              score:
-                  playerStanding.score > 0
-                      ? playerStanding.score
-                      : fallbackRating,
+              fideId: (resolvedFideId != null && resolvedFideId > 0)
+                  ? resolvedFideId
+                  : playerStanding.fideId,
+              title: (playerStanding.title?.trim().isNotEmpty ?? false)
+                  ? playerStanding.title
+                  : (normalizedTitle.isNotEmpty ? normalizedTitle : null),
+              countryCode: currentCountry.isNotEmpty
+                  ? currentCountry
+                  : gamebasePlayer.fed,
+              score: playerStanding.score > 0
+                  ? playerStanding.score
+                  : fallbackRating,
             );
           }
         } catch (_) {
@@ -736,19 +712,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             // Prefer the exact list owned by the tapped preview, then fall back
             // to the active board list for older callers.
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            final allBoardGames =
-                hasExplicitGames
-                    ? scoreCardGamesContext
-                    : ref.read(chessBoardAllGamesProvider);
+            final allBoardGames = hasExplicitGames
+                ? scoreCardGamesContext
+                : ref.read(chessBoardAllGamesProvider);
             final currentEvent = effectiveGameModel.tourId;
             if (currentEvent.isNotEmpty && allBoardGames.isNotEmpty) {
-              gamesContext =
-                  allBoardGames.where((g) => g.tourId == currentEvent).toList();
+              gamesContext = allBoardGames
+                  .where((g) => g.tourId == currentEvent)
+                  .toList();
             }
-            gamesContext =
-                (gamesContext != null && gamesContext.isNotEmpty)
-                    ? gamesContext
-                    : [gamesTourModel];
+            gamesContext = (gamesContext != null && gamesContext.isNotEmpty)
+                ? gamesContext
+                : [gamesTourModel];
             hasEventContext = true;
           } else if (ref.read(
             combinedOtherCategoryProvider(effectiveGameModel.tourId),
@@ -794,10 +769,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           }
           final currentTourIdCountryman = effectiveGameModel.tourId;
           if (currentTourIdCountryman.isNotEmpty) {
-            gamesContext =
-                allCountrymanGames
-                    .where((g) => g.tourId == currentTourIdCountryman)
-                    .toList();
+            gamesContext = allCountrymanGames
+                .where((g) => g.tourId == currentTourIdCountryman)
+                .toList();
             hasEventContext = true; // Filtered to specific event
           } else {
             gamesContext = allCountrymanGames;
@@ -812,16 +786,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           ref.read(selectedBroadcastModelProvider.notifier).state = null;
           final currentTourId = effectiveGameModel.tourId;
           if (currentTourId.isNotEmpty) {
-            final allContextGames =
-                scoreCardGamesContext.isNotEmpty
-                    ? scoreCardGamesContext
-                    : ref.read(chessBoardAllGamesProvider);
-            final eventGames =
-                allContextGames
-                    .where((game) => game.tourId == currentTourId)
-                    .toList();
-            gamesContext =
-                eventGames.isNotEmpty ? eventGames : [effectiveGameModel];
+            final allContextGames = scoreCardGamesContext.isNotEmpty
+                ? scoreCardGamesContext
+                : ref.read(chessBoardAllGamesProvider);
+            final eventGames = allContextGames
+                .where((game) => game.tourId == currentTourId)
+                .toList();
+            gamesContext = eventGames.isNotEmpty
+                ? eventGames
+                : [effectiveGameModel];
             hasEventContext = true;
           } else {
             // No tourId - can't determine event context
@@ -866,69 +839,64 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             width: engineGaugeWidth,
             child:
                 effectiveGameModel.gameStatus.isFinished &&
-                        revealSpoilers &&
-                        revealResult != false
-                    ? Center(
-                      child: Builder(
-                        builder: (context) {
-                          final status = effectiveGameModel.gameStatus;
-                          final isDraw = status == GameStatus.draw;
-                          final isWin =
-                              (status == GameStatus.whiteWins &&
-                                  isWhitePlayer) ||
-                              (status == GameStatus.blackWins &&
-                                  !isWhitePlayer);
-                          final label =
-                              boardResultLabelForSide(
-                                effectiveGameModel,
-                                isWhite: isWhitePlayer,
-                              ) ??
-                              '';
-                          final resultColor =
-                              isWin
-                                  ? context.colors.accentText
-                                  : isDraw
-                                  ? context.colors.textPrimaryMuted
-                                  : context.colors.danger;
-                          final scoreFontSize =
-                              fontOverride != null
-                                  ? (fontOverride + 2).f
-                                  : playerView == PlayerView.listView
-                                  ? 12.f
-                                  : playerView == PlayerView.gridView
-                                  ? 13.f
-                                  : 15.f;
-                          return CappedTextScale(
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: scoreFontSize,
-                                fontWeight: FontWeight.w500,
-                                color: resultColor,
-                                height: 1.0,
-                                letterSpacing: -0.2,
-                              ),
-                              strutStyle: const StrutStyle(
-                                forceStrutHeight: true,
-                                height: 1.0,
-                                leading: 0,
-                              ),
-                              textAlign: TextAlign.center,
+                    revealSpoilers &&
+                    revealResult != false
+                ? Center(
+                    child: Builder(
+                      builder: (context) {
+                        final status = effectiveGameModel.gameStatus;
+                        final isDraw = status == GameStatus.draw;
+                        final isWin =
+                            (status == GameStatus.whiteWins && isWhitePlayer) ||
+                            (status == GameStatus.blackWins && !isWhitePlayer);
+                        final label =
+                            boardResultLabelForSide(
+                              effectiveGameModel,
+                              isWhite: isWhitePlayer,
+                            ) ??
+                            '';
+                        final resultColor = isWin
+                            ? context.colors.accentText
+                            : isDraw
+                            ? context.colors.textPrimaryMuted
+                            : context.colors.danger;
+                        final scoreFontSize = fontOverride != null
+                            ? (fontOverride + 2).f
+                            : playerView == PlayerView.listView
+                            ? 12.f
+                            : playerView == PlayerView.gridView
+                            ? 13.f
+                            : 15.f;
+                        return CappedTextScale(
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: scoreFontSize,
+                              fontWeight: FontWeight.w500,
+                              color: resultColor,
+                              height: 1.0,
+                              letterSpacing: -0.2,
                             ),
-                          );
-                        },
-                      ),
-                    )
-                    : null,
+                            strutStyle: const StrutStyle(
+                              forceStrutHeight: true,
+                              height: 1.0,
+                              leading: 0,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                : null,
           ),
           if (effectiveGameModel.gameStatus.isFinished && revealSpoilers)
             SizedBox(
-              width:
-                  playerView == PlayerView.gridView
-                      ? 4.w
-                      : playerView == PlayerView.listView
-                      ? 5.w
-                      : 6.w,
+              width: playerView == PlayerView.gridView
+                  ? 4.w
+                  : playerView == PlayerView.listView
+                  ? 5.w
+                  : 6.w,
             ),
           if (showFlag) ...[
             FederationFlag(
@@ -948,29 +916,28 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
                 // Parse name parts - format is "Surname, Given Names"
                 final fullName = effectivePlayerCard.name;
-                final nameParts =
-                    fullName.split(',').map((e) => e.trim()).toList();
-                final surname =
-                    nameParts.isNotEmpty
-                        ? nameParts[0]
-                        : ''; // Part before comma
-                final firstName =
-                    nameParts.length > 1
-                        ? nameParts[1]
-                        : ''; // Part after comma
+                final nameParts = fullName
+                    .split(',')
+                    .map((e) => e.trim())
+                    .toList();
+                final surname = nameParts.isNotEmpty
+                    ? nameParts[0]
+                    : ''; // Part before comma
+                final firstName = nameParts.length > 1
+                    ? nameParts[1]
+                    : ''; // Part after comma
 
                 // Build static parts
-                final rating =
-                    effectivePlayerCard.rating > 0
-                        ? ' ${effectivePlayerCard.rating}'
-                        : '';
+                final rating = effectivePlayerCard.rating > 0
+                    ? ' ${effectivePlayerCard.rating}'
+                    : '';
 
                 // Compact previews reserve a fixed name height. The board
                 // and rows with a font override have room for scaled text.
                 final textScaler =
                     playerView == PlayerView.boardView || fontOverride != null
-                        ? context.textScaler
-                        : TextScaler.noScaling;
+                    ? context.textScaler
+                    : TextScaler.noScaling;
 
                 // Which name parts fit is measured once per distinct
                 // (name, width, style) and remembered: rows rebuild far more
@@ -987,38 +954,27 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   ratingStyle: ratingStyle,
                   textScaler: textScaler,
                 );
-                final finalNameSpan = TextSpan(
-                  style: nameStyle,
-                  children: [
-                    TextSpan(
-                      text: '${effectivePlayerCard.title} ',
-                      style: rankStyle,
-                    ),
-                    if (fit.surname.isNotEmpty)
-                      TextSpan(text: fit.surname, style: nameStyle),
-                    if (fit.firstName.isNotEmpty)
-                      TextSpan(text: fit.firstName, style: nameStyle),
-                    TextSpan(text: rating, style: ratingStyle),
-                  ],
+                final maxNameTapWidth = availableWidth < 0
+                    ? 0.0
+                    : availableWidth;
+                // Names keep the row's one fixed size everywhere (never scaled
+                // to fit). The fit above already fell back to initials and then
+                // to the surname alone; a surname still too wide fades out at
+                // its end, and the rating stays beside it while it has room.
+                final nameWidget = playerNameLabel(
+                  titlePrefix: '${effectivePlayerCard.title} ',
+                  surname: fit.surname,
+                  firstName: fit.firstName,
+                  rating: rating,
+                  titleStyle: rankStyle,
+                  nameStyle: nameStyle,
+                  ratingStyle: ratingStyle,
+                  textScaler: textScaler,
+                  fits: fit.width <= maxNameTapWidth,
+                  keepRating:
+                      rating.isNotEmpty &&
+                      fit.ratingWidth < maxNameTapWidth / 2,
                 );
-
-                // Keep the whole fitted label visible, even when the surname
-                // alone is wider than the space left beside the clock.
-                final nameWidget = FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: RichText(
-                    maxLines: 1,
-                    softWrap: false,
-                    textScaler: textScaler,
-                    text: finalNameSpan,
-                  ),
-                );
-
-                final maxNameTapWidth =
-                    availableWidth < 0 ? 0.0 : availableWidth;
-                final nameTapWidth =
-                    fit.width.clamp(0.0, maxNameTapWidth).toDouble();
                 // Board-editor and local-analysis names are typed labels
                 // ("White"), not people: nothing to open or pin.
                 final source = effectiveGameModel.source;
@@ -1028,59 +984,52 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     effectivePlayerCard.name.trim().isNotEmpty &&
                     source != GameSource.boardEditor &&
                     source != GameSource.localAnalysis;
+                // The tap box is the label itself: as wide as the name, never
+                // wider than the space beside the clock.
                 final tappableName = GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onTap: openPlayerScoreCard,
-                  child: SizedBox(width: nameTapWidth, child: nameWidget),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxNameTapWidth),
+                    child: nameWidget,
+                  ),
                 );
                 // The long-press sits on its own layer over the same name-only
                 // rect, so the scorecard tap target stays exactly the name and
                 // rows with the menu off keep the bare tap detector.
-                final nameTarget =
-                    canOpenNameMenu
-                        ? Builder(
-                          builder:
-                              (nameContext) => GestureDetector(
-                                behavior: HitTestBehavior.translucent,
-                                onLongPress:
-                                    () => CardContextMenu.open(
-                                      nameContext,
-                                      actions:
-                                          (menuContext) => playerMenuActions(
-                                            menuContext,
-                                            ref,
-                                            playerName:
-                                                effectivePlayerCard.name,
-                                            fideId: effectivePlayerCard.fideId,
-                                            title:
-                                                effectivePlayerCard.title
-                                                        .trim()
-                                                        .isEmpty
-                                                    ? null
-                                                    : effectivePlayerCard.title,
-                                            federation:
-                                                effectivePlayerCard.countryCode,
-                                            rating:
-                                                effectivePlayerCard.rating > 0
-                                                    ? effectivePlayerCard.rating
-                                                    : null,
-                                            gamebasePlayerId:
-                                                effectivePlayerCard
-                                                    .gamebasePlayerId,
-                                            onOpen: () {
-                                              if (context.mounted) {
-                                                return openPlayerScoreCard();
-                                              }
-                                            },
-                                            openLabel: 'Open scorecard',
-                                            openIcon:
-                                                Icons.open_in_new_rounded,
-                                          ),
-                                    ),
-                                child: tappableName,
-                              ),
-                        )
-                        : tappableName;
+                final nameTarget = canOpenNameMenu
+                    ? Builder(
+                        builder: (nameContext) => GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onLongPress: () => CardContextMenu.open(
+                            nameContext,
+                            actions: (menuContext) => playerMenuActions(
+                              menuContext,
+                              ref,
+                              playerName: effectivePlayerCard.name,
+                              fideId: effectivePlayerCard.fideId,
+                              title: effectivePlayerCard.title.trim().isEmpty
+                                  ? null
+                                  : effectivePlayerCard.title,
+                              federation: effectivePlayerCard.countryCode,
+                              rating: effectivePlayerCard.rating > 0
+                                  ? effectivePlayerCard.rating
+                                  : null,
+                              gamebasePlayerId:
+                                  effectivePlayerCard.gamebasePlayerId,
+                              onOpen: () {
+                                if (context.mounted) {
+                                  return openPlayerScoreCard();
+                                }
+                              },
+                              openLabel: 'Open scorecard',
+                              openIcon: Icons.open_in_new_rounded,
+                            ),
+                          ),
+                          child: tappableName,
+                        ),
+                      )
+                    : tappableName;
 
                 if (onEditName != null) {
                   return Align(
@@ -1091,12 +1040,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         Flexible(child: tappableName),
                         SizedBox(width: 4.w),
                         GestureDetector(
-                          onTap:
-                              () => _showEditNameDialog(
-                                context,
-                                effectivePlayerCard.name,
-                                onEditName!,
-                              ),
+                          onTap: () => _showEditNameDialog(
+                            context,
+                            effectivePlayerCard.name,
+                            onEditName!,
+                          ),
                           child: Icon(
                             Icons.edit,
                             size: 14.ic,
@@ -1116,8 +1064,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ),
           ),
           // A fixed gap between the name and whatever ends the row (the
-          // pin, the clock's box), so a long name gives way with its
-          // ellipsis instead of running into the box.
+          // pin, the clock's box), so a long name fades out before it
+          // reaches the box instead of running into it.
           if (isPinned || (showClock && hasClockData))
             SizedBox(width: playerView == PlayerView.boardView ? 8.w : 6.w),
           if (isPinned) ...[
@@ -1140,12 +1088,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               // all but vanishes on paper, so light frames it in the
               // accent ink instead.
               decoration: BoxDecoration(
-                color:
-                    visibleIsCurrentPlayer
-                        ? (context.isLightTheme
-                            ? context.colors.accentText.withValues(alpha: 0.1)
-                            : kPrimaryColor.withValues(alpha: 0.12))
-                        : Colors.transparent,
+                color: visibleIsCurrentPlayer
+                    ? (context.isLightTheme
+                          ? context.colors.accentText.withValues(alpha: 0.1)
+                          : kPrimaryColor.withValues(alpha: 0.12))
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(
                   playerView == PlayerView.gridView ? 3.br : 4.br,
                 ),
@@ -1153,14 +1100,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 // the row's height never changes as the active player flips
                 // during move navigation — otherwise the board shifts.
                 border: Border.all(
-                  color:
-                      visibleIsCurrentPlayer
-                          ? (context.isLightTheme
-                              ? context.colors.accentText.withValues(
-                                alpha: 0.75,
-                              )
-                              : kPrimaryColor.withValues(alpha: 0.4))
-                          : Colors.transparent,
+                  color: visibleIsCurrentPlayer
+                      ? (context.isLightTheme
+                            ? context.colors.accentText.withValues(alpha: 0.75)
+                            : kPrimaryColor.withValues(alpha: 0.4))
+                      : Colors.transparent,
                   width: 0.7,
                 ),
               ),
@@ -1194,108 +1138,107 @@ void _showEditNameDialog(
   showAlertModal<void>(
     context: context,
     child: Builder(
-      builder:
-          (dialogContext) => Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(20.sp),
-            decoration: BoxDecoration(
-              color: dialogContext.colors.surface,
-              borderRadius: BorderRadius.circular(16.br),
-              border: Border.all(
-                color: dialogContext.colors.textPrimary.withValues(alpha: 0.1),
-                width: 1,
+      builder: (dialogContext) => Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(20.sp),
+        decoration: BoxDecoration(
+          color: dialogContext.colors.surface,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(
+            color: dialogContext.colors.textPrimary.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Edit Player Name',
+              style: AppTypography.textMdBold.copyWith(
+                color: dialogContext.colors.textPrimary,
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            SizedBox(height: 16.h),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: AppTypography.textSmRegular.copyWith(
+                color: dialogContext.colors.textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Player name',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: dialogContext.textInk(0.4),
+                ),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(
+                    color: dialogContext.colors.textPrimary.withValues(
+                      alpha: 0.2,
+                    ),
+                  ),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(
+                    color: dialogContext.colors.textPrimary.withValues(
+                      alpha: 0.7,
+                    ),
+                  ),
+                ),
+              ),
+              onSubmitted: (value) {
+                final trimmed = value.trim();
+                if (trimmed.isNotEmpty && trimmed != currentName) {
+                  onSave(trimmed);
+                }
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+            SizedBox(height: 20.h),
+            Row(
               children: [
-                Text(
-                  'Edit Player Name',
-                  style: AppTypography.textMdBold.copyWith(
-                    color: dialogContext.colors.textPrimary,
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: Text(
+                      'Cancel',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: dialogContext.textInk(0.6),
+                      ),
+                    ),
                   ),
                 ),
-                SizedBox(height: 16.h),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: dialogContext.colors.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Player name',
-                    hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: dialogContext.textInk(0.4),
-                    ),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(
-                        color: dialogContext.colors.textPrimary.withValues(
-                          alpha: 0.2,
-                        ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final trimmed = controller.text.trim();
+                      if (trimmed.isNotEmpty && trimmed != currentName) {
+                        onSave(trimmed);
+                      }
+                      Navigator.of(dialogContext).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: dialogContext.colors.textPrimary,
+                      foregroundColor: dialogContext.colors.textInverse,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10.br),
                       ),
                     ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(
-                        color: dialogContext.colors.textPrimary.withValues(
-                          alpha: 0.7,
-                        ),
+                    child: Text(
+                      'Save',
+                      style: AppTypography.textSmBold.copyWith(
+                        color: dialogContext.colors.textInverse,
                       ),
                     ),
                   ),
-                  onSubmitted: (value) {
-                    final trimmed = value.trim();
-                    if (trimmed.isNotEmpty && trimmed != currentName) {
-                      onSave(trimmed);
-                    }
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-                SizedBox(height: 20.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: Text(
-                          'Cancel',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: dialogContext.textInk(0.6),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final trimmed = controller.text.trim();
-                          if (trimmed.isNotEmpty && trimmed != currentName) {
-                            onSave(trimmed);
-                          }
-                          Navigator.of(dialogContext).pop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: dialogContext.colors.textPrimary,
-                          foregroundColor: dialogContext.colors.textInverse,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10.br),
-                          ),
-                        ),
-                        child: Text(
-                          'Save',
-                          style: AppTypography.textSmBold.copyWith(
-                            color: dialogContext.colors.textInverse,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
-          ),
+          ],
+        ),
+      ),
     ),
   ).whenComplete(controller.dispose);
 }
@@ -1326,37 +1269,36 @@ class _PlayerClock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveGameModel = gamesTourModel;
-    final currentPosition =
-        chessBoardState?.isAnalysisMode == true
-            ? chessBoardState?.analysisState.position
-            : chessBoardState?.position;
-    final effectiveMoveIndex =
-        chessBoardState?.isAnalysisMode == true
-            ? chessBoardState!.analysisState.currentMoveIndex
-            : chessBoardState?.currentMoveIndex ?? -1;
-    final latestMainlineIndex =
-        chessBoardState == null ? -1 : chessBoardState!.moveSans.length - 1;
-    final isShowingLivePosition =
-        isReplay
-            ? false
-            : chessBoardState == null
-            ? true
-            : isShowingLiveBoardPosition(
-              currentFen: currentPosition?.fen,
-              liveFen: effectiveGameModel.fen,
-              currentMoveIndex: effectiveMoveIndex,
-              latestMainlineIndex: latestMainlineIndex,
-              isInAnalysisVariation:
-                  chessBoardState!.analysisState.isInAnalysisVariation,
-            );
+    final currentPosition = chessBoardState?.isAnalysisMode == true
+        ? chessBoardState?.analysisState.position
+        : chessBoardState?.position;
+    final effectiveMoveIndex = chessBoardState?.isAnalysisMode == true
+        ? chessBoardState!.analysisState.currentMoveIndex
+        : chessBoardState?.currentMoveIndex ?? -1;
+    final latestMainlineIndex = chessBoardState == null
+        ? -1
+        : chessBoardState!.moveSans.length - 1;
+    final isShowingLivePosition = isReplay
+        ? false
+        : chessBoardState == null
+        ? true
+        : isShowingLiveBoardPosition(
+            currentFen: currentPosition?.fen,
+            liveFen: effectiveGameModel.fen,
+            currentMoveIndex: effectiveMoveIndex,
+            latestMainlineIndex: latestMainlineIndex,
+            isInAnalysisVariation:
+                chessBoardState!.analysisState.isInAnalysisVariation,
+          );
 
     final liveActivePlayer = effectiveGameModel.activePlayer;
     final isLiveCurrentPlayer =
         liveActivePlayer != null &&
         ((isWhitePlayer && liveActivePlayer == Side.white) ||
             (!isWhitePlayer && liveActivePlayer == Side.black));
-    final shouldCountForThisPlayer =
-        isShowingLivePosition ? isLiveCurrentPlayer : isCurrentPlayer;
+    final shouldCountForThisPlayer = isShowingLivePosition
+        ? isLiveCurrentPlayer
+        : isCurrentPlayer;
 
     // Determine if this player's clock should be counting down
     // Only countdown for live games when at the latest move and it's this player's turn
@@ -1378,14 +1320,12 @@ class _PlayerClock extends StatelessWidget {
     // - If it's this player's turn NOW, count down from their saved clock since last_move_time
     // - If it's NOT this player's turn, show their static saved clock value
 
-    final clockCentiseconds =
-        isWhitePlayer
-            ? effectiveGameModel.whiteClockCentiseconds
-            : effectiveGameModel.blackClockCentiseconds;
-    final liveClockSeconds =
-        isWhitePlayer
-            ? effectiveGameModel.whiteClockSeconds
-            : effectiveGameModel.blackClockSeconds;
+    final clockCentiseconds = isWhitePlayer
+        ? effectiveGameModel.whiteClockCentiseconds
+        : effectiveGameModel.blackClockCentiseconds;
+    final liveClockSeconds = isWhitePlayer
+        ? effectiveGameModel.whiteClockSeconds
+        : effectiveGameModel.blackClockSeconds;
 
     return AtomicCountdownText(
       // Force a fresh countdown widget when either the reference time or the
@@ -1395,14 +1335,11 @@ class _PlayerClock extends StatelessWidget {
       // everything from its props each tick, and remounting it on every move
       // would reset the tenths reveal mid-spring — the digit has to be able to
       // animate out when the turn passes to the other row.
-      key:
-          showSubSecondClock
-              ? ValueKey(
-                'board-sub-second-clock-${isWhitePlayer ? 'w' : 'b'}',
-              )
-              : ValueKey(
-                '${effectiveGameModel.lastMoveTime?.millisecondsSinceEpoch ?? 0}:${liveClockSeconds ?? -1}',
-              ),
+      key: showSubSecondClock
+          ? ValueKey('board-sub-second-clock-${isWhitePlayer ? 'w' : 'b'}')
+          : ValueKey(
+              '${effectiveGameModel.lastMoveTime?.millisecondsSinceEpoch ?? 0}:${liveClockSeconds ?? -1}',
+            ),
       showSubSecond: showSubSecondClock,
       moveTime:
           moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
@@ -1420,7 +1357,63 @@ class _PlayerClock extends StatelessWidget {
   }
 }
 
-typedef _PlayerNameFit = ({String surname, String firstName, double width});
+typedef _PlayerNameFit = ({
+  String surname,
+  String firstName,
+  double width,
+  double ratingWidth,
+});
+
+/// One player's label on a single line: [titlePrefix] (the title and its
+/// space, as the caller spells it), the name parts and [rating], each in its
+/// row's own fixed style. Nothing here ever scales the text: player names keep
+/// one size everywhere. Callers pick the name parts first (full name, then the
+/// first name as initials, then the surname alone); a label still too wide for
+/// its space fades out at its end ([TextOverflow.fade], never an ellipsis).
+///
+/// [fits] says the whole label was measured to fit: it is then one paragraph,
+/// exactly as measured. Otherwise, with [keepRating], the rating sits outside
+/// the fade so it stays readable beside a long surname; without it the whole
+/// label fades.
+Widget playerNameLabel({
+  required String titlePrefix,
+  required String surname,
+  required String firstName,
+  required String rating,
+  required TextStyle titleStyle,
+  required TextStyle nameStyle,
+  required TextStyle ratingStyle,
+  TextScaler textScaler = TextScaler.noScaling,
+  required bool fits,
+  required bool keepRating,
+}) {
+  final nameSpans = <InlineSpan>[
+    if (titlePrefix.isNotEmpty) TextSpan(text: titlePrefix, style: titleStyle),
+    if (surname.isNotEmpty) TextSpan(text: surname, style: nameStyle),
+    if (firstName.isNotEmpty) TextSpan(text: firstName, style: nameStyle),
+  ];
+  final ratingSpan = TextSpan(text: rating, style: ratingStyle);
+  Widget paragraph(List<InlineSpan> spans) => RichText(
+    maxLines: 1,
+    softWrap: false,
+    overflow: TextOverflow.fade,
+    textAlign: TextAlign.left,
+    textScaler: textScaler,
+    text: TextSpan(style: nameStyle, children: spans),
+  );
+  if (fits || !keepRating || rating.isEmpty) {
+    return paragraph([...nameSpans, if (rating.isNotEmpty) ratingSpan]);
+  }
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.baseline,
+    textBaseline: TextBaseline.alphabetic,
+    children: [
+      Flexible(child: paragraph(nameSpans)),
+      paragraph([ratingSpan]),
+    ],
+  );
+}
 
 final Map<Object, _PlayerNameFit> _playerNameFits = <Object, _PlayerNameFit>{};
 bool _playerNameFitsWatchFonts = false;
@@ -1482,11 +1475,10 @@ _PlayerNameFit _fitPlayerName({
       // No "Surname, Given" comma: treat "Given ... Surname" by
       // taking the last token as the surname and the first token's
       // initial (e.g. "Magnus Carlsen" -> "Carlsen M.").
-      final tokens =
-          surname
-              .split(_playerNameWhitespace)
-              .where((token) => token.isNotEmpty)
-              .toList();
+      final tokens = surname
+          .split(_playerNameWhitespace)
+          .where((token) => token.isNotEmpty)
+          .toList();
       if (tokens.length > 1) {
         displaySurname = tokens.last;
         displayFirstName = ' ${tokens.first.characters.first.toUpperCase()}.';
@@ -1549,10 +1541,14 @@ _PlayerNameFit _fitPlayerName({
     ],
   );
   textPainter.layout();
+  final width = textPainter.width;
+  textPainter.text = TextSpan(text: rating, style: ratingStyle);
+  textPainter.layout();
   final fit = (
     surname: displaySurname,
     firstName: displayFirstName,
-    width: textPainter.width,
+    width: width,
+    ratingWidth: textPainter.width,
   );
   textPainter.dispose();
 

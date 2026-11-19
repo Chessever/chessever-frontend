@@ -4436,6 +4436,81 @@ class _BorderProgressPainter extends CustomPainter {
   }
 }
 
+/// Hands back the widget it showed last while [same] says nothing that widget
+/// shows has changed, so Flutter skips its subtree.
+///
+/// The page rebuilds on every board state change, and most of those are the
+/// engine's (evaluation, lines, depth: many a second while it searches).
+/// Parts that read none of the engine's fields are wrapped in this, so an
+/// engine line no longer rebuilds them. Their own provider watches and
+/// inherited dependencies still rebuild them as before.
+class _Keep<T extends Widget> extends StatefulWidget {
+  const _Keep({required this.child, required this.same});
+
+  /// The widget as the page built it this time.
+  final T child;
+
+  /// Whether [next] shows exactly what [shown] does.
+  final bool Function(T shown, T next) same;
+
+  @override
+  State<_Keep<T>> createState() => _KeepState<T>();
+}
+
+class _KeepState<T extends Widget> extends State<_Keep<T>> {
+  late T _shown = widget.child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.same(_shown, widget.child)) _shown = widget.child;
+    return _shown;
+  }
+}
+
+/// [_Keep] for the scaffold's app bar slot.
+class _KeepAppBar extends _Keep<_AppBar> implements PreferredSizeWidget {
+  const _KeepAppBar({required super.child}) : super(same: _sameAppBar);
+
+  @override
+  Size get preferredSize => child.preferredSize;
+}
+
+/// The app bar takes no board state: only an engine line changing nothing it
+/// was given leaves it as it is.
+bool _sameAppBar(_AppBar a, _AppBar b) =>
+    identical(a.game, b.game) &&
+    identical(a.games, b.games) &&
+    a.currentGameIndex == b.currentGameIndex &&
+    a.isLoading == b.isLoading &&
+    a.lastViewedIndex == b.lastViewedIndex &&
+    a.hideEventInfo == b.hideEventInfo &&
+    identical(a.savedAnalysisData, b.savedAnalysisData) &&
+    a.isActivePage == b.isActivePage &&
+    a.allowGameExport == b.allowGameExport;
+
+/// Exactly the board state fields [_MovesDisplay] reads. The notation reads
+/// none of the engine's, and rebuilding it on an engine line re-ran its
+/// whole-game work and re-laid out every move token (about 490 builds and 470
+/// layouts a line on an 80-ply game).
+bool _sameNotation(_MovesDisplay a, _MovesDisplay b) {
+  final x = a.state;
+  final y = b.state;
+  return a.index == b.index &&
+      a.currentPageIndex == b.currentPageIndex &&
+      identical(a.game, b.game) &&
+      x.isLoadingMoves == y.isLoadingMoves &&
+      identical(x.analysisState.game, y.analysisState.game) &&
+      x.analysisState.currentMoveIndex == y.analysisState.currentMoveIndex &&
+      listEquals(x.analysisState.movePointer, y.analysisState.movePointer) &&
+      x.hasUnseenMoves == y.hasUnseenMoves &&
+      x.isPvPreviewActive == y.isPvPreviewActive &&
+      identical(x.lockedPvLine, y.lockedPvLine) &&
+      identical(x.moveNags, y.moveNags) &&
+      identical(x.moveTimes, y.moveTimes) &&
+      x.pgnData == y.pgnData &&
+      identical(x.variationComments, y.variationComments);
+}
+
 class _GamePage extends ConsumerWidget {
   final GamesTourModel game;
   final ChessBoardStateNew state;
@@ -4500,15 +4575,17 @@ class _GamePage extends ConsumerWidget {
       backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
       extendBody: explorerVisible,
-      appBar: _AppBar(
-        game: game,
-        games: games,
-        currentGameIndex: currentGameIndex,
-        lastViewedIndex: lastViewedIndex,
-        hideEventInfo: hideEventInfo,
-        savedAnalysisData: savedAnalysisData,
-        isActivePage: currentGameIndex == currentPageIndex,
-        allowGameExport: allowGameExport,
+      appBar: _KeepAppBar(
+        child: _AppBar(
+          game: game,
+          games: games,
+          currentGameIndex: currentGameIndex,
+          lastViewedIndex: lastViewedIndex,
+          hideEventInfo: hideEventInfo,
+          savedAnalysisData: savedAnalysisData,
+          isActivePage: currentGameIndex == currentPageIndex,
+          allowGameExport: allowGameExport,
+        ),
       ),
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
@@ -5581,108 +5658,111 @@ class _AppBarState extends ConsumerState<_AppBar> {
     // Screenshot -> open the branded game-share preview (same flow as the
     // 3-dots "Share Game" action). Only the active PageView page listens;
     // adjacent pre-built pages and the loading skeleton stay inert.
-    return ScreenshotShareNudge(
-      enabled: widget.isActivePage && !widget.isLoading,
-      onShare: shareGameBtnClicked,
-      child: AppBar(
-        elevation: 0,
-        backgroundColor: context.colors.background,
-        surfaceTintColor: context.colors.background,
-        // Every pushed page's back ([PageBackButton]): the one glyph, size
-        // and x, at the leading inset.
-        leadingWidth:
-            SearchHeaderMetrics.leadingInset + SearchHeaderMetrics.backTarget,
-        titleSpacing: 4.sp,
-        leading: Padding(
-          padding: EdgeInsetsDirectional.only(
-            start: SearchHeaderMetrics.leadingInset,
-          ),
-          child: Center(
-            child: PageBackButton(
-              key: const ValueKey('board_back'),
-              onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
+    // Its own layer: page repaints (the clock, engine lines) skip it.
+    return RepaintBoundary(
+      child: ScreenshotShareNudge(
+        enabled: widget.isActivePage && !widget.isLoading,
+        onShare: shareGameBtnClicked,
+        child: AppBar(
+          elevation: 0,
+          backgroundColor: context.colors.background,
+          surfaceTintColor: context.colors.background,
+          // Every pushed page's back ([PageBackButton]): the one glyph, size
+          // and x, at the leading inset.
+          leadingWidth:
+              SearchHeaderMetrics.leadingInset + SearchHeaderMetrics.backTarget,
+          titleSpacing: 4.sp,
+          leading: Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: SearchHeaderMetrics.leadingInset,
+            ),
+            child: Center(
+              child: PageBackButton(
+                key: const ValueKey('board_back'),
+                onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
+              ),
             ),
           ),
-        ),
-        title: widget.hideEventInfo
-            ? Text(
-                'Analysis Board',
-                style: TextStyle(
-                  color: context.colors.textPrimary,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-              )
-            : _GameSelectionDropdown(
-                key: e2eKey(E2eIds.boardGameSelector),
-                games: widget.games,
-                currentGameIndex: widget.currentGameIndex,
-                isLoading: widget.isLoading,
-              ),
-        actions: [
-          // Right after a fresh like, these action icons hand over to the tag
-          // chip (see [LikeTagChip] / tagChipOfferProvider) via a spring-driven
-          // width hand-off — icons peel away right→left while the chip grows in
-          // from the right — then run in reverse when the chip resolves/elapses.
-          _TagAwareAppBarActions(
-            isActivePage: widget.isActivePage,
-            actions: <Widget>[
-              // Event info button (hidden when navigating from library for position analysis)
-              // Uses delayed show on tablets to prevent phantom tap dismissals
-              if (!widget.hideEventInfo)
-                IconButton(
-                  icon: Icon(
-                    Icons.info_outline_rounded,
+          title: widget.hideEventInfo
+              ? Text(
+                  'Analysis Board',
+                  style: TextStyle(
                     color: context.colors.textPrimary,
-                    size: 20.sp,
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
                   ),
-                  tooltip: 'Event info',
-                  onPressed: widget.isLoading
-                      ? null
-                      : () => _showEventInfoSheet(context, ref, infoSheetPgn),
-                ),
-              // Save Analysis button — with auto-save status animation for library games
-              if (widget.allowGameExport) _buildSaveButton(),
-              // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
-              // phantom tap dismissals, use standard PopupMenuButton on mobile
-              if (ResponsiveHelper.isTablet)
-                _TabletSafePopupMenu<String>(
-                  key: _tabletMenuKey,
-                  icon: Icon(
-                    Icons.more_vert,
-                    color: context.colors.textPrimary,
-                    size: 22.sp,
-                  ),
-                  enabled: !widget.isLoading,
-                  onSelected: _selectMenuAction,
-                  itemBuilder: _menuItems,
                 )
-              else
-                PopupMenuButton<String>(
-                  icon: Icon(
-                    Icons.more_vert,
-                    color: context.colors.textPrimary,
-                    size: 22.sp,
-                  ),
-                  enabled: !widget.isLoading,
-                  onOpened: () {
-                    _overflowMenuOpen = true;
-                    _ChessBoardPopupState.markOpen();
-                  },
-                  onCanceled: () {
-                    _overflowMenuOpen = false;
-                    _ChessBoardPopupState.markClosed();
-                  },
-                  onSelected: (value) {
-                    _overflowMenuOpen = false;
-                    _ChessBoardPopupState.markClosed();
-                    _selectMenuAction(value);
-                  },
-                  itemBuilder: _menuItems,
+              : _GameSelectionDropdown(
+                  key: e2eKey(E2eIds.boardGameSelector),
+                  games: widget.games,
+                  currentGameIndex: widget.currentGameIndex,
+                  isLoading: widget.isLoading,
                 ),
-            ],
-          ),
-        ],
+          actions: [
+            // Right after a fresh like, these action icons hand over to the tag
+            // chip (see [LikeTagChip] / tagChipOfferProvider) via a spring-driven
+            // width hand-off — icons peel away right→left while the chip grows in
+            // from the right — then run in reverse when the chip resolves/elapses.
+            _TagAwareAppBarActions(
+              isActivePage: widget.isActivePage,
+              actions: <Widget>[
+                // Event info button (hidden when navigating from library for position analysis)
+                // Uses delayed show on tablets to prevent phantom tap dismissals
+                if (!widget.hideEventInfo)
+                  IconButton(
+                    icon: Icon(
+                      Icons.info_outline_rounded,
+                      color: context.colors.textPrimary,
+                      size: 20.sp,
+                    ),
+                    tooltip: 'Event info',
+                    onPressed: widget.isLoading
+                        ? null
+                        : () => _showEventInfoSheet(context, ref, infoSheetPgn),
+                  ),
+                // Save Analysis button — with auto-save status animation for library games
+                if (widget.allowGameExport) _buildSaveButton(),
+                // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
+                // phantom tap dismissals, use standard PopupMenuButton on mobile
+                if (ResponsiveHelper.isTablet)
+                  _TabletSafePopupMenu<String>(
+                    key: _tabletMenuKey,
+                    icon: Icon(
+                      Icons.more_vert,
+                      color: context.colors.textPrimary,
+                      size: 22.sp,
+                    ),
+                    enabled: !widget.isLoading,
+                    onSelected: _selectMenuAction,
+                    itemBuilder: _menuItems,
+                  )
+                else
+                  PopupMenuButton<String>(
+                    icon: Icon(
+                      Icons.more_vert,
+                      color: context.colors.textPrimary,
+                      size: 22.sp,
+                    ),
+                    enabled: !widget.isLoading,
+                    onOpened: () {
+                      _overflowMenuOpen = true;
+                      _ChessBoardPopupState.markOpen();
+                    },
+                    onCanceled: () {
+                      _overflowMenuOpen = false;
+                      _ChessBoardPopupState.markClosed();
+                    },
+                    onSelected: (value) {
+                      _overflowMenuOpen = false;
+                      _ChessBoardPopupState.markClosed();
+                      _selectMenuAction(value);
+                    },
+                    itemBuilder: _menuItems,
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -6397,7 +6477,8 @@ class _GameChipButton extends StatelessWidget {
               ),
               SizedBox(width: 6.sp),
             ],
-            // Game label - centered, flexible to allow truncation
+            // Game label ("Surname vs Surname"): one fixed size; a label too
+            // wide for the chip fades at its end, never an ellipsis.
             Flexible(
               child: Text(
                 label,
@@ -6407,7 +6488,8 @@ class _GameChipButton extends StatelessWidget {
                       : context.colors.textPrimary,
                 ),
                 maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                overflow: TextOverflow.fade,
                 textAlign: TextAlign.center,
               ),
             ),
@@ -7786,270 +7868,6 @@ class _RoundSeparator extends StatelessWidget {
   }
 }
 
-/// Staggered animated game item wrapper
-// ignore: unused_element
-class _AnimatedGameItem extends StatelessWidget {
-  final int index;
-  final Animation<double> animation;
-  final GamesTourModel game;
-  final int gameIndex;
-  final bool isSelected;
-  final bool isLoading;
-  final VoidCallback onTap;
-
-  const _AnimatedGameItem({
-    required this.index,
-    required this.animation,
-    required this.game,
-    required this.gameIndex,
-    required this.isSelected,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final itemDelay = index * 0.06;
-    final itemAnimation = CurvedAnimation(
-      parent: animation,
-      curve: Interval(
-        itemDelay.clamp(0.0, 0.4),
-        (itemDelay + 0.6).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic,
-      ),
-    );
-
-    return AnimatedBuilder(
-      animation: itemAnimation,
-      builder: (context, child) {
-        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
-        return Transform.translate(
-          offset: Offset(0, 12 * (1 - clampedValue)),
-          child: Opacity(opacity: clampedValue, child: child),
-        );
-      },
-      child: _GameItem(
-        game: game,
-        gameIndex: gameIndex,
-        isSelected: isSelected,
-        isLoading: isLoading,
-        onTap: onTap,
-      ),
-    );
-  }
-}
-
-/// Compact minimal game item
-class _GameItem extends StatefulWidget {
-  final GamesTourModel game;
-  final int gameIndex;
-  final bool isSelected;
-  final bool isLoading;
-  final VoidCallback onTap;
-
-  const _GameItem({
-    required this.game,
-    required this.gameIndex,
-    required this.isSelected,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  @override
-  State<_GameItem> createState() => _GameItemState();
-}
-
-class _GameItemState extends State<_GameItem> {
-  bool _isPressed = false;
-
-  String _extractLastName(String fullName) {
-    final name = fullName.trim();
-    if (name.isEmpty) return fullName;
-
-    // Handle "LastName, FirstName" format (common in chess)
-    if (name.contains(',')) {
-      final lastName = name.split(',').first.trim();
-      if (lastName.isNotEmpty) return lastName;
-    }
-
-    // Suffixes to ignore when finding last name
-    const suffixes = {
-      'jr',
-      'jr.',
-      'sr',
-      'sr.',
-      'ii',
-      'iii',
-      'iv',
-      'v',
-      '2nd',
-      '3rd',
-      '4th',
-      '5th',
-    };
-
-    final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return fullName;
-    if (parts.length == 1) return parts.first;
-
-    // Find the last part that isn't a suffix
-    for (int i = parts.length - 1; i >= 0; i--) {
-      if (!suffixes.contains(parts[i].toLowerCase())) {
-        return parts[i];
-      }
-    }
-
-    return parts.last;
-  }
-
-  String _getResultText() {
-    switch (widget.game.gameStatus) {
-      case GameStatus.whiteWins:
-        return '1–0';
-      case GameStatus.blackWins:
-        return '0–1';
-      case GameStatus.draw:
-        return '½–½';
-      case GameStatus.ongoing:
-        return '';
-      case GameStatus.unknown:
-        return '';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isLive = widget.game.gameStatus == GameStatus.ongoing;
-    final resultText = _getResultText();
-    final whiteName = _extractLastName(widget.game.whitePlayer.displayName);
-    final blackName = _extractLastName(widget.game.blackPlayer.displayName);
-
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      onTap: widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOutCubic,
-        margin: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
-        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8.br),
-          color: widget.isSelected
-              ? kPrimaryColor.withValues(alpha: 0.1)
-              : _isPressed
-              ? context.colors.textPrimary.withValues(alpha: 0.03)
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            // Live indicator - fixed width
-            SizedBox(
-              width: 14.w,
-              child: isLive
-                  ? Container(
-                      width: 6.w,
-                      height: 6.h,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: context.colors.accentText,
-                        // The bloom only reads on black; paper gets the
-                        // flat dot.
-                        boxShadow: context.isLightTheme
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: kPrimaryColor.withValues(alpha: 0.4),
-                                  blurRadius: 4,
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                      ),
-                    )
-                  : null,
-            ),
-            // White player
-            Expanded(
-              child: Text(
-                whiteName,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: widget.isSelected
-                      ? context.colors.accentText
-                      : context.colors.textPrimary.withValues(alpha: 0.9),
-                  fontWeight: widget.isSelected
-                      ? FontWeight.w600
-                      : FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            // Center: vs or result
-            Container(
-              width: 36.w,
-              alignment: Alignment.center,
-              child: resultText.isNotEmpty
-                  ? Text(
-                      resultText,
-                      style: AppTypography.textXxsMedium.copyWith(
-                        color: context.textInk(0.5),
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: -0.2,
-                      ),
-                    )
-                  : Text(
-                      'vs',
-                      style: AppTypography.textXxsRegular.copyWith(
-                        color: context.textInk(0.35),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-            ),
-            // Black player
-            Expanded(
-              child: Text(
-                blackName,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: widget.isSelected
-                      ? context.colors.accentText
-                      : context.colors.textPrimary.withValues(alpha: 0.9),
-                  fontWeight: widget.isSelected
-                      ? FontWeight.w600
-                      : FontWeight.w500,
-                ),
-                textAlign: TextAlign.right,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            // Selection indicator
-            SizedBox(
-              width: 20.w,
-              child: widget.isLoading
-                  ? SizedBox(
-                      width: 12.sp,
-                      height: 12.sp,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: context.colors.accentText,
-                      ),
-                    )
-                  : widget.isSelected
-                  ? Icon(
-                      Icons.check_rounded,
-                      color: context.colors.accentText,
-                      size: 14.ic,
-                    )
-                  : null,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _BottomNavBar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -8204,43 +8022,46 @@ class _BottomNavBar extends ConsumerWidget {
     final video = EventVideoLayoutScope.maybeOf(context);
     final hasVideo = video != null && video.isActive(game.gameId);
 
-    return ChessBoardBottomNavBar(
-      // Panel visibility updates this bar in place. Replacing it while a swipe
-      // settles disposes the arrow recognizers and cancels an in-flight hold.
-      key: ValueKey('bottom_nav_${game.gameId}_$index'),
-      onVideoToggle: hasVideo
-          ? () => EventVideoScope.sessionOf(context)?.toggle()
-          : null,
-      videoVisible: hasVideo && video.visible,
-      isActivePage: isActivePage,
-      gameIndex: index,
-      coachingGameId:
-          '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
-      showGamebaseButton: showGamebaseButton,
-      explorerPanelVisible: explorerPanelVisible,
-      onFlip: () => notifier.flipBoard(),
-      toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
-      onEngineSettingsLongPress: () {
-        requireFullAuthGuard(context).then((allowed) {
-          if (!allowed) return;
-          if (!context.mounted) return;
-          Navigator.of(
-            context,
-          ).push(SettingsPage.route(initiallyExpanded: SettingsSection.engine));
-        });
-      },
-      onRightMove: arrows.onRightMove,
-      onLeftMove: arrows.onLeftMove,
-      onLongPressBackwardStart: arrows.onLongPressBackwardStart,
-      onLongPressBackwardEnd: arrows.onLongPressBackwardEnd,
-      onLongPressForwardStart: arrows.onLongPressForwardStart,
-      onLongPressForwardEnd: arrows.onLongPressForwardEnd,
-      canMoveForward: arrows.canMoveForward,
-      canMoveBackward: arrows.canMoveBackward,
-      showEngineAnalysis: state.showEngineAnalysis,
-      showUnseenMoveBadge: state.hasUnseenMoves,
-      onGamebaseToggle: onGamebaseToggle,
-      isGamebaseActive: isGamebaseActive,
+    // Its own layer: page repaints (the clock, engine lines) skip it.
+    return RepaintBoundary(
+      child: ChessBoardBottomNavBar(
+        // Panel visibility updates this bar in place. Replacing it while a swipe
+        // settles disposes the arrow recognizers and cancels an in-flight hold.
+        key: ValueKey('bottom_nav_${game.gameId}_$index'),
+        onVideoToggle: hasVideo
+            ? () => EventVideoScope.sessionOf(context)?.toggle()
+            : null,
+        videoVisible: hasVideo && video.visible,
+        isActivePage: isActivePage,
+        gameIndex: index,
+        coachingGameId:
+            '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
+        showGamebaseButton: showGamebaseButton,
+        explorerPanelVisible: explorerPanelVisible,
+        onFlip: () => notifier.flipBoard(),
+        toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
+        onEngineSettingsLongPress: () {
+          requireFullAuthGuard(context).then((allowed) {
+            if (!allowed) return;
+            if (!context.mounted) return;
+            Navigator.of(context).push(
+              SettingsPage.route(initiallyExpanded: SettingsSection.engine),
+            );
+          });
+        },
+        onRightMove: arrows.onRightMove,
+        onLeftMove: arrows.onLeftMove,
+        onLongPressBackwardStart: arrows.onLongPressBackwardStart,
+        onLongPressBackwardEnd: arrows.onLongPressBackwardEnd,
+        onLongPressForwardStart: arrows.onLongPressForwardStart,
+        onLongPressForwardEnd: arrows.onLongPressForwardEnd,
+        canMoveForward: arrows.canMoveForward,
+        canMoveBackward: arrows.canMoveBackward,
+        showEngineAnalysis: state.showEngineAnalysis,
+        showUnseenMoveBadge: state.hasUnseenMoves,
+        onGamebaseToggle: onGamebaseToggle,
+        isGamebaseActive: isGamebaseActive,
+      ),
     );
   }
 }
@@ -8644,11 +8465,14 @@ class _AnalysisGameBody extends ConsumerWidget {
         final headerChildren = <Widget>[...boardHeaderChildren, ...pvSection];
 
         Widget buildAnalysisView() {
-          final movesDisplay = _MovesDisplay(
-            index: index,
-            currentPageIndex: currentPageIndex,
-            state: state,
-            game: game,
+          final movesDisplay = _Keep<_MovesDisplay>(
+            same: _sameNotation,
+            child: _MovesDisplay(
+              index: index,
+              currentPageIndex: currentPageIndex,
+              state: state,
+              game: game,
+            ),
           );
 
           // Avoid mounting the (global) Gamebase provider for offscreen pages.
@@ -9103,20 +8927,23 @@ class _PlayerWidget extends StatelessWidget {
         (isWhitePlayer && currentTurn == Side.white) ||
         (!isWhitePlayer && currentTurn == Side.black);
 
-    return PlayerFirstRowDetailWidget(
-      isCurrentPlayer: isCurrentPlayer,
-      isWhitePlayer: isWhitePlayer,
-      playerView: PlayerView.boardView,
-      gamesTourModel: game,
-      // Pass the state for move time calculation.
-      chessBoardState: state,
-      scoreCardViewSource: scoreCardViewSource,
-      scoreCardGamesContext: scoreCardGamesContext,
-      playerProfileDataSource: playerProfileDataSource,
-      showClock: showClock,
-      onEditName: onEditName,
-      // One tenth of a second under 30s — only this focused board row.
-      showSubSecondClock: true,
+    // Its own layer: the running clock repaints this row, not the page.
+    return RepaintBoundary(
+      child: PlayerFirstRowDetailWidget(
+        isCurrentPlayer: isCurrentPlayer,
+        isWhitePlayer: isWhitePlayer,
+        playerView: PlayerView.boardView,
+        gamesTourModel: game,
+        // Pass the state for move time calculation.
+        chessBoardState: state,
+        scoreCardViewSource: scoreCardViewSource,
+        scoreCardGamesContext: scoreCardGamesContext,
+        playerProfileDataSource: playerProfileDataSource,
+        showClock: showClock,
+        onEditName: onEditName,
+        // One tenth of a second under 30s — only this focused board row.
+        showSubSecondClock: true,
+      ),
     );
   }
 }
@@ -15932,7 +15759,17 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
       begin: 0.3,
       end: 1.0,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduced motion keeps the dot steady.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
@@ -15943,31 +15780,31 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
+    // The blink is a layer opacity: no frame of it rebuilds, lays out or
+    // repaints anything. Rebuilt on every frame, the dot scheduled the page's
+    // LayoutBuilder layout and repainted the page and the whole notation
+    // (about 1,160 paints a frame) for as long as moves were unseen.
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _animation,
+        child: Container(
           width: widget.size,
           height: widget.size,
           decoration: BoxDecoration(
-            color: context.isLightTheme
-                ? context.colors.danger.withValues(alpha: _animation.value)
-                : Colors.red.withValues(alpha: _animation.value),
+            color: context.isLightTheme ? context.colors.danger : Colors.red,
             shape: BoxShape.circle,
             boxShadow: context.isLightTheme
                 ? null
                 : [
                     BoxShadow(
-                      color: Colors.red.withValues(
-                        alpha: _animation.value * 0.5,
-                      ),
+                      color: Colors.red.withValues(alpha: 0.5),
                       blurRadius: 4,
                       spreadRadius: 1,
                     ),
                   ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -17708,14 +17545,16 @@ class _EventInfoSheet extends ConsumerWidget {
             ),
             SizedBox(width: 6.w),
           ],
-          // Name
+          // Name: one fixed size; a name too long fades at its end.
           Expanded(
             child: Text(
               player.name,
               style: AppTypography.textSmMedium.copyWith(
                 color: context.colors.textPrimary,
               ),
-              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade,
             ),
           ),
           // Rating

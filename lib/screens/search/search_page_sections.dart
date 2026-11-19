@@ -138,21 +138,8 @@ class SearchEventCards extends StatelessWidget {
   final String keyPrefix;
   final int pending;
 
-  Widget _card(GroupEventCardModel event, {required bool grid}) {
-    return Semantics(
-      key: ValueKey('$keyPrefix-${event.id}'),
-      container: true,
-      child: EventCard(
-        tourEventCardModel: event,
-        forceCompactLayout: !grid,
-        // A suffix keeps the card off Heroine: the same event can be listed
-        // twice on this page (a recent search that is live now).
-        heroTagSuffix: 'search-${event.id}',
-        favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
-        onTap: () => onOpen(event),
-      ),
-    );
-  }
+  Widget _card(GroupEventCardModel event, {required bool grid}) =>
+      searchEventCard(event, keyPrefix: keyPrefix, grid: grid, onOpen: onOpen);
 
   @override
   Widget build(BuildContext context) {
@@ -207,6 +194,30 @@ class SearchEventCards extends StatelessWidget {
       },
     );
   }
+}
+
+/// [event] as the Events list draws it, keyed `<keyPrefix>-<event id>`: the
+/// compact card, or the image card of a tablet grid ([grid]); its tap opens
+/// it through [onOpen], its long-press is the event card's own menu.
+Widget searchEventCard(
+  GroupEventCardModel event, {
+  required String keyPrefix,
+  required bool grid,
+  required ValueChanged<GroupEventCardModel> onOpen,
+}) {
+  return Semantics(
+    key: ValueKey('$keyPrefix-${event.id}'),
+    container: true,
+    child: EventCard(
+      tourEventCardModel: event,
+      forceCompactLayout: !grid,
+      // A suffix keeps the card off Heroine: the same event can be listed
+      // twice on this page (a recent search that is live now).
+      heroTagSuffix: 'search-${event.id}',
+      favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
+      onTap: () => onOpen(event),
+    ),
+  );
 }
 
 /// The room of one compact event card still being looked up: a real card's
@@ -314,7 +325,9 @@ Widget _smartEventCard(
 
 /// The row of half cards starting at [start], [columns] wide; a short last
 /// row keeps its empty slots, so its cards stand where the rows above do.
-Widget _smartEventRow(
+/// Each card opens through [onTap] (its own open when that gives none) and
+/// keeps its own long-press.
+Widget searchSmartEventRow(
   List<SmartEventRequest> requests,
   int start,
   int columns, {
@@ -413,7 +426,7 @@ class SearchSmartEventGrid extends StatelessWidget {
               start += columns
             ) ...[
               if (start > 0) SizedBox(height: searchCardGap),
-              _smartEventRow(
+              searchSmartEventRow(
                 requests,
                 start,
                 columns,
@@ -470,7 +483,7 @@ class SearchSmartEventRows extends StatelessWidget {
       itemCount: rows,
       itemBuilder: (context, row) => Padding(
         padding: EdgeInsets.only(top: row == 0 ? 0 : searchCardGap),
-        child: _smartEventRow(
+        child: searchSmartEventRow(
           requests,
           row * columns,
           columns,

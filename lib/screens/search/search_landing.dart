@@ -21,8 +21,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // card the app already draws it in elsewhere and opens exactly what the
 // same search result opens. A section with nothing in it is not shown.
 
-/// At most this many events under Live now.
+/// How many events Live now lists before the reader scrolls its row on.
 const int searchLandingLiveLimit = 5;
+
+/// How many more Live now lists each time the reader nears the end of it.
+const int searchLiveNowPageSize = 10;
 
 /// How many players Top players lists: one full grid of player cards.
 const int searchLandingPlayerCount = 4;
@@ -72,18 +75,24 @@ final searchLandingFeedEventsProvider =
     );
 
 /// What Live now lists: [events], then [pending] rows' worth of room held
-/// for the events in play still being looked up.
+/// for the events in play still being looked up, and whether more events
+/// are in play than it lists yet ([more]).
 @immutable
 class SearchLiveNow {
   const SearchLiveNow({
     this.events = const <GroupEventCardModel>[],
     this.pending = 0,
+    this.more = false,
   });
 
   static const none = SearchLiveNow();
 
   final List<GroupEventCardModel> events;
   final int pending;
+
+  /// Events in play past [events] and [pending]: [SearchLiveNowNotifier.
+  /// showMore] lists them.
+  final bool more;
 
   bool get isEmpty => events.isEmpty && pending == 0;
 }
@@ -110,20 +119,67 @@ class SearchLiveNowNotifier extends AutoDisposeNotifier<SearchLiveNow> {
   final _unlisted = <String>{};
   bool _lookupFailed = false;
 
+  /// How many events are listed; grows as the reader scrolls on
+  /// ([showMore]), never shrinks.
+  int _limit = searchLandingLiveLimit;
+
+  /// The live set the last build listed, and whether this build only lists
+  /// more of it ([showMore]): then the events on screen keep their places.
+  String? _listedKey;
+  bool _extending = false;
+
+  /// What the last state listed.
+  List<GroupEventCardModel> _listed = const [];
+  SearchLiveNow _list(SearchLiveNow value) {
+    _listed = value.events;
+    return value;
+  }
+
   /// Whether the last lookup failed, so arriving on the tab may ask again.
   bool get lookupFailed => _lookupFailed;
+
+  /// Lists the next events in play after the ones on screen, which keep
+  /// their places. Nothing while a lookup is still out.
+  void showMore() {
+    final current = state;
+    if (!current.more || current.pending > 0) return;
+    _limit = current.events.length + searchLiveNowPageSize;
+    _extending = true;
+    ref.invalidateSelf();
+  }
 
   @override
   SearchLiveNow build() {
     final key = ref.watch(searchLiveIdsKeyProvider);
-    if (key.isEmpty) return SearchLiveNow.none;
+    final extending = _extending && key == _listedKey;
+    final kept = extending ? _listed : null;
+    _extending = false;
+    _listedKey = key;
+    if (key.isEmpty) return _list(SearchLiveNow.none);
     final liveIds = key.split('\n').toSet();
     final feed = ref.read(searchLandingFeedEventsProvider);
-    final shown = searchLiveNowEvents(
+    final known = searchLiveNowEvents(
       liveIds: liveIds,
       feedEvents: feed,
       fetchedEvents: _found.values,
+      limit: liveIds.length,
     );
+    final List<GroupEventCardModel> shown;
+    if (kept == null) {
+      shown = known.length <= _limit ? known : known.sublist(0, _limit);
+    } else {
+      // Listing more of the same set: the rows on screen stay where they
+      // are, the next strongest follow them.
+      final keptIds = {for (final event in kept) event.id};
+      final byId = {for (final event in known) event.id: event};
+      shown = [
+        for (final event in kept)
+          if (byId[event.id] case final live?) live,
+        for (final event in known)
+          if (!keptIds.contains(event.id)) event,
+      ];
+      if (shown.length > _limit) shown.removeRange(_limit, shown.length);
+    }
     final held = <String>{
       for (final event in [...feed, ..._found.values]) ...[
         event.id,
@@ -134,11 +190,15 @@ class SearchLiveNowNotifier extends AutoDisposeNotifier<SearchLiveNow> {
       for (final id in liveIds)
         if (!held.contains(id) && !_unlisted.contains(id)) id,
     ];
-    final pending = math.min(
-      missing.length,
-      searchLandingLiveLimit - shown.length,
-    );
-    if (pending <= 0) return SearchLiveNow(events: shown);
+    final pending = math.min(missing.length, _limit - shown.length);
+    if (pending <= 0) {
+      return _list(
+        SearchLiveNow(
+          events: shown,
+          more: known.length + missing.length > shown.length,
+        ),
+      );
+    }
 
     var current = true;
     ref.onDispose(() => current = false);
@@ -147,20 +207,32 @@ class SearchLiveNowNotifier extends AutoDisposeNotifier<SearchLiveNow> {
       _lookUp(repository, missing, liveIds).then((found) {
         if (!current) return;
         final shownIds = {for (final event in shown) event.id};
-        state = SearchLiveNow(
-          events: [
-            ...shown,
-            ...searchLiveNowEvents(
-              liveIds: liveIds,
-              feedEvents: const [],
-              fetchedEvents: found.where((e) => !shownIds.contains(e.id)),
-              limit: pending,
-            ),
-          ],
+        final arrived = searchLiveNowEvents(
+          liveIds: liveIds,
+          feedEvents: const [],
+          fetchedEvents: found.where((e) => !shownIds.contains(e.id)),
+          limit: liveIds.length,
+        );
+        final landed = arrived.length <= pending
+            ? arrived
+            : arrived.sublist(0, pending);
+        state = _list(
+          SearchLiveNow(
+            events: [...shown, ...landed],
+            // Only events in hand count: ids a failed lookup left unknown
+            // are asked for again on the next build, not by scrolling.
+            more: known.length + arrived.length > shown.length + landed.length,
+          ),
         );
       }),
     );
-    return SearchLiveNow(events: shown, pending: pending);
+    return _list(
+      SearchLiveNow(
+        events: shown,
+        pending: pending,
+        more: known.length + missing.length > shown.length + pending,
+      ),
+    );
   }
 
   Future<List<GroupEventCardModel>> _lookUp(
@@ -241,7 +313,6 @@ final searchTopPlayersProvider = FutureProvider.autoDispose<List<SearchPlayer>>(
 );
 
 /// [player] as the player search shapes a `chess_players` row.
-@visibleForTesting
 SearchPlayer searchPlayerFromRanking(ChessPlayer player) {
   final title = player.title?.trim();
   final fed = player.country?.trim();
@@ -332,26 +403,29 @@ bool searchEventIsLive(GroupEventCardModel event, Iterable<String> liveIds) {
   return false;
 }
 
-/// Of [events] (strongest first), the first [searchLandingUpcomingLimit]
-/// that have a name and have not started by [now] (nor gone live early by
-/// [liveIds]), each once, then soonest first (undated last, then by name).
-/// Each reads as it stands now ([GroupEventCardModel.withLiveIds]).
-@visibleForTesting
+/// Of [events] (strongest first), the first [limit] that have a name and
+/// have not started by [now] (nor gone live early by [liveIds]), each once,
+/// then soonest first (undated last, then by name) unless [soonestFirst] is
+/// off (the rest of Coming up keeps the view's strongest-first order). Each
+/// reads as it stands now ([GroupEventCardModel.withLiveIds]).
 List<GroupEventCardModel> searchUpcomingEvents(
   Iterable<GroupEventCardModel> events, {
   List<String> liveIds = const <String>[],
   DateTime? now,
+  int limit = searchLandingUpcomingLimit,
+  bool soonestFirst = true,
 }) {
   final at = now ?? DateTime.now();
   final byId = <String, GroupEventCardModel>{};
   for (final event in events) {
-    if (byId.length == searchLandingUpcomingLimit) break;
+    if (byId.length >= limit) break;
     if (event.id.trim().isEmpty || event.title.trim().isEmpty) continue;
     if (searchEventIsLive(event, liveIds)) continue;
     final start = event.startDate;
     if (start != null && !at.isBefore(start)) continue;
     byId.putIfAbsent(event.id, () => event.withLiveIds(liveIds));
   }
+  if (!soonestFirst) return byId.values.toList();
   return byId.values.toList()..sort((a, b) {
     final start = switch ((a.startDate, b.startDate)) {
       (final x?, final y?) => x.compareTo(y),

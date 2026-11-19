@@ -905,7 +905,9 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 /// The title + name + rating lines and result labels the rows draw.
-Set<String> _lines(Finder host) => {
+Set<String> _lines(Finder host) {
+  final lines = <String>[];
+  final rating = RegExp(r'^ \d+$');
   for (final element
       in find
           .descendant(
@@ -915,9 +917,18 @@ Set<String> _lines(Finder host) => {
             ),
             matching: find.byType(RichText),
           )
-          .evaluate())
-    (element.widget as RichText).text.toPlainText(),
-}..removeWhere((line) => line.trim().isEmpty);
+          .evaluate()) {
+    final text = (element.widget as RichText).text.toPlainText();
+    // A name too wide for its row fades and keeps its rating whole in a
+    // paragraph of its own beside it: read the two as the one label.
+    if (lines.isNotEmpty && rating.hasMatch(text)) {
+      lines.last += text;
+    } else {
+      lines.add(text);
+    }
+  }
+  return lines.toSet()..removeWhere((line) => line.trim().isEmpty);
+}
 
 void _expectSameRows(WidgetTester tester, {Set<String> results = const {}}) {
   final tile = find.byKey(const ValueKey('left'));

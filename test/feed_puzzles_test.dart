@@ -1158,13 +1158,13 @@ void main() {
       expect(h.repo.outcomeOf('backrank'), FeedPuzzleOutcome.solved);
       // Finished: Retry and Next, nothing pointing off the app.
       _expectNoLichess();
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byKey(const ValueKey('feed_puzzle_retry')), findsOneWidget);
       // A clean solve of an easier puzzle nudges the rating up.
       await tester.pump();
       expect(h.store.rating?.finished, 1);
       expect(h.store.rating!.value, greaterThan(1200));
 
-      await tester.tap(find.text('Next'));
+      await tester.tap(find.byKey(const ValueKey('feed_puzzle_next')));
       await tester.pump();
       expect(h.nextRequests, 1);
 
@@ -1188,7 +1188,7 @@ void main() {
       expect(find.textContaining('Not quite'), findsOneWidget);
 
       // Hint circles the piece to move.
-      await tester.tap(find.text('Hint'));
+      await tester.tap(find.byKey(const ValueKey('feed_puzzle_hint')));
       await tester.pump();
       final shapes = tester.widget<Chessboard>(find.byType(Chessboard)).shapes;
       expect(
@@ -1281,20 +1281,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       _expectNoLichess();
 
-      await tester.tap(find.text('Solution'));
+      await tester.tap(find.byKey(const ValueKey('feed_puzzle_solution')));
       await tester.pump();
       for (var i = 0; i < 4; i++) {
         await tester.pump(const Duration(milliseconds: 800));
       }
-      // The status line, and the action row's (now dimmed) Solution.
-      expect(find.text('Solution'), findsNWidgets(2));
+      // The status line names it; the rail's Solution is a bare glyph now.
+      expect(find.text('Solution'), findsOneWidget);
       // The puzzle carries its source game's link, but the post neither
       // names Lichess nor offers to open it: the post's own four actions.
       expect(_castle.gameUrl, isNotNull);
       _expectNoLichess();
-      expect(find.text('Retry'), findsOneWidget);
-      expect(find.text('Next'), findsOneWidget);
-      expect(find.byType(FeedActionLabel), findsNWidgets(4));
+      expect(find.byKey(const ValueKey('feed_puzzle_retry')), findsOneWidget);
+      expect(find.byKey(const ValueKey('feed_puzzle_next')), findsOneWidget);
+      expect(find.byType(FeedRailMark), findsNWidgets(4));
       expect(h.repo.outcomeOf('castle'), FeedPuzzleOutcome.revealed);
       expect(h.store.rating!.value, lessThan(1200));
       expect(h.sounds.played.map((p) => p.$1), ['Rb8', 'O-O', 'Rb1', 'Rfxb1']);

@@ -55,13 +55,10 @@ void main() {
     expect(like.top, greaterThanOrEqualTo(save.bottom - 0.5));
     expect(save.center.dx, closeTo(like.center.dx, 0.5));
     expect(save.height, greaterThanOrEqualTo(44));
-    expect(
-      find.descendant(
-        of: _button('feed_save_button'),
-        matching: find.text('Save'),
-      ),
-      findsOneWidget,
-    );
+    // No word on the rail: the button says it to a screen reader.
+    final saveSemanticsSave = tester.ensureSemantics();
+    expect(tester.getSemantics(_button('feed_save_button')).label, 'Save');
+    saveSemanticsSave.dispose();
     expect(_saveGlyph(tester), FeedGlyphs.save);
     await _tearDown(tester);
   });
@@ -139,13 +136,10 @@ void main() {
   ) async {
     final handle = tester.ensureSemantics();
     await _pump(tester, saved: true);
-    expect(
-      find.descendant(
-        of: _button('feed_save_button'),
-        matching: find.text('Saved'),
-      ),
-      findsOneWidget,
-    );
+    // No word on the rail: the button says it to a screen reader.
+    final saveSemanticsSaved = tester.ensureSemantics();
+    expect(tester.getSemantics(_button('feed_save_button')).label, 'Saved');
+    saveSemanticsSaved.dispose();
     expect(_saveGlyph(tester), FeedGlyphs.saved);
     expect(
       tester.getSemantics(_button('feed_save_button')),
@@ -173,13 +167,10 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(_saveGlyph(tester), FeedGlyphs.saved);
-    expect(
-      find.descendant(
-        of: _button('feed_save_button'),
-        matching: find.text('Saved'),
-      ),
-      findsOneWidget,
-    );
+    // No word on the rail: the button says it to a screen reader.
+    final saveSemanticsSaved = tester.ensureSemantics();
+    expect(tester.getSemantics(_button('feed_save_button')).label, 'Saved');
+    saveSemanticsSaved.dispose();
     expect(feed.lookups, greaterThanOrEqualTo(2));
     await _tearDown(tester);
   });

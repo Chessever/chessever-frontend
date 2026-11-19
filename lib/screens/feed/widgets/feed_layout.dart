@@ -57,8 +57,10 @@ class FeedLayout {
     final fixed = rows.fixed;
     final byWidth = width - 2 * boardGutter - evalWidth;
     final byHeight = height - fixed;
-    final board = math
-        .max(minBoard, math.min(byWidth, byHeight))
+    // A micro-point of tolerance before flooring: a page given exactly
+    // [naturalHeight] leaves floating dust (324.99999) that must not cost
+    // the board a whole point.
+    final board = (math.max(minBoard, math.min(byWidth, byHeight)) + 1e-6)
         .floorToDouble();
     final spare = height.isFinite ? math.max(0.0, height - fixed - board) : 0.0;
     final split = spread(spare);
@@ -131,25 +133,26 @@ class FeedLayout {
   /// the screen allows.
   static const double boardGutter = 8;
 
-  /// The action rail: one column of cells, glyph over word.
+  /// The action rail: one column of bare glyphs, no words (the marks are
+  /// the buttons, as in the bottom bar).
   static const double railWidth = 56;
 
   /// Between the zone's left column and the rail.
   static const double railGap = 8;
 
-  /// The least height of a rail cell: a 24pt glyph over its word, a full
-  /// target.
+  /// A rail cell's height: a full target around its glyph (and the like
+  /// count under the heart).
   static const double railCellMin = 50;
 
   /// Cells the rail keeps room for: Analyze, Share, Save, Like (a puzzle's
   /// Hint, Retry, Solution, Next).
   static const int railCells = 4;
 
-  /// A rail cell's glyph.
-  static const double railGlyph = 24;
+  /// A rail cell's glyph: bulky, a thumb-sized mark.
+  static const double railGlyph = 30;
 
-  /// Between a rail cell's glyph and its word.
-  static const double railGlyphGap = 4;
+  /// Between the heart and its like count.
+  static const double railGlyphGap = 2;
 
   /// Type size of the player rows above and below the board. They span
   /// the board's full width, so they carry a reading size rather than a
@@ -199,12 +202,10 @@ class FeedLayout {
   static double moveStripHeightFor(TextScaler scaler) =>
       math.max(44.0, math.max(20.0, scaler.scale(15) * 20 / 15) + 12);
 
-  /// A rail cell at [scaler]'s size: the glyph, its gap, the word's 12/14
-  /// line and a margin, never less than [railCellMin].
-  static double railCellFor(TextScaler scaler) => math.max(
-    railCellMin,
-    railGlyph + railGlyphGap + _line(scaler, 12, 14) + 8,
-  );
+  /// A rail cell: the glyph is the whole button, so its height no longer
+  /// follows the text size; the like count under the heart is capped to
+  /// fit it.
+  static double railCellFor(TextScaler scaler) => railCellMin;
 
   static double _line(TextScaler scaler, double fontSize, double lineHeight) =>
       math.max(lineHeight, scaler.scale(fontSize) * lineHeight / fontSize);

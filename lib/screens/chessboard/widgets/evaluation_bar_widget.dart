@@ -47,12 +47,25 @@ class EvaluationBarWidget extends StatefulWidget {
   State<EvaluationBarWidget> createState() => _EvaluationBarWidgetState();
 }
 
-class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
+class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
+    with SingleTickerProviderStateMixin {
   double? _lastEval;
   int? _lastMate;
   bool _awaitingNewEvaluation = false;
   double _whiteRatioTarget = 0.5;
   String? _lastPositionKey;
+
+  /// White's share of the bar, sprung toward [_whiteRatioTarget].
+  ///
+  /// It reaches the screen through paint only ([_EvalBarPainter] and
+  /// [_EvalChipFlow] repaint from it): no widget rebuilds and nothing is laid
+  /// out on a tick. The board bar sits inside the board's LayoutBuilder, where
+  /// any widget rebuilt by a tick schedules that LayoutBuilder's layout, which
+  /// reaches the page and repaints the app bar, the player rows and the engine
+  /// lines on every frame of the spring, past this bar's RepaintBoundary.
+  late final SingleMotionController _ratio;
+  late double _sprungTo;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -64,6 +77,38 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
     final initialEval = widget.evaluation ?? 0.0;
     final initialMate = widget.mate ?? 0;
     _whiteRatioTarget = _ratioForEval(initialEval, initialMate);
+    _sprungTo = _whiteRatioTarget;
+    _ratio = SingleMotionController(
+      motion: _evalBarMotion,
+      vsync: this,
+      initialValue: _whiteRatioTarget,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+  }
+
+  @override
+  void dispose() {
+    _ratio.dispose();
+    super.dispose();
+  }
+
+  /// Springs the bar to [_whiteRatioTarget], or jumps there when the reader
+  /// turned animations off.
+  void _moveRatio() {
+    if (_whiteRatioTarget == _sprungTo) return;
+    _sprungTo = _whiteRatioTarget;
+    if (_reduceMotion) {
+      _ratio
+        ..stop()
+        ..value = _whiteRatioTarget;
+    } else {
+      _ratio.animateTo(_whiteRatioTarget);
+    }
   }
 
   @override
@@ -121,6 +166,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
     }
 
     if (changed) {
+      _moveRatio();
       setState(() {});
     }
   }
@@ -151,101 +197,158 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         ((widget.evaluation != null || _lastEval != null) || displayMate != 0);
     final showLoading =
         awaitingNewPositionData || (widget.isEvaluating && !hasEval);
-    final displayText =
-        showLoading
-            ? '...'
-            : !hasEval
-            ? ''
-            : widget.isCheckmate
-            ? '#'
-            : (displayEval.abs() >= 10.0 && displayMate != 0)
-            ? '#$displayMate'
-            : _formatSignedEval(displayEval);
+    final displayText = showLoading
+        ? '...'
+        : !hasEval
+        ? ''
+        : widget.isCheckmate
+        ? '#'
+        : (displayEval.abs() >= 10.0 && displayMate != 0)
+        ? '#$displayMate'
+        : _formatSignedEval(displayEval);
 
-    // The spring changes the two bar heights on every tick. Without its own
-    // layer the nearest repaint boundary is the whole game page, so the app
-    // bar, player rows and engine lines were re-recorded for each tick.
+    // White/black shares are chess-semantic, but the *paints* come from
+    // AppColors so light mode can use the broadcast mint-grey rail instead of
+    // a leftover near-black slab.
+    final whitePieceColor = context.colors.evalWhite;
+    final blackPieceColor = context.colors.evalBlack;
+
+    // The spring moves the bar and its chip through paint only (see [_ratio]);
+    // this layer keeps those repaints to the bar itself.
     return RepaintBoundary(
-      child: SingleMotionBuilder(
-      motion: const CupertinoMotion.smooth(),
-      value: _whiteRatioTarget,
-      builder: (context, animatedRatio, _) {
-        final whiteRatio = animatedRatio.clamp(0.0, 1.0).toDouble();
-        final blackRatio = 1.0 - whiteRatio;
-        final whiteHeight = whiteRatio * widget.height;
-        final blackHeight = blackRatio * widget.height;
-
-        final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
-        final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
-        // White/black shares are chess-semantic, but the *paints* come from
-        // AppColors so light mode can use the broadcast mint-grey rail
-        // instead of a leftover near-black slab.
-        final whitePieceColor = context.colors.evalWhite;
-        final blackPieceColor = context.colors.evalBlack;
-        final topColor = widget.isFlipped ? whitePieceColor : blackPieceColor;
-        final bottomColor = widget.isFlipped ? blackPieceColor : whitePieceColor;
-
-        return SizedBox(
-          width: widget.width,
-          height: widget.height,
-          child: Stack(
-            children: [
-              Align(
-                alignment: Alignment.topCenter,
-                child: Container(
-                  width: widget.width,
-                  height: topHeight,
-                  color: topColor,
-                ),
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  width: widget.width,
-                  height: bottomHeight,
-                  color: bottomColor,
-                ),
-              ),
-              // Evaluation text positioned at the meeting point of black/white.
-              // No number (e.g. Feed autoplay cache miss) means no chip: an
-              // empty cyan block reads as a leftover, not a state.
-              if (displayText.isNotEmpty)
-              Positioned(
-                left: 0,
-                right: 0,
-                // Position at the edge where black and white meet, clamped to stay within bounds
-                top: (topHeight - 10.h).clamp(0.0, widget.height - 20.h),
-                child: Container(
-                  width: widget.width,
-                  color: kPrimaryColor,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      displayText,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                      style: AppTypography.textSmRegular.copyWith(
-                        // Light takes dark ink on the cyan chip (8.2:1);
-                        // dark keeps its shipped white label unchanged.
-                        color:
-                            context.isLightTheme
+      child: SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: CustomPaint(
+          painter: _EvalBarPainter(
+            ratio: _ratio,
+            isFlipped: widget.isFlipped,
+            whiteColor: whitePieceColor,
+            blackColor: blackPieceColor,
+          ),
+          // Evaluation text at the meeting point of black and white. No
+          // number (e.g. Feed autoplay cache miss) means no chip: an empty
+          // cyan block reads as a leftover, not a state.
+          child: displayText.isEmpty
+              ? null
+              : Flow(
+                  delegate: _EvalChipFlow(
+                    ratio: _ratio,
+                    isFlipped: widget.isFlipped,
+                    lift: 10.h,
+                    floor: 20.h,
+                  ),
+                  children: [
+                    Container(
+                      width: widget.width,
+                      color: kPrimaryColor,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          displayText,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          style: AppTypography.textSmRegular.copyWith(
+                            // Light takes dark ink on the cyan chip (8.2:1);
+                            // dark keeps its shipped white label unchanged.
+                            color: context.isLightTheme
                                 ? context.colors.inkOnAccent
                                 : Colors.white,
-                        fontSize: 3.5.f,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.5,
+                            fontSize: 3.5.f,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+        ),
       ),
     );
   }
+}
+
+/// The bar's spring: smooth, no bounce.
+const Motion _evalBarMotion = CupertinoMotion.smooth();
+
+/// Height of the bar's top fill (black's share, or white's when flipped) for
+/// white's share [whiteRatio] of a bar [height] tall.
+double _evalBarTopHeight(double whiteRatio, double height, bool isFlipped) {
+  final white = whiteRatio.clamp(0.0, 1.0).toDouble();
+  return (isFlipped ? white : 1.0 - white) * height;
+}
+
+/// The two fills of the evaluation bar, split where [ratio] says.
+class _EvalBarPainter extends CustomPainter {
+  _EvalBarPainter({
+    required this.ratio,
+    required this.isFlipped,
+    required this.whiteColor,
+    required this.blackColor,
+  }) : super(repaint: ratio);
+
+  final Animation<double> ratio;
+  final bool isFlipped;
+  final Color whiteColor;
+  final Color blackColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final topHeight = _evalBarTopHeight(ratio.value, size.height, isFlipped);
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, topHeight),
+      Paint()..color = isFlipped ? whiteColor : blackColor,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, topHeight, size.width, size.height - topHeight),
+      Paint()..color = isFlipped ? blackColor : whiteColor,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_EvalBarPainter oldDelegate) =>
+      oldDelegate.ratio != ratio ||
+      oldDelegate.isFlipped != isFlipped ||
+      oldDelegate.whiteColor != whiteColor ||
+      oldDelegate.blackColor != blackColor;
+}
+
+/// Places the evaluation chip on the line where the fills meet, [lift] above
+/// it, kept inside the bar ([floor] from the bottom). Moves by paint only.
+class _EvalChipFlow extends FlowDelegate {
+  _EvalChipFlow({
+    required this.ratio,
+    required this.isFlipped,
+    required this.lift,
+    required this.floor,
+  }) : super(repaint: ratio);
+
+  final Animation<double> ratio;
+  final bool isFlipped;
+  final double lift;
+  final double floor;
+
+  @override
+  BoxConstraints getConstraintsForChild(int i, BoxConstraints constraints) =>
+      BoxConstraints.tightFor(width: constraints.maxWidth);
+
+  @override
+  void paintChildren(FlowPaintingContext context) {
+    final height = context.size.height;
+    final topHeight = _evalBarTopHeight(ratio.value, height, isFlipped);
+    final top = (topHeight - lift)
+        .clamp(0.0, math.max(0.0, height - floor))
+        .toDouble();
+    context.paintChild(0, transform: Matrix4.translationValues(0, top, 0));
+  }
+
+  @override
+  bool shouldRepaint(_EvalChipFlow oldDelegate) =>
+      oldDelegate.ratio != ratio ||
+      oldDelegate.isFlipped != isFlipped ||
+      oldDelegate.lift != lift ||
+      oldDelegate.floor != floor;
 }
 
 /// Provider to cache checkmate detection results to avoid expensive calculations during scroll
@@ -313,9 +416,11 @@ class EvaluationBarWidgetForGames extends ConsumerStatefulWidget {
 class _EvaluationBarWidgetForGamesState
     extends ConsumerState<EvaluationBarWidgetForGames> {
   _EvalBarDisplay? _lastDisplay;
+
   /// White fill ratio target — retained across FEN changes so geometry eases
   /// like the main board bar instead of snapping to neutral 0.5 while loading.
   double _whiteRatioTarget = 0.5;
+
   /// When the card FEN changes, hide the previous score label until fresh data
   /// arrives (main-board `_awaitingNewEvaluation` semantics).
   bool _awaitingNewPosition = false;
@@ -353,21 +458,19 @@ class _EvaluationBarWidgetForGamesState
     }
 
     if (widget.fen.isEmpty) {
-      return _EvalBarDisplay.neutral(hasEvaluationData: false).build(
-        widget,
-        whiteRatioTarget: _whiteRatioTarget,
-      );
+      return _EvalBarDisplay.neutral(
+        hasEvaluationData: false,
+      ).build(widget, whiteRatioTarget: _whiteRatioTarget);
     }
 
     // Uses depth-aware cache/server reuse first, then low-priority Stockfish.
     // Auto-disposes when card scrolls out of view.
     final recorded = widget.recordedEval;
-    final evalAsync =
-        recorded != null
-            ? AsyncValue.data(recorded)
-            : widget.allowStockfishFallback
-            ? ref.watch(gameCardEvalWithStockfishFallbackProvider(widget.fen))
-            : ref.watch(gameCardEvalCacheOnlyProvider(widget.fen));
+    final evalAsync = recorded != null
+        ? AsyncValue.data(recorded)
+        : widget.allowStockfishFallback
+        ? ref.watch(gameCardEvalWithStockfishFallbackProvider(widget.fen))
+        : ref.watch(gameCardEvalCacheOnlyProvider(widget.fen));
 
     final display = evalAsync.when(
       loading: () {
@@ -381,9 +484,8 @@ class _EvaluationBarWidgetForGamesState
           hasEvaluationData: false,
         );
       },
-      error:
-          (_, __) =>
-              _lastDisplay ?? _EvalBarDisplay.neutral(hasEvaluationData: false),
+      error: (_, __) =>
+          _lastDisplay ?? _EvalBarDisplay.neutral(hasEvaluationData: false),
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
         if (pv == null) {
@@ -405,13 +507,9 @@ class _EvaluationBarWidgetForGamesState
 
     // FEN just changed and we still hold no settled data for the new position:
     // force loading text even if AsyncValue briefly reports something else.
-    final paintDisplay =
-        _awaitingNewPosition && !display.hasEvaluationData
-            ? _EvalBarDisplay.neutral(
-              isEvaluating: true,
-              hasEvaluationData: false,
-            )
-            : display;
+    final paintDisplay = _awaitingNewPosition && !display.hasEvaluationData
+        ? _EvalBarDisplay.neutral(isEvaluating: true, hasEvaluationData: false)
+        : display;
 
     return paintDisplay.build(widget, whiteRatioTarget: _whiteRatioTarget);
   }
@@ -532,16 +630,15 @@ class _Bars extends StatelessWidget {
     final labelClampMax =
         height - (playerView == PlayerView.gridView ? 12.h : 20.h);
 
-    final displayText =
-        isEvaluating && !hasEvaluationData
-            ? '...'
-            : !hasEvaluationData
-            ? ''
-            : isCheckmate
-            ? '#'
-            : (isMate && mate != 0)
-            ? '#$mate'
-            : _formatSignedEval(evaluation);
+    final displayText = isEvaluating && !hasEvaluationData
+        ? '...'
+        : !hasEvaluationData
+        ? ''
+        : isCheckmate
+        ? '#'
+        : (isMate && mate != 0)
+        ? '#$mate'
+        : _formatSignedEval(evaluation);
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.smooth(),
@@ -580,38 +677,37 @@ class _Bars extends StatelessWidget {
               // Evaluation text positioned at the meeting point of black/white.
               // Skip the chip when there is nothing to say.
               if (displayText.isNotEmpty)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: (topHeight - labelInset).clamp(0.0, labelClampMax),
-                child: Container(
-                  width: width,
-                  color: kPrimaryColor,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      displayText,
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                      style: AppTypography.textSmRegular.copyWith(
-                        // Light takes dark ink on the cyan chip (8.2:1);
-                        // dark keeps its shipped white label unchanged.
-                        color:
-                            context.isLightTheme
-                                ? context.colors.inkOnAccent
-                                : Colors.white,
-                        fontSize:
-                            playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
-                        fontWeight:
-                            playerView == PlayerView.gridView
-                                ? FontWeight.w300
-                                : FontWeight.w600,
-                        letterSpacing: -0.5,
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: (topHeight - labelInset).clamp(0.0, labelClampMax),
+                  child: Container(
+                    width: width,
+                    color: kPrimaryColor,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        displayText,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmRegular.copyWith(
+                          // Light takes dark ink on the cyan chip (8.2:1);
+                          // dark keeps its shipped white label unchanged.
+                          color: context.isLightTheme
+                              ? context.colors.inkOnAccent
+                              : Colors.white,
+                          fontSize: playerView == PlayerView.gridView
+                              ? 0.2.f
+                              : 1.5.f,
+                          fontWeight: playerView == PlayerView.gridView
+                              ? FontWeight.w300
+                              : FontWeight.w600,
+                          letterSpacing: -0.5,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         );
@@ -647,7 +743,8 @@ double _normalizedEvalToRatio(double eval) {
 }
 
 double _ratioForEval(double evaluation, int mate) {
-  final double effectiveEval =
-      mate != 0 ? (mate > 0 ? 10.0 : -10.0) : evaluation;
+  final double effectiveEval = mate != 0
+      ? (mate > 0 ? 10.0 : -10.0)
+      : evaluation;
   return _normalizedEvalToRatio(effectiveEval);
 }

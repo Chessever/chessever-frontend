@@ -62,100 +62,99 @@ void main() {
   });
 
   for (final state in [false, true]) {
-    testWidgets('rail names match the visible labels (state: $state)', (
-      tester,
-    ) async {
-      final handle = tester.ensureSemantics();
-      final tapped = <String>[];
-      await _pump(
-        tester,
-        SizedBox(
-          width: FeedLayout.railWidth,
-          height: 4 * FeedLayout.railCellMin,
-          child: FeedActionRail(
-            cellHeight: FeedLayout.railCellMin,
-            liked: state,
-            saved: state,
-            likeIconKey: GlobalKey(),
-            onLike: () => tapped.add('like'),
-            onShare: () => tapped.add('share'),
-            onSave: () => tapped.add('save'),
-            onAnalyze: () => tapped.add('analyze'),
+    testWidgets(
+      'rail cells name themselves to screen readers (state: $state)',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        final tapped = <String>[];
+        await _pump(
+          tester,
+          SizedBox(
+            width: FeedLayout.railWidth,
+            height: 4 * FeedLayout.railCellMin,
+            child: FeedActionRail(
+              cellHeight: FeedLayout.railCellMin,
+              liked: state,
+              saved: state,
+              likeIconKey: GlobalKey(),
+              onLike: () => tapped.add('like'),
+              onShare: () => tapped.add('share'),
+              onSave: () => tapped.add('save'),
+              onAnalyze: () => tapped.add('analyze'),
+            ),
           ),
-        ),
-      );
-      SemanticsNode node(String key) =>
-          tester.getSemantics(find.byKey(ValueKey(key)));
-
-      // Each cell's word sits centred under its glyph, on the rail's axis,
-      // even when Save changes to Saved.
-      final rail = tester.getRect(find.byType(FeedActionRail));
-      final labels = find.byType(FeedActionLabel);
-      expect(labels, findsNWidgets(4));
-      for (var i = 0; i < 4; i++) {
-        final label = labels.at(i);
-        final word = tester.getRect(
-          find.descendant(of: label, matching: find.byType(Text)),
         );
-        final icon = tester.getRect(
-          find.byWidget(tester.widget<FeedActionLabel>(label).icon),
+        SemanticsNode node(String key) =>
+            tester.getSemantics(find.byKey(ValueKey(key)));
+
+        // Each cell is its bare glyph, centred on the rail's axis (no word).
+        final rail = tester.getRect(find.byType(FeedActionRail));
+        final marks = find.byType(FeedRailMark);
+        expect(marks, findsNWidgets(4));
+        for (var i = 0; i < 4; i++) {
+          final mark = marks.at(i);
+          final icon = tester.getRect(
+            find.byWidget(tester.widget<FeedRailMark>(mark).icon),
+          );
+          expect(icon.center.dx, closeTo(rail.center.dx, 0.01));
+          expect(
+            find.descendant(of: mark, matching: find.text('Analyze')),
+            findsNothing,
+          );
+        }
+        // My Space lives in the post's long-press menu, not on the rail.
+        expect(find.byKey(const ValueKey('feed_space_button')), findsNothing);
+
+        expect(
+          node('feed_analyze_button'),
+          isSemantics(
+            label: 'Analyze',
+            hint: 'Open game on the board',
+            isButton: true,
+            hasTapAction: true,
+          ),
         );
-        expect(word.center.dx, closeTo(rail.center.dx, 0.01));
-        expect(icon.center.dx, closeTo(rail.center.dx, 0.01));
-        expect(word.top, greaterThan(icon.bottom));
-      }
-      // My Space lives in the post's long-press menu, not on the rail.
-      expect(find.byKey(const ValueKey('feed_space_button')), findsNothing);
+        expect(
+          node('feed_share_button'),
+          isSemantics(label: 'Share', isButton: true, hasTapAction: true),
+        );
+        expect(
+          node('feed_save_button'),
+          isSemantics(
+            label: state ? 'Saved' : 'Save',
+            hint: state
+                ? 'Choose the databases it is saved in'
+                : 'Save to a database',
+            isButton: true,
+            hasSelectedState: true,
+            isSelected: state,
+            hasTapAction: true,
+          ),
+        );
+        expect(
+          node('feed_like_button'),
+          isSemantics(
+            label: state ? 'Liked' : 'Like',
+            isButton: true,
+            hasSelectedState: true,
+            isSelected: state,
+            hasTapAction: true,
+          ),
+        );
 
-      expect(
-        node('feed_analyze_button'),
-        isSemantics(
-          label: 'Analyze',
-          hint: 'Open game on the board',
-          isButton: true,
-          hasTapAction: true,
-        ),
-      );
-      expect(
-        node('feed_share_button'),
-        isSemantics(label: 'Share', isButton: true, hasTapAction: true),
-      );
-      expect(
-        node('feed_save_button'),
-        isSemantics(
-          label: state ? 'Saved' : 'Save',
-          hint: state
-              ? 'Choose the databases it is saved in'
-              : 'Save to a database',
-          isButton: true,
-          hasSelectedState: true,
-          isSelected: state,
-          hasTapAction: true,
-        ),
-      );
-      expect(
-        node('feed_like_button'),
-        isSemantics(
-          label: state ? 'Liked' : 'Like',
-          isButton: true,
-          hasSelectedState: true,
-          isSelected: state,
-          hasTapAction: true,
-        ),
-      );
-
-      for (final key in [
-        'feed_analyze_button',
-        'feed_share_button',
-        'feed_save_button',
-        'feed_like_button',
-      ]) {
-        final n = node(key);
-        n.owner!.performAction(n.id, SemanticsAction.tap);
-      }
-      expect(tapped, ['analyze', 'share', 'save', 'like']);
-      handle.dispose();
-    });
+        for (final key in [
+          'feed_analyze_button',
+          'feed_share_button',
+          'feed_save_button',
+          'feed_like_button',
+        ]) {
+          final n = node(key);
+          n.owner!.performAction(n.id, SemanticsAction.tap);
+        }
+        expect(tapped, ['analyze', 'share', 'save', 'like']);
+        handle.dispose();
+      },
+    );
   }
 }
 

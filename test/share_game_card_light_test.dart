@@ -219,33 +219,105 @@ void main() {
     expect(failures, isEmpty, reason: failures.join('\n'));
   });
 
-  testWidgets('a shared board fits a long surname beside the clock', (
-    tester,
-  ) async {
-    const surname = 'García de la Cruz Fernández de la Fuente';
-    await _pumpOverlay(
-      tester,
-      AppTheme.darkTheme,
-      size: const Size(360, 780),
-      whitePlayerName: '$surname, María',
-    );
+  testWidgets(
+    'a shared board keeps the name size: a long surname fades, never shrinks',
+    (tester) async {
+      const surname = 'García de la Cruz Fernández de la Fuente';
+      await _pumpOverlay(
+        tester,
+        AppTheme.darkTheme,
+        size: const Size(360, 780),
+        whitePlayerName: '$surname, María',
+      );
 
-    final labels = find.textContaining(surname, findRichText: true);
-    final clocks = find.text('1:57:00');
-    expect(labels, findsNWidgets(2)); // Visible preview and export capture.
-    expect(clocks, findsNWidgets(2));
-    for (var i = 0; i < 2; i++) {
-      final label = labels.at(i);
+      // Visible preview and export capture.
+      final labels = find.textContaining(surname, findRichText: true);
+      final shortLabels = find.text(
+        'GM Nakamura, Hikaru 2802',
+        findRichText: true,
+      );
+      expect(labels, findsNWidgets(2));
+      expect(shortLabels, findsNWidgets(2));
+      for (var i = 0; i < 2; i++) {
+        final label = labels.at(i);
+        final paragraph = tester.renderObject<RenderParagraph>(label);
+        expect(paragraph.overflow, TextOverflow.fade);
+        expect(
+          find.ancestor(of: label, matching: find.byType(FittedBox)),
+          findsNothing,
+        );
+        // Exactly the size of the short name on the same card.
+        expect(
+          _fontSizes(tester.widget<RichText>(label).text).toSet(),
+          everyElement(
+            isIn(_fontSizes(tester.widget<RichText>(shortLabels.at(i)).text)),
+          ),
+        );
+        expect(
+          tester.getSize(label).height,
+          tester.getSize(shortLabels.at(i)).height,
+        );
+      }
+
+      // At 360dp the surname is too wide even alone: it fades at its end and
+      // the rating stays whole beside it, clear of the clock.
+      final faded = find.text('GM $surname', findRichText: true);
+      expect(faded, findsOneWidget);
+      final fadedParagraph = tester.renderObject<RenderParagraph>(faded);
       expect(
-        tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
-        isFalse,
+        fadedParagraph.size.width,
+        lessThan(fadedParagraph.textSize.width),
+      );
+      final rating = find.text(' 2831', findRichText: true);
+      expect(rating, findsOneWidget);
+      final ratingParagraph = tester.renderObject<RenderParagraph>(rating);
+      expect(
+        ratingParagraph.size.width,
+        greaterThanOrEqualTo(ratingParagraph.textSize.width),
       );
       expect(
-        tester.getRect(label).right,
-        lessThan(tester.getRect(clocks.at(i)).left),
+        _fontSizes(tester.widget<RichText>(rating).text).single,
+        isIn(_fontSizes(tester.widget<RichText>(shortLabels.first).text)),
       );
+      final ratingRect = tester.getRect(rating);
+      expect(find.text('1:57:00'), findsNWidgets(2));
+      final clockRects =
+          [
+            for (var i = 0; i < 2; i++)
+              tester.getRect(find.text('1:57:00').at(i)),
+          ]..sort(
+            (a, b) => (a.center.dy - ratingRect.center.dy).abs().compareTo(
+              (b.center.dy - ratingRect.center.dy).abs(),
+            ),
+          );
+      expect(tester.getRect(faded).right, lessThanOrEqualTo(ratingRect.left));
+      expect(ratingRect.right, lessThan(clockRects.first.left));
+
+      for (final paragraph in tester.widgetList<RichText>(
+        find.byType(RichText),
+      )) {
+        if (paragraph.text.toPlainText().contains(surname)) {
+          expect(paragraph.overflow, isNot(TextOverflow.ellipsis));
+        }
+      }
+    },
+  );
+}
+
+/// Font size of every piece of text in [root], inherited styles applied.
+List<double> _fontSizes(InlineSpan root) {
+  final sizes = <double>[];
+  void visit(InlineSpan span, double? inherited) {
+    final size = span.style?.fontSize ?? inherited;
+    if (span is! TextSpan) return;
+    if ((span.text ?? '').isNotEmpty) sizes.add(size!);
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      visit(child, size);
     }
-  });
+  }
+
+  visit(root, null);
+  return sizes;
 }
 
 /// The first opaque fill behind [element], translucent layers above it

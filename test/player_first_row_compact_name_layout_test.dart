@@ -60,10 +60,9 @@ void main() {
       gameStatus: GameStatus.ongoing,
       roundId: 'r1',
       tourId: 't1',
-      fen:
-          hasStarted
-              ? 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
-              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      fen: hasStarted
+          ? 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
+          : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       lastMove: hasStarted ? 'e7e5' : null,
     );
 
@@ -118,30 +117,151 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('a long surname fits on a narrow board without dots', (
-    tester,
-  ) async {
-    await pumpCompactRow(
-      tester,
-      whiteName: 'Wiśniewska-Kowalczyk, Aleksandra',
-      blackName: 'Firouzja, Alireza',
-      maxWidth: 260,
-      compactName: false,
-      playerView: PlayerView.boardView,
-      textScaler: const TextScaler.linear(1.5),
-      showClock: true,
-      hasStarted: true,
-    );
+  testWidgets(
+    'a long surname keeps the board size and fades beside the clock',
+    (tester) async {
+      await pumpCompactRow(
+        tester,
+        whiteName: 'Wiśniewska-Kowalczyk, Aleksandra',
+        blackName: 'Firouzja, Alireza',
+        maxWidth: 260,
+        compactName: false,
+        playerView: PlayerView.boardView,
+        textScaler: const TextScaler.linear(1.5),
+        showClock: true,
+        hasStarted: true,
+      );
 
-    final label = find.text('GM Wiśniewska-Kowalczyk 2830', findRichText: true);
-    final paragraph = tester.renderObject<RenderParagraph>(label);
-    expect(paragraph.didExceedMaxLines, isFalse);
-    expect(tester.getRect(label).width, lessThan(paragraph.size.width));
-    expect(
-      tester.getRect(label).right,
-      lessThan(tester.getRect(find.text('46:24')).left),
-    );
-  });
+      // Initials and then the first name went first; the surname is all that
+      // is left, and it is still too wide: it fades instead of shrinking.
+      final name = find.text('GM Wiśniewska-Kowalczyk', findRichText: true);
+      final rating = find.text(' 2830', findRichText: true);
+      final clock = find.text('46:24');
+      expect(name, findsOneWidget);
+      expect(rating, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(name);
+      expect(paragraph.overflow, TextOverflow.fade);
+      expect(paragraph.size.width, lessThan(paragraph.textSize.width));
+      expect(
+        find.ancestor(of: name, matching: find.byType(FittedBox)),
+        findsNothing,
+      );
+      // The system text size applies as everywhere else; nothing on top.
+      expect(tester.widget<RichText>(name).textScaler.scale(14), 14 * 1.5);
+      // One size for the title, the surname and the rating.
+      expect({
+        ..._fontSizes(tester.widget<RichText>(name).text),
+        ..._fontSizes(tester.widget<RichText>(rating).text),
+      }, hasLength(1));
+
+      // The rating stays whole beside the faded surname, clear of the clock.
+      final ratingParagraph = tester.renderObject<RenderParagraph>(rating);
+      expect(
+        ratingParagraph.size.width,
+        greaterThanOrEqualTo(ratingParagraph.textSize.width),
+      );
+      expect(
+        tester.getRect(name).right,
+        lessThanOrEqualTo(tester.getRect(rating).left),
+      );
+      expect(
+        tester.getRect(rating).right,
+        lessThan(tester.getRect(clock).left),
+      );
+      _expectNoEllipsis(tester);
+    },
+  );
+
+  for (final view in PlayerView.values) {
+    testWidgets('a name never changes size in $view', (tester) async {
+      Future<({List<double> sizes, double height})> label(
+        String whiteName,
+        String plainText,
+      ) async {
+        await pumpCompactRow(
+          tester,
+          whiteName: whiteName,
+          blackName: 'Firouzja, Alireza',
+          maxWidth: view == PlayerView.boardView ? 300 : 220,
+          compactName: false,
+          playerView: view,
+          showClock: true,
+          hasStarted: true,
+        );
+        final finder = find.textContaining(plainText, findRichText: true);
+        expect(finder, findsOneWidget);
+        expect(
+          find.ancestor(of: finder, matching: find.byType(FittedBox)),
+          findsNothing,
+        );
+        final widget = tester.widget<RichText>(finder);
+        expect(widget.overflow, TextOverflow.fade);
+        _expectNoEllipsis(tester);
+        return (
+          sizes: _fontSizes(widget.text),
+          height: tester.getSize(finder).height,
+        );
+      }
+
+      final short = await label('So, Wesley', 'GM So');
+      final long = await label(
+        'Wiśniewska-Kowalczyk-Grzybowska, Aleksandra',
+        'Wiśniewska-Kowalczyk-Grzybowska',
+      );
+      // One size for the short name, the long one and every part of each.
+      expect(short.sizes.toSet(), hasLength(lessThanOrEqualTo(2)));
+      expect(long.sizes.first, short.sizes.first);
+      expect(long.sizes.toSet(), everyElement(isIn(short.sizes.toSet())));
+      expect(long.height, short.height);
+    });
+  }
+
+  // Full name, then initials for the first name, then the surname alone;
+  // only when even that is too wide does the surname fade, and the rating
+  // stays beside it. The text size is the same at every width.
+  for (final (width, labels) in [
+    (290.0, ['GM Caruana, Fabiano 2830']),
+    (270.0, ['GM Caruana, F. 2830']),
+    (250.0, ['GM Caruana 2830']),
+    (230.0, ['GM Caruana', ' 2830']),
+  ]) {
+    testWidgets('at $width the label reads ${labels.join('|')}', (
+      tester,
+    ) async {
+      await pumpCompactRow(
+        tester,
+        whiteName: 'Caruana, Fabiano',
+        blackName: 'Firouzja, Alireza',
+        maxWidth: width,
+        compactName: false,
+        playerView: PlayerView.boardView,
+        showClock: true,
+        hasStarted: true,
+      );
+      final sizes = <double>{};
+      for (final text in labels) {
+        final finder = find.text(text, findRichText: true);
+        expect(finder, findsOneWidget);
+        sizes.addAll(_fontSizes(tester.widget<RichText>(finder).text));
+      }
+      expect(sizes, hasLength(1));
+      final name = tester.renderObject<RenderParagraph>(
+        find.text(labels.first, findRichText: true),
+      );
+      // Only the last step overflows its box, and it fades.
+      expect(name.overflow, TextOverflow.fade);
+      if (labels.length == 1) {
+        expect(name.size.width, greaterThanOrEqualTo(name.textSize.width));
+      } else {
+        expect(name.size.width, lessThan(name.textSize.width));
+      }
+      expect(
+        tester.getRect(find.text(labels.last, findRichText: true)).right,
+        lessThan(tester.getRect(find.text('46:24')).left),
+      );
+      _expectNoEllipsis(tester);
+    });
+  }
 
   for (final scale in [0.85, 1.0, 1.5]) {
     testWidgets('focused board paints the full player label at scale $scale', (
@@ -309,10 +429,9 @@ void main() {
         showEngineGaugeInGrid: false,
       ),
     );
-    final withoutGridGauge =
-        tester
-            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
-            .width;
+    final withoutGridGauge = tester
+        .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+        .width;
 
     await pumpCompactRow(
       tester,
@@ -325,10 +444,9 @@ void main() {
         showEngineGaugeInGrid: true,
       ),
     );
-    final withGridGauge =
-        tester
-            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
-            .width;
+    final withGridGauge = tester
+        .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+        .width;
 
     expect(withoutGridGauge, 0);
     expect(withGridGauge, greaterThan(0));
@@ -349,10 +467,9 @@ void main() {
       source: GameSource.supabase,
       engineSettings: settings,
     );
-    final visibleGaugeWidth =
-        tester
-            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
-            .width;
+    final visibleGaugeWidth = tester
+        .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+        .width;
 
     await pumpCompactRow(
       tester,
@@ -363,14 +480,43 @@ void main() {
       engineSettings: settings,
       spoilerState: const EventNoSpoilersState(enabled: true, isLoading: false),
     );
-    final hiddenGaugeWidth =
-        tester
-            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
-            .width;
+    final hiddenGaugeWidth = tester
+        .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+        .width;
 
     expect(visibleGaugeWidth, greaterThan(0));
     expect(hiddenGaugeWidth, 0);
   });
+}
+
+/// Font size of every piece of text in [root], inherited styles applied.
+List<double> _fontSizes(InlineSpan root) {
+  final sizes = <double>[];
+  void visit(InlineSpan span, double? inherited) {
+    final size = span.style?.fontSize ?? inherited;
+    if (span is! TextSpan) return;
+    if ((span.text ?? '').isNotEmpty) sizes.add(size!);
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      visit(child, size);
+    }
+  }
+
+  visit(root, null);
+  return sizes;
+}
+
+/// No text in a player row is ever cut with "...".
+void _expectNoEllipsis(WidgetTester tester) {
+  final paragraphs = tester.widgetList<RichText>(
+    find.descendant(
+      of: find.byType(PlayerFirstRowDetailWidget),
+      matching: find.byType(RichText),
+    ),
+  );
+  expect(paragraphs, isNotEmpty);
+  for (final paragraph in paragraphs) {
+    expect(paragraph.overflow, isNot(TextOverflow.ellipsis));
+  }
 }
 
 PlayerCard _player(String name) {

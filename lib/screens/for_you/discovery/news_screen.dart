@@ -291,19 +291,7 @@ class _NewsGridLayout {
     final cardWidth = (width - spacing * (columns - 1)) / columns;
     // Reserve identical text slots across a row. Scaled text grows the grid
     // instead of clipping against a fixed tile.
-    final height = compact
-        ? cardWidth * 3 / 4 +
-              24 +
-              scaler.scale(15) * 1.3 * 4 +
-              8 +
-              scaler.scale(12) * 1.4
-        : cardWidth * 9 / 16 +
-              32 +
-              scaler.scale(12) * 1.4 * 2 +
-              10 +
-              scaler.scale(18) * 1.3 * 3 +
-              10 +
-              scaler.scale(14) * 1.5 * 3;
+    final height = newsCardExtent(cardWidth, scaler, compact: compact);
     return _NewsGridLayout._(width, columns, compact, spacing, height);
   }
 
@@ -534,4 +522,63 @@ class _NewsSkeleton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How tall a News card [cardWidth] wide stands at [scaler]: the cover, then
+/// identical text slots, so cards side by side (or in a row) line up.
+/// [compact] is the narrow card: headline under a 4:3 cover, date on the
+/// bottom edge.
+double newsCardExtent(
+  double cardWidth,
+  TextScaler scaler, {
+  required bool compact,
+}) => compact
+    ? cardWidth * 3 / 4 +
+          24 +
+          scaler.scale(15) * 1.3 * 4 +
+          8 +
+          scaler.scale(12) * 1.4
+    : cardWidth * 9 / 16 +
+          32 +
+          scaler.scale(12) * 1.4 * 2 +
+          10 +
+          scaler.scale(18) * 1.3 * 3 +
+          10 +
+          scaler.scale(14) * 1.5 * 3;
+
+/// The News page's grid across [extent] at [scaler]: its columns, whether
+/// its cards are the compact ones, the gap between them, the grid's width
+/// and one card's height.
+({int columns, bool compact, double spacing, double width, double height})
+newsGridMetrics(double extent, TextScaler scaler) {
+  final layout = _NewsGridLayout(extent, scaler);
+  return (
+    columns: layout.columns,
+    compact: layout.compact,
+    spacing: layout.spacing,
+    width: layout.width,
+    height: layout.height,
+  );
+}
+
+/// The News page's card, for another surface that lists a story as the News
+/// page does (the Search tab): the same cover, words, tap and semantics. It
+/// needs the height [newsCardExtent] gives it.
+class NewsArticleCard extends StatelessWidget {
+  const NewsArticleCard({
+    super.key,
+    required this.news,
+    required this.compact,
+    required this.heroTag,
+    required this.onTap,
+  });
+
+  final FeedNews news;
+  final bool compact;
+  final Object heroTag;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) =>
+      _NewsCard(news: news, compact: compact, heroTag: heroTag, onTap: onTap);
 }

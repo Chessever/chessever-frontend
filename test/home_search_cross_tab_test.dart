@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -29,7 +30,38 @@ import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
+import 'package:chessever2/repository/gamebase/collections/collections_models.dart'
+    show CollectionsPage;
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show
+        Collection,
+        CollectionKind,
+        CollectionsRepository,
+        collectionsRepositoryProvider;
+import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
+    show LibraryMenuAction;
+import 'package:chessever2/widgets/page_back_row.dart';
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionCard, CollectionsScreen;
+import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
+import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
+import 'package:chessever2/screens/feed/news/news_models.dart' show FeedNews;
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart'
+    show NewsArticleCard, NewsScreen;
+import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart'
+    show homeEventsLiveFirstProvider;
+import 'package:chessever2/screens/search/search_carousel.dart'
+    show SearchCarouselPhysics;
+import 'package:chessever2/screens/search/search_feeds.dart';
+import 'package:chessever2/screens/search/search_landing_section.dart'
+    show SearchLandingSection;
 import 'package:chessever2/screens/search/search_landing.dart';
+import 'package:chessever2/screens/search/sections/search_openings_page.dart';
+import 'package:chessever2/screens/search/sections/search_section_pages.dart';
+import 'package:chessever2/screens/search/sections/search_smart_events_page.dart';
 import 'package:chessever2/screens/search/search_page_landing.dart';
 import 'package:chessever2/screens/search/search_page_results.dart';
 import 'package:chessever2/screens/search/search_page_sections.dart';
@@ -68,6 +100,20 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// smart event is the card the app draws it in elsewhere, with that card's
 /// own tap and long-press.
 void main() {
+  // Layout is measured in the app's own face, not the square test font,
+  // whose figures run several times wider than any real line.
+  setUpAll(() async {
+    final fonts = FontLoader('InterDisplay');
+    for (final weight in ['Regular', 'Medium', 'Bold']) {
+      fonts.addFont(
+        File(
+          'assets/fonts/Inter-$weight.otf',
+        ).readAsBytes().then(ByteData.sublistView),
+      );
+    }
+    await fonts.load();
+  });
+
   testWidgets('the Search tab opens with the cursor in its field', (
     tester,
   ) async {
@@ -231,6 +277,8 @@ void main() {
       players: () async => _topPlayers,
       openings: _landingOpenings,
       upcoming: [_upcomingEvent],
+      collections: [_collection, _secondCollection],
+      news: [_story, _secondStory],
     );
     final chrome = app.chrome!;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -276,16 +324,19 @@ void main() {
 
   group('the landing (nothing typed)', () {
     testWidgets('each section in the card the app draws it in elsewhere, '
-        'in order', (tester) async {
+        'in order, each a row of its cards', (tester) async {
       final app = await _pump(
         tester,
-        size: const Size(393, 3000),
+        size: const Size(393, 3600),
         recents: [RecentSearchEntry.tournament(_event)],
         live: [_liveEvent, _secondLiveEvent],
         players: () async => _topPlayers,
         openings: _landingOpenings,
         upcoming: [_upcomingEvent],
+        collections: [_collection, _secondCollection],
+        news: [_story, _secondStory],
       );
+      expect(tester.takeException(), isNull);
       final landing = find.byKey(const ValueKey('search_landing'));
       expect(landing, findsOneWidget);
 
@@ -296,6 +347,8 @@ void main() {
         'Openings',
         'Smart events',
         'Coming up',
+        'Collections',
+        'News',
       ];
       for (final heading in headings) {
         expect(
@@ -336,14 +389,35 @@ void main() {
         ),
         findsOneWidget,
       );
+      // A row: the second live event stands beside the first, peeking in
+      // past the screen's edge.
+      final firstLive = tester.getRect(
+        find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+      );
+      final secondLive = tester.getRect(
+        find.byKey(ValueKey('search-live-${_secondLiveEvent.id}')),
+      );
+      expect(secondLive.top, firstLive.top);
+      expect(secondLive.left, greaterThan(firstLive.right));
+      expect(secondLive.left, lessThan(393));
+      expect(secondLive.right, greaterThan(393));
 
-      // Top players: the Events page's player cards, four of them.
-      final cards = find.byKey(const ValueKey('search-top-players'));
-      expect(tester.widget<PlayerSearchCards>(cards).players, hasLength(4));
+      // Top players: the Events page's player cards, two to a card's room.
+      final pair = find.byKey(const ValueKey('search-top-players-0'));
+      expect(tester.widget<PlayerSearchCards>(pair).players, hasLength(2));
+      expect(
+        tester
+            .widget<PlayerSearchCards>(
+              find.byKey(const ValueKey('search-top-players-2')),
+            )
+            .players,
+        hasLength(2),
+      );
       expect(find.text('Magnus Carlsen'), findsOneWidget);
 
-      // Openings and the built-in smart events: smart event cards.
-      for (final opening in _landingOpenings) {
+      // Openings and the built-in smart events: smart event cards, the
+      // row cards side by side.
+      for (final opening in _landingOpenings.take(2)) {
         expect(
           find.descendant(
             of: find.byKey(ValueKey('opening-result-${opening.id}')),
@@ -353,17 +427,6 @@ void main() {
           reason: opening.title,
         );
       }
-      for (final preset in kDiscoverySmartPresets) {
-        expect(
-          find.descendant(
-            of: find.byKey(ValueKey('search-smart-${preset.tierLabel}')),
-            matching: find.byType(SmartEventCard),
-          ),
-          findsOneWidget,
-        );
-      }
-      // Super GM leads on the full-width card; GM and IM share the row under
-      // it, so no row is left half empty.
       SmartEventCard preset(SmartEventRequest r) =>
           tester.widget<SmartEventCard>(
             find.descendant(
@@ -372,24 +435,26 @@ void main() {
             ),
           );
       expect(preset(kSuperGmSmartPreset).stacked, isFalse);
-      expect(preset(kGmSmartPreset).stacked, isTrue);
-      expect(preset(kImSmartPreset).stacked, isTrue);
-      final gmCard = tester.getRect(
+      expect(preset(kGmSmartPreset).stacked, isFalse);
+      final superGm = tester.getRect(
+        find.byKey(ValueKey('search-smart-${kSuperGmSmartPreset.tierLabel}')),
+      );
+      final gm = tester.getRect(
         find.byKey(ValueKey('search-smart-${kGmSmartPreset.tierLabel}')),
       );
-      final imCard = tester.getRect(
-        find.byKey(ValueKey('search-smart-${kImSmartPreset.tierLabel}')),
-      );
-      expect(gmCard.top, imCard.top);
+      expect(gm.top, superGm.top);
+      expect(gm.left, greaterThan(superGm.right));
+
+      // Collections: the Collections page's card. News: the News page's.
       expect(
-        tester
-            .getRect(
-              find.byKey(
-                ValueKey('search-smart-${kSuperGmSmartPreset.tierLabel}'),
-              ),
-            )
-            .bottom,
-        lessThan(gmCard.top),
+        tester.widget(
+          find.byKey(ValueKey('search-collection-${_collection.id}')),
+        ),
+        isA<CollectionCard>(),
+      );
+      expect(
+        tester.widget(find.byKey(ValueKey('search-news-${_story.key}'))),
+        isA<NewsArticleCard>(),
       );
 
       _expectNoPlaceholderCopy();
@@ -774,16 +839,24 @@ void main() {
       await app.dispose();
     });
 
-    testWidgets('See all opens Rankings', (tester) async {
+    testWidgets('the Top players title opens Rankings; no See all is left', (
+      tester,
+    ) async {
       final observer = _PushObserver();
       final app = await _pump(
         tester,
         players: () async => _topPlayers,
         observer: observer,
       );
-      await tester.tap(find.textContaining('See all', findRichText: true));
+      expect(find.textContaining('See all', findRichText: true), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('search-top-players-open')));
       await tester.pump();
-      expect(observer.lastPage(tester), isA<FavoritesTabScreen>());
+      final page = observer.lastPage(tester);
+      expect(page, isA<FavoritesTabScreen>());
+      expect(
+        (page as FavoritesTabScreen).initialMode,
+        FavoritesScreenMode.players,
+      );
       await app.dispose();
     });
 
@@ -815,9 +888,11 @@ void main() {
           '(${preset.displayName})', (tester) async {
         final observer = _PushObserver();
         final app = await _pump(tester, observer: observer);
-        await tester.tap(
-          find.byKey(ValueKey('search-smart-${preset.tierLabel}')),
-        );
+        final card = find.byKey(ValueKey('search-smart-${preset.tierLabel}'));
+        // Along the row: brought into view first.
+        await tester.ensureVisible(card);
+        await tester.pump();
+        await tester.tap(card);
         await tester.pump();
         final screen = observer.lastPage(tester);
         expect(screen, isA<SmartEventScreen>());
@@ -1056,23 +1131,31 @@ void main() {
             reason: heading,
           );
         }
+        // A row's first card starts on the gutter, nine tenths of the
+        // row wide: the next card peeks in past the field's end.
+        final row = field.width;
         for (final card in [
           find.byKey(ValueKey('search-live-${_liveEvent.id}')),
-          find.byKey(const ValueKey('search-top-players')),
+          find.byKey(const ValueKey('search-top-players-0')),
+          find.byKey(ValueKey('opening-result-${_landingOpenings[0].id}')),
         ]) {
           final rect = tester.getRect(card);
           expect(rect.left, closeTo(field.left, 0.01));
-          expect(rect.right, closeTo(field.right, 0.01));
+          expect(
+            rect.width,
+            closeTo((row + searchCardGap) / 1.1 - searchCardGap, 0.01),
+          );
         }
-        // Half cards side by side, flush to both edges, tops in line.
+        // Cards of a row side by side, a card's gap apart, tops and
+        // bottoms in line, the second past the field's end.
         final a = tester.getRect(
           find.byKey(ValueKey('opening-result-${_landingOpenings[0].id}')),
         );
         final b = tester.getRect(
           find.byKey(ValueKey('opening-result-${_landingOpenings[1].id}')),
         );
-        expect(a.left, closeTo(field.left, 0.01));
-        expect(b.right, closeTo(field.right, 0.01));
+        expect(b.left, closeTo(a.right + searchCardGap, 0.01));
+        expect(b.right, greaterThan(field.right));
         expect(a.top, b.top);
         expect(a.height, closeTo(b.height, 0.01));
 
@@ -1382,6 +1465,1022 @@ void main() {
       await app.dispose();
     });
   });
+  group('the sections: a row each, its own page, opened in place', () {
+    /// Every section the landing shows, as the fixtures hold them.
+    Future<_App> pumpAll(
+      WidgetTester tester, {
+      Size size = const Size(393, 3600),
+      NavigatorObserver? observer,
+      bool reduceMotion = false,
+      bool chrome = false,
+      EdgeInsets padding = EdgeInsets.zero,
+      _Ranking? ranking,
+    }) => _pump(
+      tester,
+      size: size,
+      live: [_liveEvent, _secondLiveEvent],
+      players: () async => _topPlayers,
+      openings: _landingOpenings,
+      upcoming: [_upcomingEvent, _secondUpcomingEvent],
+      collections: [_collection, _secondCollection],
+      news: [_story, _secondStory],
+      observer: observer,
+      reduceMotion: reduceMotion,
+      chrome: chrome,
+      padding: padding,
+      ranking: ranking,
+    );
+
+    testWidgets('every title but Recent searches is a button: its words and '
+        'a chevron, 44pt tall, heard as a heading that opens its page; no '
+        'See all is left', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final app = await _pump(
+        tester,
+        size: const Size(393, 3600),
+        recents: [RecentSearchEntry.tournament(_event)],
+        live: [_liveEvent],
+        players: () async => _topPlayers,
+        openings: _landingOpenings,
+        upcoming: [_upcomingEvent],
+        collections: [_collection],
+        news: [_story],
+      );
+      for (final section in SearchSectionId.values) {
+        final button = find.byKey(ValueKey('search-${section.slug}-open'));
+        expect(button, findsOneWidget, reason: section.title);
+        expect(
+          find.descendant(of: button, matching: find.text(section.title)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: button,
+            matching: find.byIcon(Icons.chevron_right_rounded),
+          ),
+          findsOneWidget,
+          reason: section.title,
+        );
+        expect(
+          tester.getSize(button).height,
+          greaterThanOrEqualTo(44),
+          reason: section.title,
+        );
+        expect(
+          tester.getSemantics(button),
+          containsSemantics(
+            label: 'Open ${section.title}',
+            isButton: true,
+            isHeader: true,
+            hasTapAction: true,
+          ),
+          reason: section.title,
+        );
+        // The title starts on the page's gutter, as the field does.
+        expect(
+          tester.getTopLeft(find.text(section.title)).dx,
+          closeTo(HomeTopBarMetrics.horizontalPadding, 0.01),
+        );
+      }
+      // Recent searches is a heading, not a way anywhere.
+      expect(find.text('Recent searches'), findsOneWidget);
+      expect(find.byKey(const ValueKey('search-recent-open')), findsNothing);
+      expect(find.textContaining('See all', findRichText: true), findsNothing);
+      semantics.dispose();
+      await app.dispose();
+    });
+
+    for (final (section, check)
+        in <(SearchSectionId, void Function(_App, Route<dynamic>, Widget))>[
+          (
+            SearchSectionId.liveNow,
+            (app, route, page) {
+              expect(page, isA<GroupEventScreen>());
+              expect(
+                app.read(selectedGroupCategoryProvider),
+                GroupEventCategory.current,
+              );
+              expect(app.read(homeEventsLiveFirstProvider), isTrue);
+            },
+          ),
+          (
+            SearchSectionId.topPlayers,
+            (app, route, page) {
+              expect(page, isA<FavoritesTabScreen>());
+              expect(
+                (page as FavoritesTabScreen).initialMode,
+                FavoritesScreenMode.players,
+              );
+            },
+          ),
+          (
+            SearchSectionId.openings,
+            (app, route, page) {
+              expect(page, isA<SearchOpeningsPage>());
+            },
+          ),
+          (
+            SearchSectionId.smartEvents,
+            (app, route, page) {
+              expect(page, isA<SearchSmartEventsPage>());
+            },
+          ),
+          (
+            SearchSectionId.comingUp,
+            (app, route, page) {
+              expect(page, isA<GroupEventScreen>());
+              expect(
+                app.read(selectedGroupCategoryProvider),
+                GroupEventCategory.upcoming,
+              );
+              // Coming up never turns Live first on.
+              expect(app.read(homeEventsLiveFirstProvider), isFalse);
+            },
+          ),
+          (
+            SearchSectionId.collections,
+            (app, route, page) {
+              expect(page, isA<CollectionsScreen>());
+            },
+          ),
+          (
+            SearchSectionId.news,
+            (app, route, page) {
+              expect(page, isA<NewsScreen>());
+              expect(route.settings.name, '/news');
+            },
+          ),
+        ]) {
+      testWidgets('the ${section.title} title opens its page', (tester) async {
+        final observer = _PushObserver();
+        final app = await pumpAll(tester, observer: observer);
+        await tester.tap(find.byKey(ValueKey('search-${section.slug}-open')));
+        // Pushed, not built here: the destinations are whole screens.
+        check(app, observer.pushed.last, observer.lastPage(tester));
+        await app.dispose();
+      });
+    }
+
+    testWidgets('Live now lists live events first on its Events page only: '
+        'closed, Live first is as it was (Home\'s Today too), unless the '
+        'reader pressed it there', (tester) async {
+      final observer = _PushObserver();
+      final app = await pumpAll(tester, observer: observer);
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+      final flag = app.read(homeEventsLiveFirstProvider.notifier);
+      final title = find.byKey(const ValueKey('search-live-open'));
+      // Closed without pushing the destination's own backends: removed.
+      Future<void> close() async {
+        navigator.removeRoute(observer.pushed.last);
+        await tester.pump();
+      }
+
+      await tester.tap(title);
+      expect(flag.state, isTrue);
+      await close();
+      expect(flag.state, isFalse);
+
+      // Pressed off and on again on the Events page: the reader's now.
+      await tester.tap(title);
+      flag.state = false;
+      flag.state = true;
+      await close();
+      expect(flag.state, isTrue);
+
+      // Already on when the page opened: left on.
+      await tester.tap(title);
+      expect(flag.state, isTrue);
+      await close();
+      expect(flag.state, isTrue);
+      await app.dispose();
+    });
+
+    testWidgets('See more opens a section in place, its cards down the page, '
+        'growing on a spring with every card drawn; Show less folds it back '
+        'on the spring', (tester) async {
+      final app = await pumpAll(tester, size: const Size(393, 2400));
+      final first = find.byKey(const ValueKey('search-top-players-0'));
+      final second = find.byKey(const ValueKey('search-top-players-2'));
+      final below = find.text('Openings');
+      // Folded: a row, the second card beside the first.
+      expect(tester.getTopLeft(second).dy, tester.getTopLeft(first).dy);
+      final folded = tester.getTopLeft(below).dy;
+
+      await tester.tap(_toggle('top-players-expand'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      final growing = tester.getTopLeft(below).dy;
+      // Growing, the cards are there whole: nothing waits on an entrance.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('search_landing')),
+          matching: find.byWidgetPredicate(
+            (w) => w is Opacity && w.opacity == 0,
+          ),
+        ),
+        findsNothing,
+      );
+      await _frames(tester);
+      final open = tester.getTopLeft(below).dy;
+      expect(growing, greaterThan(folded));
+      expect(growing, lessThan(open));
+      // Down the page: the second card under the first, on the same
+      // gutter; Show less at the end and in the head.
+      expect(
+        tester.getTopLeft(second).dy,
+        greaterThan(tester.getBottomLeft(first).dy),
+      );
+      expect(tester.getTopLeft(second).dx, tester.getTopLeft(first).dx);
+      expect(
+        find.byKey(const ValueKey('search-top-players-expand')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('search-top-players-fold')),
+        findsOneWidget,
+      );
+      final collapse = find.byKey(
+        const ValueKey('search-top-players-collapse'),
+      );
+      expect(collapse, findsOneWidget);
+      expect(
+        find.descendant(of: collapse, matching: find.text('Show less')),
+        findsOneWidget,
+      );
+      expect(app.read(searchExpandedSectionsProvider), {'top-players'});
+
+      await tester.tap(_toggle('top-players-collapse'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      final folding = tester.getTopLeft(below).dy;
+      expect(folding, lessThan(open));
+      expect(folding, greaterThan(folded));
+      await _frames(tester);
+      expect(tester.getTopLeft(below).dy, closeTo(folded, 0.5));
+      expect(tester.getTopLeft(second).dy, tester.getTopLeft(first).dy);
+      expect(
+        find.byKey(const ValueKey('search-top-players-expand')),
+        findsOneWidget,
+      );
+      expect(app.read(searchExpandedSectionsProvider), isEmpty);
+      await app.dispose();
+    });
+
+    testWidgets('under reduced motion a section opens and folds at once', (
+      tester,
+    ) async {
+      final app = await pumpAll(
+        tester,
+        size: const Size(393, 2400),
+        reduceMotion: true,
+      );
+      final first = find.byKey(const ValueKey('search-top-players-0'));
+      final second = find.byKey(const ValueKey('search-top-players-2'));
+      await tester.tap(_toggle('top-players-expand'));
+      await tester.pump();
+      expect(
+        tester.getTopLeft(second).dy,
+        greaterThan(tester.getBottomLeft(first).dy),
+      );
+      await tester.tap(_toggle('top-players-collapse'));
+      await tester.pump();
+      expect(tester.getTopLeft(second).dy, tester.getTopLeft(first).dy);
+      await app.dispose();
+    });
+
+    testWidgets('Show less far down an opened section springs the page back '
+        'to its head, then folds there', (tester) async {
+      final ranking = _Ranking(
+        pages: [
+          for (var p = 0; p < 4; p++)
+            _rankedPage(searchLandingPlayerCount + p * searchPlayersPageSize),
+        ],
+      );
+      final app = await _pump(
+        tester,
+        players: () async => _topPlayers,
+        ranking: ranking,
+      );
+      await tester.tap(_toggle('top-players-expand'));
+      await tester.pump();
+      await tester.pump();
+      await _frames(tester);
+      final page = _landingPosition(tester);
+      for (var i = 0; i < 8; i++) {
+        page.jumpTo(page.maxScrollExtent);
+        await _frames(tester, 10);
+      }
+      expect(app.read(searchTopPlayersFeedProvider).hasMore, isFalse);
+      final collapse = find.byKey(
+        const ValueKey('search-top-players-collapse'),
+      );
+      await tester.ensureVisible(collapse);
+      await tester.pump();
+      final from = page.pixels;
+      final head = find.byKey(const ValueKey('search-top-players-open'));
+      final top = tester.getTopLeft(
+        find.byKey(const ValueKey('search_landing')),
+      );
+      // Far down: the head is screens above.
+      expect(from, greaterThan(2000));
+
+      await tester.tap(_toggle('top-players-collapse'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      // On the way back, never there in one frame.
+      expect(page.pixels, lessThan(from));
+      expect(page.pixels, greaterThan(from / 2));
+      expect(app.read(searchExpandedSectionsProvider), {'top-players'});
+      await _frames(tester, 120);
+      // At the head, the section folded under it.
+      expect(page.pixels, closeTo(0, 0.5));
+      expect(tester.getTopLeft(head).dy, greaterThanOrEqualTo(top.dy));
+      expect(app.read(searchExpandedSectionsProvider), isEmpty);
+      expect(
+        find.byKey(const ValueKey('search-top-players-expand')),
+        findsOneWidget,
+      );
+      await app.dispose();
+    });
+
+    testWidgets('Top players never draws a player alone while more of the '
+        'ranking is coming; once it is spent, a last player alone stands '
+        'clear of See more', (tester) async {
+      final named = _rankedPage(searchLandingPlayerCount);
+      final ranking = _Ranking(
+        pages: [
+          // A nameless row, read and skipped: the page lands odd.
+          [
+            ...named.take(searchPlayersPageSize - 1),
+            const ChessPlayer(fideid: 8999999, name: ' ', country: 'NOR'),
+          ],
+          // The end of the ranking, odd again over all.
+          _rankedPage(
+            searchLandingPlayerCount + searchPlayersPageSize,
+          ).take(4).toList(),
+        ],
+      );
+      final app = await _pump(
+        tester,
+        players: () async => _topPlayers,
+        ranking: ranking,
+      );
+      List<List<SearchPlayer>> cards() => tester
+          .widget<SearchLandingSection<List<SearchPlayer>>>(
+            find.byWidgetPredicate(
+              (w) => w is SearchLandingSection<List<SearchPlayer>>,
+            ),
+          )
+          .items;
+      expect(ranking.offsets, [searchLandingPlayerCount]);
+      expect(app.read(searchTopPlayersFeedProvider).items, hasLength(15));
+      // The fifteenth waits for the next page.
+      expect(cards(), hasLength(7));
+      expect(cards().every((pair) => pair.length == 2), isTrue);
+
+      // The row read to its end (its extent known once it lays out there).
+      final row = _rowPosition(tester, 'top-players');
+      for (var i = 0; i < 3 && ranking.offsets.length < 2; i++) {
+        row.jumpTo(row.maxScrollExtent);
+        await tester.pump();
+        await tester.pump();
+      }
+      expect(ranking.offsets, [
+        searchLandingPlayerCount,
+        searchLandingPlayerCount + searchPlayersPageSize,
+      ]);
+      expect(app.read(searchTopPlayersFeedProvider).hasMore, isFalse);
+      expect(cards(), hasLength(10));
+      expect(cards().last, hasLength(1));
+      row.jumpTo(row.maxScrollExtent);
+      await tester.pump();
+      final lone = find.byKey(const ValueKey('search-top-players-18'));
+      expect(lone, findsOneWidget);
+      expect(
+        tester.getRect(lone).bottom,
+        lessThanOrEqualTo(
+          tester
+              .getRect(find.byKey(const ValueKey('search-top-players-expand')))
+              .top,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      await app.dispose();
+    });
+
+    testWidgets('a row snaps to its cards\' new width once it changes (a '
+        'rotation, split view)', (tester) async {
+      final app = await pumpAll(tester, size: const Size(393, 3600));
+      double slot() =>
+          (_rowPosition(tester, 'live').physics as SearchCarouselPhysics).slot;
+      final before = slot();
+      tester.view.physicalSize = const Size(430, 3600) * 2;
+      await tester.pump();
+      await tester.pump();
+      expect(slot(), greaterThan(before));
+      expect(
+        const SearchCarouselPhysics(
+          slot: 300,
+        ).shouldUpdate(const SearchCarouselPhysics(slot: 300)),
+        isFalse,
+      );
+      await app.dispose();
+    });
+
+    testWidgets('a section left open while a search was typed and cleared is '
+        'still open, and folds back on the spring', (tester) async {
+      final app = await pumpAll(tester, size: const Size(393, 2400));
+      final below = find.text('Openings');
+      final folded = tester.getTopLeft(below).dy;
+      await tester.tap(_toggle('top-players-expand'));
+      await tester.pump();
+      await tester.pump();
+      await _frames(tester);
+      final open = tester.getTopLeft(below).dy;
+
+      await _type(tester, const ValueKey('search_tab_field'), 'nakamura');
+      expect(find.byKey(const ValueKey('search_landing')), findsNothing);
+      await _type(tester, const ValueKey('search_tab_field'), '');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(tester.getTopLeft(below).dy, closeTo(open, 0.5));
+
+      await tester.tap(_toggle('top-players-collapse'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      final folding = tester.getTopLeft(below).dy;
+      expect(folding, lessThan(open));
+      expect(folding, greaterThan(folded));
+      await _frames(tester);
+      expect(tester.getTopLeft(below).dy, closeTo(folded, 0.5));
+      expect(
+        find.byKey(const ValueKey('search-top-players-expand')),
+        findsOneWidget,
+      );
+      await app.dispose();
+    });
+
+    testWidgets('a row reads on as it nears its end: a card-sized slot with a '
+        'quiet spinner while a page loads, a quiet retry card when one '
+        'fails, and See more, opening the page, once the source is spent', (
+      tester,
+    ) async {
+      final ranking = _Ranking(pages: [_rankedPage(searchLandingPlayerCount)])
+        ..hold = Completer<void>();
+      final observer = _PushObserver();
+      final app = await _pump(
+        tester,
+        players: () async => _topPlayers,
+        openings: _landingOpenings,
+        ranking: ranking,
+        observer: observer,
+      );
+      // Two cards of four players: the row's end is near at once, so the
+      // ranking is read on from where the head stopped.
+      expect(ranking.offsets, [searchLandingPlayerCount]);
+      final card = tester.getSize(
+        find.byKey(const ValueKey('search-top-players-0')),
+      );
+      final row = _rowPosition(tester, 'top-players');
+      row.jumpTo(row.maxScrollExtent);
+      await tester.pump();
+      final slot = find.byKey(const ValueKey('search-top-players-pending'));
+      expect(slot, findsOneWidget);
+      expect(tester.getSize(slot), card);
+      expect(
+        find.descendant(
+          of: slot,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      final openings = tester.getTopLeft(find.text('Openings')).dy;
+      final at = row.pixels;
+
+      ranking.hold!.complete();
+      ranking.hold = null;
+      await tester.pump();
+      await tester.pump();
+      // The page lands where the slot stood: nothing on screen moves.
+      expect(row.pixels, at);
+      expect(tester.getTopLeft(find.text('Openings')).dy, openings);
+      expect(
+        find.byKey(const ValueKey('search-top-players-4')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('search-top-players-4'))),
+        card,
+      );
+
+      ranking.fail = true;
+      row.jumpTo(row.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+      expect(ranking.offsets, [
+        searchLandingPlayerCount,
+        searchLandingPlayerCount + searchPlayersPageSize,
+      ]);
+      final retry = find.byKey(const ValueKey('search-top-players-retry'));
+      expect(retry, findsOneWidget);
+      expect(tester.getSize(retry), card);
+      expect(find.text("Couldn't load more"), findsOneWidget);
+
+      await tester.tap(retry);
+      await tester.pump();
+      await tester.pump();
+      expect(ranking.offsets, hasLength(3));
+      expect(ranking.offsets.last, ranking.offsets[1]);
+      final seeMore = find.byKey(const ValueKey('search-top-players-see-more'));
+      expect(seeMore, findsOneWidget);
+      expect(tester.getSize(seeMore), card);
+      await tester.tap(seeMore);
+      expect(observer.lastPage(tester), isA<FavoritesTabScreen>());
+      await app.dispose();
+    });
+
+    testWidgets('opened in place, a section reads on down the page as the '
+        'reader nears its end, a quiet line to try again when a page fails', (
+      tester,
+    ) async {
+      final ranking = _Ranking(
+        pages: [
+          _rankedPage(searchLandingPlayerCount),
+          _rankedPage(searchLandingPlayerCount + searchPlayersPageSize),
+        ],
+      );
+      final app = await _pump(
+        tester,
+        players: () async => _topPlayers,
+        ranking: ranking,
+        reduceMotion: true,
+      );
+      // The row asked for one page on its own (its end was near).
+      expect(ranking.offsets, [searchLandingPlayerCount]);
+      await tester.tap(_toggle('top-players-expand'));
+      await _frames(tester, 10);
+      final page = tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byKey(const ValueKey('search_landing')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      ranking.fail = true;
+      final asked = ranking.offsets.length;
+      page.jumpTo(page.maxScrollExtent);
+      await _frames(tester, 10);
+      expect(ranking.offsets, hasLength(asked + 1));
+      final line = find.byKey(const ValueKey('search-top-players-rows-retry'));
+      expect(line, findsOneWidget);
+      expect(tester.getSize(line).height, greaterThanOrEqualTo(44));
+      expect(find.text("Couldn't load more"), findsOneWidget);
+
+      await tester.tap(line);
+      await _frames(tester, 10);
+      // The page that failed, asked for again from where it was.
+      expect(ranking.offsets, hasLength(asked + 2));
+      expect(ranking.offsets.last, ranking.offsets[asked]);
+      expect(line, findsNothing);
+      page.jumpTo(page.maxScrollExtent);
+      await _frames(tester, 10);
+      // Every page in, each player once; the source spent, nothing turns.
+      final feed = app.read(searchTopPlayersFeedProvider);
+      expect(feed.hasMore, isFalse);
+      expect(
+        feed.items.length,
+        greaterThan(searchLandingPlayerCount + searchPlayersPageSize),
+      );
+      expect(
+        feed.items.map((p) => p.fideId).toSet(),
+        hasLength(feed.items.length),
+      );
+      expect(
+        find.byKey(const ValueKey('search-top-players-rows-pending')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('search-top-players-collapse')),
+        findsOneWidget,
+      );
+      await app.dispose();
+    });
+
+    testWidgets('text at 1.3x on a 375pt phone: event, player and smart '
+        'event cards lay out whole in their rows', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final app = await pumpAll(tester, size: const Size(375, 3600));
+      expect(tester.takeException(), isNull);
+      await app.dispose();
+    });
+
+    testWidgets('a row of a fixed set ends in See more, opening its page', (
+      tester,
+    ) async {
+      final observer = _PushObserver();
+      final app = await _pump(tester, observer: observer);
+      final row = _rowPosition(tester, 'smart');
+      row.jumpTo(row.maxScrollExtent);
+      await tester.pump();
+      // Every built-in smart event is in the row, the last one beside it.
+      expect(
+        find.byKey(
+          ValueKey('search-smart-${searchSmartEventRequests.last.tierLabel}'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('search-smart-see-more')));
+      expect(observer.lastPage(tester), isA<SearchSmartEventsPage>());
+      await app.dispose();
+    });
+
+    testWidgets('a row scrolled sideways never moves the bars; the page '
+        'scrolled down does', (tester) async {
+      final app = await pumpAll(
+        tester,
+        size: const Size(393, 852),
+        chrome: true,
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      final chrome = app.chrome!;
+      expect(chrome.value, 1);
+      await tester.drag(
+        find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+        const Offset(-260, 0),
+      );
+      await _frames(tester);
+      expect(_rowPosition(tester, 'live').pixels, greaterThan(0));
+      expect(chrome.value, 1);
+
+      await tester.drag(find.text('Top players'), const Offset(0, -300));
+      await _frames(tester);
+      expect(chrome.value, lessThan(1));
+      await app.dispose();
+    });
+
+    // Each card's menu, exactly as its own page holds it: the Events
+    // list's event menu, the player menu, the smart event's, the
+    // Collections page's; the News page's card has none.
+    const eventMenu = {
+      'Open event',
+      'Turn on No Spoilers',
+      'Share',
+      'Copy PGN',
+      'Add to My Space',
+    };
+    final menus = <(String, Finder Function(), Set<String>)>[
+      (
+        'live',
+        () => find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+        eventMenu,
+      ),
+      (
+        'top-players',
+        () => find.text('Magnus Carlsen'),
+        const {'Open profile', 'Share profile'},
+      ),
+      (
+        'openings',
+        () =>
+            find.byKey(ValueKey('opening-result-${_landingOpenings.first.id}')),
+        const {'Open smart event', 'Add to My Space'},
+      ),
+      (
+        'smart',
+        () => find.byKey(
+          ValueKey('search-smart-${kSuperGmSmartPreset.tierLabel}'),
+        ),
+        const {'Open smart event', 'Add to My Space'},
+      ),
+      (
+        'upcoming',
+        // Soonest first: the row's first card.
+        () =>
+            find.byKey(ValueKey('search-upcoming-${_secondUpcomingEvent.id}')),
+        eventMenu,
+      ),
+      (
+        'collections',
+        () => find.byKey(ValueKey('search-collection-${_collection.id}')),
+        const {'Open', 'Share', 'Add to My Space'},
+      ),
+      (
+        'news',
+        () => find.byKey(ValueKey('search-news-${_story.key}')),
+        const <String>{},
+      ),
+    ];
+    for (final (slug, card, labels) in menus) {
+      for (final inPlace in [false, true]) {
+        testWidgets('$slug ${inPlace ? 'opened in place' : 'in its row'}: '
+            'a long-press is the card\'s own menu', (tester) async {
+          final observer = _PushObserver();
+          final app = await pumpAll(
+            tester,
+            reduceMotion: true,
+            observer: observer,
+          );
+          if (inPlace) {
+            await tester.tap(_toggle('$slug-expand'));
+            await tester.pump();
+            expect(
+              find.byKey(ValueKey('search-$slug-collapse')),
+              findsOneWidget,
+            );
+          }
+          expect(card(), findsOneWidget);
+          await tester.longPress(card());
+          await _frames(tester);
+          expect(_menuLabels(tester), labels);
+          // (The News page's card has no menu: held and let go, it opens
+          // the story, as it does there.)
+          // Nothing the Search tab adds of its own.
+          expect(find.text('Remove from recent searches'), findsNothing);
+          await app.dispose();
+        });
+      }
+    }
+
+    testWidgets('a story opens the reader on it, paging on through the same '
+        'stories', (tester) async {
+      final observer = _PushObserver();
+      final app = await pumpAll(tester, observer: observer);
+      await tester.tap(find.byKey(ValueKey('search-news-${_secondStory.key}')));
+      final reader = observer.lastPage(tester);
+      expect(reader, isA<NewsReaderPager>());
+      reader as NewsReaderPager;
+      expect(reader.articles.map((n) => n.key), [_story.key, _secondStory.key]);
+      expect(reader.initialIndex, 1);
+      await app.dispose();
+    });
+
+    testWidgets('after a page of stories failed, the reader\'s Retry reads it '
+        'again', (tester) async {
+      final feed = _FlakyNews([_story], [_secondStory]);
+      final observer = _PushObserver();
+      final app = await _pump(tester, newsFeed: () => feed, observer: observer);
+      // The row asked for the next page on its own, and it failed.
+      expect(feed.reads, 1);
+      expect(app.read(searchNewsFeedProvider).failed, isTrue);
+      await tester.tap(find.byKey(ValueKey('search-news-${_story.key}')));
+      final reader = observer.lastPage(tester) as NewsReaderPager;
+      expect(reader.hasMore!(), isTrue);
+      final stories = await reader.loadMore!();
+      expect(feed.reads, 2);
+      expect(stories.map((n) => n.key), [_story.key, _secondStory.key]);
+      expect(app.read(searchNewsFeedProvider).failed, isFalse);
+      await app.dispose();
+    });
+
+    testWidgets('Openings, its own page: the pushed page\'s back row, the '
+        'half cards, each with its own long-press', (tester) async {
+      final app = await pumpAll(tester, size: const Size(393, 852));
+      await tester.tap(find.byKey(const ValueKey('search-openings-open')));
+      await _frames(tester);
+      expect(find.byType(SearchOpeningsPage), findsOneWidget);
+      expect(find.byType(PageBackRow), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(PageBackRow),
+          matching: find.text('Openings'),
+        ),
+        findsOneWidget,
+      );
+      final first = find.byKey(
+        ValueKey('search-openings-page-${_landingOpenings.first.id}'),
+      );
+      expect(first, findsOneWidget);
+      final card = tester.widget<SmartEventCard>(
+        find.descendant(of: first, matching: find.byType(SmartEventCard)),
+      );
+      expect(card.stacked, isTrue);
+      await tester.longPress(first);
+      await _frames(tester);
+      expect(_menuLabels(tester), const {
+        'Open smart event',
+        'Add to My Space',
+      });
+      await app.dispose();
+    });
+
+    testWidgets('Smart events, its own page: every built-in smart event, each '
+        'with its own long-press, the last clear of the bottom inset', (
+      tester,
+    ) async {
+      const inset = 90.0;
+      final app = await pumpAll(
+        tester,
+        size: const Size(393, 852),
+        padding: const EdgeInsets.only(bottom: inset),
+      );
+      await tester.tap(find.byKey(const ValueKey('search-smart-open')));
+      await _frames(tester);
+      expect(find.byType(SearchSmartEventsPage), findsOneWidget);
+      final list = tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byType(SearchSmartEventsPage),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      list.jumpTo(list.maxScrollExtent);
+      await tester.pump();
+      final last = find.byKey(
+        ValueKey(
+          'search-smart-page-${searchSmartEventRequests.last.tierLabel}',
+        ),
+      );
+      expect(last, findsOneWidget);
+      expect(tester.getRect(last).bottom, lessThanOrEqualTo(852 - inset));
+      list.jumpTo(0);
+      await tester.pump();
+      await tester.longPress(
+        find.byKey(
+          ValueKey(
+            'search-smart-page-${searchSmartEventRequests.first.tierLabel}',
+          ),
+        ),
+      );
+      await _frames(tester);
+      expect(_menuLabels(tester), const {
+        'Open smart event',
+        'Add to My Space',
+      });
+      await app.dispose();
+    });
+
+    testWidgets('the landing, and a section opened in place, end clear of '
+        'the floating dock\'s inset', (tester) async {
+      const inset = 90.0;
+      final app = await pumpAll(
+        tester,
+        size: const Size(393, 852),
+        padding: const EdgeInsets.only(bottom: inset),
+        reduceMotion: true,
+      );
+      final page = tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byKey(const ValueKey('search_landing')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      page.jumpTo(page.maxScrollExtent);
+      await tester.pump();
+      final last = find.byKey(const ValueKey('search-news-expand'));
+      expect(last, findsOneWidget);
+      expect(tester.getRect(last).bottom, lessThanOrEqualTo(852 - inset));
+
+      await tester.tap(_toggle('news-expand'));
+      await tester.pump();
+      page.jumpTo(page.maxScrollExtent);
+      await tester.pump();
+      final end = find.byKey(const ValueKey('search-news-collapse'));
+      expect(end, findsOneWidget);
+      expect(tester.getRect(end).bottom, lessThanOrEqualTo(852 - inset));
+      await app.dispose();
+    });
+
+    testWidgets('results: an event, an opening and a player card each keep '
+        'their own long-press', (tester) async {
+      final app = await _pump(tester, size: const Size(393, 4000));
+      await _type(tester, const ValueKey('search_tab_field'), 'najdorf');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      for (final (card, labels) in <(Finder, Set<String>)>[
+        (find.byKey(ValueKey('search-event-${_event.id}')), eventMenu),
+        (
+          find.byKey(const ValueKey('search-player-100005')),
+          // Rankings' row menu: the shared player menu, then the heart's.
+          const {'Open profile', 'Share profile', 'Add to favorites'},
+        ),
+        (
+          find.byKey(
+            ValueKey(
+              'opening-result-'
+              '${searchOpeningSuggestions('Najdorf', limit: 1).single.id}',
+            ),
+          ),
+          const {'Open smart event', 'Add to My Space'},
+        ),
+      ]) {
+        expect(card, findsOneWidget);
+        await tester.longPress(card);
+        await _frames(tester);
+        expect(_menuLabels(tester), labels);
+        // Closed by a tap on the veil.
+        await tester.tapAt(const Offset(4, 4));
+        await _frames(tester);
+      }
+      await app.dispose();
+    });
+  });
+
+  group('the sections\' sources', () {
+    test('Collections reads the catalog a page at a time, never the whole '
+        'of it', () async {
+      final repository = _PagedCollections(total: 90);
+      final container = ProviderContainer(
+        overrides: [
+          collectionsRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(searchCollectionsFeedProvider, (_, __) {});
+      expect(container.read(searchCollectionsFeedProvider).ready, isFalse);
+      await pumpEventQueue();
+      var feed = container.read(searchCollectionsFeedProvider);
+      expect(feed.items, hasLength(40));
+      expect(feed.hasMore, isTrue);
+      await container.read(searchCollectionsFeedProvider.notifier).loadMore();
+      await container.read(searchCollectionsFeedProvider.notifier).loadMore();
+      feed = container.read(searchCollectionsFeedProvider);
+      expect(repository.offsets, [0, 40, 80]);
+      expect(feed.items, hasLength(90));
+      expect(feed.hasMore, isFalse);
+    });
+
+    test('Coming up keeps every card it has listed when the upcoming view '
+        'is read again, and reads on from where it stopped', () async {
+      final read = [
+        for (var i = 0; i < searchUpcomingReadLimit; i++) _upcomingNumbered(i),
+      ];
+      final broadcasts = _Broadcasts();
+      final container = ProviderContainer(
+        overrides: [
+          searchUpcomingProvider.overrideWith((ref) async => List.of(read)),
+          searchLiveIdsKeyProvider.overrideWith((ref) => ''),
+          groupBroadcastRepositoryProvider.overrideWith((ref) => broadcasts),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(searchUpcomingProvider, (_, __) {});
+      container.listen(searchComingUpFeedProvider, (_, __) {});
+      await pumpEventQueue();
+      final notifier = container.read(searchComingUpFeedProvider.notifier);
+      expect(
+        container.read(searchComingUpFeedProvider).items,
+        hasLength(searchLandingUpcomingLimit),
+      );
+      await notifier.loadMore();
+      final listed = [
+        for (final event in container.read(searchComingUpFeedProvider).items)
+          event.id,
+      ];
+      expect(listed, hasLength(searchUpcomingReadLimit));
+
+      // Read again (one of them started, or the read grew old): the same
+      // events, a new read.
+      container.invalidate(searchUpcomingProvider);
+      await pumpEventQueue();
+      final feed = container.read(searchComingUpFeedProvider);
+      expect([for (final event in feed.items) event.id], listed);
+      expect(feed.hasMore, isTrue);
+      await container.read(searchComingUpFeedProvider.notifier).loadMore();
+      expect(broadcasts.upcomingOffsets, [searchUpcomingReadLimit]);
+    });
+
+    test('a page that lands after the source was read again is dropped, and '
+        'moves no cursor', () async {
+      final repository = _PagedCollections(total: 200)..hold = Completer();
+      final container = ProviderContainer(
+        overrides: [
+          collectionsRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(searchCollectionsFeedProvider, (_, __) {});
+      await pumpEventQueue();
+      // The first read is held; the source is read again meanwhile.
+      container.invalidate(searchCollectionsFeedProvider);
+      container.read(searchCollectionsFeedProvider);
+      repository.hold!.complete();
+      repository.hold = null;
+      await pumpEventQueue();
+      await container.read(searchCollectionsFeedProvider.notifier).loadMore();
+      expect(repository.offsets, [0, 0, 40]);
+      final ids = container
+          .read(searchCollectionsFeedProvider)
+          .items
+          .map((c) => c.id);
+      expect(ids, hasLength(80));
+      expect(ids.toSet(), hasLength(80));
+    });
+  });
 }
 
 /// Explanatory filler the landing must never show.
@@ -1503,6 +2602,12 @@ Future<_App> _pump(
   bool chrome = false,
   (String, Completer<EnhancedSearchResult>)? slowQuery,
   FavoriteEventsNotifier Function()? favorites,
+  List<Collection> collections = const [],
+  List<FeedNews> news = const [],
+  SearchNewsFeed Function()? newsFeed,
+  _Ranking? ranking,
+  bool reduceMotion = false,
+  EdgeInsets padding = EdgeInsets.zero,
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -1539,6 +2644,14 @@ Future<_App> _pump(
           builds?.upcoming++;
           return upcoming;
         }),
+        searchCollectionsFeedProvider.overrideWith(
+          () => _FixedCollections(collections),
+        ),
+        searchNewsFeedProvider.overrideWith(newsFeed ?? () => _FixedNews(news)),
+        searchOpeningCatalogLoaderProvider.overrideWithValue(
+          () async => searchOpeningCatalog(null),
+        ),
+        chessPlayerRepositoryProvider.overrideWithValue(ranking ?? _Ranking()),
         discoverySmartEventMembersProvider.overrideWith(
           (ref, criteria) async => const <GroupEventCardModel>[],
         ),
@@ -1576,6 +2689,12 @@ Future<_App> _pump(
       child: MaterialApp(
         theme: theme ?? AppTheme.darkTheme,
         navigatorObservers: [?observer],
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(disableAnimations: reduceMotion, padding: padding),
+          child: child!,
+        ),
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
@@ -1776,6 +2895,18 @@ final _upcomingEvent = GroupEventCardModel(
   endDate: DateTime.utc(2027, 6, 5),
 );
 
+final _secondUpcomingEvent = GroupEventCardModel(
+  id: 'up-2',
+  title: 'Tata Steel Chess 2027',
+  dates: 'Jan 15 - 31, 2027',
+  maxAvgElo: 2740,
+  timeUntilStart: '',
+  tourEventCategory: TourEventCategory.upcoming,
+  timeControl: 'Classical',
+  startDate: DateTime.utc(2027, 1, 15),
+  endDate: DateTime.utc(2027, 1, 31),
+);
+
 EnhancedSearchResult _playerResults(String name, int fideId) {
   final player = SearchPlayer(
     id: '$fideId',
@@ -1972,6 +3103,22 @@ class _Broadcasts implements GroupBroadcastRepository {
     '$id-tour',
   ];
 
+  /// The upcoming view past Coming up's first read: [upcomingPages] in turn.
+  final upcomingOffsets = <int?>[];
+  List<List<GroupBroadcast>> upcomingPages = const [];
+
+  @override
+  Future<List<GroupBroadcast>> getUpcomingGroupBroadcasts({
+    int? limit,
+    int? offset,
+    String orderBy = 'max_avg_elo',
+    bool ascending = false,
+  }) async {
+    upcomingOffsets.add(offset);
+    final page = upcomingOffsets.length - 1;
+    return page < upcomingPages.length ? upcomingPages[page] : const [];
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -1998,3 +3145,229 @@ final _resultsByQuery = {
   'nakamura': _playerResults('Nakamura, Hikaru', 2016192),
   'najdorf': _najdorfResults(),
 };
+
+/// Collections fixed at [items], the whole catalog in one page.
+class _FixedCollections extends SearchCollectionsFeed {
+  _FixedCollections(this.items);
+
+  final List<Collection> items;
+
+  @override
+  SearchFeed<Collection> build() => SearchFeed(items: items);
+}
+
+/// News starting at [first] with more to come: the next page fails once,
+/// then brings [next] and ends the stories.
+class _FlakyNews extends SearchNewsFeed {
+  _FlakyNews(this.first, this.next);
+
+  final List<FeedNews> first;
+  final List<FeedNews> next;
+  int reads = 0;
+
+  @override
+  SearchFeed<FeedNews> build() => SearchFeed(items: first, hasMore: true);
+
+  @override
+  Future<SearchFeedPage<FeedNews>> fetchPage(List<FeedNews> loaded) async {
+    reads++;
+    if (reads == 1) throw const SocketException('offline');
+    return SearchFeedPage(next, hasMore: false);
+  }
+}
+
+/// An event coming up, strongest first by [i], starting [i] days apart.
+GroupEventCardModel _upcomingNumbered(int i) => GroupEventCardModel(
+  id: 'up-n$i',
+  title: 'Upcoming Open $i',
+  dates: '',
+  maxAvgElo: 2700 - i,
+  timeUntilStart: '',
+  tourEventCategory: TourEventCategory.upcoming,
+  timeControl: 'Classical',
+  startDate: DateTime.utc(2027, 3, 1 + i),
+  endDate: DateTime.utc(2027, 3, 10 + i),
+);
+
+/// News fixed at [items], every story in one page.
+class _FixedNews extends SearchNewsFeed {
+  _FixedNews(this.items);
+
+  final List<FeedNews> items;
+
+  @override
+  SearchFeed<FeedNews> build() => SearchFeed(items: items);
+}
+
+/// The ranking on from the landing's head: [pages] answered in turn, each
+/// offset recorded; an empty page once they run out. [fail] fails the next
+/// read, once.
+class _Ranking implements ChessPlayerRepository {
+  _Ranking({this.pages = const []});
+
+  final List<List<ChessPlayer>> pages;
+  final offsets = <int>[];
+  Completer<void>? hold;
+  bool fail = false;
+
+  @override
+  Future<List<ChessPlayer>> getRankedPlayers({
+    required RankingFilters filters,
+    String? countryCode,
+    String searchQuery = '',
+    int limit = 30,
+    int offset = 0,
+    DateTime? now,
+  }) async {
+    offsets.add(offset);
+    final wait = hold;
+    if (wait != null) await wait.future;
+    if (fail) {
+      fail = false;
+      throw const SocketException('offline');
+    }
+    final page = offsets.length - 1;
+    return page < pages.length ? pages[page] : const <ChessPlayer>[];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A full page of ranked players, numbered from [from].
+List<ChessPlayer> _rankedPage(int from) => [
+  for (var i = 0; i < searchPlayersPageSize; i++)
+    ChessPlayer(
+      fideid: 9000000 + from + i,
+      name: 'Ranked, Player ${from + i}',
+      title: 'GM',
+      rating: 2700 - from - i,
+      country: 'NOR',
+    ),
+];
+
+final _collection = Collection(
+  id: 'book-1',
+  slug: 'my-sixty-memorable-games',
+  kind: CollectionKind.book,
+  title: 'My 60 Memorable Games',
+  author: 'Bobby Fischer',
+  gameCount: 60,
+  viewCount: 1200,
+  starCount: 40,
+);
+
+final _secondCollection = Collection(
+  id: 'book-2',
+  slug: 'zurich-1953',
+  kind: CollectionKind.book,
+  title: 'Zurich International Chess Tournament 1953',
+  author: 'David Bronstein',
+  gameCount: 210,
+  viewCount: 900,
+  starCount: 25,
+);
+
+final _story = FeedNews(
+  id: 7,
+  title: 'Carlsen wins the Champions Showdown',
+  summary: 'A clean sweep in the final round.',
+  content: 'A clean sweep in the final round.',
+  publishedAt: DateTime.utc(2026, 11, 18, 9),
+);
+
+final _secondStory = FeedNews(
+  id: 8,
+  title: 'Gukesh leads the Grand Swiss after round five',
+  summary: 'Three wins and two draws.',
+  content: 'Three wins and two draws.',
+  publishedAt: DateTime.utc(2026, 11, 17, 9),
+);
+
+/// Pumps [count] frames 16ms apart: a spring or a menu settles in that
+/// time, while a spinner elsewhere on the page keeps turning.
+Future<void> _frames(WidgetTester tester, [int count = 60]) async {
+  for (var i = 0; i < count; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+}
+
+/// The landing's own scroll position.
+ScrollPosition _landingPosition(WidgetTester tester) => tester
+    .state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('search_landing')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    )
+    .position;
+
+/// The scroll position of [section]'s row on the landing.
+ScrollPosition _rowPosition(WidgetTester tester, String section) => tester
+    .state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(PageStorageKey<String>('search-carousel-$section')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    )
+    .position;
+
+/// The rows of the open long-press menu, by label.
+Set<String> _menuLabels(WidgetTester tester) => {
+  for (final element in find.byWidgetPredicate((widget) {
+    final type = widget.runtimeType.toString();
+    return type == '_ActionRow' || type == '_ActionTile';
+  }).evaluate())
+    ((element.widget as dynamic).action as LibraryMenuAction).label,
+};
+
+/// The collections catalog, [total] books in pages of 40; each read's
+/// offset recorded, and held while [hold] is set. The whole catalog is
+/// never read.
+class _PagedCollections implements CollectionsRepository {
+  _PagedCollections({required this.total});
+
+  final int total;
+  final offsets = <int>[];
+  Completer<void>? hold;
+
+  @override
+  Future<CollectionsPage> searchBooks(
+    CollectionSearchQuery query,
+    int offset,
+  ) async {
+    offsets.add(offset);
+    final wait = hold;
+    if (wait != null) await wait.future;
+    final end = math.min(offset + 40, total);
+    return CollectionsPage(
+      items: [
+        for (var i = offset; i < end; i++)
+          Collection(
+            id: 'book-$i',
+            slug: 'book-$i',
+            kind: CollectionKind.book,
+            title: 'Book $i',
+            gameCount: 10,
+          ),
+      ],
+      total: total,
+      limit: 40,
+      offset: offset,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// The words of a section's See more or Show less ([key] after `search-`),
+/// where the control takes its taps.
+Finder _toggle(String key) => find.descendant(
+  of: find.byKey(ValueKey('search-$key')),
+  matching: find.byType(Text),
+);

@@ -839,11 +839,6 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
     final finished = _phase == _Phase.solved || _phase == _Phase.revealed;
     final triedSomething =
         finished || (_session?.step ?? 0) > 0 || _feedback != _Feedback.none;
-    final fontSize = feedRailFontSize(
-      context,
-      labels: const ['Hint', 'Retry', 'Solution', 'Next'],
-    );
-
     Widget action({
       required String key,
       required String label,
@@ -859,14 +854,11 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
           key: ValueKey(key),
           semanticsLabel: label,
           semanticsHint: hint,
+          springPress: true,
           onTap: onTap,
           child: Opacity(
             opacity: enabled ? 1 : 0.32,
-            child: FeedActionLabel(
-              label: label,
-              fontSize: fontSize,
-              glyphExtent: FeedLayout.railGlyph,
-              glyphGap: FeedLayout.railGlyphGap,
+            child: FeedRailMark(
               icon: FeedGlyph(
                 glyph,
                 width: FeedLayout.railGlyph,

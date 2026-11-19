@@ -30,9 +30,13 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     if (onPressed == null) {
       iconColor = context.colors.textPrimaryMuted;
     } else if (isActive) {
-      iconColor = context.colors.textPrimary; // Use white when active, like arrow buttons
+      iconColor = context
+          .colors
+          .textPrimary; // Use white when active, like arrow buttons
     } else {
-      iconColor = context.colors.textPrimaryMuted; // Use transparent white when inactive
+      iconColor = context
+          .colors
+          .textPrimaryMuted; // Use transparent white when inactive
     }
 
     final isTablet = ResponsiveHelper.isTablet;
@@ -44,16 +48,15 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       height: 1.0,
       leadingDistribution: TextLeadingDistribution.even,
       // A black drop under ink letters smudges on paper; dark keeps it.
-      shadows:
-          context.isLightTheme
-              ? null
-              : [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  offset: Offset(0, 1.sp),
-                  blurRadius: 2.sp,
-                ),
-              ],
+      shadows: context.isLightTheme
+          ? null
+          : [
+              Shadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                offset: Offset(0, 1.sp),
+                blurRadius: 2.sp,
+              ),
+            ],
     );
 
     final bool showDepth = depthText != null && depthText!.isNotEmpty;
@@ -63,13 +66,12 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     // On phone, use the original positioned layout
     if (isTablet && showDepth) {
       return GestureDetector(
-        onTap:
-            onPressed != null
-                ? () {
-                  HapticFeedbackService.buttonPress();
-                  onPressed!();
-                }
-                : null,
+        onTap: onPressed != null
+            ? () {
+                HapticFeedbackService.buttonPress();
+                onPressed!();
+              }
+            : null,
         onLongPress: onLongPress,
         // Absorb horizontal drags on tablet landscape to prevent PageView interference
         onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
@@ -104,13 +106,12 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     }
 
     return GestureDetector(
-      onTap:
-          onPressed != null
-              ? () {
-                HapticFeedbackService.buttonPress();
-                onPressed!();
-              }
-              : null,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onPressed!();
+            }
+          : null,
       onLongPress: onLongPress,
       // Absorb horizontal drags on tablet landscape to prevent PageView interference
       onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
@@ -179,15 +180,15 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
     return GestureDetector(
-      onTap:
-          onPressed != null
-              ? () {
-                HapticFeedbackService.buttonPress();
-                onPressed!();
-              }
-              : null,
-      onLongPressStart:
-          onLongPressStart != null ? (_) => onLongPressStart!() : null,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onPressed!();
+            }
+          : null,
+      onLongPressStart: onLongPressStart != null
+          ? (_) => onLongPressStart!()
+          : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
       // Absorb horizontal drags on tablet landscape to prevent PageView interference
@@ -264,7 +265,17 @@ class _UnseenMovesBadgeState extends State<_UnseenMovesBadge>
       begin: 0.3,
       end: 1.0,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduced motion keeps the badge steady.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
@@ -275,34 +286,30 @@ class _UnseenMovesBadgeState extends State<_UnseenMovesBadge>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
+    // The blink is a layer opacity: no frame of it rebuilds or repaints the
+    // bar around it.
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _animation,
+        child: Container(
           width: 8.w,
           height: 8.h,
           // Paper: the deeper danger red, and no bloom around it.
           decoration: BoxDecoration(
-            color:
-                context.isLightTheme
-                    ? context.colors.danger.withValues(alpha: _animation.value)
-                    : Colors.red.withValues(alpha: _animation.value),
+            color: context.isLightTheme ? context.colors.danger : Colors.red,
             shape: BoxShape.circle,
-            boxShadow:
-                context.isLightTheme
-                    ? null
-                    : [
-                      BoxShadow(
-                        color: Colors.red.withValues(
-                          alpha: _animation.value * 0.5,
-                        ),
-                        blurRadius: 3,
-                        spreadRadius: 1,
-                      ),
-                    ],
+            boxShadow: context.isLightTheme
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.red.withValues(alpha: 0.5),
+                      blurRadius: 3,
+                      spreadRadius: 1,
+                    ),
+                  ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -320,13 +327,12 @@ class ChessIconBottomNavbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap:
-          onPressed != null
-              ? () {
-                HapticFeedbackService.buttonPress();
-                onPressed!();
-              }
-              : null,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onPressed!();
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.all(8.sp),
         child: Icon(iconData, size: 24.ic),
