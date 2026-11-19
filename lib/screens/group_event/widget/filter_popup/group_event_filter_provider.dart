@@ -49,23 +49,14 @@ class _GroupEventFilterController {
     return EventFormat.values.map((e) => e.name).toList();
   }
 
-  List<String> getReadableGameState() {
-    return EventStatus.values.map((e) => e.caption).toList();
-  }
-
-  List<String> getGameState() {
-    return EventStatus.values.map((e) => e.name).toList();
-  }
-
   Future<List<GroupBroadcast>> applyAllFilters({
     List<String>? filters,
     required RangeValues eloRange,
     required GroupEventCategory tournamentCategory,
   }) async {
-    final groupBroadcast =
-        await ref
-            .read(groupBroadcastLocalStorage(tournamentCategory))
-            .getGroupBroadcasts();
+    final groupBroadcast = await ref
+        .read(groupBroadcastLocalStorage(tournamentCategory))
+        .getGroupBroadcasts();
 
     // Fetch live IDs once (avoid per-item await)
     final liveIds = await ref.read(liveGroupBroadcastIdsProvider.future);

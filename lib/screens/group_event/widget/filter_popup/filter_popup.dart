@@ -26,11 +26,10 @@ class FilterPopup extends ConsumerWidget {
         .read(groupEventFilterProvider)
         .getReadableFormats();
     final formats = ref.read(groupEventFilterProvider).getFormats();
-    final readableGameState = ref
-        .read(groupEventFilterProvider)
-        .getReadableGameState();
-    final gameStates = ref.read(groupEventFilterProvider).getGameState();
 
+    // No Event Status section: Today and Events both float Live first
+    // (`LiveFirstCapsule`), which puts live events first without hiding the
+    // rest.
     return FilterPopupFrame(
       onReset: () {
         onResetFilters();
@@ -41,16 +40,6 @@ class FilterPopup extends ConsumerWidget {
         Navigator.of(context).pop();
       },
       sections: [
-        FilterSectionLabel('Event Status'),
-        SizedBox(height: 8.h),
-        FilterChoiceGrid<String>(
-          values: gameStates,
-          label: (value) => readableGameState[gameStates.indexOf(value)],
-          isSelected: filterState.formatsAndStates.contains,
-          onTap: (value) =>
-              ref.read(filterPopupProvider.notifier).toggleFormatOrState(value),
-        ),
-        SizedBox(height: 20.h),
         FilterSectionLabel('Time Control'),
         SizedBox(height: 8.h),
         FilterChoiceGrid<String>(

@@ -199,7 +199,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(FilterPopupFrame), findsOneWidget);
-    expect(find.byType(FilterChoiceGrid<String>), findsNWidgets(2));
+    // Time Control only: Live first replaced the Event Status chips.
+    expect(find.byType(FilterChoiceGrid<String>), findsOneWidget);
+    expect(find.text('Event Status'), findsNothing);
+    expect(find.text('Time Control'), findsOneWidget);
 
     final applyButton = find.widgetWithText(ElevatedButton, 'Apply Filters');
     expect(applyButton, findsOneWidget);
