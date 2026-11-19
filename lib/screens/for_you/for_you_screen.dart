@@ -488,8 +488,8 @@ class ForYouPageTabs extends StatelessWidget {
     final colors = context.colors;
     // One line at any text size: scaled down rather than wrapped, so a long
     // label at a large text scale never breaks the row. The selected label
-    // is a root title ([HomeTopBarTitle]); the others step back in ink and
-    // weight only.
+    // is a root title ([HomeTopBarTitle]); the others step back in weight
+    // only, all in the same bright ink.
     final style = HomeTopBarTitle.style(context);
     final height = HomeTopBarMetrics.rowExtent(context);
     return MediaQuery.withClampedTextScaling(
@@ -554,9 +554,10 @@ class ForYouPageTabs extends StatelessWidget {
                                       maxLines: 1,
                                       softWrap: false,
                                       style: style.copyWith(
-                                        color: i == selectedIndex
-                                            ? colors.textPrimary
-                                            : colors.textSecondary,
+                                        // Every title stays bright: the
+                                        // underline alone says which page
+                                        // shows (PM, 2026-11-20).
+                                        color: colors.textPrimary,
                                         fontWeight: i == selectedIndex
                                             ? FontWeight.w700
                                             : FontWeight.w500,
