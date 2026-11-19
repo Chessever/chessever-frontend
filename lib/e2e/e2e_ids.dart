@@ -25,7 +25,6 @@ class E2eIds {
   /// The Profile tab's page, which holds what the sidebar used to.
   static const profileRoot = 'e2e_profile_root';
   static const profileEvents = 'e2e_profile_events';
-  static const profileCollections = 'e2e_profile_collections';
   static const searchRoot = 'e2e_search_root';
 
   static const drawerSettings = 'e2e_drawer_settings';

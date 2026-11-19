@@ -5,7 +5,6 @@ import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
-import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -63,7 +62,8 @@ const CupertinoMotion _scrollTopMotion = CupertinoMotion.smooth(
 final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
 
 /// The Profile tab: the reader, then everything the sidebar used to hold
-/// and the two sections that left the bottom bar (Events, Collections).
+/// and Events, which left the bottom bar. Collections (Discovery, Search)
+/// and Botvinnik (the bar) have homes of their own and no row here.
 ///
 /// One quiet page in My Profile's language under the bar every root wears
 /// ([HomeTopBarFrame], its name set as every root's is): the reader at the
@@ -80,7 +80,6 @@ class ProfileHubScreen extends HookConsumerWidget {
     // Home's tabs.
     final side = HomeTopBarMetrics.horizontalPadding;
     final inbox = ref.watch(inboxAvailableProvider);
-    final botvinnik = ref.watch(botvinnikTabAvailableProvider);
     final unread = ref.watch(inboxHasUnreadProvider);
     final scroll = useScrollController();
 
@@ -112,24 +111,6 @@ class ProfileHubScreen extends HookConsumerWidget {
         mark: _svgMark(context, SvgAsset.tournamentIcon),
         onTap: () => openEventsScreen(context),
       ),
-      _HubRow(
-        key: e2eKey(E2eIds.profileCollections),
-        title: 'Collections',
-        dotId: 'home.nav.collections',
-        mark: _svgMark(context, 'assets/svgs/collections_nav.svg'),
-        onTap: () => CollectionsScreen.open(context),
-      ),
-      if (botvinnik)
-        _HubRow(
-          key: const ValueKey('profile-botvinnik'),
-          title: 'Botvinnik',
-          mark: _svgMark(context, SvgAsset.botvinnikNavIcon),
-          onTap: () => selectBottomNavBarItem(
-            ref,
-            BottomNavBarItem.botvinnik,
-            navigationType: 'profile',
-          ),
-        ),
       if (inbox)
         _HubRow(
           key: const ValueKey('profile-inbox'),

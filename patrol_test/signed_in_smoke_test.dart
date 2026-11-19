@@ -4,6 +4,7 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
+import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
@@ -43,15 +44,12 @@ void main() {
       final seed = await seedBaselineData($);
 
       try {
-        // Home opens on For You. Collections and Events live on Profile;
-        // Library remains available as its own pushed route.
+        // Home opens on For You. Events lives on Profile; Collections
+        // (Discovery, Search) and Library open as their own pushed routes.
         await expectVisible($, E2eIds.forYouRoot);
 
-        await openProfileDestination(
-          $,
-          itemId: E2eIds.profileCollections,
-          expectedRoot: E2eIds.collectionsRoot,
-        );
+        await pushWidgetRoute($, const CollectionsScreen());
+        await expectVisible($, E2eIds.collectionsRoot);
         await popRoute($);
         await pushNamedRoute($, '/library_screen');
         await expectVisible($, E2eIds.libraryRoot);
