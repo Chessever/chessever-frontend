@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/standings/providers/scorecard_combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
@@ -864,6 +865,64 @@ void main() {
       ];
       expect(pairings, hasLength(8));
       expect(pairings.toSet(), hasLength(8));
+    });
+
+    test('Combined scorecard includes both stages and omits the mirror', () {
+      final card = assembleCombinedScorecardGames(
+        categories: const CombinedCategories([
+          CombinedCategory(
+            tourId: 'A',
+            label: 'Group stage',
+            avgElo: 2700,
+            order: 0,
+          ),
+          CombinedCategory(
+            tourId: 'B',
+            label: 'Semifinals',
+            avgElo: 2750,
+            order: 1,
+          ),
+          CombinedCategory(
+            tourId: 'Copy',
+            label: 'Mirror',
+            avgElo: 2700,
+            order: 2,
+          ),
+        ]),
+        gamesByTour: {'A': a, 'B': b, 'Copy': copyOf(a, 'Copy')},
+        roundsByTour: {
+          ...schedule(['A', 'B']),
+          'Copy': [
+            _round('Copy-r1', 'Copy', 'Round 1', r1),
+            _round('Copy-r2', 'Copy', 'Round 2', r2),
+          ],
+        },
+        complete: true,
+        loading: false,
+      );
+      expect(card.stageLabels.keys, ['A', 'B']);
+      expect(
+        card.games.map((game) => game.gameId),
+        [...a, ...b].map((game) => game.gameId),
+      );
+      expect(
+        useScorecardSourceScore(
+          combined: true,
+          sourcePlayed: 15,
+          finishedGames: 15,
+          sourceScore: 23,
+        ),
+        isFalse,
+      );
+      expect(
+        useScorecardSourceScore(
+          combined: false,
+          sourcePlayed: 15,
+          finishedGames: 15,
+          sourceScore: 23,
+        ),
+        isTrue,
+      );
     });
 
     test('of two identical sections the first in rank stays', () {

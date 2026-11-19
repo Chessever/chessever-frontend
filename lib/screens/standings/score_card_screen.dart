@@ -17,6 +17,7 @@ import 'package:chessever2/screens/standings/providers/player_ratings_provider.d
     show AllRatingsRequest, allRatingsProvider;
 import 'package:chessever2/screens/standings/providers/twic_scorecard_event_games_provider.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/standings/providers/scorecard_combined_games_provider.dart';
 import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
 import 'package:chessever2/screens/standings/utils/player_event_share_utils.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
@@ -41,6 +42,7 @@ import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -107,10 +109,9 @@ final scoreCardPlayerProfileDataSourceProvider =
 final scoreCardStandingsProvider =
     Provider.autoDispose<AsyncValue<List<PlayerStandingModel>>>((ref) {
       final gamesContext = ref.watch(scoreCardGamesContextProvider);
-      final tourId =
-          gamesContext == null || gamesContext.isEmpty
-              ? ''
-              : gamesContext.first.tourId.trim();
+      final tourId = gamesContext == null || gamesContext.isEmpty
+          ? ''
+          : gamesContext.first.tourId.trim();
       if (tourId.isNotEmpty &&
           ref.watch(selectedBroadcastModelProvider) != null &&
           ref.watch(combinedOtherCategoryProvider(tourId))) {
@@ -127,8 +128,9 @@ enum ScoreCardSwipeDirection { previous, next }
 /// with every board from the tapped tournament.
 ({ChessboardView viewSource, BoardNavigationListPolicy listPolicy})
 scoreCardGameNavigationContext({required bool hasEventContext}) => (
-  viewSource:
-      hasEventContext ? ChessboardView.tour : ChessboardView.favScorecard,
+  viewSource: hasEventContext
+      ? ChessboardView.tour
+      : ChessboardView.favScorecard,
   listPolicy: BoardNavigationListPolicy.preserve,
 );
 
@@ -206,45 +208,48 @@ PlayerStandingModel? adjacentScoreCardPlayerForSwipe({
   return players[targetIndex];
 }
 
-final playerGamesProvider = FutureProvider.family<
-  List<GamesTourModel>,
-  PlayerStandingModel
->((ref, player) async {
-  try {
-    final gameRepo = ref.read(gameRepositoryProvider);
-
-    List<dynamic> games = [];
-
-    if (player.fideId != null) {
+final playerGamesProvider =
+    FutureProvider.family<List<GamesTourModel>, PlayerStandingModel>((
+      ref,
+      player,
+    ) async {
       try {
-        games = await gameRepo.getGamesByFideId(
-          player.fideId.toString(),
-          limit: 50,
-        );
+        final gameRepo = ref.read(gameRepositoryProvider);
+
+        List<dynamic> games = [];
+
+        if (player.fideId != null) {
+          try {
+            games = await gameRepo.getGamesByFideId(
+              player.fideId.toString(),
+              limit: 50,
+            );
+          } catch (e) {
+            debugPrint('Error fetching by fideId: $e');
+          }
+        }
+
+        if (games.isEmpty) {
+          games = await gameRepo.getGamesByPlayerName(player.name, limit: 50);
+        }
+        var allGames = games
+            .map((game) => GamesTourModel.fromGame(game))
+            .toList();
+
+        // Sort by date (descending) - most recent games first
+        final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
+        allGames.sort((a, b) {
+          final aTime = a.lastMoveTime ?? epochFallback;
+          final bTime = b.lastMoveTime ?? epochFallback;
+          return bTime.compareTo(aTime);
+        });
+
+        return allGames;
       } catch (e) {
-        debugPrint('Error fetching by fideId: $e');
+        debugPrint('Error: $e');
+        return [];
       }
-    }
-
-    if (games.isEmpty) {
-      games = await gameRepo.getGamesByPlayerName(player.name, limit: 50);
-    }
-    var allGames = games.map((game) => GamesTourModel.fromGame(game)).toList();
-
-    // Sort by date (descending) - most recent games first
-    final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-    allGames.sort((a, b) {
-      final aTime = a.lastMoveTime ?? epochFallback;
-      final bTime = b.lastMoveTime ?? epochFallback;
-      return bTime.compareTo(aTime);
     });
-
-    return allGames;
-  } catch (e) {
-    debugPrint('Error: $e');
-    return [];
-  }
-});
 
 /// Turns a Lichess-style event slug (e.g. `45th-chess-olympiad-2024--open`)
 /// into a readable title (`45th Chess Olympiad 2024 Open`). Used as the last
@@ -252,12 +257,11 @@ final playerGamesProvider = FutureProvider.family<
 /// so the share card shows the real event instead of a generic placeholder.
 String? _humanizeEventSlug(String? slug) {
   if (slug == null) return null;
-  final words =
-      slug
-          .split(RegExp(r'[-_]+'))
-          .where((w) => w.isNotEmpty)
-          .map((w) => w[0].toUpperCase() + w.substring(1))
-          .toList();
+  final words = slug
+      .split(RegExp(r'[-_]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .toList();
   final title = words.join(' ').trim();
   return title.isEmpty ? null : title;
 }
@@ -352,7 +356,7 @@ class _ScoreCardScreenState extends ConsumerState<ScoreCardScreen> {
 
 /// A single player's scorecard page. Rendered directly (single-player contexts)
 /// or as one page inside [ScoreCardScreen]'s PageView.
-class _ScoreCardPage extends ConsumerWidget {
+class _ScoreCardPage extends HookConsumerWidget {
   const _ScoreCardPage({
     required this.player,
     this.isActive = true,
@@ -390,18 +394,17 @@ class _ScoreCardPage extends ConsumerWidget {
   double? _extractRatingFromPGN(String? pgn, bool isWhite) {
     if (pgn == null || pgn.isEmpty) return null;
 
-    final patterns =
-        isWhite
-            ? [
-              RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),
-              RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),
-              RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),
-            ]
-            : [
-              RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),
-              RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),
-              RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),
-            ];
+    final patterns = isWhite
+        ? [
+            RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),
+            RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),
+            RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),
+          ]
+        : [
+            RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),
+            RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),
+            RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),
+          ];
 
     for (final pattern in patterns) {
       final match = pattern.firstMatch(pgn);
@@ -445,6 +448,7 @@ class _ScoreCardPage extends ConsumerWidget {
     bool isWhite,
     GamesTourModel game, {
     int? fideK,
+    String? ratingPool,
   }) {
     double actualScore;
 
@@ -469,7 +473,7 @@ class _ScoreCardPage extends ConsumerWidget {
     final fallbackKFactor = scoreCardFallbackKFactorForSelectedRating(
       effectivePlayerRating,
       title: playerTitle,
-      timeControl: ratingPoolForGame(game),
+      timeControl: ratingPool ?? ratingPoolForGame(game),
     );
 
     return calculateFideRatingChange(
@@ -529,8 +533,8 @@ class _ScoreCardPage extends ConsumerWidget {
         selectedBroadcast != null || explicitEventContext;
     final String? contextTourId =
         gamesContext != null && gamesContext.isNotEmpty
-            ? gamesContext.first.tourId
-            : null;
+        ? gamesContext.first.tourId
+        : null;
     final contextEvent = contextTourId?.trim();
     final playerGamebaseId = player.gamebasePlayerId?.trim();
     // Always prefer explicit game context tourId when present.
@@ -554,7 +558,52 @@ class _ScoreCardPage extends ConsumerWidget {
         selectedBroadcast != null &&
         ref.watch(combinedOtherCategoryProvider(contextEvent));
 
-    if (shouldFetchFullTwicEventGames) {
+    final fromHome =
+        hasExplicitContextEvent &&
+        profileDataSource == PlayerProfileDataSource.supabase &&
+        ref.watch(chessboardViewFromProviderNew) == ChessboardView.forYou;
+    final homeCategories = fromHome
+        ? ref.watch(homeScorecardCombinedCategoriesProvider(contextEvent))
+        : null;
+    final openCategories =
+        !fromHome &&
+            selectedBroadcast != null &&
+            profileDataSource == PlayerProfileDataSource.supabase &&
+            ref.watch(combinedTabActiveProvider)
+        ? ref.watch(combinedCategoriesProvider)
+        : CombinedCategories.none;
+    final categories = fromHome
+        ? homeCategories?.valueOrNull ?? CombinedCategories.none
+        : openCategories;
+    final isCombined =
+        categories.canCombine &&
+        (fromHome ||
+            contextEvent == null ||
+            categories.tourIds.contains(contextEvent));
+    final combined = isCombined
+        ? ref.watch(combinedScorecardGamesProvider(categories))
+        : null;
+    final stageLabels = combined?.stageLabels ?? const <String, String>{};
+    String? formatForGame(GamesTourModel game) => scorecardFormatForGame(
+      game,
+      roundName: combined?.roundNames[game.roundId],
+      stageName:
+          stageLabels[game.tourId] ??
+          (game.tourSlug?.toLowerCase().contains('tiebreak') == true
+              ? game.tourSlug
+              : null),
+    );
+    final stageOrder = {
+      for (final (index, id) in stageLabels.keys.indexed) id: index,
+    };
+    var homeCatalogComplete = !fromHome;
+
+    if (combined != null) {
+      allGames = combined.games;
+      isLoadingGames = combined.loading && allGames.isEmpty;
+    } else if (homeCategories?.isLoading == true) {
+      isLoadingGames = true;
+    } else if (shouldFetchFullTwicEventGames) {
       // TWIC event context: fetch full player event history from backend.
       final request = TwicScorecardEventGamesRequest(
         playerId: playerGamebaseId,
@@ -583,11 +632,15 @@ class _ScoreCardPage extends ConsumerWidget {
       // If the merged provider is empty, we still want to check if the
       // underlying data is loading to show the skeleton loader
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
-      final selectedTourId =
-          ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel.id;
+      final selectedTourId = ref
+          .watch(tourDetailScreenProvider)
+          .valueOrNull
+          ?.aboutTourModel
+          .id;
       if (selectedTourId != null) {
-        isLoadingGames =
-            ref.watch(completeGamesTourProvider(selectedTourId)).isLoading;
+        isLoadingGames = ref
+            .watch(completeGamesTourProvider(selectedTourId))
+            .isLoading;
       }
 
       allGames = gamesTourAsync.when(
@@ -619,12 +672,13 @@ class _ScoreCardPage extends ConsumerWidget {
       final fullGamesAsync = ref.watch(completeGamesTourProvider(contextEvent));
       allGames = fullGamesAsync.when(
         data: (games) {
+          homeCatalogComplete = true;
           final converted = _toGamesTourModels(games);
           return converted.isNotEmpty ? converted : (gamesContext ?? []);
         },
         loading: () {
           isLoadingGames = true;
-          return gamesContext ?? [];
+          return fromHome ? [] : (gamesContext ?? []);
         },
         error: (_, __) => gamesContext ?? [],
       );
@@ -648,22 +702,21 @@ class _ScoreCardPage extends ConsumerWidget {
     final playerUtils = ref.read(playerUtilsProvider);
 
     // Filter games for the selected player
-    final filteredGames =
-        allGames.where((game) {
-          // Use fideId matching when available (more reliable), fall back to name matching
-          return playerUtils.isSamePlayerWithFideId(
-                game.whitePlayer.name,
-                player.name,
-                fideId1: game.whitePlayer.fideId,
-                fideId2: player.fideId,
-              ) ||
-              playerUtils.isSamePlayerWithFideId(
-                game.blackPlayer.name,
-                player.name,
-                fideId1: game.blackPlayer.fideId,
-                fideId2: player.fideId,
-              );
-        }).toList();
+    final filteredGames = allGames.where((game) {
+      // Use fideId matching when available (more reliable), fall back to name matching
+      return playerUtils.isSamePlayerWithFideId(
+            game.whitePlayer.name,
+            player.name,
+            fideId1: game.whitePlayer.fideId,
+            fideId2: player.fideId,
+          ) ||
+          playerUtils.isSamePlayerWithFideId(
+            game.blackPlayer.name,
+            player.name,
+            fideId1: game.blackPlayer.fideId,
+            fideId2: player.fideId,
+          );
+    }).toList();
 
     // Deduplicate games by gameId, preferring entries with more complete data
     // This handles cases where the same game appears multiple times with different
@@ -692,8 +745,9 @@ class _ScoreCardPage extends ConsumerWidget {
               fideId1: existing.whitePlayer.fideId,
               fideId2: player.fideId,
             );
-        final existingOpponent =
-            existingIsWhite ? existing.blackPlayer : existing.whitePlayer;
+        final existingOpponent = existingIsWhite
+            ? existing.blackPlayer
+            : existing.whitePlayer;
 
         // Calculate data quality score: rating > 0, federation not empty, title not empty
         int newScore = 0;
@@ -721,6 +775,12 @@ class _ScoreCardPage extends ConsumerWidget {
       // Sort by round number ascending - Round 1 first, then Round 2, etc.
       final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
       playerGames.sort((a, b) {
+        if (isCombined) {
+          final stage = (stageOrder[a.tourId] ?? 9999).compareTo(
+            stageOrder[b.tourId] ?? 9999,
+          );
+          if (stage != 0) return stage;
+        }
         final aRound =
             _extractRoundNumber(a.roundSlug) ??
             _extractRoundNumber(a.roundId) ??
@@ -770,6 +830,55 @@ class _ScoreCardPage extends ConsumerWidget {
     double? eventScore;
     int? eventTotalGames;
 
+    final visiblePools = <String>{};
+    if (hasEventContext) {
+      // Include scheduled formats from the relevant stage, even when a
+      // player's games for a format were forfeited or not yet played.
+      final playerTourIds = playerGames.map((game) => game.tourId).toSet();
+      for (final game in allGames) {
+        if (!playerTourIds.contains(game.tourId)) continue;
+        final pool = formatForGame(game);
+        if (pool != null) visiblePools.add(pool);
+      }
+    }
+    final mixedFormats = visiblePools.length > 1;
+    final eventFormatPool =
+        !isLoadingGames &&
+            (combined?.complete ?? homeCatalogComplete) &&
+            visiblePools.length == 1
+        ? visiblePools.single
+        : null;
+    final filterScope = (player.fideId, player.name, contextEvent, isCombined);
+    final selection = useState<({Object scope, String pool})?>(null);
+    final gameFormats = mixedFormats
+        ? playerGames.map(formatForGame).toList(growable: false)
+        : const <String?>[];
+    final selectedPool =
+        selection.value?.scope == filterScope &&
+            gameFormats.contains(selection.value?.pool)
+        ? selection.value?.pool
+        : null;
+    final visibleIndices = [
+      for (var i = 0; i < playerGames.length; i++)
+        if (selectedPool == null || gameFormats[i] == selectedPool) i,
+    ];
+    final visibleGames = selectedPool == null
+        ? playerGames
+        : [for (final i in visibleIndices) playerGames[i]];
+
+    VoidCallback? onRatingBoxTap(String pool) {
+      if (!mixedFormats) {
+        return () => _navigateToPlayerProfile(context, ref, player);
+      }
+      if (!gameFormats.contains(pool)) return null;
+      return () => selection.value = selectedPool == pool
+          ? null
+          : (scope: filterScope, pool: pool);
+    }
+
+    final hasArmageddon = hasEventContext && playerGames.any(isArmageddonGame);
+    final ratedForView = <ScorecardRatedResult>[];
+    var eventGamesComplete = false;
     if (hasEventContext) {
       final opponentRatings = <double>[];
       final pools = <String>{};
@@ -800,7 +909,9 @@ class _ScoreCardPage extends ConsumerWidget {
           whiteCustomPoints: game.whitePlayer.customPoints,
           blackCustomPoints: game.blackPlayer.customPoints,
         );
-        calculatedScore += isWhite ? points.white : points.black;
+        calculatedScore += isCombined
+            ? (isWhite ? whiteScore : blackScore)
+            : (isWhite ? points.white : points.black);
         standardScore += isWhite ? whiteScore : blackScore;
         pools.add(ratingPoolForGame(game));
         final opponentRating = _getPlayerRatingForSide(game, !isWhite);
@@ -808,16 +919,53 @@ class _ScoreCardPage extends ConsumerWidget {
           canCalculatePerformance = false;
         }
         opponentRatings.add(opponentRating);
+        final pool = mixedFormats || hasArmageddon || isCombined
+            ? formatForGame(game)
+            : null;
+        if (pool != null &&
+            (selectedPool == null || selectedPool == pool) &&
+            isScorecardRatedGame(game)) {
+          final ownRating = _getPlayerRatingForSide(game, isWhite);
+          ratedForView.add((
+            opponentRating: opponentRating,
+            score: isWhite ? whiteScore : blackScore,
+            ratingChange: ownRating > 0 && opponentRating > 0
+                ? _calculateFideRatingChange(
+                    ownRating,
+                    opponentRating,
+                    game.gameStatus,
+                    isWhite,
+                    game,
+                    fideK: playerRatings?.getK(pool),
+                    ratingPool: pool,
+                  )
+                : null,
+          ));
+        }
       }
       final sourceScore = _parseScoreValues(player.matchScore ?? '');
       final sourcePlayed = sourceScore.$2 ?? 0;
+      eventGamesComplete =
+          combined?.complete ??
+          (homeCatalogComplete && sourcePlayed <= finishedGames);
       // Source scores include byes and scoring adaptations that may not exist
       // on individual boards. Only use the game total when it is newer.
-      final sourceCoversGames =
-          sourcePlayed >= finishedGames && sourceScore.$1 != null;
-      eventScore = sourceCoversGames ? sourceScore.$1 : calculatedScore;
-      eventTotalGames = sourceCoversGames ? sourcePlayed : finishedGames;
-      if (canCalculatePerformance &&
+      final sourceCoversGames = useScorecardSourceScore(
+        combined: isCombined,
+        sourcePlayed: sourcePlayed,
+        finishedGames: finishedGames,
+        sourceScore: sourceScore.$1,
+      );
+      if (homeCatalogComplete || combined?.complete == true) {
+        if (!isCombined || combined?.complete == true) {
+          eventScore = sourceCoversGames ? sourceScore.$1 : calculatedScore;
+          eventTotalGames = sourceCoversGames ? sourcePlayed : finishedGames;
+        }
+      }
+      if (!mixedFormats &&
+          !isCombined &&
+          homeCatalogComplete &&
+          canCalculatePerformance &&
           pools.length == 1 &&
           sourcePlayed <= finishedGames) {
         performanceRating = calculateFidePerformanceRating(
@@ -826,6 +974,14 @@ class _ScoreCardPage extends ConsumerWidget {
         );
       }
     }
+    // Exclude Armageddon without discarding the event's other results.
+    final formatStats = selectedPool != null || eventGamesComplete
+        ? summarizeScorecardFormat(ratedForView)
+        : null;
+    if (!mixedFormats && (hasArmageddon || isCombined)) {
+      performanceRating = formatStats?.performance;
+    }
+
     // When !hasEventContext: performanceRating, eventScore, eventTotalGames remain null
     final photoFuture = FidePhotoService.getPhotoUrlOrNull(
       player.fideId?.toString(),
@@ -834,8 +990,10 @@ class _ScoreCardPage extends ConsumerWidget {
     // Prefer the broadcast name, then the tour's aboutTourModel name, then a
     // readable title derived from the player's games' tour slug — so the share
     // card shows the real event name instead of a generic placeholder.
-    final aboutModel =
-        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
+    final aboutModel = ref
+        .read(tourDetailScreenProvider)
+        .valueOrNull
+        ?.aboutTourModel;
     final eventName =
         selectedBroadcast?.name ??
         aboutModel?.name ??
@@ -844,10 +1002,9 @@ class _ScoreCardPage extends ConsumerWidget {
         );
     // Scorecard share link encodes this player so opening it pushes the event
     // and then this player's scorecard (and renders the player card on the web).
-    final eventShareId =
-        aboutModel?.groupBroadcastId?.isNotEmpty == true
-            ? aboutModel!.groupBroadcastId!
-            : (aboutModel?.id ?? selectedBroadcast?.id);
+    final eventShareId = aboutModel?.groupBroadcastId?.isNotEmpty == true
+        ? aboutModel!.groupBroadcastId!
+        : (aboutModel?.id ?? selectedBroadcast?.id);
     final playerShareUrl = buildPlayerEventShareUrl(
       hasEventContext: hasEventContext,
       canonicalEventId: eventShareId,
@@ -855,8 +1012,9 @@ class _ScoreCardPage extends ConsumerWidget {
       tourId: aboutModel?.id,
       tourSlug: aboutModel?.slug,
       contextTourId: contextEvent,
-      contextTourSlug:
-          playerGames.isNotEmpty ? playerGames.first.tourSlug : null,
+      contextTourSlug: playerGames.isNotEmpty
+          ? playerGames.first.tourSlug
+          : null,
       playerFideId: player.fideId,
     );
     final shareRows = _buildPlayerEventShareRows(
@@ -865,8 +1023,14 @@ class _ScoreCardPage extends ConsumerWidget {
       playerUtils: playerUtils,
       playerRatings: playerRatings,
       hasEventContext: hasEventContext,
+      formatForGame: formatForGame,
     );
-    final eventRatingDiff = hasEventContext
+    final eventRatingDiff =
+        hasEventContext &&
+            !mixedFormats &&
+            !hasArmageddon &&
+            !isCombined &&
+            homeCatalogComplete
         ? resolvePlayerEventRatingDiff(
             rows: shareRows,
             preferSource:
@@ -887,6 +1051,8 @@ class _ScoreCardPage extends ConsumerWidget {
                 ? player.scoreChange
                 : null,
           )
+        : !mixedFormats && (hasArmageddon || isCombined)
+        ? formatStats?.ratingDiff
         : null;
     Future<void> sharePlayerProfile() => _sharePlayerEventProfile(
       context: context,
@@ -969,50 +1135,42 @@ class _ScoreCardPage extends ConsumerWidget {
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      child: _RatingDisplay(
+                                      child: ScorecardRatingDisplay(
                                         label: 'Classical',
                                         playerName: player.name,
                                         fideId: player.fideId,
                                         timeControlType: "standard",
                                         assetPath: PngAsset.classicalIcon,
-                                        onTap:
-                                            () => _navigateToPlayerProfile(
-                                              context,
-                                              ref,
-                                              player,
-                                            ),
+                                        eventFormat:
+                                            eventFormatPool == 'standard',
+                                        selected: selectedPool == 'standard',
+                                        onTap: onRatingBoxTap('standard'),
                                       ),
                                     ),
                                     SizedBox(width: ratingBoxGap),
                                     Expanded(
-                                      child: _RatingDisplay(
+                                      child: ScorecardRatingDisplay(
                                         label: 'Rapid',
                                         playerName: player.name,
                                         fideId: player.fideId,
                                         timeControlType: "rapid",
                                         assetPath: PngAsset.rapidIcon,
-                                        onTap:
-                                            () => _navigateToPlayerProfile(
-                                              context,
-                                              ref,
-                                              player,
-                                            ),
+                                        eventFormat: eventFormatPool == 'rapid',
+                                        selected: selectedPool == 'rapid',
+                                        onTap: onRatingBoxTap('rapid'),
                                       ),
                                     ),
                                     SizedBox(width: ratingBoxGap),
                                     Expanded(
-                                      child: _RatingDisplay(
+                                      child: ScorecardRatingDisplay(
                                         label: 'Blitz',
                                         playerName: player.name,
                                         fideId: player.fideId,
                                         timeControlType: "blitz",
                                         assetPath: PngAsset.blitzIcon,
-                                        onTap:
-                                            () => _navigateToPlayerProfile(
-                                              context,
-                                              ref,
-                                              player,
-                                            ),
+                                        eventFormat: eventFormatPool == 'blitz',
+                                        selected: selectedPool == 'blitz',
+                                        onTap: onRatingBoxTap('blitz'),
                                       ),
                                     ),
                                   ],
@@ -1022,28 +1180,35 @@ class _ScoreCardPage extends ConsumerWidget {
                           ],
                         ),
                         SizedBox(height: 12.h),
-                        GestureDetector(
-                          onTap:
-                              () => _navigateToPlayerProfile(
-                                context,
-                                ref,
-                                player,
-                              ),
-                          child: PerformanceStatsRow(
-                            performanceRating: performanceRating,
-                            score: eventScore,
-                            totalGames: eventTotalGames,
-                            ratingDiff: eventRatingDiff,
+                        if (mixedFormats)
+                          PerformanceStatsRow(
+                            score: selectedPool == null
+                                ? eventScore
+                                : formatStats?.score,
+                            totalGames: selectedPool == null
+                                ? eventTotalGames
+                                : (formatStats?.totalGames ?? 0) > 0
+                                ? formatStats?.totalGames
+                                : null,
+                            performanceRating: formatStats?.performance,
+                            ratingDiff: formatStats?.ratingDiff,
+                            showCombinedEstimates: selectedPool == null,
+                          )
+                        else
+                          GestureDetector(
+                            onTap: () =>
+                                _navigateToPlayerProfile(context, ref, player),
+                            child: PerformanceStatsRow(
+                              performanceRating: performanceRating,
+                              score: eventScore,
+                              totalGames: eventTotalGames,
+                              ratingDiff: eventRatingDiff,
+                            ),
                           ),
-                        ),
                         SizedBox(height: 10.h),
                         _ProfileNavigationButton(
-                          onTap:
-                              () => _navigateToPlayerProfile(
-                                context,
-                                ref,
-                                player,
-                              ),
+                          onTap: () =>
+                              _navigateToPlayerProfile(context, ref, player),
                         ),
                       ],
                     ),
@@ -1057,6 +1222,8 @@ class _ScoreCardPage extends ConsumerWidget {
                     // don't flash "No games in this tournament" between the
                     // push and the real data arriving.
                     (hasEventContext &&
+                        !fromHome &&
+                        !isCombined &&
                         playerGames.isEmpty &&
                         ref
                                 .watch(tourDetailScreenProvider)
@@ -1107,7 +1274,15 @@ class _ScoreCardPage extends ConsumerWidget {
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      final game = playerGames[index];
+                      final game = visibleGames[index];
+                      final firstInStage =
+                          isCombined &&
+                          (index == 0 ||
+                              visibleGames[index - 1].tourId != game.tourId);
+                      final lastInStage =
+                          index == visibleGames.length - 1 ||
+                          (isCombined &&
+                              visibleGames[index + 1].tourId != game.tourId);
                       // Fide-first, fuzzy-name-fallback match — see note in
                       // the performance loop above.
                       final isWhite = playerUtils.isSamePlayerWithFideId(
@@ -1124,16 +1299,16 @@ class _ScoreCardPage extends ConsumerWidget {
                       Future<void> openGame() async {
                         // Smart Event, Countrymen and Favorites games always
                         // ask, live ones included; the rest follow the event.
-                        final sourceGate =
-                            switch (ref.read(chessboardViewFromProviderNew)) {
-                              ChessboardView.smartEvent =>
-                                ensureSmartEventGameAccess,
-                              ChessboardView.countryman =>
-                                ensureCountrymenGameAccess,
-                              ChessboardView.favorites =>
-                                ensureFavoritesGameAccess,
-                              _ => null,
-                            };
+                        final sourceGate = switch (ref.read(
+                          chessboardViewFromProviderNew,
+                        )) {
+                          ChessboardView.smartEvent =>
+                            ensureSmartEventGameAccess,
+                          ChessboardView.countryman =>
+                            ensureCountrymenGameAccess,
+                          ChessboardView.favorites => ensureFavoritesGameAccess,
+                          _ => null,
+                        };
                         if (sourceGate != null) {
                           final allowed = await sourceGate(context);
                           if (!allowed || !context.mounted) return;
@@ -1148,13 +1323,12 @@ class _ScoreCardPage extends ConsumerWidget {
                           hasEventContext: hasEventContext,
                         );
 
-                        // Pass playerGames (filtered for this player) instead of allGames
-                        // so swiping in chessboard only shows this player's games
+                        // Keep board navigation aligned with the visible scorecard rows.
                         ref
                             .read(gameCardWrapperProvider)
                             .navigateToChessBoard(
                               context: context,
-                              orderedGames: playerGames,
+                              orderedGames: visibleGames,
                               gameIndex: index,
                               onReturnFromChessboard: (_) {},
                               viewSource: navigation.viewSource,
@@ -1175,25 +1349,25 @@ class _ScoreCardPage extends ConsumerWidget {
                       // rule, and the plate rounds all four corners.
                       Widget scoreRow({bool whole = false}) =>
                           ScoreboardCardWidget(
-                            roundLabel:
-                                hasEventContext
-                                    ? _buildRoundLabel(game)
-                                    : null,
+                            roundLabel: hasEventContext
+                                ? _buildRoundLabel(game)
+                                : null,
                             countryCode: opponent.countryCode,
                             title: opponent.title,
                             name: opponent.name,
                             score: opponent.rating,
-                            scoreChange: shareRows[index].ratingChange,
+                            scoreChange:
+                                shareRows[visibleIndices[index]].ratingChange,
                             matchScore: result,
                             isWhite: isWhite,
                             index: index,
-                            isFirst: whole || index == 0,
-                            isLast: whole || index == playerGames.length - 1,
+                            isFirst: whole || index == 0 || firstInStage,
+                            isLast: whole || lastInStage,
                             onPlayerTap: openOpponent,
                             onTap: openGame,
                           );
 
-                      return Padding(
+                      final row = Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: horizontalPadding,
                         ),
@@ -1201,26 +1375,44 @@ class _ScoreCardPage extends ConsumerWidget {
                         // game and the opponent, each openable or pinnable.
                         child: CardContextMenu(
                           onPreviewTap: openGame,
-                          actions:
-                              (rowContext) => _opponentRowActions(
-                                rowContext,
-                                ref,
-                                game: game,
-                                opponent: opponent,
-                                onOpenGame: openGame,
-                                onOpenOpponent: openOpponent,
-                              ),
-                          previewBuilder:
-                              (previewContext) => LiftedRowSurface(
-                                // The row's own fill, so the plate's rounded
-                                // edge anti-aliases against the same colour.
-                                color: previewContext.colors.surface,
-                                child: scoreRow(whole: true),
-                              ),
+                          actions: (rowContext) => _opponentRowActions(
+                            rowContext,
+                            ref,
+                            game: game,
+                            opponent: opponent,
+                            onOpenGame: openGame,
+                            onOpenOpponent: openOpponent,
+                          ),
+                          previewBuilder: (previewContext) => LiftedRowSurface(
+                            // The row's own fill, so the plate's rounded
+                            // edge anti-aliases against the same colour.
+                            color: previewContext.colors.surface,
+                            child: scoreRow(whole: true),
+                          ),
                           child: scoreRow(),
                         ),
                       );
-                    }, childCount: playerGames.length),
+                      final stageLabel = stageLabels[game.tourId];
+                      if (!firstInStage || stageLabel == null) return row;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              horizontalPadding,
+                              12.h,
+                              horizontalPadding,
+                              8.h,
+                            ),
+                            child: Text(
+                              stageLabel,
+                              style: AppTypography.textSmMedium,
+                            ),
+                          ),
+                          row,
+                        ],
+                      );
+                    }, childCount: visibleGames.length),
                   ),
                 // Bottom breathing room + restored home-indicator clearance
                 // (SafeArea bottom was disabled to stop scroll cutoffs).
@@ -1356,10 +1548,9 @@ class _ScoreCardPage extends ConsumerWidget {
       return customAwareResultLabelForSide(
             game.gameStatus,
             isWhite: isWhite,
-            customPoints:
-                isWhite
-                    ? game.whitePlayer.customPoints
-                    : game.blackPlayer.customPoints,
+            customPoints: isWhite
+                ? game.whitePlayer.customPoints
+                : game.blackPlayer.customPoints,
           ) ??
           '-';
     }
@@ -1409,6 +1600,7 @@ class _ScoreCardPage extends ConsumerWidget {
     required dynamic playerUtils,
     required dynamic playerRatings,
     required bool hasEventContext,
+    required String? Function(GamesTourModel) formatForGame,
   }) {
     return [
       for (final game in playerGames)
@@ -1418,6 +1610,7 @@ class _ScoreCardPage extends ConsumerWidget {
           playerUtils: playerUtils,
           playerRatings: playerRatings,
           hasEventContext: hasEventContext,
+          ratingPool: formatForGame(game),
         ),
     ];
   }
@@ -1428,6 +1621,7 @@ class _ScoreCardPage extends ConsumerWidget {
     required dynamic playerUtils,
     required dynamic playerRatings,
     required bool hasEventContext,
+    required String? ratingPool,
   }) {
     final isWhite = playerUtils.isSamePlayerWithFideId(
       game.whitePlayer.name,
@@ -1440,12 +1634,12 @@ class _ScoreCardPage extends ConsumerWidget {
     final opponentRating = _getPlayerRatingForSide(game, !isWhite);
     final outcome = _shareOutcomeFor(game.gameStatus, isWhite);
     double? ratingChange;
-    if (!isArmageddonGame(game) &&
+    if (ratingPool != null &&
+        !game.isDoubleForfeit &&
         outcome != PlayerEventGameOutcome.other &&
         playerRating > 0 &&
         opponentRating > 0) {
-      final tc = ratingPoolForGame(game);
-      final fideK = playerRatings?.getK(tc);
+      final fideK = playerRatings?.getK(ratingPool);
       ratingChange = _calculateFideRatingChange(
         playerRating,
         opponentRating,
@@ -1453,6 +1647,7 @@ class _ScoreCardPage extends ConsumerWidget {
         isWhite,
         game,
         fideK: fideK,
+        ratingPool: ratingPool,
       );
     }
 
@@ -1463,7 +1658,7 @@ class _ScoreCardPage extends ConsumerWidget {
       name: opponent.name,
       rating: opponent.rating,
       ratingChange: ratingChange,
-      ratingPool: ratingPoolForGame(game),
+      ratingPool: ratingPool,
       result: _getPlayerResult(game, isWhite),
       outcome: outcome,
       isWhite: isWhite,
@@ -1559,8 +1754,9 @@ class _ScoreCardPage extends ConsumerWidget {
       // (built via buildEventShareUrl). Opening it pushes the event then this
       // player's scorecard in-app, and renders the player OG card on the web.
       final playerShareUrl = shareUrl;
-      final subject =
-          eventName?.trim().isNotEmpty == true ? eventName! : 'ChessEver';
+      final subject = eventName?.trim().isNotEmpty == true
+          ? eventName!
+          : 'ChessEver';
 
       await showShareImagePreview(
         context,
@@ -1573,16 +1769,15 @@ class _ScoreCardPage extends ConsumerWidget {
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
-        onShareLink:
-            playerShareUrl == null || playerShareUrl.isEmpty
-                ? null
-                : () async {
-                  await Share.share(
-                    playerShareUrl,
-                    subject: subject,
-                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-                  );
-                },
+        onShareLink: playerShareUrl == null || playerShareUrl.isEmpty
+            ? null
+            : () async {
+                await Share.share(
+                  playerShareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
       );
     } catch (error) {
       debugPrint('Failed to share player profile: $error');
@@ -1603,15 +1798,14 @@ class _ScoreCardPage extends ConsumerWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder:
-            (_) => PlayerProfileScreen(
-              fideId: player.fideId,
-              playerName: player.name,
-              title: player.title,
-              federation: player.countryCode,
-              rating: player.score.round(),
-              gamebasePlayerId: player.gamebasePlayerId,
-            ),
+        builder: (_) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.countryCode,
+          rating: player.score.round(),
+          gamebasePlayerId: player.gamebasePlayerId,
+        ),
       ),
     );
   }
@@ -1797,8 +1991,9 @@ class _PlayerHeaderRow extends StatelessWidget {
       children: [
         if (hasFederation)
           FederationFlag(
-            federation:
-                rawCountryCode.trim().isNotEmpty ? rawCountryCode : countryCode,
+            federation: rawCountryCode.trim().isNotEmpty
+                ? rawCountryCode
+                : countryCode,
             height: 16.h,
             width: 22.w,
             borderRadius: BorderRadius.circular(2.br),
@@ -1960,13 +2155,12 @@ class _SliverScoreboardAppBarState
     return ref
             .read(favoritePlayersProviderNew)
             .maybeWhen(
-              data:
-                  (players) => storedFavoriteFor(
-                    players,
-                    fideId: player.fideId?.toString(),
-                    name: player.name,
-                    countryCode: player.countryCode,
-                  ),
+              data: (players) => storedFavoriteFor(
+                players,
+                fideId: player.fideId?.toString(),
+                name: player.name,
+                countryCode: player.countryCode,
+              ),
               orElse: () => null,
               skipLoadingOnRefresh: true,
               skipLoadingOnReload: true,
@@ -2010,13 +2204,12 @@ class _SliverScoreboardAppBarState
       final stored = ref
           .read(favoritePlayersProviderNew)
           .maybeWhen(
-            data:
-                (players) => storedFavoriteFor(
-                  players,
-                  fideId: player.fideId?.toString(),
-                  name: player.name,
-                  countryCode: player.countryCode,
-                ),
+            data: (players) => storedFavoriteFor(
+              players,
+              fideId: player.fideId?.toString(),
+              name: player.name,
+              countryCode: player.countryCode,
+            ),
             orElse: () => null,
           );
       if (stored == null) {
@@ -2081,15 +2274,14 @@ class _SliverScoreboardAppBarState
 
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final storedFavorite = favoritesAsync.maybeWhen(
-      data:
-          (players) =>
-              storedFavoriteFor(
-                players,
-                fideId: player.fideId?.toString(),
-                name: player.name,
-                countryCode: player.countryCode,
-              ) !=
-              null,
+      data: (players) =>
+          storedFavoriteFor(
+            players,
+            fideId: player.fideId?.toString(),
+            name: player.name,
+            countryCode: player.countryCode,
+          ) !=
+          null,
       orElse: () => false,
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
@@ -2129,25 +2321,23 @@ class _SliverScoreboardAppBarState
       // and push the heart inward, so the menu rides a gesture instead and
       // the bar lays out exactly as before.
       title: Builder(
-        builder:
-            (titleContext) => GestureDetector(
-              // The name keeps its own tap (share); only the long-press is
-              // ours.
-              behavior: HitTestBehavior.deferToChild,
-              onLongPress:
-                  () => CardContextMenu.open(
-                    titleContext,
-                    actions: (menuContext) => _menuActions(menuContext, player),
-                  ),
-              child: PlayerNameShareTarget(
-                playerName: player.name,
-                onShare: widget.onSharePerformance,
-                coachmarkEnabled: widget.coachmarkEnabled,
-                coachmarkMessage:
-                    'Tap the player’s name to share this performance.',
-                child: headerRow,
-              ),
-            ),
+        builder: (titleContext) => GestureDetector(
+          // The name keeps its own tap (share); only the long-press is
+          // ours.
+          behavior: HitTestBehavior.deferToChild,
+          onLongPress: () => CardContextMenu.open(
+            titleContext,
+            actions: (menuContext) => _menuActions(menuContext, player),
+          ),
+          child: PlayerNameShareTarget(
+            playerName: player.name,
+            onShare: widget.onSharePerformance,
+            coachmarkEnabled: widget.coachmarkEnabled,
+            coachmarkMessage:
+                'Tap the player’s name to share this performance.',
+            child: headerRow,
+          ),
+        ),
       ),
       actions: [
         InkWell(
@@ -2248,21 +2438,26 @@ SpaceShortcut? scorecardSpaceDraft({
 
 /// Simplified rating display that uses a cached provider to fetch all ratings
 /// at once, avoiding 3 separate API calls for the same player.
-class _RatingDisplay extends ConsumerWidget {
+class ScorecardRatingDisplay extends ConsumerWidget {
   final String label;
   final String playerName;
   final int? fideId;
   final String timeControlType;
   final String assetPath;
   final VoidCallback? onTap;
+  final bool selected;
+  final bool eventFormat;
 
-  const _RatingDisplay({
+  const ScorecardRatingDisplay({
+    super.key,
     required this.label,
     required this.playerName,
     this.fideId,
     required this.timeControlType,
     required this.assetPath,
     this.onTap,
+    this.selected = false,
+    this.eventFormat = false,
   });
 
   @override
@@ -2283,89 +2478,85 @@ class _RatingDisplay extends ConsumerWidget {
     final labelFontSize = ResponsiveHelper.isTablet ? 12.sp : 10.sp;
     final elementSpacing = ResponsiveHelper.isTablet ? 6.h : 4.h;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: ResponsiveHelper.isTablet ? 6.sp : 3.sp,
-          vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
-        ),
-        width: double.infinity,
-        height: context.textExtent(containerHeight),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            TimeControlGlyph(
-              assetPath,
-              size: iconSize,
-              fit: BoxFit.scaleDown,
+    final ink = context.colors.textPrimary;
+    return Semantics(
+      button: onTap != null,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: ResponsiveHelper.isTablet ? 6.sp : 3.sp,
+            vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
+          ),
+          width: double.infinity,
+          height: context.textExtent(containerHeight),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            border: Border.all(
+              color: selected || eventFormat
+                  ? context.colors.accentText.withValues(
+                      alpha: selected ? 0.52 : 0.28,
+                    )
+                  : Colors.transparent,
+              strokeAlign: BorderSide.strokeAlignCenter,
             ),
-            SizedBox(height: elementSpacing),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textXsMedium.copyWith(
-                color: context.colors.textPrimaryMuted,
-                fontSize: labelFontSize,
+            borderRadius: BorderRadius.circular(8.br),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              TimeControlGlyph(
+                assetPath,
+                size: iconSize,
+                fit: BoxFit.scaleDown,
               ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: elementSpacing),
-            ratingsAsync.when(
-              data: (ratings) {
-                final rating = ratings.getRating(timeControlType);
-                return Text(
-                  rating?.toString() ?? '-',
-                  style:
-                      ResponsiveHelper.isTablet
-                          ? AppTypography.textLgBold.copyWith(
-                            color: context.colors.textPrimary,
-                          )
-                          : AppTypography.textMdBold.copyWith(
-                            color: context.colors.textPrimary,
-                          ),
-                );
-              },
-              loading:
-                  () => Skeletonizer(
-                    enabled: true,
-                    ignoreContainers: true,
-                    effect: ShimmerEffect(
-                      baseColor: context.colors.surfaceRecessed,
-                      highlightColor: context.colors.divider,
-                    ),
-                    child: Text(
-                      '2400',
-                      style:
-                          ResponsiveHelper.isTablet
-                              ? AppTypography.textLgBold.copyWith(
-                                color: context.colors.textPrimary,
-                              )
-                              : AppTypography.textMdBold.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                    ),
+              SizedBox(height: elementSpacing),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: context.colors.textPrimaryMuted,
+                  fontSize: labelFontSize,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: elementSpacing),
+              ratingsAsync.when(
+                data: (ratings) {
+                  final rating = ratings.getRating(timeControlType);
+                  return Text(
+                    rating?.toString() ?? '-',
+                    style: ResponsiveHelper.isTablet
+                        ? AppTypography.textLgBold.copyWith(color: ink)
+                        : AppTypography.textMdBold.copyWith(color: ink),
+                  );
+                },
+                loading: () => Skeletonizer(
+                  enabled: true,
+                  ignoreContainers: true,
+                  effect: ShimmerEffect(
+                    baseColor: context.colors.surfaceRecessed,
+                    highlightColor: context.colors.divider,
                   ),
-              error:
-                  (_, __) => Text(
-                    '-',
-                    style:
-                        ResponsiveHelper.isTablet
-                            ? AppTypography.textLgBold.copyWith(
-                              color: context.colors.textPrimary,
-                            )
-                            : AppTypography.textMdBold.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
+                  child: Text(
+                    '2400',
+                    style: ResponsiveHelper.isTablet
+                        ? AppTypography.textLgBold.copyWith(color: ink)
+                        : AppTypography.textMdBold.copyWith(color: ink),
                   ),
-            ),
-          ],
+                ),
+                error: (_, __) => Text(
+                  '-',
+                  style: ResponsiveHelper.isTablet
+                      ? AppTypography.textLgBold.copyWith(color: ink)
+                      : AppTypography.textMdBold.copyWith(color: ink),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2388,10 +2579,9 @@ Future<void> showOpponentScoreCardSheet({
   return Navigator.of(context).push(
     MotionSheetRoute<void>(
       builder: (_) => _OpponentScoreCardSheet(player: player),
-      barrierColor:
-          context.isLightTheme
-              ? context.colors.scrim
-              : Colors.black.withValues(alpha: 0.6),
+      barrierColor: context.isLightTheme
+          ? context.colors.scrim
+          : Colors.black.withValues(alpha: 0.6),
       barrierLabel: 'Close player card',
       // Keep the card clear of the status bar. It still reaches the bottom
       // edge, so nothing is inset away from the home indicator.

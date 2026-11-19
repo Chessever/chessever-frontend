@@ -79,6 +79,86 @@ void main() {
         ratingPoolForGame(game.copyWith(timeControl: 'classical')),
         'standard',
       );
+      expect(
+        ratingPoolForGame(game.copyWith(roundSlug: 'game-1-blitz')),
+        'blitz',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(roundSlug: 'game-5-rapid')),
+        'rapid',
+      );
+      expect(
+        ratingPoolForGame(
+          game.copyWith(
+            roundSlug: 'game-7-fast-classic',
+            pgn: '[TimeControl "2700+10"]',
+          ),
+        ),
+        'standard',
+      );
+      expect(
+        ratingPoolForGame(
+          game.copyWith(roundSlug: 'semifinals-game-1-blitz-2'),
+        ),
+        'blitz',
+      );
+      expect(
+        scorecardFormatForGame(game, roundName: 'Game 1 | Blitz'),
+        'blitz',
+      );
+      expect(
+        scorecardFormatForGame(game, stageName: 'Blitz Tiebreak'),
+        'blitz',
+      );
+      expect(
+        scorecardFormatForGame(
+          game,
+          roundName: 'Armageddon',
+          stageName: 'Blitz Tiebreak',
+        ),
+        isNull,
+      );
+      expect(
+        scorecardFormatForGame(
+          game,
+          roundName: 'Game 7 | Fast Classic',
+          stageName: 'Blitz Tiebreak',
+        ),
+        'standard',
+      );
+      final mixedGames = [
+        game.copyWith(roundSlug: 'game-5-rapid'),
+        game.copyWith(roundSlug: 'game-1-blitz'),
+        game.copyWith(roundSlug: 'armageddon', timeControl: 'blitz'),
+        game.copyWith(roundSlug: 'game-7-fast-classic'),
+      ];
+      expect(mixedGames.map(scorecardFormatForGame), [
+        'rapid',
+        'blitz',
+        null,
+        'standard',
+      ]);
+      expect(isScorecardRatedGame(game), isFalse);
+      expect(
+        isScorecardRatedGame(game.copyWith(pgn: '1. e4 e5 1/2-1/2')),
+        isTrue,
+      );
+      expect(
+        isScorecardRatedGame(
+          game.copyWith(lastMove: 'e2e4', roundSlug: 'armageddon'),
+        ),
+        isFalse,
+      );
+      expect(
+        isScorecardRatedGame(
+          game.copyWith(lastMove: 'e2e4', isDoubleForfeit: true),
+        ),
+        isFalse,
+      );
+      expect(
+        isScorecardRatedGame(game.copyWith(pgn: '[Termination "Unplayed"]')),
+        isFalse,
+      );
     },
   );
 

@@ -1,5 +1,83 @@
 import 'dart:math' as math;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
+
+const scorecardRatingPools = {
+  'standard': 'Classical',
+  'rapid': 'Rapid',
+  'blitz': 'Blitz',
+};
+
+typedef ScorecardFormatStats = ({
+  int? performance,
+  int? ratingDiff,
+  double score,
+  int totalGames,
+});
+typedef ScorecardRatedResult = ({
+  double opponentRating,
+  double score,
+  double? ratingChange,
+});
+
+final _unplayedTermination = RegExp(
+  r'\[Termination\s+"[^"]*\b(?:forfeit|unplayed|walkover|abandoned)\b[^"]*"\]',
+  caseSensitive: false,
+);
+final _playedMove = RegExp(r'(?:^|\s)1\s*\.{1,3}\s*(?:[a-hKQRBN]|[O0]-[O0])');
+
+/// Armageddon has no Classical, Rapid, or Blitz scorecard filter.
+String? scorecardFormatForGame(
+  GamesTourModel game, {
+  String? roundName,
+  String? stageName,
+}) {
+  if (isArmageddonGame(game) ||
+      (roundName?.toLowerCase().contains('armageddon') ?? false)) {
+    return null;
+  }
+  final pool = ratingPoolForGame(
+    game,
+    roundName: roundName,
+    stageName: stageName,
+  );
+  return scorecardRatingPools.containsKey(pool) ? pool : null;
+}
+
+bool isScorecardRatedGame(GamesTourModel game) {
+  if (!game.gameStatus.isFinished ||
+      game.isDoubleForfeit ||
+      isArmageddonGame(game)) {
+    return false;
+  }
+  final pgn = game.pgn ?? '';
+  if (_unplayedTermination.hasMatch(pgn)) return false;
+  // Don't turn a published result with no moves into an Elo change.
+  final board = game.fen?.trim().split(' ').first;
+  return game.hasStarted ||
+      _playedMove.hasMatch(pgn) ||
+      (board != null &&
+          board.isNotEmpty &&
+          board != 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR' &&
+          !pgn.contains('[SetUp "1"]'));
+}
+
+ScorecardFormatStats summarizeScorecardFormat(
+  List<ScorecardRatedResult> games,
+) {
+  final score = games.fold(0.0, (sum, game) => sum + game.score);
+  return (
+    score: score,
+    totalGames: games.length,
+    performance: calculateFidePerformanceRating(
+      opponentRatings: [for (final game in games) game.opponentRating],
+      score: score,
+    ),
+    ratingDiff: games.isEmpty || games.any((game) => game.ratingChange == null)
+        ? null
+        : games.fold(0.0, (sum, game) => sum + game.ratingChange!).round(),
+  );
+}
 
 /// Simple FIDE K-factor fallback for the rating selected by the event's
 /// time-control bucket.
@@ -43,15 +121,43 @@ double calculateFideRatingChange({
   required double actualScore,
   int? kFactor,
 }) {
-  final ratingDiff =
-      (opponentRating - playerRating).clamp(-400, 400).toDouble();
+  final ratingDiff = (opponentRating - playerRating)
+      .clamp(-400, 400)
+      .toDouble();
   final expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
   final resolvedKFactor = kFactor ?? fideKFactorForSelectedRating(playerRating);
   return resolvedKFactor * (actualScore - expectedScore);
 }
 
+final _namedRatingFormat = RegExp(
+  r'\b(blitz|rapid|fast[\s_-]+classic(?:al)?|classical)\b',
+  caseSensitive: false,
+);
+
+String? _namedPool(String? label) {
+  final pools = {
+    for (final match in _namedRatingFormat.allMatches(label ?? ''))
+      switch (match.group(1)!.toLowerCase()) {
+        'blitz' => 'blitz',
+        'rapid' => 'rapid',
+        _ => 'standard',
+      },
+  };
+  return pools.length == 1 ? pools.single : null;
+}
+
 /// Keep separate FIDE rating lists separate, even inside a single event.
-String ratingPoolForGame(GamesTourModel game) {
+String ratingPoolForGame(
+  GamesTourModel game, {
+  String? roundName,
+  String? stageName,
+}) {
+  // Mixed-format broadcasts can give every board the enclosing event's
+  // default pool. The explicit round format also distinguishes Fast Classic
+  // from a rapid game with a similarly short first time-control period.
+  final namedPool =
+      _namedPool(roundName) ?? _namedPool(game.roundSlug?.replaceAll('_', '-'));
+  if (namedPool != null) return namedPool;
   // A knockout tour can contain classical games and rapid/blitz tiebreaks.
   // PGN is seconds, unlike human "3+2" labels (minutes). Only parse machine
   // sudden-death controls here; complex/unknown tags retain the source bucket.
@@ -67,7 +173,7 @@ String ratingPoolForGame(GamesTourModel game) {
       return 'standard';
     }
   }
-  final pool = game.timeControl?.trim().toLowerCase();
+  final pool = _namedPool(stageName) ?? game.timeControl?.trim().toLowerCase();
   return pool == 'classical' || pool == null || pool.isEmpty
       ? 'standard'
       : pool;
