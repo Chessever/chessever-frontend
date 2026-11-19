@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
@@ -21,6 +22,8 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
+    show SmartEventRequest;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -33,6 +36,8 @@ import 'package:chessever2/screens/search/search_page_sections.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/event_context_menu.dart'
+    show eventSpaceDraft;
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
@@ -357,6 +362,35 @@ void main() {
           findsOneWidget,
         );
       }
+      // Super GM leads on the full-width card; GM and IM share the row under
+      // it, so no row is left half empty.
+      SmartEventCard preset(SmartEventRequest r) =>
+          tester.widget<SmartEventCard>(
+            find.descendant(
+              of: find.byKey(ValueKey('search-smart-${r.tierLabel}')),
+              matching: find.byType(SmartEventCard),
+            ),
+          );
+      expect(preset(kSuperGmSmartPreset).stacked, isFalse);
+      expect(preset(kGmSmartPreset).stacked, isTrue);
+      expect(preset(kImSmartPreset).stacked, isTrue);
+      final gmCard = tester.getRect(
+        find.byKey(ValueKey('search-smart-${kGmSmartPreset.tierLabel}')),
+      );
+      final imCard = tester.getRect(
+        find.byKey(ValueKey('search-smart-${kImSmartPreset.tierLabel}')),
+      );
+      expect(gmCard.top, imCard.top);
+      expect(
+        tester
+            .getRect(
+              find.byKey(
+                ValueKey('search-smart-${kSuperGmSmartPreset.tierLabel}'),
+              ),
+            )
+            .bottom,
+        lessThan(gmCard.top),
+      );
 
       _expectNoPlaceholderCopy();
       // Nothing on the page is hidden behind an entrance: every card is
@@ -771,18 +805,57 @@ void main() {
       expect(screen, isA<SmartEventScreen>());
       screen as SmartEventScreen;
       expect(screen.request.eco.code, sicilian.filter.code);
+      // Opened from Search it is exactly what was searched: no Filters.
+      expect(screen.showFilters, isFalse);
       await app.dispose();
     });
 
-    testWidgets('a built-in smart event opens itself', (tester) async {
-      final observer = _PushObserver();
-      final app = await _pump(tester, observer: observer);
-      final gm = kDiscoverySmartPresets.first;
-      await tester.tap(find.byKey(ValueKey('search-smart-${gm.tierLabel}')));
+    for (final preset in [kSuperGmSmartPreset, kGmSmartPreset]) {
+      testWidgets('a built-in smart event opens itself, without Filters '
+          '(${preset.displayName})', (tester) async {
+        final observer = _PushObserver();
+        final app = await _pump(tester, observer: observer);
+        await tester.tap(
+          find.byKey(ValueKey('search-smart-${preset.tierLabel}')),
+        );
+        await tester.pump();
+        final screen = observer.lastPage(tester);
+        expect(screen, isA<SmartEventScreen>());
+        screen as SmartEventScreen;
+        expect(screen.request.criteriaKey, preset.criteriaKey);
+        expect(screen.showFilters, isFalse);
+        await app.dispose();
+      });
+    }
+
+    testWidgets('an event starred here is kept in My Space too; an unstar '
+        'leaves it there', (tester) async {
+      final favorites = _RecordingFavoriteEvents();
+      final app = await _pump(
+        tester,
+        live: [_liveEvent],
+        favorites: () => favorites,
+      );
+      final key = eventSpaceDraft(_liveEvent).key;
+      expect(app.read(spaceShortcutExistsProvider(key)), isFalse);
+      final star = find.descendant(
+        of: find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+        matching: find.bySemanticsLabel('Favorite Icon'),
+      );
+      expect(star, findsOneWidget);
+
+      await tester.tap(star);
       await tester.pump();
-      final screen = observer.lastPage(tester);
-      expect(screen, isA<SmartEventScreen>());
-      expect((screen as SmartEventScreen).request.criteriaKey, gm.criteriaKey);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(favorites.toggles, [_liveEvent.id]);
+      expect(app.read(spaceShortcutExistsProvider(key)), isTrue);
+      expect(find.text('Added to My Space'), findsOneWidget);
+
+      await tester.tap(star);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(favorites.toggles, [_liveEvent.id, _liveEvent.id]);
+      expect(app.read(spaceShortcutExistsProvider(key)), isTrue);
       await app.dispose();
     });
 
@@ -1429,6 +1502,7 @@ Future<_App> _pump(
   _Builds? builds,
   bool chrome = false,
   (String, Completer<EnhancedSearchResult>)? slowQuery,
+  FavoriteEventsNotifier Function()? favorites,
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -1468,9 +1542,10 @@ Future<_App> _pump(
         discoverySmartEventMembersProvider.overrideWith(
           (ref, criteria) async => const <GroupEventCardModel>[],
         ),
-        favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new),
+        favoriteEventsProvider.overrideWith(favorites ?? _NoFavoriteEvents.new),
         favoritePlayersProviderNew.overrideWith(_NoFavoritePlayers.new),
         spaceShortcutsProvider.overrideWith(_MemorySpaceShortcuts.new),
+        boardSettingsProviderNew.overrideWith(_BoardSettings.new),
         eventImageProvider.overrideWith(
           (ref, id) async => const EventImageData(),
         ),
@@ -1584,6 +1659,35 @@ class _FreeSubscription extends SubscriptionNotifier {
 class _NoFavoriteEvents extends FavoriteEventsNotifier {
   @override
   Future<List<FavoriteEvent>> build() async => const <FavoriteEvent>[];
+}
+
+/// Stars in memory: every toggle recorded, starring then unstarring.
+class _RecordingFavoriteEvents extends FavoriteEventsNotifier {
+  final toggles = <String>[];
+  final _starred = <String>{};
+
+  @override
+  Future<List<FavoriteEvent>> build() async => const <FavoriteEvent>[];
+
+  @override
+  Future<bool> toggleFavorite({
+    required String eventId,
+    required String eventName,
+    String? timeControl,
+    int? maxAvgElo,
+    String? dates,
+    Map<String, dynamic>? extraMetadata,
+  }) async {
+    toggles.add(eventId);
+    if (_starred.remove(eventId)) return false;
+    _starred.add(eventId);
+    return true;
+  }
+}
+
+class _BoardSettings extends BoardSettingsNotifierNew {
+  @override
+  Future<BoardSettingsNew> build() async => const BoardSettingsNew();
 }
 
 class _NoFavoritePlayers extends FavoritePlayersNotifierNew {

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/favorite_player_search_suggestion.dart';
-import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -15,6 +14,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
@@ -123,7 +123,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               // room gives way on the search's own timeline while it is open.
               SearchModeListEnd.sliver(
                 base: 24.h,
-                buttons: TabSearchFab.reach(context),
+                buttons: InkFabStack.reach(context),
               ),
             ],
           ),

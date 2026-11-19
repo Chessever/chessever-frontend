@@ -4,6 +4,7 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/models/feed_game_division.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
 import 'package:chessever2/screens/feed/widgets/feed_format.dart';
+import 'package:chessever2/screens/feed/widgets/feed_deck.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -695,11 +696,10 @@ class FeedEvaluationGraph extends StatefulWidget {
   final ValueChanged<double> onUpdate;
   final VoidCallback onEnd;
 
+  /// The graph's slot: its move line, the plot and the air around it
+  /// ([FeedLayout.graphHeightFor], which every post lays out by).
   static double heightFor(TextScaler scaler) =>
-      FeedReportOverlay.infoHeightFor(scaler) +
-      10 +
-      FeedReportOverlay.chartHeight +
-      9;
+      FeedLayout.graphHeightFor(scaler);
 
   @override
   State<FeedEvaluationGraph> createState() => _FeedEvaluationGraphState();
@@ -860,7 +860,13 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
                                     item: widget.item,
                                     ply: widget.ply,
                                     inset: FeedScrubStrip.thumbInset,
-                                    surface: colors.surfaceRecessed,
+                                    // Drawn straight on the deck, no box of
+                                    // its own: the board's block flows into
+                                    // the curve.
+                                    surface: FeedBottomDeck.toneAt(
+                                      context,
+                                      0.45,
+                                    ),
                                     grid: colors.divider,
                                     ink: colors.textPrimary,
                                     cursor: colors.accentText,
@@ -953,13 +959,11 @@ class FeedReportOverlay extends StatelessWidget {
   /// the post's full width).
   final FeedScrubRun run;
 
-  static const double chartHeight = 75;
+  static const double chartHeight = FeedLayout.chartPlotHeight;
 
-  /// The move line over the chart: its 18/24 label's line at [scaler]'s
-  /// size, never less than 24pt. A fixed 24pt box shaved the label's
-  /// descenders at large text, so "Ng5" read "Na5".
+  /// The move line over the chart ([FeedLayout.moveInfoHeightFor]).
   static double infoHeightFor(TextScaler scaler) =>
-      math.max(24.0, scaler.scale(18) * 24 / 18).ceilToDouble();
+      FeedLayout.moveInfoHeightFor(scaler);
 
   @override
   Widget build(BuildContext context) {
@@ -1011,7 +1015,7 @@ class FeedReportOverlay extends StatelessWidget {
                         // The thumb's centre stops this far inside the
                         // track's ends; so does the curve.
                         inset: run.runLeft - run.trackLeft,
-                        surface: colors.surfaceRecessed,
+                        surface: colors.background,
                         grid: colors.divider,
                         ink: colors.textPrimary,
                         // The text accent, not raw brand cyan: the cursor
@@ -1048,6 +1052,9 @@ class _ReportChartPainter extends CustomPainter {
   /// How far inside each end the curve starts and stops: the scrub thumb's
   /// own inset, so ply i sits right over the thumb at ply i.
   final double inset;
+
+  /// The ground the chart is drawn on (it has no box of its own): its marks
+  /// are kept readable against it.
   final Color surface;
   final Color grid;
   final Color ink;
@@ -1062,13 +1069,9 @@ class _ReportChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(14),
-    );
-    canvas.drawRRect(rrect, Paint()..color = surface);
+    // No box: the curve stands on the page's own deck.
     canvas.save();
-    canvas.clipRRect(rrect);
+    canvas.clipRect(Offset.zero & size);
 
     final gridPaint = Paint()
       ..color = grid
@@ -1096,7 +1099,22 @@ class _ReportChartPainter extends CustomPainter {
         ..lineTo(w, _y(n, h))
         ..lineTo(w, h)
         ..close();
-      canvas.drawPath(area, Paint()..color = ink.withValues(alpha: 0.08));
+      // White's share, eased out toward the plot's foot so the fill has
+      // no hard floor on the deck.
+      canvas.drawPath(
+        area,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              ink.withValues(alpha: 0.10),
+              ink.withValues(alpha: 0.07),
+              ink.withValues(alpha: 0.03),
+            ],
+            stops: const [0, 0.6, 1],
+          ).createShader(Offset.zero & size),
+      );
       canvas.drawPath(
         line,
         Paint()

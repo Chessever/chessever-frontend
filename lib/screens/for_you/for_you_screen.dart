@@ -351,18 +351,23 @@ void showEventFilters(BuildContext context, WidgetRef ref) {
 }
 
 /// Today's floating buttons, in the thumb's reach where the search field and
-/// Botvinnik used to be (Trello #1420):
+/// Botvinnik used to be (Trello #1420), stacked as every page's are
+/// ([InkFabStack]: the main button at the bottom, the smaller one above it,
+/// rims flush on one trailing edge):
 ///
-/// * The event filter (formats, Elo, ECO), always, at the bottom: it narrows
-///   this feed, and its count says how many filters are on. It never moves.
-/// * Live first above it, in words ([LiveFirstCapsule]): "Show 3 live
-///   first" while events are in play, "Live first" while on. It is there while an event
-///   is in play or while it is on ([showsHomeLiveFirst]), so a flag left on
-///   can always be turned off. Turned on, the live events lead Today and
-///   Today goes back to its top.
+/// * The event filter (formats, Elo, ECO), always, at the bottom: the
+///   page's main, regular button. It narrows this feed, and its count says
+///   how many filters are on. It never moves.
+/// * Live first above it, the small capsule, in words ([LiveFirstCapsule]):
+///   "See 3 live" while events are in play, counting exactly the events a
+///   press lifts ([todayLiveEventCountProvider]), "See live" until that
+///   count is known, "Live first" while on. It is there while an event is in
+///   play, while the count is not known, or while it is on
+///   ([showsHomeLiveFirst]), so a flag left on can always be turned off.
+///   Turned on, the live events lead Today and Today goes back to its top.
 ///
-/// The two share their trailing edge, so the filter stays put on the gutter
-/// while the capsule comes and goes or springs to a new width.
+/// The capsule grows leftward from the shared edge, so the filter stays put
+/// on the gutter while the capsule comes and goes or springs to a new width.
 class ForYouTodayFabs extends HookConsumerWidget {
   const ForYouTodayFabs({super.key});
 
@@ -372,49 +377,34 @@ class ForYouTodayFabs extends HookConsumerWidget {
     // until it is answered are ignored.
     final pressing = useRef(false);
     final liveFirst = ref.watch(homeEventsLiveFirstProvider);
-    final liveCount = ref.watch(homeLiveEventCountProvider);
+    final liveCount = ref.watch(todayLiveEventCountProvider);
     final filters = eventFilterCount(ref.watch(eventAppliedFilterProvider));
-    const size = InkFabSize.small;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return InkFabStack(
       children: [
-        if (showsHomeLiveFirst(liveCount: liveCount, on: liveFirst)) ...[
-          Padding(
-            // The disc is drawn inside its touch square; this puts the
-            // capsule's rim on the disc's, not on the square's.
-            padding: EdgeInsetsDirectional.only(
-              end: (size.side - size.disc) / 2,
-            ),
-            child: LiveFirstCapsule(
-              key: const ValueKey(kForYouLiveFirstButtonKey),
-              subject: 'events',
-              size: size,
-              on: liveFirst,
-              liveCount: liveCount,
-              onTap: () async {
-                if (pressing.value) return;
-                pressing.value = true;
-                try {
-                  if (await pressForYouLiveFirst(context: context, ref: ref)) {
-                    // The live events now lead Today: show its top.
-                    ref
-                        .read(bottomNavBarReTapRequestProvider.notifier)
-                        .request(BottomNavBarItem.forYou);
-                  }
-                } finally {
-                  pressing.value = false;
+        if (showsHomeLiveFirst(liveCount: liveCount, on: liveFirst))
+          LiveFirstCapsule(
+            key: const ValueKey(kForYouLiveFirstButtonKey),
+            subject: 'events',
+            on: liveFirst,
+            liveCount: liveCount,
+            onTap: () async {
+              if (pressing.value) return;
+              pressing.value = true;
+              try {
+                if (await pressForYouLiveFirst(context: context, ref: ref)) {
+                  // The live events now lead Today: show its top.
+                  ref
+                      .read(bottomNavBarReTapRequestProvider.notifier)
+                      .request(BottomNavBarItem.forYou);
                 }
-              },
-            ),
+              } finally {
+                pressing.value = false;
+              }
+            },
           ),
-          // The floating buttons' own step ([InkFabStack]).
-          const SizedBox(height: 12),
-        ],
         InkFab(
           key: const ValueKey(kForYouFilterButtonKey),
           label: 'Filters',
-          size: size,
           badgeCount: filters,
           onTap: () => showEventFilters(context, ref),
           glyph: (color, size) =>

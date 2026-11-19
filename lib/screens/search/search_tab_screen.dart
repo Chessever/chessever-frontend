@@ -9,6 +9,7 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -200,6 +201,9 @@ class SearchTabScreen extends HookConsumerWidget {
         MaterialPageRoute(
           builder: (_) => SmartEventScreen(
             request: SmartEventRequest.forOpeningSelection(opening),
+            // Opened from Search it is exactly what was searched for: no
+            // Filters on it (the title's tier dropdown still moves it).
+            showFilters: false,
           ),
         ),
       );
@@ -245,13 +249,17 @@ class SearchTabScreen extends HookConsumerWidget {
                 // the tab can take either back to its top.
                 child: PrimaryScrollController(
                   controller: scroll,
-                  child: SearchOverlay(
-                    key: const ValueKey('search_tab_page'),
-                    fullPage: true,
-                    query: controller.text,
-                    onTournamentTap: openEvent,
-                    onPlayerTap: openPlayer,
-                    onOpeningTap: openOpening,
+                  // A star on this page (an event's, a smart event's) also
+                  // keeps it in My Space; an unstar leaves My Space alone.
+                  child: SpaceStarPins(
+                    child: SearchOverlay(
+                      key: const ValueKey('search_tab_page'),
+                      fullPage: true,
+                      query: controller.text,
+                      onTournamentTap: openEvent,
+                      onPlayerTap: openPlayer,
+                      onOpeningTap: openOpening,
+                    ),
                   ),
                 ),
               ),

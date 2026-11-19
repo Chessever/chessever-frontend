@@ -3,8 +3,10 @@ import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
@@ -36,6 +38,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader, rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../../support/fake_live_game_ids.dart';
 
 const _liveFirstOff = 'Show live games first';
 const _classicalOff = 'Show classical games only';
@@ -797,6 +801,7 @@ void main() {
         'turns on and off', (tester) async {
       final container = ProviderContainer(
         overrides: [
+          ..._serverLive([], const [], serverLive: const {'live'}),
           favoritesCombinedGamesProvider.overrideWith(
             (ref) => _FakeFavoritesGames(
               FavoritesCombinedGamesState(
@@ -946,6 +951,250 @@ void main() {
     });
   });
 
+  group('groupFavoriteGamesByDay with the server\'s live set', () {
+    final now = DateTime.utc(2026, 11, 17, 15);
+    final today = DateTime.utc(2026, 11, 17);
+    final yesterday = DateTime.utc(2026, 11, 16);
+    final games = [
+      _game('t-done', status: GameStatus.draw, gameDay: today),
+      // Filed under yesterday (the round began before midnight), in play.
+      _game('y-live', status: GameStatus.ongoing, gameDay: yesterday),
+      _game('y-done', status: GameStatus.blackWins, gameDay: yesterday),
+      // Its row reads in play, but the server has no such game in play.
+      _game(
+        't-shell',
+        status: GameStatus.ongoing,
+        gameDay: today,
+        lastMoveTime: now,
+      ),
+    ];
+
+    test('every game in play leads today, whatever day it is filed under', () {
+      final grouped = groupFavoriteGamesByDay(
+        games,
+        liveFirst: true,
+        liveIds: const {'y-live'},
+        now: now,
+      );
+      expect(grouped.keys, ['2026-11-17', '2026-11-16']);
+      expect(_ids(grouped['2026-11-17']!), ['y-live', 't-done', 't-shell']);
+      expect(_ids(grouped['2026-11-16']!), ['y-done']);
+    });
+
+    test('a day ahead of today keeps the live games on top', () {
+      final tomorrow = DateTime.utc(2026, 11, 18);
+      final grouped = groupFavoriteGamesByDay(
+        [...games, _game('ahead', status: GameStatus.draw, gameDay: tomorrow)],
+        liveFirst: true,
+        liveIds: const {'y-live'},
+        now: now,
+      );
+      expect(grouped.keys.first, '2026-11-18');
+      expect(_ids(grouped['2026-11-18']!), ['y-live', 'ahead']);
+    });
+
+    test('off, the server\'s set changes nothing', () {
+      final grouped = groupFavoriteGamesByDay(
+        games,
+        liveIds: const {'y-live'},
+        now: now,
+      );
+      expect(_ids(grouped['2026-11-17']!), ['t-done', 't-shell']);
+      expect(_ids(grouped['2026-11-16']!), ['y-live', 'y-done']);
+    });
+  });
+
+  group('Favorites Live first counts what the server has in play', () {
+    final today = DateTime.now();
+    final done = _game('done', status: GameStatus.whiteWins, gameDay: today);
+    final live = _game(
+      'live',
+      status: GameStatus.ongoing,
+      gameDay: today,
+      lastMoveTime: today,
+    );
+
+    testWidgets('games in play the loaded days miss are counted, and listed '
+        'as it turns on', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        // The grid's cards: no swipe hint reading the device database.
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [done, live],
+        serverLive: const {'live', 'later-1', 'later-2'},
+      );
+      harness.notifier.rows['later-1'] = _game(
+        'later-1',
+        status: GameStatus.ongoing,
+        gameDay: today,
+        lastMoveTime: today,
+      );
+
+      expect(find.text(_liveLabel(3)), findsOneWidget);
+      await tester.tap(find.byKey(_liveFirstKey));
+      await _settle(tester);
+
+      expect(harness.notifier.listed.first, {'live', 'later-1', 'later-2'});
+      expect(
+        harness.container.read(
+          gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
+        ),
+        isTrue,
+      );
+      expect(find.byType(GridGameCardWrapperWidget), findsNWidgets(3));
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('a game the list already shows as finished is not counted', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        // The grid's cards: no swipe hint reading the device database.
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [done, live],
+        serverLive: const {'live', 'done'},
+      );
+      expect(find.text(_liveLabel(1)), findsOneWidget);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('a row that reads in play is not counted when the server '
+        'has nothing in play', (tester) async {
+      await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        // The grid's cards: no swipe hint reading the device database.
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [done, live],
+        serverLive: const {},
+      );
+      expect(find.byKey(_liveFirstKey), findsNothing);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('until the server answers: "See live", floated by the rows', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        // The grid's cards: no swipe hint reading the device database.
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [done, live],
+        serverAnswered: false,
+      );
+      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('covered by a board the count waits, and asks again on the '
+        'way back', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        // The grid's cards: no swipe hint reading the device database.
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [done, live],
+      );
+      final poll = harness.poll;
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(poll.visible, isFalse);
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(poll.visible, isTrue);
+      expect(poll.refreshes, 1);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('back from a board after a resume it missed, the poll asks '
+        'by itself and the page does not ask again', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        // The grid's cards: no swipe hint reading the device database.
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [done, live],
+      );
+      final poll = harness.poll;
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // The real poll marks this missed while hidden, and asks for it as it
+      // is shown again.
+      harness.container.read(appResumedSignalProvider.notifier).state++;
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(poll.visible, isTrue);
+      expect(poll.refreshes, 0);
+      await _dropLiveCards(tester);
+    });
+  });
+
+  group('Favorites Games list end', () {
+    testWidgets('one slot of one height whether the next days load or not', (
+      tester,
+    ) async {
+      final today = DateTime.now();
+      final harness = await _pumpScreen(
+        tester,
+        initialMode: FavoritesScreenMode.games,
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [
+          for (var i = 0; i < 2; i++)
+            _game('g$i', status: GameStatus.draw, gameDay: today),
+        ],
+      );
+      final slot = find.byKey(
+        const ValueKey('favorites_games_list_end_slot'),
+        skipOffstage: false,
+      );
+      harness.notifier.state = harness.notifier.state.copyWith(hasMore: true);
+      await tester.pump();
+      final idle = tester.getSize(slot).height;
+
+      harness.notifier.state = harness.notifier.state.copyWith(isLoading: true);
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: slot,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSize(slot).height, idle);
+
+      harness.notifier.state = harness.notifier.state.copyWith(
+        isLoading: false,
+        hasMore: false,
+      );
+      await tester.pump();
+      expect(find.text('No more games'), findsOneWidget);
+      expect(tester.getSize(slot).height, idle);
+      await _dropLiveCards(tester);
+    });
+  });
+
   testWidgets('the quiet line is drawn only while a list is being replaced', (
     tester,
   ) async {
@@ -1030,18 +1279,57 @@ bool? _toggledState(WidgetTester tester, String label) {
   return semantics.properties.toggled;
 }
 
+/// Takes the screen down and lets the live cards' own timers run out.
+Future<void> _dropLiveCards(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(minutes: 1));
+}
+
 List<String> _ids(List<GamesTourModel> games) => [
   for (final game in games) game.gameId,
 ];
 
 class _Harness {
-  _Harness(this.container, this.created);
+  _Harness(this.container, this.created, this.polls);
 
   final ProviderContainer container;
   final List<_FakeFavoritesGames> created;
 
+  /// The live-game polls the page started, the newest last.
+  final List<FakeLiveGameIds> polls;
+
   _FakeFavoritesGames get notifier => created.last;
+
+  FakeLiveGameIds get poll => polls.last;
 }
+
+/// Who the Favorites list asks about in these tests.
+final _scope = FavoritesLiveGamesScope(fideIds: const ['1503014']);
+
+/// The boards a fixture marks in play: what the server says by default.
+Set<String> _inPlay(Iterable<GamesTourModel> games) => {
+  for (final game in games)
+    if (game.gameStatus == GameStatus.ongoing) game.gameId,
+};
+
+/// The server's games in play for the list ([serverLive], or the fixture's
+/// boards in play), or no answer yet when [answered] is false. Each poll
+/// the page starts is recorded in [polls].
+List<Override> _serverLive(
+  List<FakeLiveGameIds> polls,
+  List<GamesTourModel> games, {
+  Set<String>? serverLive,
+  bool answered = true,
+}) => [
+  favoritesGamesLiveScopeProvider.overrideWith((ref) => _scope),
+  favoritesLiveGameIdsProvider.overrideWith((ref, scope) {
+    final poll = FakeLiveGameIds(
+      answered ? serverLive ?? _inPlay(games) : null,
+    );
+    polls.add(poll);
+    return poll;
+  }),
+];
 
 Future<_Harness> _pumpScreen(
   WidgetTester tester, {
@@ -1054,6 +1342,8 @@ Future<_Harness> _pumpScreen(
   GamesListViewMode viewMode = GamesListViewMode.gamesCard,
   List<PlayerStandingModel> favorites = const [],
   List<Override> overrides = const [],
+  Set<String>? serverLive,
+  bool serverAnswered = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -1063,8 +1353,15 @@ Future<_Harness> _pumpScreen(
   });
 
   final created = <_FakeFavoritesGames>[];
+  final polls = <FakeLiveGameIds>[];
   final container = ProviderContainer(
     overrides: [
+      ..._serverLive(
+        polls,
+        games,
+        serverLive: serverLive,
+        answered: serverAnswered,
+      ),
       discoveryDotsSourceProvider.overrideWithValue(_NoDiscoveryDots()),
       favoritePlayersNotifierProvider.overrideWith(
         () => _NoFavoritePlayers(favorites),
@@ -1122,7 +1419,7 @@ Future<_Harness> _pumpScreen(
     ),
   );
   await tester.pumpAndSettle();
-  return _Harness(container, created);
+  return _Harness(container, created, polls);
 }
 
 /// Records filters and searches instead of querying Supabase, and answers a
@@ -1180,6 +1477,24 @@ class _FakeFavoritesGames extends StateNotifier<FavoritesCombinedGamesState>
 
   @override
   Future<void> loadMoreGames() async {}
+
+  /// Every set Live first asked to have listed.
+  final List<Set<String>> listed = [];
+
+  /// The games [ensureListed] adds, by id, as the real one fetches them.
+  final Map<String, GamesTourModel> rows = {};
+
+  @override
+  Future<void> ensureListed(Iterable<String> ids) async {
+    listed.add(ids.toSet());
+    final missing = [
+      for (final id in ids)
+        if (!state.games.any((game) => game.gameId == id) && rows[id] != null)
+          rows[id]!,
+    ];
+    if (missing.isEmpty) return;
+    state = state.copyWith(games: [...missing, ...state.games]);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

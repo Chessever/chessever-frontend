@@ -4,7 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFab, InkFabSize;
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
@@ -23,10 +23,13 @@ class PopoverAddChoice<T> {
   final T value;
 }
 
-/// A page's add button, in the floating slot, cut from the same frosted
-/// glass as every floating button ([GlassSurface]). A tap springs a
-/// popover out of it, pointing at it, with everything the page can add; the
-/// "+" turns an eighth of a turn into a "×" while it is open.
+/// A page's add button, in the floating slot: the regular floating disc
+/// ([InkFabSize.regular]) cut from the same frosted glass as every floating
+/// button ([GlassSurface]), its mark in the same glyph box and ink, with the
+/// same press and tooltip. A tap springs a popover out of it, pointing at
+/// it, with everything the page can add; the "+" turns an eighth of a turn
+/// into a "×" while it is open. Stack it like any floating button
+/// ([InkFabStack]).
 class PopoverAddFab<T> extends StatefulWidget {
   const PopoverAddFab({
     super.key,
@@ -53,6 +56,12 @@ class PopoverAddFab<T> extends StatefulWidget {
 
 class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
     with SingleTickerProviderStateMixin {
+  /// The "+" to check swap: quick and firm, landing exactly.
+  static const _swapMotion = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 260),
+    snapToEnd: true,
+  );
+
   late final SingleMotionController _turn = SingleMotionController(
     motion: const CupertinoMotion.snappy(snapToEnd: true),
     vsync: this,
@@ -111,69 +120,110 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
   Widget build(BuildContext context) {
     final saving = widget.onSave != null;
     final reduce = MediaQuery.disableAnimationsOf(context);
-    // The floating buttons' side, so the swap between them never shifts.
-    final side = InkFabSize.regular.disc;
+    final label = saving ? widget.saveLabel ?? widget.label : widget.label;
+    // The floating buttons' disc and touch square, so it sits in a stack
+    // exactly like them and the swap between "+" and check never shifts.
+    const size = InkFabSize.regular;
+    final disc = size.disc;
+    // The glyph box every floating button hands its mark ([InkFab]).
+    final glyph = disc * InkFab.glyphFraction;
 
-    return Semantics(
-      container: true,
-      button: true,
-      label: saving ? widget.saveLabel ?? widget.label : widget.label,
-      expanded: saving ? null : _open,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _toggle,
-        child: SizedBox.square(
-          dimension: side,
-          // The app's press, as on every floating button.
-          child: PressSpring(
-            pressedScale: 0.9,
-            builder: (context, press, child) {
-              final scale = 1 - 0.1 * press;
-              return Transform.scale(
-                scale: (scale - 1).abs() < 0.001 ? 1.0 : scale,
-                // The same frosted glass as every floating button: the
-                // page shows through, blurred, behind a quiet plate.
-                child: GlassSurface(lift: press.clamp(0.0, 1.0), child: child),
-              );
-            },
-            // Saving swaps the "+" for a check in place: same button, same
-            // spot, now the way to save.
+    return Tooltip(
+      message: label,
+      excludeFromSemantics: true,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: label,
+        expanded: saving ? null : _open,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggle,
+          child: SizedBox.square(
+            dimension: size.side,
             child: Center(
-              child: AnimatedSwitcher(
-                duration: reduce
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 0.6, end: 1).animate(animation),
-                    child: child,
+              child: SizedBox.square(
+                dimension: disc,
+                // The app's press, as on every floating button.
+                child: PressSpring(
+                  pressedScale: 0.9,
+                  builder: (context, press, child) {
+                    final scale = 1 - 0.1 * press;
+                    return Transform.scale(
+                      scale: (scale - 1).abs() < 0.001 ? 1.0 : scale,
+                      // The same frosted glass as every floating button:
+                      // the page shows through, blurred, behind a quiet
+                      // plate.
+                      child: GlassSurface(
+                        lift: press.clamp(0.0, 1.0),
+                        child: child,
+                      ),
+                    );
+                  },
+                  // Saving swaps the "+" for a check in place: same button,
+                  // same spot, now the way to save. The two cross on one
+                  // spring, each growing in from a little smaller as it
+                  // comes; only the one in force is built at rest.
+                  child: Center(
+                    child: SingleMotionBuilder(
+                      motion: _swapMotion,
+                      value: saving ? 1.0 : 0.0,
+                      active: !reduce,
+                      builder: (context, value, _) {
+                        final t = value.clamp(0.0, 1.0);
+                        final ink = GlassStyle.of(context).ink;
+                        Widget swapIn(double shown, Widget child) {
+                          if (shown >= 1) return child;
+                          return Opacity(
+                            opacity: shown,
+                            child: Transform.scale(
+                              scale: 0.6 + 0.4 * shown,
+                              child: child,
+                            ),
+                          );
+                        }
+
+                        return SizedBox.square(
+                          dimension: glyph,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (t < 1)
+                                swapIn(
+                                  1 - t,
+                                  AnimatedBuilder(
+                                    key: const ValueKey<String>(
+                                      'popover_fab_add',
+                                    ),
+                                    animation: _turn,
+                                    builder: (context, child) =>
+                                        Transform.rotate(
+                                          // "+" to "×": an eighth of a turn.
+                                          angle: _turn.value * math.pi / 4,
+                                          child: child,
+                                        ),
+                                    child: CustomPaint(
+                                      painter: _PlusPainter(color: ink),
+                                    ),
+                                  ),
+                                ),
+                              if (t > 0)
+                                swapIn(
+                                  t,
+                                  CustomPaint(
+                                    key: const ValueKey<String>(
+                                      'popover_fab_save',
+                                    ),
+                                    painter: _CheckPainter(color: ink),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
-                child: saving
-                    ? Icon(
-                        Icons.check_rounded,
-                        key: const ValueKey<String>('popover_fab_save'),
-                        size: side * 0.46,
-                        color: GlassStyle.of(context).ink,
-                      )
-                    : AnimatedBuilder(
-                        key: const ValueKey<String>('popover_fab_add'),
-                        animation: _turn,
-                        builder: (context, child) => Transform.rotate(
-                          // "+" to "×": an eighth of a turn.
-                          angle: _turn.value * math.pi / 4,
-                          child: child,
-                        ),
-                        child: CustomPaint(
-                          size: Size.square(side * 0.36),
-                          painter: _PlusPainter(
-                            color: GlassStyle.of(context).ink,
-                          ),
-                        ),
-                      ),
               ),
             ),
           ),
@@ -182,6 +232,11 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
     );
   }
 }
+
+/// The "+" and the check share one stroke: a seventh of the glyph box with
+/// round caps, the weight of the search button's magnifier, so every mark in
+/// a stack of floating buttons reads as one set.
+const double _strokeShare = 0.14;
 
 /// The "+": two bars with round caps, drawn so they cross at the exact
 /// centre (a font glyph's plus sits on its own baseline, not on centre).
@@ -194,7 +249,7 @@ class _PlusPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = size.width * 0.14
+      ..strokeWidth = size.width * _strokeShare
       ..strokeCap = StrokeCap.round;
     final c = size.center(Offset.zero);
     final r = size.width / 2 - paint.strokeWidth / 2;
@@ -204,6 +259,44 @@ class _PlusPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PlusPainter old) => old.color != color;
+}
+
+/// The save check, drawn like the "+": the same stroke and round caps, its
+/// two arms at 45 degrees, spanning the glyph box's full width and centred
+/// on it top to bottom (caps included).
+class _CheckPainter extends CustomPainter {
+  const _CheckPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final stroke = s * _strokeShare;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    // The caps reach the box's sides, so the arms run between the stroke's
+    // half widths. The long arm is twice the short one, both at 45 degrees,
+    // so the check is two thirds as tall as its run, centred on the box top
+    // to bottom (the caps and the join stick out the same half stroke).
+    final left = stroke / 2;
+    final run = s - stroke;
+    final shortArm = run / 3;
+    final longArm = run - shortArm;
+    final top = (size.height - longArm) / 2;
+    final path = Path()
+      ..moveTo(left, top + longArm - shortArm)
+      ..lineTo(left + shortArm, top + longArm)
+      ..lineTo(left + run, top);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_CheckPainter old) => old.color != color;
 }
 
 /// The popover as a route: back and the scrim both close it, and it sits

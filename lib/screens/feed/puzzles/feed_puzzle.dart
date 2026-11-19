@@ -15,6 +15,7 @@ import 'package:chessever2/screens/feed/puzzles/puzzle_difficulty_sheet.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_widgets.dart';
 import 'package:chessever2/screens/feed/race/puzzle_rating_range.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
+import 'package:chessever2/screens/feed/widgets/feed_bars_on_tap.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
@@ -667,29 +668,13 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
 
     return FeedPageViewport(
       builder: (context, constraints) {
+        // The game posts' geometry, so a puzzle's board stands exactly
+        // where a game's does and the deck under the pages starts at its
+        // foot too.
         final l = FeedLayout.resolve(
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: 20.w,
-        );
-
-        // The board column: rail, board and the player rows.
-        Widget content(Widget child) => Padding(
-          padding: EdgeInsets.only(left: l.contentLeft),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(width: l.contentWidth, child: child),
-          ),
-        );
-
-        // The text rows (header, status, buttons) keep the page gutter, as
-        // on the game pages, so a height-bound board never shrinks a label.
-        Widget fullRow(Widget child) => Padding(
-          padding: const EdgeInsets.only(left: FeedLayout.sidePadding),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(width: l.rowWidth, child: child),
-          ),
         );
 
         final opponent = solver == Side.white ? Side.black : Side.white;
@@ -756,38 +741,51 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
           ),
         );
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // The zone, as on a game post: the status stands in the middle of
+        // the left column (a puzzle has no chart or scrub line), the
+        // caption at its foot, the actions down the rail.
+        final statusTop =
+            l.zoneTop + (l.captionTop - l.zoneTop - l.infoHeight) / 2;
+        return Stack(
           children: [
-            SizedBox(height: l.scrublessTop),
-            fullRow(_Meta(puzzle: puzzle, height: l.metaHeight)),
-            const SizedBox(height: FeedLayout.gap),
-            content(
-              PuzzlePlayerRow(
+            Positioned(
+              left: l.contentLeft,
+              top: l.blackRowTop,
+              width: l.contentWidth,
+              height: l.rowHeight,
+              child: PuzzlePlayerRow(
                 player: playerOf(opponent),
                 side: opponent,
                 pieceAssets: settings.pieceAssets,
                 height: l.rowHeight,
               ),
             ),
-            const SizedBox(height: FeedLayout.gap),
-            content(
-              Row(
-                children: [
-                  PuzzleProgressRail(
-                    total: s.solverMoveCount,
-                    found: _found,
-                    shown: shown < _found ? _found : shown,
-                    height: l.board,
-                    width: l.evalWidth,
-                  ),
-                  boardStack,
-                ],
+            Positioned(
+              left: l.contentLeft,
+              top: l.boardTop,
+              width: l.contentWidth,
+              height: l.board,
+              child: FeedKeepsBars(
+                child: Row(
+                  children: [
+                    PuzzleProgressRail(
+                      total: s.solverMoveCount,
+                      found: _found,
+                      shown: shown < _found ? _found : shown,
+                      height: l.board,
+                      width: l.evalWidth,
+                    ),
+                    boardStack,
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: FeedLayout.gap),
-            content(
-              PuzzlePlayerRow(
+            Positioned(
+              left: l.contentLeft,
+              top: l.whiteRowTop,
+              width: l.contentWidth,
+              height: l.rowHeight,
+              child: PuzzlePlayerRow(
                 player: playerOf(solver),
                 side: solver,
                 pieceAssets: settings.pieceAssets,
@@ -795,33 +793,45 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
                 isSolver: true,
               ),
             ),
-            SizedBox(height: l.scrublessInfoSpace),
-            fullRow(
-              _Status(
+            Positioned(
+              left: l.contentLeft,
+              top: statusTop,
+              width: l.leftColumnWidth,
+              height: l.infoHeight,
+              child: _Status(
                 phase: _phase,
                 feedback: _feedback,
                 solver: solver,
                 height: l.infoHeight,
               ),
             ),
-            SizedBox(height: l.scrublessActionsSpace),
-            fullRow(SizedBox(height: l.actionsHeight, child: _actions())),
-            // The game pages' scrub line has no counterpart here; its room
-            // is spread through the page ([FeedLayout.scrublessTop]), so the
-            // puzzle is composed on its own frame and ends where a game
-            // post does, with no idle band under the buttons.
+            Positioned(
+              left: l.contentLeft,
+              top: l.captionTop,
+              width: l.leftColumnWidth,
+              height: l.captionHeight,
+              child: _Meta(puzzle: puzzle, height: l.captionHeight),
+            ),
+            Positioned(
+              left: l.railLeft,
+              top: l.railTop,
+              width: FeedLayout.railWidth,
+              height: l.railHeight,
+              // As on a game post: a tap on the rail leaves the bars.
+              child: FeedKeepsBars(child: _actions(l.railCell)),
+            ),
           ],
         );
       },
     );
   }
 
-  /// Hint · Retry · Solution · Next, in the game posts' action row: the
-  /// same glyph-over-word columns at the same height, so a puzzle reads as
-  /// one more post in the stream. All four always hold their place; one that
-  /// does nothing right now is dimmed rather than removed, so nothing shifts
-  /// under the thumb as the puzzle moves on.
-  Widget _actions() {
+  /// Hint · Retry · Solution · Next, down the game posts' rail: the same
+  /// glyph-over-word cells at the same height, so a puzzle reads as one more
+  /// post in the stream, Next at the foot where Like is. All four always
+  /// hold their place; one that does nothing right now is dimmed rather than
+  /// removed, so nothing shifts under the thumb as the puzzle moves on.
+  Widget _actions(double cellHeight) {
     final colors = context.colors;
     final solving = _phase == _Phase.solving;
     final canReveal =
@@ -829,6 +839,10 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
     final finished = _phase == _Phase.solved || _phase == _Phase.revealed;
     final triedSomething =
         finished || (_session?.step ?? 0) > 0 || _feedback != _Feedback.none;
+    final fontSize = feedRailFontSize(
+      context,
+      labels: const ['Hint', 'Retry', 'Solution', 'Next'],
+    );
 
     Widget action({
       required String key,
@@ -838,7 +852,9 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
       String? hint,
     }) {
       final enabled = onTap != null;
-      return Expanded(
+      return SizedBox(
+        width: FeedLayout.railWidth,
+        height: cellHeight,
         child: FeedPressable(
           key: ValueKey(key),
           semanticsLabel: label,
@@ -848,10 +864,13 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
             opacity: enabled ? 1 : 0.32,
             child: FeedActionLabel(
               label: label,
+              fontSize: fontSize,
+              glyphExtent: FeedLayout.railGlyph,
+              glyphGap: FeedLayout.railGlyphGap,
               icon: FeedGlyph(
                 glyph,
-                width: 22,
-                height: 22,
+                width: FeedLayout.railGlyph,
+                height: FeedLayout.railGlyph,
                 color: colors.textPrimary,
               ),
             ),
@@ -860,7 +879,8 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
       );
     }
 
-    return Row(
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
         action(
           key: 'feed_puzzle_hint',
@@ -895,7 +915,7 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
   }
 }
 
-/// The one line above the board, in the game pages' header slot: that this
+/// The post's one line, in the game pages' caption slot: that this
 /// is a puzzle, its rating, the opening it came from (or, for puzzles cached
 /// before the puzzle service, the source game's speed), and on the right the
 /// difficulty the viewer picked, which opens the difficulty sheet.

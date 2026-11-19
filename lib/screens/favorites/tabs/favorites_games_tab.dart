@@ -4,6 +4,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
@@ -60,12 +61,15 @@ final Set<String> _favoritesAnimatedGameIds = {};
 const String _unknownFavoriteDayKey = '0000-00-00';
 
 /// [games] bucketed into days (`yyyy-MM-dd`), newest day first, games with no
-/// date last. Inside a day the given order is kept, except that with
-/// [liveFirst] the games in play lead their day (Trello #1420).
+/// date last. Inside a day the given order is kept. With [liveFirst]
+/// (Trello #1420) the games in play ([liveIds], the server's set; by their
+/// own rows while it is unknown) lead the list, gathered at the head of
+/// today ([gatherLiveGamesFirst]). [now] pins today and "live" for tests.
 @visibleForTesting
 Map<String, List<GamesTourModel>> groupFavoriteGamesByDay(
   List<GamesTourModel> games, {
   bool liveFirst = false,
+  Set<String>? liveIds,
   DateTime? now,
 }) {
   final grouped = <String, List<GamesTourModel>>{};
@@ -80,28 +84,95 @@ Map<String, List<GamesTourModel>> groupFavoriteGamesByDay(
   }
 
   final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-  return {
-    for (final key in sortedKeys)
-      key: liveFirst ? liveGamesFirst(grouped[key]!, now: now) : grouped[key]!,
-  };
+  final byDay = {for (final key in sortedKeys) key: grouped[key]!};
+  if (!liveFirst) return byDay;
+  return gatherLiveGamesFirst(
+    byDay,
+    todayKey: DateFormat('yyyy-MM-dd').format(now ?? DateTime.now()),
+    unknownKey: _unknownFavoriteDayKey,
+    liveIds: liveIds,
+    now: now,
+  );
 }
 
-/// How many games in the Favorites Games list are in play, counted from the
-/// list already loaded (Live first reads it aloud and on its capsule).
-final favoritesGamesLiveCountProvider = Provider.autoDispose<int>(
-  (ref) => ref.watch(
-    favoritesCombinedGamesProvider.select(
-      (state) => state.filteredGames.where(GameFilterHelper.isLiveNow).length,
-    ),
+/// Who the Favorites Games list's live games are asked about: the followed
+/// players it lists (the chips' selection, when there is one) under its
+/// filter. Null with no player to ask about.
+final favoritesGamesLiveScopeProvider =
+    Provider.autoDispose<FavoritesLiveGamesScope?>((ref) {
+      final players =
+          ref.watch(
+            favoritePlayersNotifierProvider.select(
+              (state) => state.valueOrNull?.players,
+            ),
+          ) ??
+          const <PlayerStandingModel>[];
+      final selected = ref.watch(
+        favoritesCombinedGamesProvider.select((state) => state.selectedFideIds),
+      );
+      final filter = ref.watch(
+        favoritesCombinedGamesProvider.select((state) => state.filter),
+      );
+      final fideIds = [
+        for (final player in players)
+          if (player.fideId case final id?)
+            if (selected.isEmpty || selected.contains('$id')) '$id',
+      ];
+      if (fideIds.isEmpty) return null;
+      return FavoritesLiveGamesScope(fideIds: fideIds, filter: filter);
+    });
+
+/// The games in play among the Favorites list's players, by the server
+/// ([favoritesLiveGameIdsProvider]): null until it answers. Nobody to ask
+/// about has nothing in play.
+final favoritesGamesServerLiveIdsProvider = Provider.autoDispose<Set<String>?>((
+  ref,
+) {
+  final scope = ref.watch(favoritesGamesLiveScopeProvider);
+  if (scope == null) return const <String>{};
+  return ref.watch(favoritesLiveGameIdsProvider(scope));
+});
+
+/// What the Favorites Games list counts as in play and what its Live first
+/// lifts: the server's set, less any game the list already shows as
+/// finished ([listedLiveGameIds]). Null while the server has not answered.
+final favoritesGamesLiveIdsProvider = Provider.autoDispose<Set<String>?>(
+  (ref) => listedLiveGameIds(
+    ref.watch(favoritesGamesServerLiveIdsProvider),
+    ref.watch(favoritesCombinedGamesProvider.select((state) => state.games)),
   ),
 );
 
-/// Whether a game in the Favorites Games list is in play. Live first floats
-/// over the list only while this holds (Trello #1420):
-/// with nothing live it has nothing to do.
-final favoritesGamesAnyLiveProvider = Provider.autoDispose<bool>(
-  (ref) => ref.watch(favoritesGamesLiveCountProvider) > 0,
+/// How many games of the Favorites Games list are in play, read on Live
+/// first's capsule ("See 3 live"). Null while unknown ("See live").
+final favoritesGamesLiveCountProvider = Provider.autoDispose<int?>(
+  (ref) => ref.watch(favoritesGamesLiveIdsProvider)?.length,
 );
+
+/// Whether a game of the Favorites Games list is in play. Live first floats
+/// over the list only while this holds (Trello #1420): with nothing live it
+/// has nothing to do. Until the server answers, the list's own rows decide,
+/// so a backend that cannot say keeps the capsule (with no number).
+final favoritesGamesAnyLiveProvider = Provider.autoDispose<bool>((ref) {
+  final live = ref.watch(favoritesGamesLiveIdsProvider);
+  if (live != null) return live.isNotEmpty;
+  return ref.watch(
+    favoritesCombinedGamesProvider.select(
+      (state) => state.filteredGames.any(GameFilterHelper.isInPlay),
+    ),
+  );
+});
+
+/// The Favorites Games list's live-game poll, when it is running: for the
+/// page to pause it while covered and ask again on its way back.
+LiveGameIdsNotifier? _favoritesLiveIdsPoll(WidgetRef ref) {
+  // Only a poll already running: nothing is started from here.
+  if (!ref.exists(favoritesGamesLiveScopeProvider)) return null;
+  final scope = ref.read(favoritesGamesLiveScopeProvider);
+  if (scope == null) return null;
+  final provider = favoritesLiveGameIdsProvider(scope);
+  return ref.exists(provider) ? ref.read(provider.notifier) : null;
+}
 
 /// The Games list's toolbar: board view, Classical only and Filters, bare
 /// glyphs, ending the title row. The full-page search header ends with the same
@@ -200,8 +271,9 @@ class FavoritesGamesToolbar extends ConsumerWidget {
 
 /// The Games page's floating buttons (Trello #1420): the search and, above
 /// it while a game is in play (or while it is on), Live first, saying how
-/// many are live. Pressed with nothing in play, Live first stays off and
-/// says so; turned on, the list goes up to the games in play.
+/// many are live by the server's count. Pressed with nothing in play, Live
+/// first stays off and says so; turned on, it lists the live games the
+/// loaded days miss and the list goes up to them.
 ///
 /// Under the screen's [SearchModeHost] the search hands its tap to the host,
 /// which flies the search button's glass into the field and back.
@@ -210,46 +282,55 @@ class FavoritesGamesFabs extends ConsumerWidget {
 
   static const _surface = GameListLiveFirstSurface.favorites;
 
-  /// How far up from the bottom the buttons reach: the search, Live first
-  /// above it ([InkFabStack]'s 12pt gap), lifted by the Scaffold's margin and
-  /// the home indicator's inset. The Games list ends this far clear, so no
-  /// button covers its last game. Live first counts whether it floats or
-  /// not, so the end of the list never jumps as games start and finish.
-  /// Read it from the list's context: inside the button slot the Scaffold
-  /// has already taken the inset away.
+  /// How far up from the bottom the buttons reach: the search with Live
+  /// first above it ([InkFabStack.reach]). The Games list ends this far
+  /// clear, so no button covers its last game. Live first counts whether it
+  /// floats or not, so the end of the list never jumps as games start and
+  /// finish. Favorites is a pushed page, with no bottom bar under it. Read
+  /// it from the list's context: inside the button slot the Scaffold has
+  /// already taken the inset away.
   static double reach(BuildContext context) =>
-      InkFabSize.regular.side +
-      12 +
-      InkFabSize.small.side +
-      kFloatingActionButtonMargin +
-      MediaQuery.viewPaddingOf(context).bottom;
+      InkFabStack.reach(context, smallAbove: 1);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final liveFirst = ref.watch(gameListLiveFirstProvider(_surface));
     final anyLive = ref.watch(favoritesGamesAnyLiveProvider);
-    final liveCount = ref.watch(favoritesGamesLiveCountProvider);
     // Just after a search closes the list may still hold its hits: what is
     // live among them says nothing of the whole list.
     final holdsHits = ref.watch(
       favoritesCombinedGamesProvider.select((state) => state.isSearching),
     );
+    // Only while a game is in play (Trello #1420), or while it is on, so a
+    // Live first left on can always be seen and turned off. With nothing
+    // live and nothing to undo it is not on screen.
+    final offered = (anyLive || liveFirst) && !holdsHits;
     return InkFabStack(
       children: [
-        // Only while a game is in play (Trello #1420), or while it is on, so
-        // a Live first left on can always be seen and turned off. With
-        // nothing live and nothing to undo it is not on screen.
-        if ((anyLive || liveFirst) && !holdsHits)
+        if (offered)
           LiveFirstCapsule(
             key: const ValueKey('favorites_live_first_fab'),
             on: liveFirst,
-            liveCount: liveCount,
-            onTap: () => pressGameListLiveFirst(
-              context: context,
-              ref: ref,
-              surface: _surface,
-              games: ref.read(favoritesCombinedGamesProvider).filteredGames,
-            ),
+            liveCount: ref.watch(favoritesGamesLiveCountProvider),
+            onTap: () {
+              final liveIds = ref.read(favoritesGamesLiveIdsProvider);
+              final press = pressGameListLiveFirst(
+                context: context,
+                ref: ref,
+                surface: _surface,
+                games: ref.read(favoritesCombinedGamesProvider).filteredGames,
+                liveIds: liveIds,
+              );
+              // What it lifts is what it counted: the live games the loaded
+              // days do not hold yet join today.
+              if (press == GameListLiveFirstPress.turnedOn && liveIds != null) {
+                unawaited(
+                  ref
+                      .read(favoritesCombinedGamesProvider.notifier)
+                      .ensureListed(liveIds),
+                );
+              }
+            },
           ),
         SearchInkFab(
           key: e2eKey(E2eIds.favoritesSearchFab),
@@ -284,6 +365,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   Timer? _scrollIdleTimer;
   bool _routeSubscribed = false;
   bool _routeIsCurrent = true;
+
+  /// The live count's poll, paused while a board covers the list.
+  final CoveredLiveGamesPoll _livePoll = CoveredLiveGamesPoll();
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
@@ -366,7 +450,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
   @override
   void didPopNext() {
-    _setRouteActive(true);
+    // Back from a board: games may have started or ended meanwhile.
+    _setRouteActive(true, backFromBoard: true);
   }
 
   @override
@@ -411,15 +496,40 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     );
   }
 
-  void _setRouteActive(bool isActive) {
+  void _setRouteActive(bool isActive, {bool backFromBoard = false}) {
     if (!mounted) return;
     if (_routeIsCurrent != isActive) {
       setState(() => _routeIsCurrent = isActive);
+    }
+    // Covered by a board, the live count waits instead of polling; back
+    // from it, the server is asked once.
+    final poll = _favoritesLiveIdsPoll(ref);
+    if (isActive) {
+      _livePoll.uncover(ref, poll, ask: backFromBoard);
+    } else {
+      _livePoll.cover(ref, poll);
     }
     if (!isActive) {
       ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
       _stopLiveCardsForHiddenTab();
     }
+  }
+
+  /// With Live first on, the live games the loaded days miss join the list
+  /// (see [FavoritesCombinedGamesNotifier.ensureListed]), so it lifts what
+  /// its capsule counts.
+  void _listLiveGames() {
+    if (!mounted) return;
+    if (!ref.read(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
+    )) {
+      return;
+    }
+    final liveIds = ref.read(favoritesGamesLiveIdsProvider);
+    if (liveIds == null || liveIds.isEmpty) return;
+    unawaited(
+      ref.read(favoritesCombinedGamesProvider.notifier).ensureListed(liveIds),
+    );
   }
 
   void _setAppResumed(bool isResumed) {
@@ -435,19 +545,29 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     _markLiveCardsScrolling();
+    _loadMoreNearEnd(_scrollController.position);
+  }
 
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    // 200px before the last card, which now sits above the floating
-    // buttons' clearance at the list's end.
+  /// The next days, once the reader is within 200pt of the last card (which
+  /// sits above the floating buttons' clearance at the list's end). Asked
+  /// on every scroll and whenever the list's size changes under a still
+  /// reader ([ScrollMetricsNotification]): a page landing short, a day
+  /// folding, the header folding away and growing the viewport.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
+    if (!mounted || !metrics.hasContentDimensions) return;
     final threshold = 200.0 + FavoritesGamesFabs.reach(context);
-
-    if (maxScroll - currentScroll <= threshold) {
-      final state = ref.read(favoritesCombinedGamesProvider);
-      if (state.hasMore && !state.isLoading) {
-        _loadMoreDays();
-      }
+    if (metrics.maxScrollExtent - metrics.pixels > threshold) return;
+    final state = ref.read(favoritesCombinedGamesProvider);
+    if (state.hasMore && !state.isLoading && state.games.isNotEmpty) {
+      _loadMoreDays();
     }
+  }
+
+  bool _onScrollMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
+      _loadMoreNearEnd(notification.metrics);
+    }
+    return false;
   }
 
   void _markLiveCardsScrolling() {
@@ -562,6 +682,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     if (_toTopOnLanding && previous.isLoading && !next.isLoading) {
       _toTopOnLanding = false;
       _settleListAt(0);
+    }
+    // A list that lands while Live first is on (a refresh, a filter, the
+    // plain list back after a search) gets the live games it misses.
+    if (previous.isLoading && !next.isLoading && !next.isSearching) {
+      _listLiveGames();
     }
   }
 
@@ -711,7 +836,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     final state = ref.watch(favoritesCombinedGamesProvider);
     final favoritesState = ref.watch(favoritePlayersNotifierProvider);
     ref.listen(favoritesCombinedGamesProvider, _onGamesChanged);
-    // Live first brings the games in play to the top of each day; the list
+    // Live first brings the games in play to the top of the list; the list
     // goes up to them.
     ref.listen<bool>(
       gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
@@ -721,14 +846,24 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         }
       },
     );
+    final liveFirst = ref.watch(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
+    );
+    // Only Live first reorders by the live set, so only then does the list
+    // follow it; while on, a game that starts joins the list as the count
+    // takes it in.
+    final liveIds = liveFirst ? ref.watch(favoritesGamesLiveIdsProvider) : null;
+    if (liveFirst) {
+      ref.listen<Set<String>?>(
+        favoritesGamesLiveIdsProvider,
+        (_, _) => _listLiveGames(),
+      );
+    }
     if (!_isActiveOnScreen) {
       return const SizedBox.shrink();
     }
 
     final viewMode = ref.watch(gamesListViewModeProvider);
-    final liveFirst = ref.watch(
-      gameListLiveFirstProvider(GameListLiveFirstSurface.favorites),
-    );
     // Watch the notifier provider for optimistic updates when favorites change
     final playerModels = favoritesState.valueOrNull?.players ?? [];
 
@@ -766,41 +901,49 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     final content = RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
+        // The count of games in play comes along with the list.
+        unawaited(_favoritesLiveIdsPoll(ref)?.refresh());
         await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: NotificationListener<ScrollStartNotification>(
-        onNotification: _onScrollStart,
-        child: CustomScrollView(
-          key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
-          controller: _scrollController,
-          scrollCacheExtent: kListScrollCacheExtent,
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            // Favorite-player chips. The search field lives in the screen's
-            // full-page search header (Trello #1420), above this same list.
-            // Player selection and text search are independent AND filters,
-            // so keep the player chips available while a search is active.
-            if (favorites.length > 1)
-              SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
-
-            // Content
-            SliverLayoutBuilder(
-              builder: (context, constraints) => _buildContentSliver(
-                state,
-                favorites,
-                viewMode,
-                constraints.crossAxisExtent,
-                liveFirst: liveFirst,
-              ),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onScrollMetrics,
+        child: NotificationListener<ScrollStartNotification>(
+          onNotification: _onScrollStart,
+          child: CustomScrollView(
+            key: PageStorageKey<String>(
+              'favorites_games_list_${viewMode.index}',
             ),
+            controller: _scrollController,
+            scrollCacheExtent: kListScrollCacheExtent,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
+              // Favorite-player chips. The search field lives in the screen's
+              // full-page search header (Trello #1420), above this same list.
+              // Player selection and text search are independent AND filters,
+              // so keep the player chips available while a search is active.
+              if (favorites.length > 1)
+                SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
 
-            // Bottom padding
-            SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-          ],
+              // Content
+              SliverLayoutBuilder(
+                builder: (context, constraints) => _buildContentSliver(
+                  state,
+                  favorites,
+                  viewMode,
+                  constraints.crossAxisExtent,
+                  liveFirst: liveFirst,
+                  liveIds: liveIds,
+                ),
+              ),
+
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
+          ),
         ),
       ),
     );
@@ -983,6 +1126,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     GamesListViewMode viewMode,
     double availableWidth, {
     required bool liveFirst,
+    Set<String>? liveIds,
   }) {
     if (_showsFirstLoad(state)) {
       return SliverFillRemaining(
@@ -1032,9 +1176,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     final gamesByDate = groupFavoriteGamesByDay(
       listedGames,
       liveFirst: liveFirst,
+      liveIds: liveIds,
     );
     // With Live first on, the board swipes through the games in the order the
-    // list shows them, live ones leading each day.
+    // list shows them, live ones leading.
     final games = liveFirst
         ? [for (final dayGames in gamesByDate.values) ...dayGames]
         : listedGames;
@@ -1142,15 +1287,21 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       }
     }
 
-    // Loading indicator for auto-scroll loading (a list being replaced has
-    // its quiet line at the top instead).
-    if (state.isLoading && !state.isReplacing && state.games.isNotEmpty) {
-      listEntries.add(const _FavoritesFooterEntry.loading());
-    } else if (state.hasMore && state.games.isNotEmpty) {
-      // Spacer to ensure scroll triggers auto-load
-      listEntries.add(const _FavoritesFooterEntry.spacer());
-    } else if (!state.hasMore && state.games.isNotEmpty) {
-      listEntries.add(const _FavoritesFooterEntry.end());
+    // The list's end, one slot of one height whatever it holds: the next
+    // days loading (a list being replaced has its quiet line at the top
+    // instead), room to scroll on into them, or the end. The list's length
+    // never changes as a page starts or lands, so nothing under the
+    // reader's finger jumps at the paging point.
+    if (state.games.isNotEmpty) {
+      listEntries.add(
+        _FavoritesFooterEntry(
+          state.isLoading && !state.isReplacing
+              ? _FavoritesFooterType.loading
+              : state.hasMore
+              ? _FavoritesFooterType.spacer
+              : _FavoritesFooterType.end,
+        ),
+      );
     }
 
     return SliverMainAxisGroup(
@@ -1262,36 +1413,30 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
 
     if (entry is _FavoritesFooterEntry) {
-      switch (entry.type) {
-        case _FavoritesFooterType.loading:
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 24.h),
-            child: Center(
-              child: SizedBox(
-                width: 24.w,
-                height: 24.h,
-                child: CircularProgressIndicator(
-                  color: context.colors.textPrimary,
-                  strokeWidth: 2,
-                ),
+      return SizedBox(
+        key: const ValueKey('favorites_games_list_end_slot'),
+        height: _FavoritesFooterEntry.height,
+        child: Center(
+          child: switch (entry.type) {
+            _FavoritesFooterType.loading => SizedBox(
+              width: 24.w,
+              height: 24.h,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
+                strokeWidth: 2,
               ),
             ),
-          );
-        case _FavoritesFooterType.spacer:
-          return SizedBox(height: 60.h);
-        case _FavoritesFooterType.end:
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: Center(
-              child: Text(
-                'No more games',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFF52525B),
-                ),
+            _FavoritesFooterType.spacer => const SizedBox.shrink(),
+            _FavoritesFooterType.end => Text(
+              'No more games',
+              maxLines: 1,
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.collectionSubtleInk,
               ),
             ),
-          );
-      }
+          },
+        ),
+      );
     }
 
     return const SizedBox.shrink();
@@ -1607,11 +1752,11 @@ class _FavoritesCardGameEntry extends _FavoritesGamesListEntry {
 enum _FavoritesFooterType { loading, spacer, end }
 
 class _FavoritesFooterEntry extends _FavoritesGamesListEntry {
-  const _FavoritesFooterEntry.loading() : type = _FavoritesFooterType.loading;
+  const _FavoritesFooterEntry(this.type);
 
-  const _FavoritesFooterEntry.spacer() : type = _FavoritesFooterType.spacer;
-
-  const _FavoritesFooterEntry.end() : type = _FavoritesFooterType.end;
+  /// The slot's one height: the tallest of what it can hold (the spinner
+  /// with its room above and below).
+  static double get height => 72.h;
 
   final _FavoritesFooterType type;
 }

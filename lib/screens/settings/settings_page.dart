@@ -16,8 +16,10 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/notification_settings/beta_badge.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
@@ -75,9 +77,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  /// A save in flight holds the page (its back swipe and back button wait
+  /// for it); none in flight, the page leaves like any other, swipe
+  /// included.
   void _trackPersist(Future<void> future) {
     _pendingPersists.add(future);
-    future.whenComplete(() => _pendingPersists.remove(future));
+    _pendingChanged();
+    future.whenComplete(() {
+      _pendingPersists.remove(future);
+      _pendingChanged();
+    });
+  }
+
+  /// Rebuilds for [PopScope.canPop]; after the frame when a save starts
+  /// from within one.
+  void _pendingChanged() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+      return;
+    }
+    setState(() {});
   }
 
   Future<bool> _onWillPop() async {
@@ -102,8 +125,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
 
+    final canGoBack = ModalRoute.of(context)?.canPop ?? false;
     return PopScope(
-      canPop: false,
+      // Held only while a save is in flight; it then leaves once the save
+      // lands.
+      canPop: _pendingPersists.isEmpty,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         final canPop = await _onWillPop();
@@ -115,6 +141,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         key: e2eKey(E2eIds.settingsRoot),
         backgroundColor: context.colors.background,
         appBar: AppBar(
+          // The way back every pushed page wears, at the one inset.
+          automaticallyImplyLeading: false,
+          leadingWidth: canGoBack
+              ? SearchHeaderMetrics.leadingInset +
+                    SearchHeaderMetrics.backTarget
+              : null,
+          leading: canGoBack
+              ? const Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: PageBackButton(),
+                )
+              : null,
           title: Text(
             'Settings',
             style: AppTypography.textLgMedium.copyWith(

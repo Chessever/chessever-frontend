@@ -264,7 +264,10 @@ class SearchPageResults extends StatelessWidget {
           const SliverToBoxAdapter(child: SearchPageSpinner(top: 0)),
         if (players.isEmpty && events.isEmpty && snapshot.remoteMessage != null)
           SliverToBoxAdapter(child: _PageNote(text: snapshot.remoteMessage!)),
-        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        // Clear of the floating dock the page scrolls under.
+        SliverToBoxAdapter(
+          child: SizedBox(height: 24.h + MediaQuery.paddingOf(context).bottom),
+        ),
       ],
     );
     // A new search starts at its top; the last one's scroll is not its own.

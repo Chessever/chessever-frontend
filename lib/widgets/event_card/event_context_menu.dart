@@ -8,6 +8,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -165,13 +166,25 @@ bool eventIsFavorited(
 
 /// Stars or unstars [model]: the one path behind every event star, so each
 /// writes the same row and the same analytics event.
-Future<void> toggleEventFavorite({
+///
+/// Under [SpaceStarPins] (the Search tab) a star also keeps the event in My
+/// Space, as [spaceDraft] (the card's own save target) or
+/// [eventSpaceDraft]; an unstar never takes it out.
+///
+/// True once starred, false once unstarred, null when nothing changed (the
+/// sign-in was declined, or the write failed).
+Future<bool?> toggleEventFavorite({
   required BuildContext context,
   required WidgetRef ref,
   required GroupEventCardModel model,
+  SpaceShortcut? spaceDraft,
 }) async {
+  // Resolved before the first await: the card may be gone after it.
+  final pinToSpace = SpaceStarPins.of(context);
+  final container = ProviderScope.containerOf(context, listen: false);
+  final messenger = ScaffoldMessenger.maybeOf(context);
   final allowed = await requireFullAuthGuard(context);
-  if (!allowed) return;
+  if (!allowed) return null;
 
   HapticFeedbackService.pin();
 
@@ -208,9 +221,18 @@ Future<void> toggleEventFavorite({
         if (model.maxAvgElo > 0) 'max_avg_elo': model.maxAvgElo,
       },
     );
+    if (isFavorited && pinToSpace) {
+      await pinStarredToSpace(
+        container: container,
+        messenger: messenger,
+        draft: spaceDraft ?? eventSpaceDraft(model),
+      );
+    }
+    return isFavorited;
   } catch (e) {
     debugPrint('[EventCard] Error toggling favorite: $e');
     // Silently handle error - state will be corrected on next refresh.
+    return null;
   }
 }
 

@@ -2,6 +2,8 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/utils/smart_event_mutation.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_shortcut.dart';
+import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -19,10 +21,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// timezone, its owner hears how many new games it caught
 /// (`queue_smart_event_digests`). Unstarring is the only opt-out, so starring
 /// asks nothing; it only makes sure the push can arrive.
+///
+/// Under [SpaceStarPins] (the Search tab) a star also keeps the smart event
+/// in My Space ([pinStarredToSpace]); an unstar never takes it out.
 Future<void> toggleSmartEventFavorite({
   required BuildContext context,
   required SmartEventRequest request,
 }) async {
+  // Read before the first await: the card may be gone after the dialog.
+  final pinToSpace = SpaceStarPins.of(context);
   final allowed = await requireFullAuthGuard(context);
   if (!allowed || !context.mounted) return;
 
@@ -79,6 +86,13 @@ Future<void> toggleSmartEventFavorite({
         extraMetadata: request.toFavoriteMetadata(),
       );
       track(true);
+      if (pinToSpace) {
+        await pinStarredToSpace(
+          container: container,
+          messenger: messenger,
+          draft: smartEventSpaceDraft(request),
+        );
+      }
       await makeSmartEventStarReachable(
         container: container,
         messenger: messenger,

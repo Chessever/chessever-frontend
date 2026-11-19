@@ -540,6 +540,250 @@ void main() {
       expect(state.games.map((game) => game.gameId), ['second-game']);
     });
   });
+
+  _ensureListedTests();
+}
+
+/// Live first lists the live games the loaded days miss
+/// (`ensureListed`), so what it lifts is what its capsule counted.
+void _ensureListedTests() {
+  group('Favorites Live first lists the live games the pages miss', () {
+    test('fetches only the missing ones and merges them in the list\'s '
+        'order, today on top', () async {
+      final repository = _RecordingGameRepository();
+      repository.rowsById['started-later'] = _game(
+        'started-later',
+        lastMoveTime: DateTime.utc(2026, 8, 27, 9),
+      ).copyWith(dateStart: DateTime.utc(2026, 8, 27), status: '*');
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+
+      await notifier.ensureListed({'favorite-day', 'started-later', 'gone'});
+
+      expect(
+        repository.byIdCalls.single,
+        unorderedEquals(['started-later', 'gone']),
+      );
+      final state = harness.container.read(favoritesCombinedGamesProvider);
+      expect(state.games.map((game) => game.gameId), [
+        'started-later',
+        'favorite-day',
+      ]);
+      expect(state.seenGameIds, containsAll(['started-later', 'favorite-day']));
+
+      // Listed once: asking again fetches nothing.
+      await notifier.ensureListed({'started-later'});
+      expect(repository.byIdCalls, hasLength(1));
+    });
+
+    test('never into a search\'s hits', () async {
+      final repository = _RecordingGameRepository();
+      repository.rowsById['live'] = _game('live');
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+
+      await notifier.searchGames('Carlsen');
+      await notifier.ensureListed({'live'});
+
+      expect(repository.byIdCalls, isEmpty);
+      expect(
+        harness.container
+            .read(favoritesCombinedGamesProvider)
+            .games
+            .map((game) => game.gameId),
+        ['favorite-search-Carlsen'],
+      );
+    });
+
+    test('an answer that lands after a search began is dropped', () async {
+      final repository = _RecordingGameRepository();
+      repository.rowsById['live'] = _game('live');
+      final gate = Completer<void>();
+      repository.nextByIdGate = gate;
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+
+      final listing = notifier.ensureListed({'live'});
+      await notifier.searchGames('Carlsen');
+      gate.complete();
+      await listing;
+
+      expect(
+        harness.container
+            .read(favoritesCombinedGamesProvider)
+            .games
+            .map((game) => game.gameId),
+        ['favorite-search-Carlsen'],
+      );
+    });
+
+    test('into a list that loaded with nothing in it', () async {
+      // The only game under the filter started after the list loaded: the
+      // capsule over the empty state counts it, so Live first lists it.
+      final repository = _RecordingGameRepository(favoriteDates: const []);
+      repository.rowsById['live'] = _game(
+        'live',
+        lastMoveTime: DateTime.utc(2026, 8, 27, 9),
+      ).copyWith(status: '*');
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+      expect(harness.container.read(favoritesCombinedGamesProvider).games, []);
+
+      await notifier.ensureListed({'live'});
+
+      expect(repository.byIdCalls.single, ['live']);
+      expect(
+        harness.container
+            .read(favoritesCombinedGamesProvider)
+            .games
+            .map((game) => game.gameId),
+        ['live'],
+      );
+    });
+
+    test('waits while the first load is on its way', () async {
+      final repository = _RecordingGameRepository();
+      repository.rowsById['live'] = _game('live');
+      final pendingDates = Completer<List<DateTime>>();
+      repository.nextFavoriteDates = pendingDates;
+      final container = ProviderContainer(
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(repository),
+          favoritePlayersNotifierProvider.overrideWith(
+            _TestFavoritePlayersNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(favoritePlayersNotifierProvider.future);
+      final subscription = container.listen(
+        favoritesCombinedGamesProvider,
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      expect(container.read(favoritesCombinedGamesProvider).isLoading, isTrue);
+
+      await container
+          .read(favoritesCombinedGamesProvider.notifier)
+          .ensureListed({'live'});
+
+      // The page lists it again once the list lands.
+      expect(repository.byIdCalls, isEmpty);
+      pendingDates.complete(const []);
+      await _waitUntil(
+        () => !container.read(favoritesCombinedGamesProvider).isLoading,
+      );
+    });
+
+    test('a later page that holds a listed game lists it once', () async {
+      final days = [
+        DateTime.utc(2026, 8, 26),
+        DateTime.utc(2026, 8, 25),
+        DateTime.utc(2026, 8, 24),
+        DateTime.utc(2026, 8, 23),
+      ];
+      final repository = _RecordingGameRepository(
+        favoriteDates: days,
+        favoriteDayGames: (date) => [
+          _game(
+            date.day == 23 ? 'old-live' : 'day-${date.day}',
+            lastMoveTime: date.add(const Duration(hours: 12)),
+          ).copyWith(dateStart: date),
+        ],
+      );
+      repository.rowsById['old-live'] = _game(
+        'old-live',
+        lastMoveTime: DateTime.utc(2026, 8, 23, 12),
+      ).copyWith(dateStart: DateTime.utc(2026, 8, 23));
+      final harness = await _favoritesHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        favoritesCombinedGamesProvider.notifier,
+      );
+
+      await notifier.ensureListed({'old-live'});
+      await notifier.loadMoreGames();
+
+      final ids = harness.container
+          .read(favoritesCombinedGamesProvider)
+          .games
+          .map((game) => game.gameId)
+          .toList();
+      expect(ids.where((id) => id == 'old-live'), hasLength(1));
+      expect(ids, containsAll(['day-26', 'day-25', 'day-24', 'old-live']));
+    });
+  });
+
+  group('Countrymen Live first lists the live games the pages miss', () {
+    test('fetches only the missing ones, and never into a search', () async {
+      final repository = _RecordingGameRepository();
+      repository.rowsById['live'] = _game(
+        'live',
+        lastMoveTime: DateTime.utc(2026, 8, 27, 9),
+      );
+      final harness = await _countryHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        countrymenCombinedGamesProvider.notifier,
+      );
+
+      await notifier.ensureListed({'country-day', 'live'});
+      expect(repository.byIdCalls.single, ['live']);
+      expect(
+        harness.container
+            .read(countrymenCombinedGamesProvider)
+            .games
+            .map((game) => game.gameId),
+        ['live', 'country-day'],
+      );
+
+      await notifier.searchGames('Carlsen');
+      repository.rowsById['other'] = _game('other');
+      await notifier.ensureListed({'other'});
+      expect(repository.byIdCalls, hasLength(1));
+    });
+
+    test('into a list that loaded with nothing in it', () async {
+      final repository = _RecordingGameRepository(countryDayGames: const []);
+      repository.rowsById['live'] = _game(
+        'live',
+        lastMoveTime: DateTime.utc(2026, 8, 27, 9),
+      ).copyWith(status: '*');
+      final harness = await _countryHarness(repository);
+      addTearDown(harness.dispose);
+      final notifier = harness.container.read(
+        countrymenCombinedGamesProvider.notifier,
+      );
+      expect(
+        harness.container.read(countrymenCombinedGamesProvider).games,
+        isEmpty,
+      );
+
+      await notifier.ensureListed({'live'});
+
+      expect(repository.byIdCalls.single, ['live']);
+      expect(
+        harness.container
+            .read(countrymenCombinedGamesProvider)
+            .games
+            .map((game) => game.gameId),
+        ['live'],
+      );
+    });
+  });
 }
 
 Future<_ProviderHarness> _favoritesHarness(
@@ -657,11 +901,37 @@ class _RecordingGameRepository implements GameRepository {
   _RecordingGameRepository({
     List<DateTime>? favoriteDates,
     List<Games>? countryDayGames,
+    this.favoriteDayGames,
   }) : favoriteDates = favoriteDates ?? [DateTime.utc(2026, 8, 26)],
        countryDayGames = countryDayGames ?? [_game('country-day')];
 
   final List<DateTime> favoriteDates;
   final List<Games> countryDayGames;
+
+  /// A favorites day's games; one 'favorite-day' game when null.
+  final List<Games> Function(DateTime date)? favoriteDayGames;
+
+  /// Rows [getGamesByIds] can return, by id.
+  final Map<String, Games> rowsById = {};
+
+  /// Every batch of ids asked for by id.
+  final List<List<String>> byIdCalls = [];
+
+  /// Holds the next by-id answer until completed.
+  Completer<void>? nextByIdGate;
+
+  @override
+  Future<List<Games>> getGamesByIds(List<String> ids) async {
+    byIdCalls.add(List<String>.of(ids));
+    final gate = nextByIdGate;
+    nextByIdGate = null;
+    if (gate != null) await gate.future;
+    return [
+      for (final id in ids)
+        if (rowsById[id] case final row?) row,
+    ];
+  }
+
   final List<GameFilter> favoriteDateFilters = [];
   final List<_FavoriteSearchCall> favoriteSearchCalls = [];
   final List<_CountrySearchCall> countrySearchCalls = [];
@@ -687,7 +957,7 @@ class _RecordingGameRepository implements GameRepository {
     required List<String> fideIds,
     required DateTime date,
     GameFilter? filter,
-  }) async => [_game('favorite-day')];
+  }) async => favoriteDayGames?.call(date) ?? [_game('favorite-day')];
 
   @override
   Future<List<Games>> searchFavoritesGames({

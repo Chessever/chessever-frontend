@@ -16,6 +16,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -383,16 +385,20 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
               automaticallyImplyLeading: false,
               toolbarHeight: _barHeight,
               titleSpacing: 8,
-              leadingWidth: 56,
+              // The app's one way back: the chevron at the search header's
+              // inset, the same glyph at the same x as on every pushed page.
+              leadingWidth:
+                  SearchHeaderMetrics.leadingInset +
+                  SearchHeaderMetrics.backTarget,
               centerTitle: true,
               title: _BarTitle(title: news.title, shown: _titleInBar),
-              leading: IconButton(
-                tooltip: 'Back',
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  size: 20,
-                  color: colors.iconPrimary,
+              leading: Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: SearchHeaderMetrics.leadingInset,
+                ),
+                child: const Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: PageBackButton(),
                 ),
               ),
               actions: [

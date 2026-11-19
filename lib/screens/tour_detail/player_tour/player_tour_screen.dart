@@ -5,6 +5,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_list_end.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_player_nav.dart';
@@ -187,7 +188,7 @@ class _StandingsList extends ConsumerWidget {
               primary: false,
               padding: EdgeInsets.only(
                 top: 8.sp,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+                bottom: EventGamesListEnd.tableEnd(context),
               ),
               itemCount: data.isEmpty ? 1 : data.length,
               itemBuilder: (context, index) {
@@ -195,10 +196,9 @@ class _StandingsList extends ConsumerWidget {
                   return Padding(
                     padding: EdgeInsets.only(top: 48.h),
                     child: EmptyWidget(
-                      title:
-                          isSearching
-                              ? "No players found matching your search"
-                              : "No data available",
+                      title: isSearching
+                          ? "No players found matching your search"
+                          : "No data available",
                     ),
                   );
                 }
@@ -212,13 +212,12 @@ class _StandingsList extends ConsumerWidget {
           },
           // Never paint errors as the loading skeleton — that made release-only
           // standings failures look like an infinite shimmer with no Sentry hit.
-          error:
-              (e, _) => Padding(
-                padding: EdgeInsets.only(top: 48.h),
-                child: EmptyWidget(
-                  title: "Couldn't load standings. Pull away and try again.",
-                ),
-              ),
+          error: (e, _) => Padding(
+            padding: EdgeInsets.only(top: 48.h),
+            child: EmptyWidget(
+              title: "Couldn't load standings. Pull away and try again.",
+            ),
+          ),
           loading: () => const StandingsLoadingList(),
         );
   }
@@ -266,14 +265,13 @@ class StandingsPlayerRow extends ConsumerWidget {
           isFavorite: isFav,
           showFavoriteButton: false,
           onTap: openScorecard,
-          onLongPress:
-              (_) => _showStandingMenu(
-                rowContext,
-                ref,
-                player: player,
-                isFavorite: isFav,
-                onOpen: openScorecard,
-              ),
+          onLongPress: (_) => _showStandingMenu(
+            rowContext,
+            ref,
+            player: player,
+            isFavorite: isFav,
+            onOpen: openScorecard,
+          ),
         );
       },
     );
@@ -311,14 +309,13 @@ void _showStandingMenu(
   );
   showLibraryContextMenu(
     context: context,
-    previewBuilder:
-        (_) => FigmaPlayerCard(
-          player: player,
-          rank: player.overallRank,
-          isFavorite: isFavorite,
-          showFavoriteButton: false,
-          onTap: () {},
-        ),
+    previewBuilder: (_) => FigmaPlayerCard(
+      player: player,
+      rank: player.overallRank,
+      isFavorite: isFavorite,
+      showFavoriteButton: false,
+      onTap: () {},
+    ),
     onPreviewTap: onOpen,
     actions: [
       LibraryMenuAction(
@@ -403,9 +400,7 @@ class StandingsLoadingList extends StatelessWidget {
 
     return ListView.builder(
       shrinkWrap: true,
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
-      ),
+      padding: EdgeInsets.only(bottom: EventGamesListEnd.tableEnd(context)),
       itemCount: data.length,
       itemBuilder: (context, index) {
         final player = data[index];

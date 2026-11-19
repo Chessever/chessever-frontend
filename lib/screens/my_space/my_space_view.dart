@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/screens/my_space/actions/space_component_share.dart';
 
@@ -35,6 +36,8 @@ import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -68,8 +71,31 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
   final _pageScroll = ScrollController();
   final Set<String> _selected = {};
 
+  /// The chrome Edit holds in view, while it does: a lifted card's
+  /// autoscroll is the page moving itself, never the reader reading on, so
+  /// it must not send the bars away or bring them back under the card.
+  ScrollChromeController? _heldChrome;
+
+  /// Holds the section's chrome while Edit is on, and lets go when it ends.
+  /// Written only on a change, so a page that holds the chrome for its own
+  /// reasons (a search with the keyboard up) is never let go of from here.
+  void _holdChrome(bool editing) {
+    if (editing == (_heldChrome != null)) return;
+    if (editing) {
+      final chrome = ScrollChromeScope.maybeOf(context);
+      if (chrome == null) return;
+      chrome.held = true;
+      _heldChrome = chrome;
+    } else {
+      _heldChrome?.held = false;
+      _heldChrome = null;
+    }
+  }
+
   @override
   void dispose() {
+    _heldChrome?.held = false;
+    _heldChrome = null;
     _pageScroll.dispose();
     super.dispose();
   }
@@ -149,6 +175,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       }
     });
     final editing = ref.watch(spaceEditModeProvider);
+    _holdChrome(editing);
     final groups = ref.watch(spaceCompactDatabaseGroupsProvider);
     final pins = [
       for (final group in groups ?? <SpaceDatabaseGroup>[]) ...group.items,
@@ -184,8 +211,18 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       onReorder: _reorder,
       controller: widget.scrollController ?? _pageScroll,
       top: 16.sp,
-      // Keep the last row above My Space's restored add button.
-      bottom: 24.sp + 72,
+      // Keep the last row above My Space's add button, which rides over
+      // the home dock: the buttons' reach ([InkFabStack.reach], which holds
+      // the home indicator's inset) and the dock's share of the slot the
+      // shell hands the body as padding beyond it.
+      bottom:
+          24.sp +
+          InkFabStack.reach(context) +
+          math.max(
+            0.0,
+            MediaQuery.paddingOf(context).bottom -
+                MediaQuery.viewPaddingOf(context).bottom,
+          ),
       footer: footer == null
           ? null
           : Padding(

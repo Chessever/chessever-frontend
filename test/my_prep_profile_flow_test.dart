@@ -54,7 +54,9 @@ import 'package:flutter/services.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton, CardMoreButton;
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/popover_add_fab.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart' show SlidingFabs;
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show SearchCountBadge;
@@ -658,6 +660,83 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('prep_add_floating')), findsNothing);
     expect(find.byKey(const ValueKey('prep_add_empty')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the floating add comes and goes in place: its slot always '
+      'holds the sliding stack, so the Scaffold never plays its scale-and-'
+      'turn entrance', (tester) async {
+    final container = await pump(
+      tester,
+      const MyPrepHomeScreen(),
+      premium: true,
+    );
+    await tester.pumpAndSettle();
+    final fab = find.byKey(const ValueKey('prep_add_floating'));
+    Widget? slot() => tester
+        .widget<Scaffold>(
+          find
+              .descendant(
+                of: find.byType(MyPrepHomeScreen),
+                matching: find.byType(Scaffold),
+              )
+              .first,
+        )
+        .floatingActionButton;
+
+    /// The first frame the button is on screen it is already whole and
+    /// upright: nothing above it scales or turns it in.
+    Future<void> arrivesInPlace() async {
+      for (var i = 0; i < 30 && fab.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(fab, findsOneWidget);
+      expect(
+        find.ancestor(of: fab, matching: find.byType(InkFabStack)),
+        findsOneWidget,
+      );
+      for (final scale in tester.widgetList<ScaleTransition>(
+        find.ancestor(of: fab, matching: find.byType(ScaleTransition)),
+      )) {
+        expect(scale.scale.value, 1);
+      }
+      for (final turn in tester.widgetList<RotationTransition>(
+        find.ancestor(of: fab, matching: find.byType(RotationTransition)),
+      )) {
+        expect(turn.turns.value, 1);
+      }
+      await tester.pumpAndSettle();
+    }
+
+    // Nothing added yet: no button, and the slot still holds the stack.
+    expect(fab, findsNothing);
+    expect(slot(), isA<SlidingFabs>());
+    await tester.tap(find.text('Profiles'));
+    await tester.pumpAndSettle();
+    expect(fab, findsNothing);
+    expect(slot(), isA<SlidingFabs>());
+
+    // The first profile brings the button, in place.
+    await tester.runAsync(() async {
+      final profiles = container.read(prepProfilesProvider.notifier);
+      profiles.create(
+        kind: PrepKind.opponent,
+        name: 'My study player',
+        accounts: [],
+      );
+      await profiles.debugDrainWrites();
+    });
+    await arrivesInPlace();
+    expect(slot(), isA<SlidingFabs>());
+
+    // Players has nothing to add; coming back brings the button in place.
+    await tester.tap(find.text('Players'));
+    await tester.pumpAndSettle();
+    expect(fab, findsNothing);
+    expect(slot(), isA<SlidingFabs>());
+    await tester.tap(find.text('Profiles'));
+    await arrivesInPlace();
+    expect(slot(), isA<SlidingFabs>());
     expect(tester.takeException(), isNull);
   });
 

@@ -8,6 +8,8 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
@@ -484,8 +486,10 @@ class HomeTopBarRow extends StatelessWidget {
   final Widget content;
   final bool showAvatar;
 
-  /// Stands where the avatar does on a page pushed over the home shell,
-  /// usually a [HomeTopBarBackButton]. Shown only when the avatar is not.
+  /// Stands where the avatar does: on a page pushed over the home shell,
+  /// the page's [PageBackButton] (its chevron lands where every pushed
+  /// page's does); on a root, a control of its own on the bar's gutter.
+  /// Shown only when the avatar is not.
   final Widget? leading;
   final VoidCallback? onAvatarTap;
   final Key? avatarKey;
@@ -532,8 +536,20 @@ class HomeTopBarRow extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                HomeTopBarTapTarget(child: chrome(leading!)),
-                SizedBox(width: 12.w),
+                // A way back lands on every pushed page's x; any other
+                // control (Botvinnik's Chats) sits on the bar's gutter.
+                if (leading is PageBackButton) ...[
+                  HomeTopBarTapTarget(
+                    child: chrome(_LeadingBack(child: leading!)),
+                  ),
+                  // The field keeps the gap it had from the chevron's glyph.
+                  SizedBox(
+                    width: math.max(0.0, 12.w + _LeadingBack.shift(context)),
+                  ),
+                ] else ...[
+                  HomeTopBarTapTarget(child: chrome(leading!)),
+                  SizedBox(width: 12.w),
+                ],
               ],
             ),
           ),
@@ -609,44 +625,31 @@ class HomeTopBar extends StatelessWidget {
   }
 }
 
-/// The back chevron a page pushed over the home shell wears where the tabs
-/// keep the avatar. Its glyph's own edge lands on the bar's gutter.
-class HomeTopBarBackButton extends StatelessWidget {
-  const HomeTopBarBackButton({super.key, this.onPressed});
+/// A [HomeTopBarRow]'s leading [PageBackButton] at its one place. The row
+/// starts on the bar's gutter ([HomeTopBarMetrics.horizontalPadding]),
+/// wider than a pushed page's back inset, so the button is drawn [shift]
+/// toward the edge: its chevron lands where every pushed page's does
+/// ([SearchHeaderMetrics.leadingInset]), the same glyph at the same x. As
+/// tall as the bar's controls, so the row keeps its height.
+class _LeadingBack extends StatelessWidget {
+  const _LeadingBack({required this.child});
 
-  /// Defaults to popping the page.
-  final VoidCallback? onPressed;
+  final Widget child;
+
+  /// How far the button is drawn toward the start edge (negative: toward
+  /// it), in the row's start direction.
+  static double shift(BuildContext context) =>
+      SearchHeaderMetrics.leadingInset - HomeTopBarMetrics.horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      container: true,
-      button: true,
-      label: 'Back',
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedbackService.navigation();
-          final press = onPressed;
-          if (press != null) {
-            press();
-          } else {
-            Navigator.of(context).maybePop();
-          }
-        },
-        child: SizedBox(
-          width: 32,
-          height: HomeTopBarMetrics.controlExtent,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 22,
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final dx = shift(context);
+    return SizedBox(
+      height: HomeTopBarMetrics.controlExtent,
+      child: Transform.translate(
+        offset: Offset(rtl ? -dx : dx, 0),
+        child: child,
       ),
     );
   }

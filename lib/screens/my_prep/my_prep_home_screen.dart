@@ -23,6 +23,7 @@ import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton;
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
@@ -134,24 +135,31 @@ class _MyPrepHomeScreenState extends ConsumerState<MyPrepHomeScreen>
 
     return Scaffold(
       backgroundColor: context.colors.background,
-      floatingActionButton: profiles == null || !_hasAdd(profiles)
-          ? null
-          : SlidingFabs(
-              controller: _chrome,
-              child: PopoverAddFab<PrepSource>(
-                key: const ValueKey('prep_add_floating'),
-                label: _addLabel,
-                choices: [
-                  for (final source in PrepSource.playerSources)
-                    PopoverAddChoice(
-                      leading: PrepSourceMark(source: source, size: 22),
-                      label: source.label,
-                      value: source,
-                    ),
+      // The slot always holds the sliding stack, so the button comes and
+      // goes with the tab (and the first profile) in place, never through
+      // the Scaffold's own scale-and-turn entrance.
+      floatingActionButton: SlidingFabs(
+        controller: _chrome,
+        child: profiles == null || !_hasAdd(profiles)
+            ? const SizedBox.shrink()
+            : InkFabStack(
+                children: [
+                  PopoverAddFab<PrepSource>(
+                    key: const ValueKey('prep_add_floating'),
+                    label: _addLabel,
+                    choices: [
+                      for (final source in PrepSource.playerSources)
+                        PopoverAddChoice(
+                          leading: PrepSourceMark(source: source, size: 22),
+                          label: source.label,
+                          value: source,
+                        ),
+                    ],
+                    onPicked: _add,
+                  ),
                 ],
-                onPicked: _add,
               ),
-            ),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -278,9 +286,10 @@ class _MyGamesTab extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
+        // Clear of the floating add button at the list's end.
         padding: EdgeInsets.only(
           top: 8.h,
-          bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
+          bottom: InkFabStack.reach(context) + 24.h,
         ),
         children: [
           // The reader's own card reads as every card on Profiles: their
@@ -323,9 +332,10 @@ class _OpponentsTab extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
+      // Clear of the floating add button at the list's end.
       padding: EdgeInsets.only(
         top: 8.h,
-        bottom: MediaQuery.viewPaddingOf(context).bottom + 96.h,
+        bottom: InkFabStack.reach(context) + 24.h,
       ),
       itemCount: opponents.length,
       itemBuilder: (context, index) {

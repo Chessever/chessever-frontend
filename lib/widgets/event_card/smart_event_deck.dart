@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/widgets/event_card/smart_event_board_window.dart'
+    show SmartPlateGlyph;
 import 'package:flutter/material.dart';
 
 /// How fast the smart event's games are: the deck fans wider the faster
@@ -7,18 +10,18 @@ import 'package:flutter/material.dart';
 enum SmartDeckPace { calm, classical, rapid, blitz }
 
 /// The smart event's mark: the stacked-boards deck (My Space's boards
-/// glyph, drawn large), dealt differently for every combination so no two
-/// cards wear the same one.
+/// glyph, drawn large), for a smart event with no opening and no level to
+/// show (a time control, a status). Openings and levels show a window onto
+/// a real board instead (`SmartEventBoardWindow`).
 ///
 /// - The boards behind the front one count the events it gathers (one to
 ///   three), so a busy smart event reads as a thicker deck.
 /// - The fan opens with the pace: classical sits nearly square, rapid
 ///   spreads, blitz splays wide.
-/// - The front board carries the level ("GM", or the Elo floor), or, with
-///   no level, a few dark squares placed from the combination, like a
-///   position of its own.
+/// - The front board carries the fastest time control's glyph ([glyph]),
+///   or nothing: never squares that stand for nothing.
 ///
-/// Monochrome, in the glyph's two tokens: [ink] for strokes and squares,
+/// Monochrome, in the glyph's two tokens: [ink] for strokes and the glyph,
 /// [background] to knock each board out of the one behind it.
 class SmartEventDeck extends StatelessWidget {
   const SmartEventDeck({
@@ -29,7 +32,7 @@ class SmartEventDeck extends StatelessWidget {
     required this.seed,
     this.behind = 2,
     this.pace = SmartDeckPace.calm,
-    this.label,
+    this.glyph,
   });
 
   /// The side of the square the deck is drawn in.
@@ -37,23 +40,23 @@ class SmartEventDeck extends StatelessWidget {
   final Color ink;
   final Color background;
 
-  /// Picks the front board's squares and nudges the fan, so equal counts
-  /// and paces still deal differently. Stable across launches (see
-  /// [smartDeckSeed]).
+  /// Nudges the fan, so equal counts and paces still sit differently.
+  /// Stable across launches (see [smartDeckSeed]).
   final int seed;
 
   /// Boards behind the front one, clamped to 1..3.
   final int behind;
   final SmartDeckPace pace;
 
-  /// Printed on the front board in place of its squares.
-  final String? label;
+  /// A time-control glyph asset ([PngAsset.blitzIcon] ...) drawn on the
+  /// front board as a flat silhouette in [ink]; null leaves the face bare.
+  final String? glyph;
 
   @override
   Widget build(BuildContext context) {
     final unit = size / 24;
     final face = _SmartDeckPainter.frontRect(unit);
-    final text = label;
+    final mark = glyph;
     return SizedBox.square(
       dimension: size,
       child: Stack(
@@ -66,27 +69,19 @@ class SmartEventDeck extends StatelessWidget {
                 seed: seed,
                 behind: behind.clamp(1, 3),
                 pace: pace,
-                squares: text == null,
               ),
             ),
           ),
-          if (text != null)
+          if (mark != null)
+            // Centred on the face itself (a square), so the glyph sits on
+            // the board's true middle whatever its own proportions.
             Positioned.fromRect(
-              rect: face.deflate(unit * 1.4),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  text,
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: unit * (text.length <= 2 ? 5.2 : 3.6),
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                    letterSpacing: text.length <= 2 ? 0.2 : 0,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              rect: face.deflate(unit * 2.4),
+              child: Center(
+                child: SmartPlateGlyph(
+                  mark,
+                  size: face.width - unit * 4.8,
+                  ink: ink,
                 ),
               ),
             ),
@@ -106,6 +101,15 @@ int smartDeckSeed(Iterable<Object?> parts) {
   return h;
 }
 
+/// The fastest of a smart event's time controls as its glyph asset, or null
+/// with none picked: what the deck's front board carries.
+String? smartDeckGlyph(Set<String> formatsAndStates) {
+  if (formatsAndStates.contains('blitz')) return PngAsset.blitzIcon;
+  if (formatsAndStates.contains('rapid')) return PngAsset.rapidIcon;
+  if (formatsAndStates.contains('standard')) return PngAsset.classicalIcon;
+  return null;
+}
+
 /// The deck's pace for a smart event's time controls: the fastest wins.
 SmartDeckPace smartDeckPace(Set<String> formatsAndStates) {
   if (formatsAndStates.contains('blitz')) return SmartDeckPace.blitz;
@@ -121,7 +125,6 @@ class _SmartDeckPainter extends CustomPainter {
     required this.seed,
     required this.behind,
     required this.pace,
-    required this.squares,
   });
 
   final Color ink;
@@ -129,24 +132,10 @@ class _SmartDeckPainter extends CustomPainter {
   final int seed;
   final int behind;
   final SmartDeckPace pace;
-  final bool squares;
 
   /// The front board, on the 24-unit grid the boards glyph is drawn on.
   static Rect frontRect(double unit) =>
       Rect.fromLTWH(6.5 * unit, 5.5 * unit, 11 * unit, 11 * unit);
-
-  /// Dark-square layouts on the front board's 4x4 grid (column, row). Each
-  /// reads as a couple of squares of a board, never as a pattern.
-  static const List<List<(int, int)>> _layouts = [
-    [(1, 1), (2, 2)],
-    [(2, 1), (1, 2)],
-    [(0, 0), (1, 1), (3, 2)],
-    [(1, 0), (2, 1), (1, 2)],
-    [(2, 0), (0, 2), (3, 3)],
-    [(1, 1), (3, 1), (2, 2)],
-    [(0, 1), (2, 3)],
-    [(3, 0), (1, 2), (2, 3)],
-  ];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -227,17 +216,6 @@ class _SmartDeckPainter extends CustomPainter {
         ..strokeWidth = 1.3 * unit
         ..color = ink,
     );
-
-    if (!squares) return;
-    final cell = (face.width - 2 * unit) / 4;
-    final origin = face.topLeft + Offset(unit, unit);
-    final square = Paint()..color = ink.withValues(alpha: 0.42);
-    for (final (c, r) in _layouts[seed % _layouts.length]) {
-      canvas.drawRect(
-        Rect.fromLTWH(origin.dx + c * cell, origin.dy + r * cell, cell, cell),
-        square,
-      );
-    }
   }
 
   @override
@@ -246,6 +224,5 @@ class _SmartDeckPainter extends CustomPainter {
       old.background != background ||
       old.seed != seed ||
       old.behind != behind ||
-      old.pace != pace ||
-      old.squares != squares;
+      old.pace != pace;
 }

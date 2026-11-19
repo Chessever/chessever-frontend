@@ -24,6 +24,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show SearchHeaderMetrics;
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -214,6 +216,15 @@ void main() {
     expect(find.bySemanticsLabel('Feed'), findsOneWidget);
     final back = tester.getRect(find.byKey(const ValueKey('feed_back')));
     expect(title.center.dy, closeTo(back.center.dy, 0.5));
+    // Every pushed page's back: the one chevron at the one x, from the
+    // bar's own start edge.
+    final bar = tester.getRect(find.byType(HomeTopBarFrame));
+    expect(
+      back.center.dx - bar.left,
+      closeTo(SearchHeaderMetrics.backGlyphCenter, 0.5),
+    );
+    // As tall as the bar's controls: the bar keeps its height.
+    expect(back.height, closeTo(HomeTopBarMetrics.controlExtent, 0.5));
     await _tearDown(tester);
   });
 }

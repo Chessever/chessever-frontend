@@ -15,9 +15,11 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/chessboard/board_page_route.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_arrow_key_shortcuts.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
@@ -27,6 +29,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spo
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_page_transitions.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -985,8 +988,12 @@ void main() {
         await tester.pump();
       }
       expect(boardRoute.willHandlePopInternally, isFalse);
-      expect(boardRoute.popDisposition, RoutePopDisposition.doNotPop);
-      await Navigator.of(boardContext).maybePop<int>(-999);
+      // Nothing is open inside the board, so it pops like any page (the iOS
+      // edge swipe stays on). System back carries no result: the board route
+      // answers with the board's own last viewed index.
+      expect(boardRoute, isA<BoardPageRoute>());
+      expect(boardRoute.popDisposition, RoutePopDisposition.pop);
+      await Navigator.of(boardContext).maybePop<int>();
       expect(boardRoute.isCurrent, isFalse);
       await tester.pump();
 
@@ -1120,6 +1127,117 @@ void main() {
       container.dispose();
     },
   );
+
+  testWidgets(
+    'iOS edge swipe leaves the board and returns the last viewed game',
+    (tester) async {
+      final harness = await _openSwipeBackBoard(tester, prefix: 'swipe');
+      tester
+          .widget<PageView>(find.byKey(boardGamesPageViewTestKey))
+          .controller!
+          .jumpToPage(1);
+      await _pumpFrames(tester, 3);
+
+      final boardRoute = _boardRoute(tester);
+      expect(boardRoute, isA<BoardPageRoute>());
+      expect(boardRoute.popDisposition, RoutePopDisposition.pop);
+      expect(boardRoute.popGestureEnabled, isTrue);
+
+      await _swipeBackFromLeftEdge(tester);
+
+      expect(find.byType(ChessBoardScreenNew), findsNothing);
+      expect(find.byKey(_openSwipeBackBoardKey), findsOneWidget);
+      // The chevron returns the same index.
+      expect(harness.returned, [1]);
+      await harness.dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
+    'back closes the game switcher before the board, then swipes away',
+    (tester) async {
+      final harness = await _openSwipeBackBoard(tester, prefix: 'switcher');
+      final boardRoute = _boardRoute(tester);
+
+      final selector = find.byKey(e2eKey(E2eIds.boardGameSelector)).first;
+      tester
+          .widget<GestureDetector>(
+            find
+                .descendant(
+                  of: selector,
+                  matching: find.byType(GestureDetector),
+                )
+                .first,
+          )
+          .onTap!();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(boardGameDropdownContentTestKey), findsOneWidget);
+      expect(boardRoute.popDisposition, RoutePopDisposition.doNotPop);
+      expect(boardRoute.popGestureEnabled, isFalse);
+
+      // The edge swipe stays off while the switcher is open.
+      await _swipeBackFromLeftEdge(tester);
+      expect(boardRoute.isCurrent, isTrue);
+      expect(find.byType(ChessBoardScreenNew), findsOneWidget);
+
+      // Back closes the switcher and leaves the board where it was.
+      await tester.binding.handlePopRoute();
+      await _pumpFrames(tester, 4);
+      expect(find.byKey(boardGameDropdownContentTestKey), findsNothing);
+      expect(boardRoute.isCurrent, isTrue);
+      expect(boardRoute.popGestureEnabled, isTrue);
+
+      await _swipeBackFromLeftEdge(tester);
+      expect(find.byType(ChessBoardScreenNew), findsNothing);
+      expect(
+        harness.returned,
+        isEmpty,
+        reason: 'the reader never left the game they opened',
+      );
+      await harness.dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
+    'back closes the Game Analysis report before it leaves the board',
+    (tester) async {
+      final harness = await _openSwipeBackBoard(tester, prefix: 'review');
+      tester
+          .widget<PageView>(find.byKey(boardGamesPageViewTestKey))
+          .controller!
+          .jumpToPage(2);
+      await _pumpFrames(tester, 3);
+      final boardRoute = _boardRoute(tester);
+      final board = tester.widget<ChessBoardScreenNew>(
+        find.byType(ChessBoardScreenNew),
+      );
+
+      final report = tester
+          .widget<GameReviewSheetScope>(find.byType(GameReviewSheetScope).first)
+          .target;
+      report.value = ChessBoardProviderParams(game: board.games[2], index: 2);
+      await _pumpFrames(tester, 3);
+      expect(report.value, isNotNull, reason: 'the report is on screen');
+      expect(boardRoute.popDisposition, RoutePopDisposition.doNotPop);
+      expect(boardRoute.popGestureEnabled, isFalse);
+
+      // The first back (Android's, or maybePop) closes the report only.
+      await tester.binding.handlePopRoute();
+      await _pumpFrames(tester, 3);
+      expect(report.value, isNull);
+      expect(boardRoute.isCurrent, isTrue);
+      expect(boardRoute.popDisposition, RoutePopDisposition.pop);
+
+      // The next one leaves, returning the game the reader was on.
+      await tester.binding.handlePopRoute();
+      await _pumpFrames(tester, 6);
+      expect(find.byType(ChessBoardScreenNew), findsNothing);
+      expect(harness.returned, [2]);
+      await harness.dispose(tester);
+    },
+  );
 }
 
 const _openNestedBoardKey = ValueKey<String>('open-nested-board');
@@ -1127,6 +1245,122 @@ const _coveredChildRouteKey = ValueKey<String>('covered-child-route');
 const _openReturnMappingBoardKey = ValueKey<String>(
   'open-return-mapping-board',
 );
+const _openSwipeBackBoardKey = ValueKey<String>('open-swipe-back-board');
+
+Future<void> _pumpFrames(WidgetTester tester, int frames) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+ModalRoute<Object?> _boardRoute(WidgetTester tester) =>
+    ModalRoute.of(tester.element(find.byType(ChessBoardScreenNew)))!;
+
+/// The iOS back swipe: a drag that starts inside the 20pt left edge strip.
+Future<void> _swipeBackFromLeftEdge(WidgetTester tester) async {
+  final gesture = await tester.startGesture(const Offset(4, 300));
+  await gesture.moveBy(const Offset(40, 0));
+  await tester.pump();
+  await gesture.moveBy(const Offset(560, 0));
+  await tester.pump();
+  await gesture.up();
+  await _pumpFrames(tester, 8);
+}
+
+class _SwipeBackHarness {
+  _SwipeBackHarness(this.container);
+
+  final ProviderContainer container;
+  final returned = <int>[];
+
+  Future<void> dispose(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    container.dispose();
+  }
+}
+
+/// Opens game 0 of three through the production board route
+/// ([GameCardWrapperProvider.navigateToChessBoard]) under the app's page
+/// transitions, so iOS gets the Cupertino edge swipe.
+Future<_SwipeBackHarness> _openSwipeBackBoard(
+  WidgetTester tester, {
+  required String prefix,
+}) async {
+  final prefs = (await SharedPreferencesService.instance.initialize())!;
+  // No coaching or tutorial overlay over the board's edge.
+  await prefs.setBool(swipeCoachingDisabledKey, true);
+  final raw = List.generate(
+    3,
+    (i) => _rawGame(
+      id: '$prefix-$i',
+      tourId: '$prefix-tour',
+      round: 'round-1',
+      board: i + 1,
+    ),
+  );
+  final games = raw.map(GamesTourModel.fromGame).toList();
+  final container = _boardTestContainer(
+    gamesByTour: {'$prefix-tour': raw},
+    gameRepository: _ImmediateGameRepository({
+      for (final game in raw) game.id: game,
+    }),
+  );
+  addTearDown(container.dispose);
+  final harness = _SwipeBackHarness(container);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        navigatorObservers: [routeObserver],
+        theme: ThemeData.dark().copyWith(
+          pageTransitionsTheme: kAppPageTransitionsTheme,
+          extensions: const [AppColors.dark],
+        ),
+        home: _SwipeBackHost(games: games, onReturn: harness.returned.add),
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(_openSwipeBackBoardKey));
+  await _pumpFrames(tester, 8);
+  final gotIt = find.text('Got it');
+  if (gotIt.evaluate().isNotEmpty) {
+    await tester.tap(gotIt.first);
+    await _pumpFrames(tester, 5);
+  }
+  expect(find.byType(ChessBoardScreenNew), findsOneWidget);
+  return harness;
+}
+
+class _SwipeBackHost extends ConsumerWidget {
+  const _SwipeBackHost({required this.games, required this.onReturn});
+
+  final List<GamesTourModel> games;
+  final ValueChanged<int> onReturn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ResponsiveHelper.init(context);
+    final navigation = ref.watch(gameCardWrapperProvider);
+    return Scaffold(
+      body: Center(
+        child: ElevatedButton(
+          key: _openSwipeBackBoardKey,
+          onPressed: () => navigation.navigateToChessBoard(
+            context: context,
+            orderedGames: games,
+            gameIndex: 0,
+            onReturnFromChessboard: onReturn,
+            viewSource: ChessboardView.tour,
+            listPolicy: BoardNavigationListPolicy.preserve,
+            disableGamebaseOverlayByDefault: true,
+          ),
+          child: const Text('Open board'),
+        ),
+      ),
+    );
+  }
+}
 
 class _NestedBoardNavigationHost extends ConsumerWidget {
   const _NestedBoardNavigationHost({required this.games});
@@ -1181,7 +1415,8 @@ class _ReturnMappingNavigationHost extends StatelessWidget {
           key: _openReturnMappingBoardKey,
           onPressed: () async {
             final boardIndex = await Navigator.of(context).push<int>(
-              MaterialPageRoute<int>(
+              // The production board route (navigateToChessBoard).
+              BoardPageRoute(
                 builder:
                     (_) => expandingChessBoardScreenForTesting(
                       initialGames: callerGames,

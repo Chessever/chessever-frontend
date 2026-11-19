@@ -15,6 +15,7 @@ import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
 import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -28,7 +29,6 @@ import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
-import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/profile_avatar_editor.dart';
@@ -49,10 +49,11 @@ Future<void> openEventsScreen(BuildContext context) {
 }
 
 /// The Events page's route, for callers holding a navigator (a deep link).
-Route<void> eventsScreenRoute() => MaterialPageRoute<void>(
-  builder: (_) =>
-      const Scaffold(resizeToAvoidBottomInset: false, body: GroupEventScreen()),
-);
+///
+/// The page is its own Scaffold (its floating buttons and snacks need one
+/// of their own), so the route holds it bare.
+Route<void> eventsScreenRoute() =>
+    MaterialPageRoute<void>(builder: (_) => const GroupEventScreen());
 
 /// Scroll-to-top on re-tap settles on a spring, with no overshoot past the
 /// top edge (the same one Home's re-tap rides).
@@ -175,15 +176,23 @@ class ProfileHubScreen extends HookConsumerWidget {
         title: 'Settings',
         dotId: 'drawer.settings',
         mark: _svgMark(context, SvgAsset.settings),
-        onTap: () => showSettingsDialog(context),
+        // Pushed over Home like every row here: Home stays under it, so
+        // its back button, the back swipe and Android back all return.
+        onTap: () {
+          HapticFeedbackService.navigation();
+          Navigator.of(context).push(SettingsPage.route());
+        },
       ),
       _HubRow(
         key: const ValueKey('profile-feedback'),
         title: 'Feedback',
         dotId: 'drawer.feedback',
         mark: _svgMark(context, SvgAsset.leaveFeedback),
-        onTap: () =>
-            ReviewPromptService.instance.openSidebarDirectFeedback(context),
+        // The form opens over Home on the root navigator; nothing is
+        // popped to get there.
+        onTap: () => ReviewPromptService.instance.showDirectFeedback(
+          context: Navigator.of(context, rootNavigator: true).context,
+        ),
       ),
       _HubRow(
         key: const ValueKey('profile-rate'),
@@ -224,11 +233,13 @@ class ProfileHubScreen extends HookConsumerWidget {
                   controller: scroll,
                   // Every root's lead-in: the reader lands on the line
                   // Home's first card does.
+                  // The home dock floats over the page's foot: the last
+                  // row clears it ([MediaQuery.paddingOf] is its slot).
                   padding: EdgeInsets.fromLTRB(
                     side,
                     HomeTopBarMetrics.contentGap,
                     side,
-                    32.h,
+                    32.h + MediaQuery.paddingOf(context).bottom,
                   ),
                   children: [
                     const _ReaderHeader(),

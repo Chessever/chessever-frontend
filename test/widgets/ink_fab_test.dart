@@ -126,4 +126,97 @@ void main() {
     );
     expect(tester.getTopRight(capsule).dx, closeTo(corner.dx, 0.01));
   });
+
+  testWidgets('the stack steps 12 between buttons, and its reach clears the '
+      'list under it: every button, the margin and the home indicator', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393 * 3, 852 * 3);
+    tester.view.devicePixelRatio = 3;
+    tester.view.padding = const FakeViewPadding(bottom: 34 * 3);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 34 * 3);
+    addTearDown(tester.view.reset);
+    late BuildContext body;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return Scaffold(
+              body: Builder(
+                builder: (context) {
+                  body = context;
+                  return const SizedBox.expand();
+                },
+              ),
+              floatingActionButton: InkFabStack(
+                children: [
+                  InkFab(
+                    key: const ValueKey('small'),
+                    label: 'Small',
+                    size: InkFabSize.small,
+                    onTap: () {},
+                    glyph: (color, size) =>
+                        Icon(Icons.tune_rounded, size: size, color: color),
+                  ),
+                  const SearchInkFab(key: ValueKey('search'), label: 'Search'),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(InkFabStack.step, 12);
+    final small = tester.getRect(find.byKey(const ValueKey('small')));
+    final search = tester.getRect(find.byKey(const ValueKey('search')));
+    expect(search.top - small.bottom, InkFabStack.step);
+    // Flush on the right edge.
+    expect(small.right, closeTo(search.right, 0.01));
+
+    // On the 393x852 base: 52 + 16 + 34, and 44 + 12 more per small one.
+    expect(InkFabStack.extent(), 52 + kFloatingActionButtonMargin);
+    expect(InkFabStack.reach(body), 52 + 16 + 34);
+    expect(InkFabStack.reach(body, smallAbove: 1), 52 + 12 + 44 + 16 + 34);
+    expect(
+      InkFabStack.reach(body, smallAbove: 1) -
+          InkFabStack.extent(smallAbove: 1),
+      34,
+    );
+    // The stack's top is exactly that far up from the window's foot.
+    expect(852 - small.top, InkFabStack.reach(body, smallAbove: 1));
+  });
+
+  testWidgets('a lone button sits in the stack at the stack\'s corner', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Widget page({required bool stacked}) => MaterialApp(
+      theme: AppTheme.darkTheme,
+      home: Builder(
+        builder: (context) {
+          ResponsiveHelper.init(context);
+          const search = SearchInkFab(key: ValueKey('search'), label: 'Search');
+          return Scaffold(
+            floatingActionButton: stacked
+                ? const InkFabStack(children: [search])
+                : search,
+          );
+        },
+      ),
+    );
+    await tester.pumpWidget(page(stacked: false));
+    await tester.pumpAndSettle();
+    final bare = tester.getRect(find.byKey(const ValueKey('search')));
+    // A fresh page each time: the Scaffold's own switch between two
+    // different buttons is not what is measured here.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(page(stacked: true));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byKey(const ValueKey('search'))), bare);
+  });
 }

@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_section_select.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_list_end.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/standings_search_text.dart';
@@ -127,7 +128,7 @@ class _TeamList extends ConsumerWidget {
           primary: false,
           padding: EdgeInsets.only(
             top: 8.sp,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+            bottom: EventGamesListEnd.tableEnd(context),
           ),
           itemCount:
               (data.isEmpty ? 1 : data.length) +
@@ -345,9 +346,7 @@ class TeamStandingsLoadingList extends StatelessWidget {
 
     return ListView.builder(
       shrinkWrap: true,
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
-      ),
+      padding: EdgeInsets.only(bottom: EventGamesListEnd.tableEnd(context)),
       itemCount: data.length,
       itemBuilder: (context, index) {
         return SkeletonWidget(

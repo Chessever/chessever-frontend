@@ -41,8 +41,12 @@ class DatabaseEventScreen extends HookConsumerWidget {
     final chrome = useScrollChromeController();
     final header = _Header(title: eventName);
     // Nothing to scroll yet: the title stands alone over the state.
-    Widget still(Widget body) =>
-        Column(children: [header, Expanded(child: body)]);
+    Widget still(Widget body) => Column(
+      children: [
+        header,
+        Expanded(child: body),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -375,11 +379,26 @@ class _GamesTabState extends State<_GamesTab> {
 
   void _onScroll() {
     if (!_controller.hasClients) return;
+    _revealNearEnd(_controller.position);
+  }
+
+  /// The next chunk, once the reader is within 600pt of the end. Asked on
+  /// every scroll and whenever the list's size changes under a still reader
+  /// ([ScrollMetricsNotification]): the header folding away grows the
+  /// viewport and moves the end without a scroll.
+  void _revealNearEnd(ScrollMetrics metrics) {
+    if (!mounted || !metrics.hasContentDimensions) return;
     if (_visibleGames >= _orderedGames.length) return;
-    final pos = _controller.position;
-    if (pos.pixels >= pos.maxScrollExtent - 600) {
+    if (metrics.pixels >= metrics.maxScrollExtent - 600) {
       setState(() => _visibleGames += _pageSize);
     }
+  }
+
+  bool _onScrollMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
+      _revealNearEnd(notification.metrics);
+    }
+    return false;
   }
 
   void _buildLayout() {
@@ -419,8 +438,10 @@ class _GamesTabState extends State<_GamesTab> {
     for (final game in games) {
       final a = team ? game.white.team : _playerKey(game.white);
       final b = team ? game.black.team : _playerKey(game.black);
-      final key = ([(a ?? '').toLowerCase(), (b ?? '').toLowerCase()]
-        ..sort()).join('|');
+      final key = ([
+        (a ?? '').toLowerCase(),
+        (b ?? '').toLowerCase(),
+      ]..sort()).join('|');
       byKey.putIfAbsent(key, () => <GamebaseEventGame>[]).add(game);
     }
     return byKey.values.toList(growable: false);
@@ -435,10 +456,12 @@ class _GamesTabState extends State<_GamesTab> {
   _MatchData _matchData(List<GamebaseEventGame> group, {required bool team}) {
     final first = group.first;
     final leftId = team ? (first.white.team ?? '') : _playerKey(first.white);
-    final leftLabel =
-        team ? (first.white.team ?? 'Team') : _playerLabel(first.white);
-    final rightLabel =
-        team ? (first.black.team ?? 'Team') : _playerLabel(first.black);
+    final leftLabel = team
+        ? (first.white.team ?? 'Team')
+        : _playerLabel(first.white);
+    final rightLabel = team
+        ? (first.black.team ?? 'Team')
+        : _playerLabel(first.black);
 
     var left = 0.0;
     var right = 0.0;
@@ -534,41 +557,43 @@ class _GamesTabState extends State<_GamesTab> {
     final hasMore = revealed < _orderedGames.length;
     final itemCount = rows.length + (hasMore ? 1 : 0);
 
-    return ListView.builder(
-      controller: _controller,
-      padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
-      itemCount: itemCount,
-      itemBuilder: (context, i) {
-        if (hasMore && i == rows.length) {
-          return _ShowMoreButton(
-            remaining: _orderedGames.length - revealed,
-            onTap: () => setState(() => _visibleGames += _pageSize),
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: _onScrollMetrics,
+      child: ListView.builder(
+        controller: _controller,
+        padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+        itemCount: itemCount,
+        itemBuilder: (context, i) {
+          if (hasMore && i == rows.length) {
+            return _ShowMoreButton(
+              remaining: _orderedGames.length - revealed,
+              onTap: () => setState(() => _visibleGames += _pageSize),
+            );
+          }
+
+          final row = rows[i];
+          if (row.header != null) {
+            return _RoundHeader(label: row.header!);
+          }
+          if (row.match != null) {
+            return _MatchHeader(data: row.match!);
+          }
+
+          return GamebaseSearchGameCard(
+            game: _modelFor(row.gameIndex),
+            allGames: allGames,
+            gameIndex: row.gameIndex,
+            animationIndex: row.gameIndex,
+            onAdd: () => showAddToFolderSheet(
+              context: context,
+              game: _modelFor(row.gameIndex),
+            ),
+            showRound: false,
+            hideEventInfo: false,
+            playerProfileDataSource: PlayerProfileDataSource.twic,
           );
-        }
-
-        final row = rows[i];
-        if (row.header != null) {
-          return _RoundHeader(label: row.header!);
-        }
-        if (row.match != null) {
-          return _MatchHeader(data: row.match!);
-        }
-
-        return GamebaseSearchGameCard(
-          game: _modelFor(row.gameIndex),
-          allGames: allGames,
-          gameIndex: row.gameIndex,
-          animationIndex: row.gameIndex,
-          onAdd:
-              () => showAddToFolderSheet(
-                context: context,
-                game: _modelFor(row.gameIndex),
-              ),
-          showRound: false,
-          hideEventInfo: false,
-          playerProfileDataSource: PlayerProfileDataSource.twic,
-        );
-      },
+        },
+      ),
     );
   }
 }
@@ -689,17 +714,17 @@ class _MatchSide extends StatelessWidget {
         ),
       ),
     );
-    final flag =
-        (fed != null && fed!.trim().isNotEmpty)
-            ? Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4.w),
-              child: _FedFlag(countryCode: fed!),
-            )
-            : const SizedBox.shrink();
+    final flag = (fed != null && fed!.trim().isNotEmpty)
+        ? Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: _FedFlag(countryCode: fed!),
+          )
+        : const SizedBox.shrink();
 
     return Row(
-      mainAxisAlignment:
-          alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment: alignEnd
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       children: alignEnd ? [text, flag] : [flag, text],
     );
   }
@@ -785,9 +810,7 @@ class _StandingsTab extends StatelessWidget {
   Widget _noStandings(BuildContext context) => Center(
     child: Text(
       'Standings unavailable',
-      style: AppTypography.textSmRegular.copyWith(
-        color: context.textInk(0.5),
-      ),
+      style: AppTypography.textSmRegular.copyWith(color: context.textInk(0.5)),
     ),
   );
 }
@@ -806,7 +829,10 @@ class _StandingsHeaderRow extends StatelessWidget {
       padding: EdgeInsets.only(left: 4.w, right: 4.w, bottom: 8.h),
       child: Row(
         children: [
-          SizedBox(width: 28.w, child: Text(columns[0], style: style)),
+          SizedBox(
+            width: 28.w,
+            child: Text(columns[0], style: style),
+          ),
           Expanded(child: Text(columns[1], style: style)),
           SizedBox(
             width: 48.w,
@@ -897,7 +923,9 @@ class _PlayerStandingRow extends StatelessWidget {
             child: Text(
               _trimDouble(player.points),
               textAlign: TextAlign.right,
-              style: AppTypography.textSmBold.copyWith(color: context.colors.successStrong),
+              style: AppTypography.textSmBold.copyWith(
+                color: context.colors.successStrong,
+              ),
             ),
           ),
           SizedBox(
@@ -972,7 +1000,9 @@ class _TeamStandingRow extends StatelessWidget {
             child: Text(
               _trimDouble(team.matchPoints),
               textAlign: TextAlign.right,
-              style: AppTypography.textSmBold.copyWith(color: context.colors.successStrong),
+              style: AppTypography.textSmBold.copyWith(
+                color: context.colors.successStrong,
+              ),
             ),
           ),
           SizedBox(
@@ -1087,10 +1117,9 @@ class _ErrorState extends StatelessWidget {
             Icon(
               Icons.error_outline_rounded,
               size: 40.ic,
-              color:
-                  context.isLightTheme
-                      ? context.colors.danger
-                      : Colors.redAccent,
+              color: context.isLightTheme
+                  ? context.colors.danger
+                  : Colors.redAccent,
             ),
             SizedBox(height: 12.h),
             Text(

@@ -4,6 +4,7 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_section_select.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_list_end.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_standings.dart';
 import 'package:chessever2/screens/tour_detail/combined/standings_category_scope.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
@@ -172,10 +173,9 @@ class _CombinedStandingsScreenState
             isSearching: state.isSearching,
             onToggle: () => _toggle(section.group.id),
           ),
+        // Clear of the floating buttons over the table.
         SliverToBoxAdapter(
-          child: SizedBox(
-            height: MediaQuery.of(context).viewInsets.bottom + 16.sp,
-          ),
+          child: SizedBox(height: EventGamesListEnd.tableEnd(context)),
         ),
       ],
     );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
@@ -27,29 +28,33 @@ String feedLikeSemantics({required bool liked, required int likes}) {
 /// databases.
 String feedSaveLabel({required bool saved}) => saved ? 'Saved' : 'Save';
 
-/// Analyze · My Space · Share · Save · Like under the board, Like on the far
-/// right where the thumb rests and Save beside it, as on the board screen.
-class FeedActionRow extends StatelessWidget {
-  const FeedActionRow({
-    required this.height,
+/// Analyze, Share, Save and Like down the right of a post, beside its
+/// chart: one column of cells, each a 24pt glyph over its word, Like at the
+/// foot where the thumb rests and Save over it, as on the board screen.
+///
+/// The cells stand at the foot of the rail's room ([FeedLayout.railTop] is
+/// laid out for four): a post that cannot be saved or liked drops that cell
+/// and the rest keep their order down to the foot, so Like is always the
+/// last. My Space lives in the post's long-press menu, not here.
+class FeedActionRail extends StatelessWidget {
+  const FeedActionRail({
+    required this.cellHeight,
     required this.liked,
     this.likes = 0,
     this.shownLiked,
     this.shownLikes,
     this.heartPop = 0,
-    this.tagPrompt,
-    required this.inSpace,
     this.saved = false,
     required this.likeIconKey,
     this.onLike,
-    required this.onSpace,
     required this.onShare,
     this.onSave,
     required this.onAnalyze,
     super.key,
   });
 
-  final double height;
+  /// One cell's height ([FeedLayout.railCell]); its width is the rail's.
+  final double cellHeight;
 
   /// Whether the viewer likes the game: what the button says to a screen
   /// reader and the state it toggles.
@@ -68,182 +73,138 @@ class FeedActionRow extends StatelessWidget {
   /// Bumped when a heart lands on the button: the filled heart pops once.
   final int heartPop;
 
-  /// The board's temporary tag picker takes the other actions' space while
-  /// Like stays in place, so it can still be undone immediately.
-  final Widget? tagPrompt;
-
-  /// Null when this game cannot be saved to My Space; the button is dropped.
-  final bool? inSpace;
-
   /// The game is in one of the viewer's databases: Save shows its tick.
   final bool saved;
 
   /// Landing spot for the heart that flies in after a double-tap like.
   final GlobalKey likeIconKey;
 
-  /// Null when the game cannot be liked; the button is dropped, as My
-  /// Space's is.
+  /// Null when the game cannot be liked; the cell is dropped.
   final VoidCallback? onLike;
-  final VoidCallback onSpace;
   final VoidCallback onShare;
 
   /// Null when the game's moves stay where they are (licensed content the
-  /// board does not export either); the button is dropped.
+  /// board does not export either); the cell is dropped.
   final VoidCallback? onSave;
   final VoidCallback onAnalyze;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: LayoutBuilder(
-        builder: (context, constraints) => _row(context, constraints.maxWidth),
-      ),
-    );
-  }
-
-  Widget _row(BuildContext context, double width) {
     final colors = context.colors;
     final ink = colors.textPrimary;
-    final space = inSpace;
     final like = onLike;
     final save = onSave;
     final likeLabel = feedLikeLabel(shownLikes ?? likes);
     final saveLabel = feedSaveLabel(saved: saved);
-    // One size for every word in the row.
-    final fontSize = feedActionFontSize(
+    final fontSize = feedRailFontSize(
       context,
-      rowWidth: width,
       labels: [
         'Analyze',
-        if (space != null) 'My Space',
         'Share',
         if (save != null) saveLabel,
         if (like != null) likeLabel,
       ],
     );
-    // Equal cells with centered contents read as one balanced toolbar.
-    // Labels do not need to touch the board's outer edges.
-    return Row(
+
+    Widget cell({
+      required Key key,
+      required String label,
+      required Widget icon,
+      required VoidCallback onTap,
+      required String semanticsLabel,
+      String? semanticsHint,
+      bool? selected,
+      Key? cellKey,
+    }) => SizedBox(
+      key: cellKey,
+      height: cellHeight,
+      width: FeedLayout.railWidth,
+      child: FeedPressable(
+        key: key,
+        semanticsLabel: semanticsLabel,
+        semanticsHint: semanticsHint,
+        selected: selected,
+        onTap: onTap,
+        child: FeedActionLabel(
+          fontSize: fontSize,
+          label: label,
+          glyphExtent: FeedLayout.railGlyph,
+          glyphGap: FeedLayout.railGlyphGap,
+          icon: icon,
+        ),
+      ),
+    );
+
+    FeedGlyph glyph(String asset) => FeedGlyph(
+      asset,
+      width: FeedLayout.railGlyph,
+      height: FeedLayout.railGlyph,
+      color: ink,
+    );
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (tagPrompt != null)
-          Expanded(
-            // The cells it stands over: Analyze, Share, and My Space and
-            // Save when the post has them.
-            flex: 2 + (space != null ? 1 : 0) + (save != null ? 1 : 0),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Align(alignment: Alignment.centerRight, child: tagPrompt),
-            ),
+        cell(
+          key: const ValueKey('feed_analyze_button'),
+          label: 'Analyze',
+          semanticsLabel: 'Analyze',
+          semanticsHint: 'Open game on the board',
+          onTap: onAnalyze,
+          icon: glyph(FeedGlyphs.analyze),
+        ),
+        cell(
+          key: const ValueKey('feed_share_button'),
+          label: 'Share',
+          semanticsLabel: 'Share',
+          onTap: onShare,
+          icon: glyph(FeedGlyphs.share),
+        ),
+        if (save != null)
+          cell(
+            key: const ValueKey('feed_save_button'),
+            label: saveLabel,
+            semanticsLabel: saveLabel,
+            semanticsHint: saved
+                ? 'Choose the databases it is saved in'
+                : 'Save to a database',
+            selected: saved,
+            onTap: save,
+            // The tick says saved, in ink: the heart stays the rail's one
+            // colour.
+            icon: glyph(saved ? FeedGlyphs.saved : FeedGlyphs.save),
           ),
-        if (tagPrompt == null) ...[
-          Expanded(
-            child: FeedPressable(
-              key: const ValueKey('feed_analyze_button'),
-              semanticsLabel: 'Analyze',
-              semanticsHint: 'Open game on the board',
-              onTap: onAnalyze,
-              child: FeedActionLabel(
-                fontSize: fontSize,
-                label: 'Analyze',
-                icon: FeedGlyph(
-                  FeedGlyphs.analyze,
-                  width: 22,
-                  height: 22,
-                  color: ink,
-                ),
-              ),
-            ),
-          ),
-          if (space != null)
-            Expanded(
-              child: FeedPressable(
-                key: const ValueKey('feed_space_button'),
-                semanticsLabel: 'My Space',
-                semanticsHint: space
-                    ? 'Remove from My Space'
-                    : 'Add to My Space',
-                selected: space,
-                onTap: onSpace,
-                child: FeedActionLabel(
-                  fontSize: fontSize,
-                  label: 'My Space',
-                  icon: FeedGlyph(
-                    space ? FeedGlyphs.mySpaceAdded : FeedGlyphs.mySpaceAdd,
-                    width: 22,
-                    height: 22,
-                    color: ink,
-                  ),
-                ),
-              ),
-            ),
-          Expanded(
-            child: FeedPressable(
-              key: const ValueKey('feed_share_button'),
-              semanticsLabel: 'Share',
-              onTap: onShare,
-              child: FeedActionLabel(
-                fontSize: fontSize,
-                label: 'Share',
-                icon: FeedGlyph(
-                  FeedGlyphs.share,
-                  width: 22,
-                  height: 22,
-                  color: ink,
-                ),
-              ),
-            ),
-          ),
-          if (save != null)
-            Expanded(
-              child: FeedPressable(
-                key: const ValueKey('feed_save_button'),
-                semanticsLabel: feedSaveLabel(saved: saved),
-                semanticsHint: saved
-                    ? 'Choose the databases it is saved in'
-                    : 'Save to a database',
-                selected: saved,
-                onTap: save,
-                child: FeedActionLabel(
-                  fontSize: fontSize,
-                  label: saveLabel,
-                  icon: FeedGlyph(
-                    saved ? FeedGlyphs.saved : FeedGlyphs.save,
-                    width: 22,
-                    height: 22,
-                    // The tick says saved, in ink as My Space's does: the heart
-                    // stays the row's one colour.
-                    color: ink,
-                  ),
-                ),
-              ),
-            ),
-        ],
         if (like != null)
-          Expanded(
-            key: const ValueKey('feed_like_action'),
-            child: FeedPressable(
-              key: const ValueKey('feed_like_button'),
-              semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
-              selected: liked,
-              onTap: like,
-              child: FeedActionLabel(
-                fontSize: fontSize,
-                label: likeLabel,
-                icon: _LikeGlyph(
-                  glyphKey: likeIconKey,
-                  filled: shownLiked ?? liked,
-                  pop: heartPop,
-                  ink: ink,
-                  fill: colors.danger,
-                ),
-              ),
+          cell(
+            cellKey: const ValueKey('feed_like_action'),
+            key: const ValueKey('feed_like_button'),
+            label: likeLabel,
+            semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
+            selected: liked,
+            onTap: like,
+            icon: _LikeGlyph(
+              glyphKey: likeIconKey,
+              filled: shownLiked ?? liked,
+              pop: heartPop,
+              ink: ink,
+              fill: colors.danger,
+              scale: FeedLayout.railGlyph / 24,
             ),
           ),
       ],
     );
   }
 }
+
+/// The size every word of the rail is set at: [FeedActionLabel.restSize],
+/// or less when the widest of [labels] would not fit a rail cell at the
+/// viewer's text size. The words shrink together, never one alone.
+double feedRailFontSize(BuildContext context, {required List<String> labels}) =>
+    feedActionFontSize(
+      context,
+      rowWidth: FeedLayout.railWidth * labels.length,
+      labels: labels,
+    );
 
 /// The Like button's heart. When a flying heart lands on it ([pop] moves
 /// on) it gives under the landing and springs back past its size, the way
@@ -256,7 +217,11 @@ class _LikeGlyph extends StatefulWidget {
     required this.pop,
     required this.ink,
     required this.fill,
+    this.scale = 1,
   });
+
+  /// Of the row's 24 by 22 heart: the rail draws it a step larger.
+  final double scale;
 
   /// The flight's target: the glyph's own box, never the scaled one.
   final GlobalKey glyphKey;
@@ -298,8 +263,8 @@ class _LikeGlyphState extends State<_LikeGlyph>
     final glyph = FeedGlyph(
       key: widget.glyphKey,
       widget.filled ? FeedGlyphs.heartFilled : FeedGlyphs.heartOutline,
-      width: 24,
-      height: 22,
+      width: 24 * widget.scale,
+      height: 22 * widget.scale,
       color: widget.filled ? widget.fill : widget.ink,
     );
     return AnimatedBuilder(
@@ -311,13 +276,15 @@ class _LikeGlyphState extends State<_LikeGlyph>
   }
 }
 
-/// One action under a Feed board: a 22pt glyph over its word. Shared by
-/// game and puzzle posts so both rows read as one system.
+/// One Feed action: its glyph over its word. Shared by the game and puzzle
+/// posts' rails so they read as one system.
 class FeedActionLabel extends StatelessWidget {
   const FeedActionLabel({
     required this.label,
     required this.icon,
     this.fontSize = restSize,
+    this.glyphExtent = 22,
+    this.glyphGap = 5,
     super.key,
   });
 
@@ -326,6 +293,11 @@ class FeedActionLabel extends StatelessWidget {
 
   /// The word's size before text scaling; see [feedActionFontSize].
   final double fontSize;
+
+  /// The glyph's line, and the space between it and the word: 22 and 5 in
+  /// a row, 24 and 4 in the rail ([FeedLayout.railGlyph]).
+  final double glyphExtent;
+  final double glyphGap;
 
   /// The words' size before text scaling, when they fit.
   static const double restSize = 12;
@@ -345,8 +317,11 @@ class FeedActionLabel extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        SizedBox(height: 22, child: Center(widthFactor: 1, child: icon)),
-        const SizedBox(height: 5),
+        SizedBox(
+          height: glyphExtent,
+          child: Center(widthFactor: 1, child: icon),
+        ),
+        SizedBox(height: glyphGap),
         // Font sizing reserves space between neighbouring labels while
         // each icon and word stay centered in the same full tap target.
         FittedBox(

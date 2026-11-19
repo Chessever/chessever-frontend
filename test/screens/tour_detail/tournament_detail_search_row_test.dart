@@ -1,5 +1,6 @@
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
@@ -41,6 +42,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+
+import '../../support/fake_live_game_ids.dart';
 
 /// The event screen's search (Trello #1420, 2026-11-18 navigation overhaul):
 /// no search row on top any more. Games and Standings float a search button
@@ -497,6 +500,14 @@ void main() {
           gamesTourGroupedProvider.overrideWith((ref) => ref.watch(grouped)),
           gamesTourListPresentationProvider.overrideWithValue(
             _roundSections(40),
+          ),
+          // The server's games in play (`get_live_game_ids`) for the
+          // event's tour: the boards in play among the grouped games.
+          eventLiveGameIdsProvider.overrideWith(
+            (ref, scope) => FakeLiveGameIds({
+              for (final game in ref.watch(grouped).allGames)
+                if (game.gameStatus == GameStatus.ongoing) game.gameId,
+            }),
           ),
         ]);
     _ListedGames games(WidgetTester tester) =>
@@ -1114,6 +1125,9 @@ GroupedGamesData _grouped({required List<String> live}) {
     rounds: const [],
     allGames: games,
     providerGameCount: games.length,
+    liveScopes: [
+      EventLiveGamesScope(const ['tour-1']),
+    ],
   );
 }
 

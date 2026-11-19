@@ -46,7 +46,7 @@ import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/page_back_row.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize, SearchInkFab;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -422,9 +422,13 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           // Its Filters stand in the header with their count, so the
           // button carries none.
           child: hasLikes
-              ? const SearchInkFab(
-                  key: ValueKey('my_likes_search_fab'),
-                  label: 'Search liked games',
+              ? const InkFabStack(
+                  children: [
+                    SearchInkFab(
+                      key: ValueKey('my_likes_search_fab'),
+                      label: 'Search liked games',
+                    ),
+                  ],
                 )
               : const SizedBox.shrink(),
         ),
@@ -685,9 +689,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         SearchModeListEnd.sliver(
           key: const ValueKey('my_likes_list_end'),
           base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
-          buttons: _searchInHeader
-              ? InkFabSize.regular.side + kFloatingActionButtonMargin
-              : 0,
+          buttons: _searchInHeader ? InkFabStack.extent() : 0,
         ),
       ],
     );

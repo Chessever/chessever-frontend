@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart'
     show BoardViewToggleButton;
+import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
@@ -54,7 +55,7 @@ import 'package:chessever2/widgets/event_card/smart_event_star.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_tiers.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -82,6 +83,7 @@ class SmartEventScreen extends ConsumerStatefulWidget {
   const SmartEventScreen({
     required this.request,
     this.initialTab = smartEventGamesTab,
+    this.showFilters = true,
     super.key,
   });
 
@@ -91,6 +93,11 @@ class SmartEventScreen extends ConsumerStatefulWidget {
   /// push names it so its tap always lands on the games it counted.
   final int initialTab;
 
+  /// Whether the header (and the search) offer Filters. Off when the Search
+  /// tab opens a smart event: there it is exactly what was searched for, and
+  /// the title's tier dropdown still moves its level.
+  final bool showFilters;
+
   @override
   ConsumerState<SmartEventScreen> createState() => _SmartEventScreenState();
 }
@@ -98,7 +105,6 @@ class SmartEventScreen extends ConsumerStatefulWidget {
 class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
     with SingleTickerProviderStateMixin {
   static const _tabs = smartEventTabLabels;
-  static const _validTiers = <String>{'GM', 'IM', 'FM', 'CM', 'All'};
 
   // Default to Games because this surface is opened from a generated games card.
   late int _index = widget.initialTab.clamp(0, _tabs.length - 1);
@@ -133,9 +139,9 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
     setState(() => _query = query);
   }
 
-  // Local tier filter: starts from the saved request's tier (first word so
-  // "GM Rapid" defaults the filter to GM) and is mutated by the app bar
-  // dropdown without leaving the screen.
+  // Local tier filter: starts from the saved request's tier (its Elo floor,
+  // so "GM Rapid" defaults the filter to GM and a 2700 floor to Super GM)
+  // and is mutated by the app bar dropdown without leaving the screen.
   late String _tier = _initialTier(widget.request);
 
   /// In-event dialog filter, owned here (not by the Games tab) so the exit
@@ -156,9 +162,12 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
 
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
+  /// The tier [request] stands for, read from its Elo floor, never from its
+  /// name ("Super GM Games" does not start with a tier word): the strongest
+  /// tier the floor reaches, 'All' with no floor.
   static String _initialTier(SmartEventRequest request) {
-    final first = request.tierLabel.split(' ').first;
-    return _validTiers.contains(first) ? first : 'All';
+    if (!request.hasEloRange) return 'All';
+    return smartTierAtOrBelow(request.minElo)?.name ?? 'All';
   }
 
   @override
@@ -292,13 +301,27 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
     }
   }
 
-  /// How many criteria narrow the list, the tier threshold picked in the
-  /// title dropdown included, so the count mirrors the smart event's full
-  /// active config. Worn by Filters, in the header and in the search alike.
-  int get _criteriaCount {
-    final criteria = _mergeTierIntoFilter(_filter, _tier) ?? _filter;
-    return criteria.activeFilterCount + criteria.activeSortCount;
+  /// The criteria this smart event stands for, as the list's filter: its
+  /// own level, time control, status and opening, which it opens with.
+  GameFilter get _baselineCriteria {
+    final seed = _baselineRequest.seedGameFilter();
+    return _mergeTierIntoFilter(seed, _initialTier(_baselineRequest)) ?? seed;
   }
+
+  /// The criteria the list is narrowed by now, the title's tier included.
+  GameFilter get _currentCriteria =>
+      _mergeTierIntoFilter(_filter, _tier) ?? _filter;
+
+  /// How many criteria the reader changed from the ones this smart event
+  /// opened with (or was last saved with), the tier picked in the title
+  /// dropdown included. A preset or an opening opens with a clean Filters:
+  /// its own level or opening is what it is, not a filter on it.
+  int get _changedCriteria =>
+      _currentCriteria.changedFilterCount(_baselineCriteria);
+
+  /// [_changedCriteria] plus any sort: worn by Filters, in the header and in
+  /// the search alike.
+  int get _criteriaCount => _changedCriteria + _currentCriteria.activeSortCount;
 
   /// Every dimension is offered — including the ones that GENERATED this
   /// smart event, which arrive pre-selected (seeded on the screen state) and
@@ -310,6 +333,9 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
       // Level mirrors the app bar tier dropdown — seed it from the current
       // tier so both override surfaces present one config.
       currentFilter: _filter.copyWith(minRating: _tierFloor(_tier)),
+      // The smart event's own tiers, Super GM included, so a 2700 floor
+      // comes back as 2700 instead of settling on GM.
+      levelTiers: kSmartEventRatingTiers,
       showSortSection: _index == 1,
       // Color filters by a target player's color; this aggregate has no
       // target player, so the section would be inert.
@@ -321,8 +347,14 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
     if (result != null && mounted) {
       // The Level pick routes back into the tier dropdown (single owner of
       // the Elo dimension); the threshold is re-merged per query by
-      // [_mergeTierIntoFilter].
-      _setFilter(result.copyWith(minRating: GameFilter.defaultMinRating));
+      // [_mergeTierIntoFilter]. The dialog offers no opening, so the
+      // opening this smart event is built on stays as it was.
+      _setFilter(
+        result.copyWith(
+          minRating: GameFilter.defaultMinRating,
+          eco: _filter.eco,
+        ),
+      );
       _setTier(_tierForMinRating(result.minRating));
     }
   }
@@ -353,6 +385,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
         onTierChanged: _setTier,
         filter: _filter,
         onFilterChanged: _setFilter,
+        changedCriteria: _changedCriteria,
         tabIndex: _index,
         searchQuery: _query,
         searching: searching,
@@ -390,95 +423,108 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
                 bottom: false,
                 child: AbsorbPointer(
                   absorbing: _saving,
-                  child: Column(
+                  child: Stack(
+                    fit: StackFit.passthrough,
                     children: [
-                      // Every page's back row starts here, so the chevron
-                      // sits at one height across pages and in the search.
-                      SizedBox(
-                        height: MediaQuery.viewPaddingOf(context).top + 4.h,
-                      ),
-                      // Folds up under the status bar as the list scrolls
-                      // down, comes back as it scrolls up.
-                      CollapsingChrome(
-                        controller: _chrome,
-                        child: SearchModeHeaderSlot(
-                          header: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _AppBar(
-                                request: _effectiveRequest,
-                                savedRequest: _baselineRequest,
-                                isDirty: _isConfigDirty,
-                                onApplyChanges: _applyConfigChanges,
-                                criteriaCount: _criteriaCount,
-                                onFilters: _openFilterDialog,
-                              ),
-                              SizedBox(height: 8.h),
-                              Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: SearchHeaderMetrics.gutter,
-                                ),
-                                child: SegmentedSwitcher(
-                                  dotScope: 'smart_event.tab',
-                                  height: context.textExtent(40.h),
-                                  options: _tabs,
-                                  initialSelection: _index,
-                                  currentSelection: _index,
-                                  onSelectionChanged: _select,
-                                  notifyOnReselect: true,
-                                ),
-                              ),
-                              SizedBox(height: SearchHeaderMetrics.bottomGap),
-                            ],
+                      Column(
+                        children: [
+                          // Every page's back row starts here, so the chevron
+                          // sits at one height across pages and in the search.
+                          SizedBox(
+                            height: MediaQuery.viewPaddingOf(context).top + 4.h,
                           ),
-                          search: SearchModeHeader(
-                            hintText: searchHint,
-                            closeKey: const ValueKey(
-                              'smart_event_search_close',
-                            ),
-                            // The list's own controls, as the header draws
-                            // them: the layout toggle, then Filters on the
-                            // gutter, shared with the header's (it holds
-                            // still through the morph).
-                            trailing: [
-                              const _LayoutToggle(),
-                              SearchModeShared(
-                                id: SearchModeFilterButton,
-                                child: SearchModeFilterButton(
-                                  key: const ValueKey(
-                                    'smart_event_search_filters',
+                          // Folds up under the status bar as the list scrolls
+                          // down, comes back as it scrolls up.
+                          CollapsingChrome(
+                            controller: _chrome,
+                            child: SearchModeHeaderSlot(
+                              header: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _AppBar(
+                                    request: _effectiveRequest,
+                                    savedRequest: _baselineRequest,
+                                    isDirty: _isConfigDirty,
+                                    onApplyChanges: _applyConfigChanges,
+                                    criteriaCount: _criteriaCount,
+                                    onFilters: _openFilterDialog,
+                                    showFilters: widget.showFilters,
                                   ),
-                                  count: _criteriaCount,
-                                  onTap: _openFilterDialog,
-                                ),
+                                  SizedBox(height: 8.h),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: SearchHeaderMetrics.gutter,
+                                    ),
+                                    child: SegmentedSwitcher(
+                                      dotScope: 'smart_event.tab',
+                                      height: context.textExtent(40.h),
+                                      options: _tabs,
+                                      initialSelection: _index,
+                                      currentSelection: _index,
+                                      onSelectionChanged: _select,
+                                      notifyOnReselect: true,
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    height: SearchHeaderMetrics.bottomGap,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: ScrollChromeRegion(
-                          controller: _chrome,
-                          child: ScrollToTopScope(
-                            bus: _scrollToTopBus,
-                            child: PageView(
-                              controller: _page,
-                              // Searching holds the tab: the search belongs
-                              // to it.
-                              physics: _search.pagePhysics(),
-                              onPageChanged: (i) {
-                                if (_index != i) _chrome.show();
-                                setState(() => _index = i);
-                              },
-                              children: const [
-                                _AboutTab(),
-                                _GamesTab(),
-                                _EventsTab(),
-                              ],
+                              search: SearchModeHeader(
+                                hintText: searchHint,
+                                closeKey: const ValueKey(
+                                  'smart_event_search_close',
+                                ),
+                                // The list's own controls, as the header draws
+                                // them: the layout toggle, then Filters on the
+                                // gutter, shared with the header's (it holds
+                                // still through the morph). Without Filters in
+                                // the header there is none here either: the two
+                                // are one shared glyph.
+                                trailing: [
+                                  const _LayoutToggle(),
+                                  if (widget.showFilters)
+                                    SearchModeShared(
+                                      id: SearchModeFilterButton,
+                                      child: SearchModeFilterButton(
+                                        key: const ValueKey(
+                                          'smart_event_search_filters',
+                                        ),
+                                        count: _criteriaCount,
+                                        onTap: _openFilterDialog,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                          Expanded(
+                            child: ScrollChromeRegion(
+                              controller: _chrome,
+                              child: ScrollToTopScope(
+                                bus: _scrollToTopBus,
+                                child: PageView(
+                                  controller: _page,
+                                  // Searching holds the tab: the search belongs
+                                  // to it.
+                                  physics: _search.pagePhysics(),
+                                  onPageChanged: (i) {
+                                    if (_index != i) _chrome.show();
+                                    setState(() => _index = i);
+                                  },
+                                  children: const [
+                                    _AboutTab(),
+                                    _GamesTab(),
+                                    _EventsTab(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      // The way back while the header is folded away.
+                      PageBackFloat(controller: _chrome),
                     ],
                   ),
                 ),
@@ -503,6 +549,7 @@ class _SmartTierFilterScope extends InheritedWidget {
     required this.onTierChanged,
     required this.filter,
     required this.onFilterChanged,
+    required this.changedCriteria,
     required this.tabIndex,
     required this.searchQuery,
     required this.searching,
@@ -514,6 +561,10 @@ class _SmartTierFilterScope extends InheritedWidget {
   final ValueChanged<String> onTierChanged;
   final GameFilter filter;
   final ValueChanged<GameFilter> onFilterChanged;
+
+  /// How many criteria the reader changed from the ones the smart event
+  /// opened with ([_SmartEventScreenState._changedCriteria]).
+  final int changedCriteria;
   final int tabIndex;
 
   /// Committed (debounced) text of the screen-level search field. The Games
@@ -528,6 +579,11 @@ class _SmartTierFilterScope extends InheritedWidget {
   /// Empties the search's words, from a list's no-hits line.
   final VoidCallback onClearSearch;
 
+  /// Whether the reader narrowed the list: words searched, or a criterion
+  /// changed from the ones it opened with. An untouched GM or opening
+  /// smart event with nothing to show says so plainly, not "no matches".
+  bool get narrowed => searchQuery.isNotEmpty || changedCriteria > 0;
+
   static _SmartTierFilterScope of(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<_SmartTierFilterScope>();
@@ -539,6 +595,7 @@ class _SmartTierFilterScope extends InheritedWidget {
   bool updateShouldNotify(_SmartTierFilterScope oldWidget) {
     return tier != oldWidget.tier ||
         filter != oldWidget.filter ||
+        changedCriteria != oldWidget.changedCriteria ||
         tabIndex != oldWidget.tabIndex ||
         searchQuery != oldWidget.searchQuery ||
         searching != oldWidget.searching;
@@ -555,22 +612,46 @@ class _SmartEventFabs extends StatelessWidget {
 
   final int tabIndex;
 
-  /// How far up from the bottom the button reaches: its target, lifted by
-  /// the Scaffold's margin and the home indicator's inset. The lists end
-  /// this far clear, so it never covers their last game. Read it from the
-  /// list's context: inside the button slot the Scaffold has already taken
-  /// the inset away.
-  static double reach(BuildContext context) =>
-      InkFabSize.regular.side +
-      kFloatingActionButtonMargin +
-      MediaQuery.viewPaddingOf(context).bottom;
+  @override
+  Widget build(BuildContext context) {
+    // Every page's composition ([InkFabStack]), even for one button; the
+    // lists end clear of its reach ([InkFabStack.reach]).
+    return InkFabStack(
+      children: [
+        if (tabIndex != 0)
+          SearchInkFab(
+            key: const ValueKey('smart_event_search_fab'),
+            label: tabIndex == 2 ? 'Search events' : 'Search games',
+          ),
+      ],
+    );
+  }
+}
+
+/// The row a Games or Events list keeps while more can load: one height
+/// whether the next page is loading (its spinner) or not, so the list never
+/// changes length at the page point. A list that grew or shrank there would
+/// read to the scroll chrome as the reader scrolling, and tug the bars.
+class _PageSlot extends StatelessWidget {
+  const _PageSlot({required this.loading});
+
+  final bool loading;
+
+  static const double _spinner = 20;
 
   @override
   Widget build(BuildContext context) {
-    if (tabIndex == 0) return const SizedBox.shrink();
-    return SearchInkFab(
-      key: const ValueKey('smart_event_search_fab'),
-      label: tabIndex == 2 ? 'Search events' : 'Search games',
+    return SizedBox(
+      key: const ValueKey('smart_event_page_slot'),
+      height: 32.h + _spinner,
+      child: loading
+          ? const Center(
+              child: SizedBox.square(
+                dimension: _spinner,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : null,
     );
   }
 }
@@ -587,7 +668,7 @@ class _ListEnd extends StatelessWidget {
     final indicator = MediaQuery.viewPaddingOf(context).bottom;
     return SearchModeListEnd(
       base: 8.h + indicator,
-      buttons: _SmartEventFabs.reach(context) - indicator,
+      buttons: InkFabStack.extent(),
     );
   }
 }
@@ -776,41 +857,17 @@ GameFilter? _mergeTierIntoFilter(GameFilter filter, String tier) {
 
 /// Tier thresholds keyed off the game's average Elo — the same scalar the
 /// smart event pipeline uses to build, filter and sort these events. Every
-/// tier is an open-ended floor (CM 2200+, FM 2300+, IM 2400+, GM 2500+),
-/// matching the "+2200"-style chips in the filter dialog. Product decision
-/// (2026-06-11): a closed band like CM 2200–2299 surfaces games nobody asked
-/// for; every tier should behave like GM — that level and everything above.
-int _tierFloor(String tier) {
-  switch (tier) {
-    case 'GM':
-      return 2500;
-    case 'IM':
-      return 2400;
-    case 'FM':
-      return 2300;
-    case 'CM':
-      return 2200;
-    default:
-      return 0;
-  }
-}
+/// tier is an open-ended floor (CM 2200+ ... Super GM 2700+), from the one
+/// table ([kSmartEventTiers]). Product decision (2026-06-11): a closed band
+/// like CM 2200–2299 surfaces games nobody asked for; every tier should
+/// behave like GM — that level and everything above.
+int _tierFloor(String tier) => smartTierFloor(tier);
 
 /// Reverse of [_tierFloor]: maps the filter dialog's Level pick back onto
 /// the app bar tier dropdown, keeping the two Elo override surfaces in sync.
-String _tierForMinRating(int minRating) {
-  switch (RatingTierFilter.normalizeMinRating(minRating)) {
-    case 2500:
-      return 'GM';
-    case 2400:
-      return 'IM';
-    case 2300:
-      return 'FM';
-    case 2200:
-      return 'CM';
-    default:
-      return 'All';
-  }
-}
+/// 2700 stays Super GM.
+String _tierForMinRating(int minRating) =>
+    smartTierAtOrBelow(minRating)?.name ?? 'All';
 
 bool _gameMatchesTier(GamesTourModel game, String tier) {
   if (tier == 'All') return true;
@@ -843,6 +900,7 @@ class _AppBar extends ConsumerWidget {
     required this.onApplyChanges,
     required this.criteriaCount,
     required this.onFilters,
+    this.showFilters = true,
   });
 
   /// The request with the user's current tier + filter overrides folded in.
@@ -858,6 +916,9 @@ class _AppBar extends ConsumerWidget {
   /// by Filters here as in the search.
   final int criteriaCount;
   final VoidCallback onFilters;
+
+  /// Filters at the end of the row ([SmartEventScreen.showFilters]).
+  final bool showFilters;
 
   Future<bool> _confirmApplyChanges(BuildContext context) async {
     final confirmed = await showSmoothConfirmDialog(
@@ -983,14 +1044,15 @@ class _AppBar extends ConsumerWidget {
               // Reachable without opening the search, and last, on the
               // gutter, as the search header carries it: one glyph that
               // holds still as the search opens and closes.
-              SearchModeShared(
-                id: SearchModeFilterButton,
-                child: SearchModeFilterButton(
-                  key: const ValueKey('smart_event_filters'),
-                  count: criteriaCount,
-                  onTap: onFilters,
+              if (showFilters)
+                SearchModeShared(
+                  id: SearchModeFilterButton,
+                  child: SearchModeFilterButton(
+                    key: const ValueKey('smart_event_filters'),
+                    count: criteriaCount,
+                    onTap: onFilters,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1047,10 +1109,11 @@ class _AppBarTitle extends StatelessWidget {
   }
 }
 
-/// Stadium-chip dropdown that swaps the active tier filter
-/// (GM / IM / FM / CM / All) for the current screen. Visual language
-/// matches the regular event view's [CategoryDropdown] — shimmer-bordered
-/// chip when closed, kPrimary tint when open, scale + fade overlay panel.
+/// Stadium-chip dropdown that swaps the active tier filter (Super GM / GM /
+/// IM / FM / CM, from [kSmartEventTiers]) for the current screen. Visual
+/// language matches the regular event view's [CategoryDropdown] —
+/// shimmer-bordered chip when closed, kPrimary tint when open, scale + fade
+/// overlay panel.
 class _TitleSelector extends StatefulWidget {
   const _TitleSelector({
     required this.selectedTier,
@@ -1118,7 +1181,9 @@ class _TitleSelectorState extends State<_TitleSelector>
     super.dispose();
   }
 
-  static const _tierOptions = <String>['GM', 'IM', 'FM', 'CM'];
+  static final _tierOptions = <String>[
+    for (final tier in kSmartEventTiers) tier.name,
+  ];
 
   void _open() {
     if (_isOpen) return;
@@ -1183,10 +1248,11 @@ class _TitleSelectorState extends State<_TitleSelector>
   }
 
   String _triggerLabel() {
-    // Every tier is an open-ended threshold now, so each gets the "+".
-    return widget.selectedTier == 'All'
-        ? widget.selectedTier
-        : '${widget.selectedTier}+';
+    // Every tier is an open-ended threshold, so each gets the "+"; the
+    // strongest has nothing above it and reads as itself.
+    final tier = widget.selectedTier;
+    if (tier == 'All' || tier == kSmartEventTiers.first.name) return tier;
+    return '$tier+';
   }
 
   @override
@@ -1383,21 +1449,7 @@ class _TierOptionRow extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  String get _displayLabel {
-    switch (tier) {
-      case 'GM':
-        return 'Grandmaster · 2500+';
-      case 'IM':
-        return 'International Master · 2400+';
-      case 'FM':
-        return 'FIDE Master · 2300+';
-      case 'CM':
-        return 'Candidate Master · 2200+';
-      case 'All':
-      default:
-        return 'All games';
-    }
-  }
+  String get _displayLabel => smartTierNamed(tier)?.longLabel ?? 'All games';
 
   @override
   Widget build(BuildContext context) {
@@ -1906,19 +1958,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                       );
               }
               if (i >= rows.length) {
-                if (event.isLoadingMore) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.h),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  );
-                }
-                return const SizedBox(height: 24);
+                return _PageSlot(loading: event.isLoadingMore);
               }
               final row = rows[i];
               if (row.header != null) {
@@ -2005,8 +2045,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     Widget content;
     if (event != null) {
       var games = _applySmartGameControls(event.games, event.gameEventNames);
-      var narrowed =
-          _query.isNotEmpty || _filter.hasActiveFilters || tier != 'All';
+      var narrowed = tabScope.narrowed;
       var shownQuery = _query;
       if (current != null) {
         _settledGames = games;
@@ -2559,10 +2598,7 @@ class _AboutTabState extends ConsumerState<_AboutTab>
       return const Center(child: CircularProgressIndicator());
     }
 
-    final hasNarrowingControls =
-        scope.searchQuery.isNotEmpty ||
-        scope.filter.hasActiveFilters ||
-        scope.tier != 'All';
+    final hasNarrowingControls = scope.narrowed;
     final emptyMessage = hasNarrowingControls
         ? 'No tournaments match your filters'
         : 'No games right now';
@@ -2884,10 +2920,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
     final current = async.valueOrNull;
     if (current != null) {
       _lastLoadedEvent = current;
-      _settledNarrowed =
-          scope.searchQuery.isNotEmpty ||
-          scope.filter.hasActiveFilters ||
-          scope.tier != 'All';
+      _settledNarrowed = scope.narrowed;
       // Hits start from the top; the list comes back where it was when the
       // words are cleared or the search closes. A previous answer kept on
       // screen meanwhile does not move.
@@ -2996,19 +3029,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                     );
                   }
                   if (index >= rows.length) {
-                    if (!event.isLoadingMore) {
-                      return const SizedBox(height: 24);
-                    }
-                    return Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16.h),
-                      child: const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    );
+                    return _PageSlot(loading: event.isLoadingMore);
                   }
 
                   final row = rows[index];

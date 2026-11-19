@@ -23,7 +23,8 @@ void main() {
   });
 
   testWidgets(
-    'drawer-style pop still opens the form and relays after the host unmounts',
+    'Profile opens the form on the root navigator: nothing under it is '
+    'popped, and the report is relayed',
     (tester) async {
       var submissions = 0;
       final client = MockClient((request) async {
@@ -58,8 +59,12 @@ void main() {
                             return Scaffold(
                               body: Center(
                                 child: TextButton(
-                                  onPressed: () => service
-                                      .openSidebarDirectFeedback(drawerContext),
+                                  onPressed: () => service.showDirectFeedback(
+                                    context: Navigator.of(
+                                      drawerContext,
+                                      rootNavigator: true,
+                                    ).context,
+                                  ),
                                   child: const Text('Feedback'),
                                 ),
                               ),
@@ -83,7 +88,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Your Feedback'), findsOneWidget);
-      expect(find.text('Feedback'), findsNothing);
+      // The page that opened it stays under the form: no route was popped
+      // to get there (on a Home tab that route is Home itself).
+      expect(find.text('Feedback', skipOffstage: false), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'Clocks are unclear.');
       await tester.pump();
@@ -98,7 +105,7 @@ void main() {
       // the fake relay returns a rate limit without contacting Telegram.
       expect(submissions, 1);
       expect(find.text('Your Feedback'), findsNothing);
-      expect(find.text('Open drawer'), findsOneWidget);
+      expect(find.text('Feedback'), findsOneWidget);
       expect(
         find.text('Feedback could not be sent. Please try again.'),
         findsOneWidget,

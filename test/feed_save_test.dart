@@ -43,16 +43,17 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// board screen's own save sheet for the post's game, holds the clip while
 /// the sheet is up, and shows when the game is already saved.
 void main() {
-  testWidgets('every game post has Save beside Like, after Share', (
+  testWidgets('every game post has Save over Like, after Share', (
     tester,
   ) async {
     await _pump(tester);
     final share = tester.getRect(_button('feed_share_button'));
     final save = tester.getRect(_button('feed_save_button'));
     final like = tester.getRect(_button('feed_like_button'));
-    expect(save.left, greaterThanOrEqualTo(share.right - 0.5));
-    expect(like.left, greaterThanOrEqualTo(save.right - 0.5));
-    expect(save.center.dy, closeTo(like.center.dy, 0.5));
+    // Down the rail: Share, Save, then Like at the foot.
+    expect(save.top, greaterThanOrEqualTo(share.bottom - 0.5));
+    expect(like.top, greaterThanOrEqualTo(save.bottom - 0.5));
+    expect(save.center.dx, closeTo(like.center.dx, 0.5));
     expect(save.height, greaterThanOrEqualTo(44));
     expect(
       find.descendant(
@@ -192,9 +193,9 @@ void main() {
 
     // Analyze opens the board over Feed; the game is saved there.
     unawaited(
-      Navigator.of(tester.element(find.byType(FeedScreen))).push(
-        MaterialPageRoute<void>(builder: (_) => const Scaffold()),
-      ),
+      Navigator.of(
+        tester.element(find.byType(FeedScreen)),
+      ).push(MaterialPageRoute<void>(builder: (_) => const Scaffold())),
     );
     await _frames(tester, 600);
     feed.saved = true;

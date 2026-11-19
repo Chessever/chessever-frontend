@@ -4,6 +4,7 @@ import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
     show BoardNavigationListPolicy;
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -127,6 +128,7 @@ class _CombinedGamesScreenState extends ConsumerState<CombinedGamesScreen>
         ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
         for (final tourId in tourIds)
           ref.read(gamesTourProvider(tourId).notifier).refreshGames(),
+        refreshEventGamesLiveIds(ref),
       ]);
     } catch (_) {
       // Boards already on screen stay; the next poll repairs the rest.

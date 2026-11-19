@@ -6,9 +6,9 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
-import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -492,10 +492,27 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      ref.read(worldPlayersSearchProvider.notifier).loadMore();
+    if (!_scrollController.hasClients) return;
+    _loadMoreNearEnd(_scrollController.position);
+  }
+
+  /// The next page, once the reader is within 200pt of the list's end.
+  /// Asked on every scroll and whenever the list's size changes under a
+  /// still reader ([ScrollMetricsNotification]): a page landing short, the
+  /// header folding away and growing the viewport.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
+    if (!mounted || !metrics.hasContentDimensions) return;
+    if (metrics.maxScrollExtent - metrics.pixels > 200) return;
+    // Nothing listed yet (a first load, an error): nothing to page on from.
+    if (ref.read(worldPlayersSearchProvider).players.isEmpty) return;
+    ref.read(worldPlayersSearchProvider.notifier).loadMore();
+  }
+
+  bool _onScrollMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
+      _loadMoreNearEnd(notification.metrics);
     }
+    return false;
   }
 
   Future<void> _onFiltersChanged(RankingFilters filters) async {
@@ -529,37 +546,40 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // Every ranking filter on one rail (Active / All first); the
-          // search is the page's, from its floating button (Trello #1420).
-          // The rail scrolls sideways and carries its own inset, so it spans
-          // the full width: its edge fade falls at the screen's edge.
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(top: 2.h, bottom: 4.h),
-              child: RankingFilterControls(
-                filters: state.filters,
-                activityInRail: true,
-                onChanged: _onFiltersChanged,
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onScrollMetrics,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
+            // Every ranking filter on one rail (Active / All first); the
+            // search is the page's, from its floating button (Trello #1420).
+            // The rail scrolls sideways and carries its own inset, so it spans
+            // the full width: its edge fade falls at the screen's edge.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 2.h, bottom: 4.h),
+                child: RankingFilterControls(
+                  filters: state.filters,
+                  activityInRail: true,
+                  onChanged: _onFiltersChanged,
+                ),
               ),
             ),
-          ),
 
-          // Content
-          _buildContentSliver(state, favorites),
+            // Content
+            _buildContentSliver(state, favorites),
 
-          // The last row ends clear of the floating search button; the
-          // room gives way on the search's own timeline while it is open.
-          SearchModeListEnd.sliver(
-            base: 24.h,
-            buttons: TabSearchFab.reach(context),
-          ),
-        ],
+            // The last row ends clear of the floating search button; the
+            // room gives way on the search's own timeline while it is open.
+            SearchModeListEnd.sliver(
+              base: 24.h,
+              buttons: InkFabStack.reach(context),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -612,16 +632,19 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     List<FavoritePlayer> favorites,
   ) {
     final players = state.players;
-    final showLoadingIndicator =
-        (state.hasMore || state.isLoading) && players.isNotEmpty;
+    // The list's end, one slot of one height whatever it holds: the next
+    // page loading, room to scroll on into it, or the end. Nothing under
+    // the reader's finger jumps as a page starts or lands.
+    final showLoadingIndicator = players.isNotEmpty;
 
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate((context, index) {
           if (index >= players.length) {
-            return Padding(
-              padding: EdgeInsets.symmetric(vertical: 24.h),
+            return SizedBox(
+              key: const ValueKey('favorites_players_list_end_slot'),
+              height: 96.h,
               child: Center(
                 child: state.isLoading
                     ? Column(
@@ -649,7 +672,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
                     : Text(
                         'No more players',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: const Color(0xFF52525B),
+                          color: context.collectionSubtleInk,
                         ),
                       ),
               ),

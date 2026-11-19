@@ -40,9 +40,8 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
-import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
-import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
 import 'package:chessever2/widgets/page_back_row.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -87,6 +86,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
   Map<String, int> _lastTagCounts = const <String, int>{};
+
+  /// Whether the folder holds anything for the floating search, as the
+  /// last page that landed says. Unknown, and so no button, until the first
+  /// page lands: an empty folder never shows it for the length of its first
+  /// read. A re-read (a filter, a tag) keeps the answer it had, so the
+  /// button never blinks out while the new page is out.
+  bool? _searchable;
 
   bool get _isSubscribed => widget.folder.isSubscribed;
   bool get _isFolder => widget.folder.isFolder;
@@ -585,6 +591,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
     // and empty-state messaging.
     final query = filterState.searchQuery.trim().toLowerCase();
     final searchLabel = _isDatabase ? 'Search games' : 'Search folders';
+    final bookState = bookAsync.valueOrNull;
+    final childFolders = ref.watch(
+      childLibraryFoldersProvider(widget.folder.id),
+    );
+    if (bookState != null) {
+      _searchable = !_isEmptyFolder(bookState, childFolders, filterState);
+    }
+    final searchable = _searchable ?? false;
 
     return SearchModeHost(
       controller: _search,
@@ -597,14 +611,26 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
       child: Scaffold(
         key: e2eKey(E2eIds.folderContentsRoot),
         backgroundColor: context.colors.background,
-        // The search floats in the thumb's reach, as on every list. It stays
-        // mounted while searching: the host hides it, and the glass flies
-        // back into it as the search closes.
+        // The search floats in the thumb's reach, as on every list, once
+        // the folder's first page says there is something to search
+        // ([_searchable]): an empty folder shows its empty state with
+        // nothing floating over it, before or after that page lands. It
+        // stays mounted while searching: the host hides it, and the glass
+        // flies back into it as the search closes.
         floatingActionButton: SlidingFabs(
           controller: _chrome,
-          child: SearchInkFab(
-            key: const ValueKey('folder_search_fab'),
-            label: searchLabel,
+          child: ListenableBuilder(
+            listenable: _search,
+            builder: (context, _) => !searchable && !_search.isSearching
+                ? const SizedBox.shrink()
+                : InkFabStack(
+                    children: [
+                      SearchInkFab(
+                        key: const ValueKey('folder_search_fab'),
+                        label: searchLabel,
+                      ),
+                    ],
+                  ),
           ),
         ),
         body: ScreenWrapper(
@@ -865,6 +891,21 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
     );
   }
 
+  /// Nothing in the folder (no games, no folders, nothing more to page in)
+  /// and nothing narrowing it: the page shows its empty state, and there is
+  /// nothing for the floating search to search.
+  bool _isEmptyFolder(
+    PaginatedBookState bookState,
+    List<LibraryFolder> childFolders,
+    FolderFilterState filterState,
+  ) =>
+      (!_isDatabase || bookState.games.isEmpty) &&
+      childFolders.isEmpty &&
+      !bookState.hasMore &&
+      filterState.searchQuery.trim().isEmpty &&
+      !filterState.filter.hasActiveFilters &&
+      filterState.selectedTags.isEmpty;
+
   Widget _buildSavedGames(
     AsyncValue<PaginatedBookState> bookAsync,
     String query,
@@ -901,12 +942,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
             return f.name.toLowerCase().contains(query);
           }).toList();
 
-          if (filteredAnalyses.isEmpty &&
-              childFolders.isEmpty &&
-              !bookState.hasMore &&
-              query.isEmpty &&
-              !hasActiveFilters &&
-              !hasActiveTag) {
+          if (_isEmptyFolder(bookState, childFolders, filterState)) {
             return _buildEmptySavedState();
           }
           if (filteredAnalyses.isEmpty &&
@@ -951,7 +987,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen>
               if (rawIndex == itemCount - 1) {
                 return SearchModeListEnd(
                   base: 12.h,
-                  buttons: TabSearchFab.reach(context),
+                  buttons: InkFabStack.reach(context),
                 );
               }
               final index = rawIndex - 1;

@@ -91,27 +91,39 @@ void main() {
     // not depend on the physics chain.
     const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
   ]) {
-    testWidgets('the bar follows the finger 1:1 '
+    testWidgets('the content follows the finger 1:1, and the bar does too '
+        'once the finger has turned '
         '(${physics?.runtimeType ?? 'default'} physics)', (tester) async {
       late ScrollChromeController chrome;
       await tester.pumpWidget(
         _Page(onController: (c) => chrome = c, physics: physics),
       );
       await tester.pumpAndSettle();
+      final list = tester
+          .state<ScrollableState>(find.byType(Scrollable))
+          .position;
+      // Mid-list: room above and below.
+      list.jumpTo(1000);
+      await tester.pumpAndSettle();
+      expect(chrome.value, 1);
 
       final gesture = await tester.startGesture(const Offset(200, 400));
-      // Past the drag slop first, then the measured steps.
+      // Past the drag slop, then past the turn: the bar starts to follow.
       await gesture.moveBy(const Offset(0, -20));
       await tester.pump();
-      final afterSlop = rowTop(tester, 3);
-      final barAfterSlop = chrome.value;
+      while (chrome.value == 1) {
+        await gesture.moveBy(const Offset(0, -2));
+        await tester.pump();
+      }
+      final start = rowTop(tester, 26);
+      final barStart = chrome.value;
 
       await gesture.moveBy(const Offset(0, -40));
       await tester.pump();
       // The content moved exactly as far as the finger did.
-      expect(rowTop(tester, 3), moreOrLessEquals(afterSlop - 40, epsilon: 1));
+      expect(rowTop(tester, 26), moreOrLessEquals(start - 40, epsilon: 1));
       // And the bar gave up that much of its height.
-      expect(chrome.value, moreOrLessEquals(barAfterSlop - 0.4, epsilon: 0.02));
+      expect(chrome.value, moreOrLessEquals(barStart - 0.4, epsilon: 0.02));
 
       // Far enough to take the bar out entirely, then into the list.
       for (var i = 0; i < 5; i++) {
@@ -120,27 +132,37 @@ void main() {
       }
       expect(chrome.value, 0);
       // Every pixel after the drag took hold reached the content once.
-      expect(
-        rowTop(tester, 3),
-        moreOrLessEquals(afterSlop - 190, epsilon: 1.5),
-      );
+      expect(rowTop(tester, 26), moreOrLessEquals(start - 190, epsilon: 1.5));
 
-      // Back up: the bar returns first, still with the finger.
-      final before = rowTop(tester, 3);
-      await gesture.moveBy(const Offset(0, 30));
+      // Back up, short of the turn: the list scrolls back, the bar waits.
+      var before = rowTop(tester, 26);
+      await gesture.moveBy(
+        const Offset(0, ScrollChromeController.listTurn - 4),
+      );
       await tester.pump();
-      expect(rowTop(tester, 3), moreOrLessEquals(before + 30, epsilon: 1));
+      expect(
+        rowTop(tester, 26),
+        moreOrLessEquals(before + ScrollChromeController.listTurn - 4),
+      );
+      expect(chrome.value, 0);
+
+      // Past the turn: the bar returns with the finger.
+      before = rowTop(tester, 26);
+      await gesture.moveBy(const Offset(0, 34));
+      await tester.pump();
+      expect(rowTop(tester, 26), moreOrLessEquals(before + 34, epsilon: 1));
       expect(chrome.value, moreOrLessEquals(0.3, epsilon: 0.02));
 
       // Hold still before letting go, so the release is not a fling.
       await tester.pump(const Duration(milliseconds: 400));
-      final atRelease = rowTop(tester, 3);
+      final atRelease = rowTop(tester, 26);
       await gesture.up();
       await tester.pumpAndSettle();
-      // Let go nearer gone than shown: it settles gone, on the motor spring,
-      // and the list holds still under it (the spring carries it).
-      expect(chrome.value, 0);
-      expect(rowTop(tester, 3), moreOrLessEquals(atRelease, epsilon: 1));
+      // Let go heading back up: it settles shown, the way the reader was
+      // heading (not the nearer side), on the motor spring, and the list
+      // holds still under it (the spring carries it).
+      expect(chrome.value, 1);
+      expect(rowTop(tester, 26), moreOrLessEquals(atRelease, epsilon: 1));
     });
   }
 
@@ -241,10 +263,42 @@ void main() {
     await tester.pumpAndSettle();
     expect(chrome.value, 0);
 
-    // A filter leaves three rows: nothing left to scroll up with.
+    // A filter leaves three rows: nothing left to scroll up with. Not at
+    // once (a list that empties for a moment never flashes the bars), but
+    // once it has stayed that way.
     count.value = 3;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(chrome.value, 0);
+    await tester.pump(ScrollChromeController.shortGrace);
     await tester.pumpAndSettle();
     expect(chrome.value, 1);
+  });
+
+  testWidgets('a list that empties for a moment never flashes the bars', (
+    tester,
+  ) async {
+    late ScrollChromeController chrome;
+    final count = ValueNotifier(200);
+    addTearDown(count.dispose);
+    await tester.pumpWidget(
+      _Page(onController: (c) => chrome = c, itemCount: count),
+    );
+    // The reader has read the bars away right at the top of the list.
+    chrome.hide(animate: false);
+    await tester.pump();
+    expect(chrome.value, 0);
+
+    // A skeleton swapped in and out: short for two frames.
+    count.value = 3;
+    await tester.pump(const Duration(milliseconds: 16));
+    count.value = 200;
+    final values = <double>[];
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      values.add(chrome.value);
+    }
+    expect(values.every((v) => v == 0), isTrue, reason: '$values');
   });
 
   testWidgets('a scroll to the top brings the chrome back', (tester) async {
@@ -261,8 +315,127 @@ void main() {
     expect(chrome.value, 1);
   });
 
+  testWidgets('a top bar that changes height part-way out never moves the '
+      'content under the finger (S4)', (tester) async {
+    late ScrollChromeController chrome;
+    final barHeight = ValueNotifier<double>(100);
+    await tester.pumpWidget(
+      _ResizingPage(onController: (c) => chrome = c, barHeight: barHeight),
+    );
+    await tester.pumpAndSettle();
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable))
+        .position;
+    list.jumpTo(1000);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    while (chrome.value > 0.6) {
+      await gesture.moveBy(const Offset(0, -4));
+      await tester.pump();
+    }
+    expect(chrome.value, inExclusiveRange(0, 1));
+    final value = chrome.value;
+    final before = rowTop(tester, 26);
+
+    // A row grows in under the bar's title, then goes again.
+    barHeight.value = 140;
+    await tester.pump();
+    expect(chrome.value, value);
+    expect(rowTop(tester, 26), closeTo(before, 0.5));
+    barHeight.value = 100;
+    await tester.pump();
+    expect(rowTop(tester, 26), closeTo(before, 0.5));
+
+    // The finger still drives the bar and the list 1:1 after it.
+    await gesture.moveBy(const Offset(0, -10));
+    await tester.pump();
+    expect(rowTop(tester, 26), closeTo(before - 10, 0.5));
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a top bar that changes height while shown moves the content '
+      'as any header would', (tester) async {
+    late ScrollChromeController chrome;
+    final barHeight = ValueNotifier<double>(100);
+    await tester.pumpWidget(
+      _ResizingPage(onController: (c) => chrome = c, barHeight: barHeight),
+    );
+    await tester.pumpAndSettle();
+    final before = rowTop(tester, 3);
+    barHeight.value = 140;
+    await tester.pump();
+    expect(chrome.value, 1);
+    expect(rowTop(tester, 3), closeTo(before + 40, 0.5));
+  });
+
   group('stability', stabilityTests);
   group('paged', pagedTests);
+  group('dock', dockTests);
+}
+
+/// [_Page] with a top bar whose height follows [barHeight].
+class _ResizingPage extends StatefulWidget {
+  const _ResizingPage({required this.onController, required this.barHeight});
+
+  final ValueChanged<ScrollChromeController> onController;
+  final ValueNotifier<double> barHeight;
+
+  @override
+  State<_ResizingPage> createState() => _ResizingPageState();
+}
+
+class _ResizingPageState extends State<_ResizingPage>
+    with SingleTickerProviderStateMixin {
+  late final ScrollChromeController chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onController(chrome);
+  }
+
+  @override
+  void dispose() {
+    chrome.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            CollapsingChrome(
+              controller: chrome,
+              child: ValueListenableBuilder<double>(
+                valueListenable: widget.barHeight,
+                builder: (context, height, _) =>
+                    SizedBox(height: height, width: double.infinity),
+              ),
+            ),
+            Expanded(
+              child: ScrollChromeRegion(
+                controller: chrome,
+                child: ListView.builder(
+                  itemCount: 200,
+                  itemExtent: 50,
+                  itemBuilder: (context, i) =>
+                      Text('row $i', key: ValueKey('row-$i')),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ShortList extends StatefulWidget {
@@ -323,6 +496,7 @@ class _ShortListState extends State<_ShortList>
 /// region. [media] adjusts the window (reduced motion, a screen reader).
 class _Shell extends StatefulWidget {
   const _Shell({
+    super.key,
     required this.onController,
     required this.body,
     this.paged = false,
@@ -697,7 +871,10 @@ void stabilityTests() {
     final fab = find.byType(SearchInkFab);
     final fabRest = tester.getTopLeft(fab).dy;
     final gesture = await tester.startGesture(const Offset(200, 400));
+    // Past the slop, then past the turn.
     await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, -ScrollChromeController.listTurn));
     await tester.pump();
     var lastFab = fabRest;
     for (var i = 0; i < 6; i++) {
@@ -1122,4 +1299,241 @@ void pagedTests() {
     expect(tester.getSize(slot), size);
     expect(tester.getTopLeft(bar).dy, rest + 60);
   });
+}
+
+/// A root over a dock: a 100px top bar folding away over a long list, and
+/// at the bottom a dock that only changes shape with the chrome (56 tall
+/// shown, 44 away) and never leaves, so it reports nothing. The floating
+/// button rides above it by [ride].
+class _Dock extends StatefulWidget {
+  const _Dock({super.key, required this.onController, this.ride, this.onTap});
+
+  final ValueChanged<ScrollChromeController> onController;
+  final double? ride;
+  final VoidCallback? onTap;
+
+  @override
+  State<_Dock> createState() => _DockState();
+}
+
+class _DockState extends State<_Dock> with SingleTickerProviderStateMixin {
+  late final ScrollChromeController chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onController(chrome);
+  }
+
+  @override
+  void dispose() {
+    chrome.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ride = widget.ride;
+    return MaterialApp(
+      home: Scaffold(
+        extendBody: true,
+        floatingActionButtonLocation: ride == null
+            ? null
+            : RidingFabLocation(ride),
+        floatingActionButton: SlidingFabs(
+          controller: chrome,
+          ride: ride,
+          child: SearchInkFab(onTap: widget.onTap),
+        ),
+        bottomNavigationBar: SizedBox(
+          height: 78,
+          child: AnimatedBuilder(
+            animation: chrome,
+            builder: (context, _) => Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                key: const ValueKey('capsule'),
+                height: 44 + 12 * chrome.value,
+                width: 200,
+              ),
+            ),
+          ),
+        ),
+        body: Column(
+          children: [
+            CollapsingChrome(
+              controller: chrome,
+              child: const SizedBox(height: 100, width: double.infinity),
+            ),
+            Expanded(
+              child: ScrollChromeRegion(controller: chrome, child: _longList()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void dockTests() {
+  testWidgets('riding buttons ride down with the chrome and back, in view, '
+      'announced and tappable the whole way', (tester) async {
+    late ScrollChromeController chrome;
+    var taps = 0;
+    await tester.pumpWidget(
+      _Dock(onController: (c) => chrome = c, ride: 12, onTap: () => taps++),
+    );
+    final fab = find.byType(SearchInkFab);
+    final capsule = find.byKey(const ValueKey('capsule'));
+    final rest = tester.getRect(fab);
+    final restGap = tester.getRect(capsule).top - rest.bottom;
+
+    chrome.hide();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    final mid = tester.getRect(fab);
+    expect(mid.top, inExclusiveRange(rest.top, rest.top + 12));
+    await tester.tapAt(mid.bottomCenter - const Offset(0, 2));
+    expect(taps, 1);
+
+    await tester.pumpAndSettle();
+    expect(chrome.value, 0);
+    final away = tester.getRect(fab);
+    expect(away.top, moreOrLessEquals(rest.top + 12));
+    expect(away.size, rest.size);
+    // Its foot, below where it rested, still takes the tap.
+    await tester.tapAt(away.bottomCenter - const Offset(0, 2));
+    expect(taps, 2);
+    expect(
+      find.ancestor(
+        of: fab,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              (w is IgnorePointer && w.ignoring) ||
+              (w is ExcludeSemantics && w.excluding),
+        ),
+      ),
+      findsNothing,
+    );
+    // The dock shrank under it by as much and stayed: the same gap.
+    expect(tester.getSize(capsule).height, 44);
+    expect(
+      tester.getRect(capsule).top - away.bottom,
+      moreOrLessEquals(restGap),
+    );
+
+    chrome.show();
+    await tester.pumpAndSettle();
+    expect(tester.getRect(fab), rest);
+  });
+
+  testWidgets('a riding slot rests the buttons where the end-float corner '
+      'puts them', (tester) async {
+    await tester.pumpWidget(
+      _Dock(key: const ValueKey('plain'), onController: (_) {}),
+    );
+    final plain = tester.getRect(find.byType(SearchInkFab));
+    await tester.pumpWidget(
+      _Dock(key: const ValueKey('riding'), onController: (_) {}, ride: 12),
+    );
+    expect(tester.getRect(find.byType(SearchInkFab)), plain);
+    expect(const RidingFabLocation(12), const RidingFabLocation(12));
+    expect(const RidingFabLocation(12), isNot(const RidingFabLocation(8)));
+  });
+
+  testWidgets('only bars that fold out of the layout count toward the room '
+      'a list needs', (tester) async {
+    late ScrollChromeController chrome;
+    // A bottom bar that folds: both bars' travel, and room to spare.
+    await tester.pumpWidget(
+      _Shell(
+        key: const ValueKey('fold'),
+        onController: (c) => chrome = c,
+        body: _longList(),
+      ),
+    );
+    expect(chrome.minRange, 100 + 60 + 48);
+    // A bottom bar sliding over the content: the top bar's alone.
+    await tester.pumpWidget(
+      _Shell(
+        key: const ValueKey('overlay'),
+        onController: (c) => chrome = c,
+        paged: true,
+        body: _longList(),
+      ),
+    );
+    expect(chrome.minRange, ScrollChromeController.minScrollRange);
+    // A dock that never leaves reports nothing; the chrome still moves with
+    // the top bar.
+    await tester.pumpWidget(
+      _Dock(key: const ValueKey('dock'), onController: (c) => chrome = c),
+    );
+    expect(chrome.minRange, ScrollChromeController.minScrollRange);
+    await tester.fling(find.byType(ListView), const Offset(0, -600), 2000);
+    await tester.pumpAndSettle();
+    expect(chrome.value, 0);
+  });
+
+  for (final reports in [true, false]) {
+    testWidgets('a lone bottom bar that ${reports ? 'reports' : 'does not '
+                  'report'} its height ${reports ? 'leaves' : 'stays'} as the '
+        'list scrolls', (tester) async {
+      late ScrollChromeController chrome;
+      await tester.pumpWidget(
+        _BottomOnly(onController: (c) => chrome = c, reports: reports),
+      );
+      await tester.fling(find.byType(ListView), const Offset(0, -600), 2000);
+      await tester.pumpAndSettle();
+      expect(chrome.value, reports ? 0 : 1);
+    });
+  }
+}
+
+/// A list under a lone bottom bar sliding over it, with no top bar.
+class _BottomOnly extends StatefulWidget {
+  const _BottomOnly({required this.onController, required this.reports});
+
+  final ValueChanged<ScrollChromeController> onController;
+  final bool reports;
+
+  @override
+  State<_BottomOnly> createState() => _BottomOnlyState();
+}
+
+class _BottomOnlyState extends State<_BottomOnly>
+    with SingleTickerProviderStateMixin {
+  late final ScrollChromeController chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onController(chrome);
+  }
+
+  @override
+  void dispose() {
+    chrome.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        extendBody: true,
+        bottomNavigationBar: CollapsingChrome(
+          controller: chrome,
+          edge: VerticalDirection.down,
+          overlay: true,
+          reportsExtent: widget.reports,
+          child: const SizedBox(height: 60, width: double.infinity),
+        ),
+        body: ScrollChromeRegion(controller: chrome, child: _longList()),
+      ),
+    );
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -61,46 +62,50 @@ void main() {
   });
 
   for (final state in [false, true]) {
-    testWidgets('action row names match the visible labels (state: $state)', (
+    testWidgets('rail names match the visible labels (state: $state)', (
       tester,
     ) async {
       final handle = tester.ensureSemantics();
       final tapped = <String>[];
       await _pump(
         tester,
-        FeedActionRow(
-          height: 56,
-          liked: state,
-          inSpace: state,
-          saved: state,
-          likeIconKey: GlobalKey(),
-          onLike: () => tapped.add('like'),
-          onSpace: () => tapped.add('space'),
-          onShare: () => tapped.add('share'),
-          onSave: () => tapped.add('save'),
-          onAnalyze: () => tapped.add('analyze'),
+        SizedBox(
+          width: FeedLayout.railWidth,
+          height: 4 * FeedLayout.railCellMin,
+          child: FeedActionRail(
+            cellHeight: FeedLayout.railCellMin,
+            liked: state,
+            saved: state,
+            likeIconKey: GlobalKey(),
+            onLike: () => tapped.add('like'),
+            onShare: () => tapped.add('share'),
+            onSave: () => tapped.add('save'),
+            onAnalyze: () => tapped.add('analyze'),
+          ),
         ),
       );
       SemanticsNode node(String key) =>
           tester.getSemantics(find.byKey(ValueKey(key)));
 
-      // The optional fifth action follows the same centered spacing as
-      // the four-action row, even when Save changes to Saved.
-      final row = tester.getRect(find.byType(FeedActionRow));
+      // Each cell's word sits centred under its glyph, on the rail's axis,
+      // even when Save changes to Saved.
+      final rail = tester.getRect(find.byType(FeedActionRail));
       final labels = find.byType(FeedActionLabel);
-      final cellWidth = row.width / labels.evaluate().length;
-      for (var i = 0; i < labels.evaluate().length; i++) {
+      expect(labels, findsNWidgets(4));
+      for (var i = 0; i < 4; i++) {
         final label = labels.at(i);
-        final center = row.left + cellWidth * (i + 0.5);
         final word = tester.getRect(
           find.descendant(of: label, matching: find.byType(Text)),
         );
         final icon = tester.getRect(
           find.byWidget(tester.widget<FeedActionLabel>(label).icon),
         );
-        expect(word.center.dx, closeTo(center, 0.01));
-        expect(icon.center.dx, closeTo(center, 0.01));
+        expect(word.center.dx, closeTo(rail.center.dx, 0.01));
+        expect(icon.center.dx, closeTo(rail.center.dx, 0.01));
+        expect(word.top, greaterThan(icon.bottom));
       }
+      // My Space lives in the post's long-press menu, not on the rail.
+      expect(find.byKey(const ValueKey('feed_space_button')), findsNothing);
 
       expect(
         node('feed_analyze_button'),
@@ -108,17 +113,6 @@ void main() {
           label: 'Analyze',
           hint: 'Open game on the board',
           isButton: true,
-          hasTapAction: true,
-        ),
-      );
-      expect(
-        node('feed_space_button'),
-        isSemantics(
-          label: 'My Space',
-          hint: state ? 'Remove from My Space' : 'Add to My Space',
-          isButton: true,
-          hasSelectedState: true,
-          isSelected: state,
           hasTapAction: true,
         ),
       );
@@ -152,7 +146,6 @@ void main() {
 
       for (final key in [
         'feed_analyze_button',
-        'feed_space_button',
         'feed_share_button',
         'feed_save_button',
         'feed_like_button',
@@ -160,7 +153,7 @@ void main() {
         final n = node(key);
         n.owner!.performAction(n.id, SemanticsAction.tap);
       }
-      expect(tapped, ['analyze', 'space', 'share', 'save', 'like']);
+      expect(tapped, ['analyze', 'share', 'save', 'like']);
       handle.dispose();
     });
   }

@@ -15,7 +15,7 @@ import 'package:chessever2/utils/favorite_player_identity.dart'
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -566,7 +566,8 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
 
 /// The floating buttons over the tab in view: Games floats its own (Live
 /// first above the search, [CountrymenGamesFabs]); Events and Rankings
-/// float the search alone, searching their own list.
+/// float the search alone, searching their own list, through the same stack
+/// ([InkFabStack]) as every page's buttons.
 class _CountrymenFabs extends StatelessWidget {
   const _CountrymenFabs({required this.mode});
 
@@ -576,13 +577,21 @@ class _CountrymenFabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (mode) {
       CountrymenScreenMode.games => const CountrymenGamesFabs(),
-      CountrymenScreenMode.events => const SearchInkFab(
-        key: ValueKey('countrymen_search_fab'),
-        label: 'Search events',
+      CountrymenScreenMode.events => const InkFabStack(
+        children: [
+          SearchInkFab(
+            key: ValueKey('countrymen_search_fab'),
+            label: 'Search events',
+          ),
+        ],
       ),
-      CountrymenScreenMode.players => const SearchInkFab(
-        key: ValueKey('countrymen_search_fab'),
-        label: 'Search players',
+      CountrymenScreenMode.players => const InkFabStack(
+        children: [
+          SearchInkFab(
+            key: ValueKey('countrymen_search_fab'),
+            label: 'Search players',
+          ),
+        ],
       ),
     };
   }

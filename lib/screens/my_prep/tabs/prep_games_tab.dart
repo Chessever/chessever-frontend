@@ -37,7 +37,7 @@ import 'package:chessever2/screens/my_prep/models/prep_models.dart';
 import 'package:chessever2/screens/my_prep/widgets/prep_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
@@ -993,9 +993,7 @@ class _PrepGamesTabState extends ConsumerState<PrepGamesTab>
         // timeline while nothing floats.
         SearchModeListEnd.sliver(
           base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
-          buttons: ownRow
-              ? 0
-              : InkFabSize.regular.side + kFloatingActionButtonMargin,
+          buttons: ownRow ? 0 : InkFabStack.extent(),
         ),
       ],
     );

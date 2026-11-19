@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
@@ -29,8 +31,9 @@ class FeedSkeleton extends StatelessWidget {
 }
 
 /// One post's skeleton, on the exact [FeedLayout] geometry of a real post:
-/// the header line, both player rows around the board, the move strip, the
-/// actions and the scrub line at the foot.
+/// both player rows around the board, then the zone: the chart's move line,
+/// the scrub line and the caption on the left, the rail's four cells on the
+/// right.
 ///
 /// The column left of the board is always drawn, as wide as the post's own:
 /// a game post always has its eval bar and a puzzle its rail, so the board
@@ -38,8 +41,8 @@ class FeedSkeleton extends StatelessWidget {
 class FeedSkeletonPost extends StatelessWidget {
   const FeedSkeletonPost({this.puzzle = false, super.key});
 
-  /// Lays out a puzzle post instead of a game: its info row under the
-  /// board, its actions on the page gutter, and no evaluation chart.
+  /// Lays out a puzzle post instead of a game: its status in the middle of
+  /// the zone's left column, and no chart or scrub line.
   final bool puzzle;
 
   /// The counter the skeleton keeps room for: a game's own counter is as
@@ -61,10 +64,6 @@ class FeedSkeletonPost extends StatelessWidget {
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: 20.w,
-          infoHeight: puzzle ? null : 0,
-          chartHeight: puzzle
-              ? 0
-              : FeedEvaluationGraph.heightFor(MediaQuery.textScalerOf(context)),
         );
         Widget bar(double width, double height, {double radius = 3}) =>
             Container(
@@ -88,46 +87,45 @@ class FeedSkeletonPost extends StatelessWidget {
             ],
           ),
         );
-        // Game controls share the board column; the header and puzzle rows
-        // keep the page gutter, as in a real post.
-        Widget content(Widget child) => Padding(
-          padding: EdgeInsets.only(left: l.contentLeft),
-          child: SizedBox(width: l.contentWidth, child: child),
-        );
-        Widget fullRow(Widget child) => Padding(
-          padding: const EdgeInsets.only(left: FeedLayout.sidePadding),
-          child: SizedBox(width: l.rowWidth, child: child),
-        );
-        // Each action: the glyph over its word.
-        Widget action() => Expanded(
+        // Each rail cell: the glyph over its word.
+        Widget cell() => SizedBox(
+          height: l.railCell,
+          width: FeedLayout.railWidth,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              bar(22, 22, radius: 5),
-              const SizedBox(height: 5),
-              SizedBox(height: 14, child: Center(child: bar(34, 8))),
+              bar(FeedLayout.railGlyph, FeedLayout.railGlyph, radius: 6),
+              const SizedBox(height: FeedLayout.railGlyphGap + 3),
+              bar(32, 8),
             ],
           ),
         );
+        // The caption's one line, at the zone's foot.
+        final caption = Positioned(
+          left: l.contentLeft,
+          top: l.captionTop,
+          width: l.leftColumnWidth,
+          height: l.captionHeight,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: bar(math.min(180, l.leftColumnWidth), 10),
+          ),
+        );
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Stack(
           children: [
-            SizedBox(height: l.top),
-            fullRow(
-              SizedBox(
-                height: l.metaHeight,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: bar(180, 10),
-                ),
-              ),
+            Positioned(
+              left: l.contentLeft,
+              top: l.blackRowTop,
+              width: l.contentWidth,
+              child: playerRow(150),
             ),
-            const SizedBox(height: FeedLayout.gap),
-            content(playerRow(150)),
-            const SizedBox(height: FeedLayout.gap),
-            content(
-              Row(
+            Positioned(
+              left: l.contentLeft,
+              top: l.boardTop,
+              width: l.contentWidth,
+              height: l.board,
+              child: Row(
                 children: [
                   Container(
                     width: l.evalWidth,
@@ -147,83 +145,85 @@ class FeedSkeletonPost extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: FeedLayout.gap),
-            content(playerRow(170)),
-            SizedBox(height: l.infoSpace),
-            fullRow(
-              SizedBox(
+            Positioned(
+              left: l.contentLeft,
+              top: l.whiteRowTop,
+              width: l.contentWidth,
+              child: playerRow(170),
+            ),
+            if (puzzle)
+              // The status line, centred above the caption.
+              Positioned(
+                left: l.contentLeft,
+                top: l.zoneTop + (l.captionTop - l.zoneTop - l.infoHeight) / 2,
+                width: l.leftColumnWidth,
                 height: l.infoHeight,
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: bar(72, 14),
                 ),
-              ),
-            ),
-            SizedBox(height: l.actionsSpace),
-            (puzzle ? fullRow : content)(
-              SizedBox(
-                height: l.actionsHeight,
-                // Game posts offer Analyze, Share, Save and Like.
-                child: Row(children: [for (var i = 0; i < 4; i++) action()]),
-              ),
-            ),
-            // [FeedLayout.scrubSpace], as on a post.
-            const Spacer(),
-            if (!puzzle)
-              SizedBox(
-                height: l.chartHeight,
-                child: Padding(
-                  padding: EdgeInsets.only(left: l.contentLeft),
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: bar(72, 14),
-                  ),
+              )
+            else ...[
+              // The chart's move line, at the graph's top.
+              Positioned(
+                left: l.contentLeft,
+                top: l.graphTop,
+                width: l.leftColumnWidth,
+                height: FeedLayout.moveInfoHeightFor(
+                  MediaQuery.textScalerOf(context),
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: bar(72, 14),
                 ),
               ),
-            // The scrub line at rest, laid out on the real line's run
-            // ([FeedScrubRun]): its track, round-capped, ending where the
-            // real track ends, and the counter's digits where they stand.
-            SizedBox(
-              height: FeedLayout.scrubHeight,
-              width: constraints.maxWidth,
-              child: Builder(
-                builder: (context) {
-                  final run = FeedScrubRun.resolve(
-                    context,
-                    width: constraints.maxWidth,
-                    inset: l.contentLeft,
-                    counterWidest: counterWidest,
-                  );
-                  final digits = FeedScrubStrip.counterWidthOf(
-                    context,
-                    counterAtRest,
-                  );
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: run.trackLeft,
-                        width: run.trackRight - run.trackLeft,
-                        top:
-                            FeedLayout.scrubTrackCenter -
-                            FeedLayout.scrubTrack / 2,
-                        child: bar(
-                          run.trackRight - run.trackLeft,
-                          FeedLayout.scrubTrack,
-                          radius: FeedLayout.scrubTrack / 2,
+              // The scrub line at rest, laid out on the real line's run
+              // ([FeedScrubRun]): its track, round-capped, ending where the
+              // real track ends before the speed button.
+              Positioned(
+                left: 0,
+                top: l.scrubTop,
+                width: l.leftColumnRight - 44,
+                height: FeedLayout.scrubHeight,
+                child: Builder(
+                  builder: (context) {
+                    final run = FeedScrubRun.resolve(
+                      context,
+                      width: l.leftColumnRight - 44,
+                      inset: l.contentLeft,
+                    );
+                    return Stack(
+                      children: [
+                        Positioned(
+                          left: run.trackLeft,
+                          width: run.trackRight - run.trackLeft,
+                          top:
+                              FeedLayout.scrubTrackCenter -
+                              FeedLayout.scrubTrack / 2,
+                          child: bar(
+                            run.trackRight - run.trackLeft,
+                            FeedLayout.scrubTrack,
+                            radius: FeedLayout.scrubTrack / 2,
+                          ),
                         ),
-                      ),
-                      Positioned(
-                        right: l.contentLeft,
-                        width: digits,
-                        top: FeedLayout.scrubTrackCenter - 5,
-                        child: bar(digits, 10),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+            caption,
+            Positioned(
+              left: l.railLeft,
+              top: l.railTop,
+              width: FeedLayout.railWidth,
+              height: l.railHeight,
+              child: Column(
+                children: [
+                  for (var i = 0; i < FeedLayout.railCells; i++) cell(),
+                ],
               ),
             ),
-            SizedBox(height: l.foot),
           ],
         );
       },

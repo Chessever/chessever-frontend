@@ -391,6 +391,24 @@ class GameFilter {
     return count;
   }
 
+  /// Count of dimensions that differ from [base], the dimensions
+  /// [activeFilterCount] counts against the defaults. A screen that opens
+  /// already narrowed (a smart event's own level or opening) badges only
+  /// what the reader changed since, not the criteria it opened with.
+  int changedFilterCount(GameFilter base) {
+    int count = 0;
+    if (result != base.result) count++;
+    if (color != base.color) count++;
+    if (finish != base.finish) count++;
+    if (timeControl != base.timeControl) count++;
+    if (online != base.online) count++;
+    if (live != base.live) count++;
+    if (eco != base.eco) count++;
+    if (minYear != base.minYear || maxYear != base.maxYear) count++;
+    if (minRating != base.minRating || maxRating != base.maxRating) count++;
+    return count;
+  }
+
   GameFilter copyWith({
     GameResultFilter? result,
     GameColorFilter? color,
@@ -464,6 +482,9 @@ class GameFilterHelper {
   ///
   /// Prefer `lastMoveTime` because it proves active play. For not-yet-moved
   /// same-day games, fall back to the scheduled game day/date.
+  ///
+  /// The game filter's "Live" option and PiP read this. "See N live" and
+  /// Live first fall back on the stricter [isInPlay].
   static bool isLiveNow(GamesTourModel game, {DateTime? now}) {
     if (!game.effectiveGameStatus.isOngoing) return false;
 
@@ -476,6 +497,47 @@ class GameFilterHelper {
     if (liveDate == null) return false;
 
     return _isSameCalendarDay(liveDate, _todayUtc(comparisonTime));
+  }
+
+  /// How long after its last move a game still counts as in play past UTC
+  /// midnight ([isInPlay]): the freshness `get_live_game_ids` gives a live
+  /// round.
+  static const Duration inPlayCarry = Duration(hours: 2);
+
+  /// Whether [game] is in play by its own row: what "See N live" and Live
+  /// first fall back on while the server cannot say (`get_live_game_ids`
+  /// unknown, or missing on the backend). The server's rule, as far as one
+  /// row can tell it (AGENTS.md: "a game with a move that is not finished"):
+  /// marked ongoing, with a move, and moved today (UTC) or within
+  /// [inPlayCarry].
+  ///
+  /// A 0-move shell is never in play, whatever its day and the reader's
+  /// time zone; a game still in play past UTC midnight stays in play.
+  static bool isInPlay(GamesTourModel game, {DateTime? now}) {
+    if (!game.hasStarted) return false;
+    if (!game.effectiveGameStatus.isOngoing) return false;
+    final comparisonTime = now ?? DateTime.now();
+    final moved = _ownLastMoveTime(game);
+    if (moved == null) {
+      // Moved, with no time on the row: its day, as a plain date, is today
+      // in UTC (never a local midnight read as an instant).
+      final day = game.gameDay ?? game.dateStart;
+      return day != null && _isSameCalendarDay(day, _todayUtc(comparisonTime));
+    }
+    if (_isSameUtcDay(moved, comparisonTime)) return true;
+    final since = comparisonTime.difference(moved);
+    return !since.isNegative && since <= inPlayCarry;
+  }
+
+  /// The row's own last-move instant. A game with no `last_move_time` is
+  /// filed under its game day (or start date) instead
+  /// (`GamesTourModel.fromGame`): that is a day, a local midnight, not an
+  /// instant, so it is never read as one.
+  static DateTime? _ownLastMoveTime(GamesTourModel game) {
+    final moved = game.lastMoveTime;
+    if (moved == null) return null;
+    if (moved == game.gameDay || moved == game.dateStart) return null;
+    return moved;
   }
 
   static bool _isSameUtcDay(DateTime left, DateTime right) {

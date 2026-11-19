@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/live_game_ids_provider.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -58,13 +60,16 @@ const String _unknownDayKey = '0000-00-00';
 /// Games with no timestamp go to an explicit unknown bucket rather than
 /// silently defaulting to today.
 ///
-/// With [liveFirst] (Trello #1420) each day lists its games in play first,
-/// keeping the provider's order on both sides of the split
-/// ([liveGamesFirst]). [now] pins "live" for tests.
+/// With [liveFirst] (Trello #1420) the games in play ([liveIds], the
+/// server's set; by their own rows while it is unknown) lead the list,
+/// gathered at the head of today ([gatherLiveGamesFirst]), keeping the
+/// provider's order on both sides of the split. [now] pins today and "live"
+/// for tests.
 @visibleForTesting
 Map<String, List<GamesTourModel>> groupCountrymenGamesByDay(
   List<GamesTourModel> games, {
   bool liveFirst = false,
+  Set<String>? liveIds,
   DateTime? now,
 }) {
   final grouped = <String, List<GamesTourModel>>{};
@@ -85,14 +90,16 @@ Map<String, List<GamesTourModel>> groupCountrymenGamesByDay(
       return b.compareTo(a);
     });
 
-  return Map.fromEntries(
-    sortedKeys.map((key) {
-      final dayGames = grouped[key]!;
-      return MapEntry(
-        key,
-        liveFirst ? liveGamesFirst(dayGames, now: now) : dayGames,
-      );
-    }),
+  final byDay = {for (final key in sortedKeys) key: grouped[key]!};
+  if (!liveFirst) return byDay;
+  return gatherLiveGamesFirst(
+    byDay,
+    todayKey: DateFormat(
+      'yyyy-MM-dd',
+    ).format((now ?? DateTime.now()).toLocal()),
+    unknownKey: _unknownDayKey,
+    liveIds: liveIds,
+    now: now,
   );
 }
 
@@ -114,22 +121,75 @@ Future<void> showCountrymenGameFilterDialog(
   await ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);
 }
 
-/// How many games in the Countrymen Games list are in play, counted from the
-/// list already loaded (Live first reads it aloud and on its capsule).
-final countrymenGamesLiveCountProvider = Provider.autoDispose<int>(
-  (ref) => ref.watch(
-    countrymenCombinedGamesProvider.select(
-      (state) => state.filteredGames.where(GameFilterHelper.isLiveNow).length,
-    ),
+/// Whose live games the Countrymen Games list asks about: the federation it
+/// lists (its FIDE code, as the list queries it), under the list's rating
+/// floor (none: every rating, as the list) and filter. Null with no country.
+final countrymenGamesLiveScopeProvider =
+    Provider.autoDispose<CountrymenLiveGamesScope?>((ref) {
+      final countryCode = ref.watch(
+        countrymenCombinedGamesProvider.select((state) => state.countryCode),
+      );
+      final filter = ref.watch(
+        countrymenCombinedGamesProvider.select((state) => state.filter),
+      );
+      if (countryCode == null || countryCode.trim().isEmpty) return null;
+      return CountrymenLiveGamesScope(
+        countryCode: CountryUtils.toFideCode(countryCode),
+        filter: filter,
+      );
+    });
+
+/// The games in play with a player of the Countrymen list's federation, by
+/// the server ([countrymenLiveGameIdsProvider]): null until it answers. No
+/// country has nothing in play.
+final countrymenGamesServerLiveIdsProvider = Provider.autoDispose<Set<String>?>(
+  (ref) {
+    final scope = ref.watch(countrymenGamesLiveScopeProvider);
+    if (scope == null) return const <String>{};
+    return ref.watch(countrymenLiveGameIdsProvider(scope));
+  },
+);
+
+/// What the Countrymen Games list counts as in play and what its Live first
+/// lifts: the server's set, less any game the list already shows as
+/// finished ([listedLiveGameIds]). Null while the server has not answered.
+final countrymenGamesLiveIdsProvider = Provider.autoDispose<Set<String>?>(
+  (ref) => listedLiveGameIds(
+    ref.watch(countrymenGamesServerLiveIdsProvider),
+    ref.watch(countrymenCombinedGamesProvider.select((state) => state.games)),
   ),
 );
 
-/// Whether a game in the Countrymen Games list is in play. Live first floats
-/// over the list only while this holds (Trello #1420):
-/// with nothing live it has nothing to do.
-final countrymenGamesAnyLiveProvider = Provider.autoDispose<bool>(
-  (ref) => ref.watch(countrymenGamesLiveCountProvider) > 0,
+/// How many games of the Countrymen Games list are in play, read on Live
+/// first's capsule ("See 3 live"). Null while unknown ("See live").
+final countrymenGamesLiveCountProvider = Provider.autoDispose<int?>(
+  (ref) => ref.watch(countrymenGamesLiveIdsProvider)?.length,
 );
+
+/// Whether a game of the Countrymen Games list is in play. Live first floats
+/// over the list only while this holds (Trello #1420): with nothing live it
+/// has nothing to do. Until the server answers, the list's own rows decide,
+/// so a backend that cannot say keeps the capsule (with no number).
+final countrymenGamesAnyLiveProvider = Provider.autoDispose<bool>((ref) {
+  final live = ref.watch(countrymenGamesLiveIdsProvider);
+  if (live != null) return live.isNotEmpty;
+  return ref.watch(
+    countrymenCombinedGamesProvider.select(
+      (state) => state.filteredGames.any(GameFilterHelper.isInPlay),
+    ),
+  );
+});
+
+/// The Countrymen Games list's live-game poll, when it is running: for the
+/// page to pause it while covered and ask again on its way back.
+LiveGameIdsNotifier? _countrymenLiveIdsPoll(WidgetRef ref) {
+  // Only a poll already running: nothing is started from here.
+  if (!ref.exists(countrymenGamesLiveScopeProvider)) return null;
+  final scope = ref.read(countrymenGamesLiveScopeProvider);
+  if (scope == null) return null;
+  final provider = countrymenLiveGameIdsProvider(scope);
+  return ref.exists(provider) ? ref.read(provider.notifier) : null;
+}
 
 /// The Games list's toolbar: board view, Classical only and Filters, bare
 /// glyphs, ending the app bar. The full-page search header ends with the same
@@ -210,8 +270,9 @@ class CountrymenGamesToolbar extends ConsumerWidget {
 
 /// The Games page's floating buttons (Trello #1420): the search and, above
 /// it while a game is in play (or while it is on), Live first, saying how
-/// many are live. Pressed with nothing in play, Live first stays off and
-/// says so; turned on, the list goes up to the games in play.
+/// many are live by the server's count. Pressed with nothing in play, Live
+/// first stays off and says so; turned on, it lists the live games the
+/// loaded days miss and the list goes up to them.
 ///
 /// Under the screen's [SearchModeHost] the search hands its tap to the host,
 /// which flies the search button's glass into the field and back.
@@ -220,46 +281,55 @@ class CountrymenGamesFabs extends ConsumerWidget {
 
   static const _surface = GameListLiveFirstSurface.countrymen;
 
-  /// How far up from the bottom the buttons reach: the search, Live first
-  /// above it ([InkFabStack]'s 12pt gap), lifted by the Scaffold's margin and
-  /// the home indicator's inset. The Games list ends this far clear, so no
-  /// button covers its last game. Live first counts whether it floats or
-  /// not, so the end of the list never jumps as games start and finish.
-  /// Read it from the list's context: inside the button slot the Scaffold
-  /// has already taken the inset away.
+  /// How far up from the bottom the buttons reach: the search with Live
+  /// first above it ([InkFabStack.reach]). The Games list ends this far
+  /// clear, so no button covers its last game. Live first counts whether it
+  /// floats or not, so the end of the list never jumps as games start and
+  /// finish. Countrymen is a pushed page, with no bottom bar under it. Read
+  /// it from the list's context: inside the button slot the Scaffold has
+  /// already taken the inset away.
   static double reach(BuildContext context) =>
-      InkFabSize.regular.side +
-      12 +
-      InkFabSize.small.side +
-      kFloatingActionButtonMargin +
-      MediaQuery.viewPaddingOf(context).bottom;
+      InkFabStack.reach(context, smallAbove: 1);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final liveFirst = ref.watch(gameListLiveFirstProvider(_surface));
     final anyLive = ref.watch(countrymenGamesAnyLiveProvider);
-    final liveCount = ref.watch(countrymenGamesLiveCountProvider);
     // Just after a search closes the list may still hold its hits: what is
     // live among them says nothing of the whole list.
     final holdsHits = ref.watch(
       countrymenCombinedGamesProvider.select((state) => state.isSearching),
     );
+    // Only while a game is in play (Trello #1420), or while it is on, so a
+    // Live first left on can always be seen and turned off. With nothing
+    // live and nothing to undo it is not on screen.
+    final offered = (anyLive || liveFirst) && !holdsHits;
     return InkFabStack(
       children: [
-        // Only while a game is in play (Trello #1420), or while it is on, so
-        // a Live first left on can always be seen and turned off. With
-        // nothing live and nothing to undo it is not on screen.
-        if ((anyLive || liveFirst) && !holdsHits)
+        if (offered)
           LiveFirstCapsule(
             key: const ValueKey('countrymen_live_first_fab'),
             on: liveFirst,
-            liveCount: liveCount,
-            onTap: () => pressGameListLiveFirst(
-              context: context,
-              ref: ref,
-              surface: _surface,
-              games: ref.read(countrymenCombinedGamesProvider).filteredGames,
-            ),
+            liveCount: ref.watch(countrymenGamesLiveCountProvider),
+            onTap: () {
+              final liveIds = ref.read(countrymenGamesLiveIdsProvider);
+              final press = pressGameListLiveFirst(
+                context: context,
+                ref: ref,
+                surface: _surface,
+                games: ref.read(countrymenCombinedGamesProvider).filteredGames,
+                liveIds: liveIds,
+              );
+              // What it lifts is what it counted: the live games the loaded
+              // days do not hold yet join today.
+              if (press == GameListLiveFirstPress.turnedOn && liveIds != null) {
+                unawaited(
+                  ref
+                      .read(countrymenCombinedGamesProvider.notifier)
+                      .ensureListed(liveIds),
+                );
+              }
+            },
           ),
         const SearchInkFab(
           key: ValueKey('countrymen_search_fab'),
@@ -294,6 +364,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   Timer? _scrollIdleTimer;
   bool _routeSubscribed = false;
   bool _routeIsCurrent = true;
+
+  /// The live count's poll, paused while a board covers the list.
+  final CoveredLiveGamesPoll _livePoll = CoveredLiveGamesPoll();
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
@@ -375,7 +448,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
   @override
   void didPopNext() {
-    _setRouteActive(true);
+    // Back from a board: games may have started or ended meanwhile.
+    _setRouteActive(true, backFromBoard: true);
   }
 
   @override
@@ -420,15 +494,40 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     );
   }
 
-  void _setRouteActive(bool isActive) {
+  void _setRouteActive(bool isActive, {bool backFromBoard = false}) {
     if (!mounted) return;
     if (_routeIsCurrent != isActive) {
       setState(() => _routeIsCurrent = isActive);
+    }
+    // Covered by a board, the live count waits instead of polling; back
+    // from it, the server is asked once.
+    final poll = _countrymenLiveIdsPoll(ref);
+    if (isActive) {
+      _livePoll.uncover(ref, poll, ask: backFromBoard);
+    } else {
+      _livePoll.cover(ref, poll);
     }
     if (!isActive) {
       ForegroundTaskScheduler.cancel('countrymen_games_resume_$hashCode');
       _stopLiveCardsForHiddenTab();
     }
+  }
+
+  /// With Live first on, the live games the loaded days miss join the list
+  /// (see [CountrymenCombinedGamesNotifier.ensureListed]), so it lifts what
+  /// its capsule counts.
+  void _listLiveGames() {
+    if (!mounted) return;
+    if (!ref.read(
+      gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
+    )) {
+      return;
+    }
+    final liveIds = ref.read(countrymenGamesLiveIdsProvider);
+    if (liveIds == null || liveIds.isEmpty) return;
+    unawaited(
+      ref.read(countrymenCombinedGamesProvider.notifier).ensureListed(liveIds),
+    );
   }
 
   void _setAppResumed(bool isResumed) {
@@ -444,19 +543,29 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     _markLiveCardsScrolling();
+    _loadMoreNearEnd(_scrollController.position);
+  }
 
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    // 200px before the last card, which now sits above the floating
-    // buttons' clearance at the list's end.
+  /// The next days, once the reader is within 200pt of the last card (which
+  /// sits above the floating buttons' clearance at the list's end). Asked
+  /// on every scroll and whenever the list's size changes under a still
+  /// reader ([ScrollMetricsNotification]): a page landing short, a day
+  /// folding, the header folding away and growing the viewport.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
+    if (!mounted || !metrics.hasContentDimensions) return;
     final threshold = 200.0 + CountrymenGamesFabs.reach(context);
-
-    if (maxScroll - currentScroll <= threshold) {
-      final state = ref.read(countrymenCombinedGamesProvider);
-      if (state.hasMore && !state.isLoading) {
-        _loadMoreDays();
-      }
+    if (metrics.maxScrollExtent - metrics.pixels > threshold) return;
+    final state = ref.read(countrymenCombinedGamesProvider);
+    if (state.hasMore && !state.isLoading && state.games.isNotEmpty) {
+      _loadMoreDays();
     }
+  }
+
+  bool _onScrollMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
+      _loadMoreNearEnd(notification.metrics);
+    }
+    return false;
   }
 
   void _markLiveCardsScrolling() {
@@ -570,6 +679,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       _toTopOnLanding = false;
       _settleListAt(0);
     }
+    // A list that lands while Live first is on (a refresh, a filter, the
+    // plain list back after a search) gets the live games it misses.
+    if (previous.isLoading && !next.isLoading && !next.isSearching) {
+      _listLiveGames();
+    }
   }
 
   /// Moves the list to [offset] in the layout that puts its new rows on
@@ -668,7 +782,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     final state = ref.watch(countrymenCombinedGamesProvider);
     ref.listen(countrymenCombinedGamesProvider, _onGamesChanged);
-    // Live first brings the games in play to the top of each day; the list
+    // Live first brings the games in play to the top of the list; the list
     // goes up to them.
     ref.listen<bool>(
       gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
@@ -682,42 +796,60 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     final liveFirst = ref.watch(
       gameListLiveFirstProvider(GameListLiveFirstSurface.countrymen),
     );
+    // Only Live first reorders by the live set, so only then does the list
+    // follow it; while on, a game that starts joins the list as the count
+    // takes it in.
+    final liveIds = liveFirst
+        ? ref.watch(countrymenGamesLiveIdsProvider)
+        : null;
+    if (liveFirst) {
+      ref.listen<Set<String>?>(
+        countrymenGamesLiveIdsProvider,
+        (_, _) => _listLiveGames(),
+      );
+    }
     final streamEnabled = _isActiveOnScreen && _appIsResumed;
 
     final content = RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
+        // The count of games in play comes along with the list.
+        unawaited(_countrymenLiveIdsPoll(ref)?.refresh());
         await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: NotificationListener<ScrollStartNotification>(
-        onNotification: _onScrollStart,
-        child: CustomScrollView(
-          key: PageStorageKey<String>(
-            'countrymen_games_list_${viewMode.index}',
-          ),
-          controller: _scrollController,
-          scrollCacheExtent: kListScrollCacheExtent,
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            // Content. The search field lives in the screen's full-page
-            // search header (Trello #1420), above this same list.
-            SliverLayoutBuilder(
-              builder: (context, constraints) => _buildContentSliver(
-                state,
-                viewMode,
-                streamEnabled,
-                constraints.crossAxisExtent,
-                liveFirst: liveFirst,
-              ),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onScrollMetrics,
+        child: NotificationListener<ScrollStartNotification>(
+          onNotification: _onScrollStart,
+          child: CustomScrollView(
+            key: PageStorageKey<String>(
+              'countrymen_games_list_${viewMode.index}',
             ),
+            controller: _scrollController,
+            scrollCacheExtent: kListScrollCacheExtent,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
+              // Content. The search field lives in the screen's full-page
+              // search header (Trello #1420), above this same list.
+              SliverLayoutBuilder(
+                builder: (context, constraints) => _buildContentSliver(
+                  state,
+                  viewMode,
+                  streamEnabled,
+                  constraints.crossAxisExtent,
+                  liveFirst: liveFirst,
+                  liveIds: liveIds,
+                ),
+              ),
 
-            // Bottom padding
-            SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-          ],
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
+          ),
         ),
       ),
     );
@@ -765,6 +897,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     bool streamEnabled,
     double availableWidth, {
     required bool liveFirst,
+    Set<String>? liveIds,
   }) {
     if (_showsFirstLoad(state)) {
       return SliverFillRemaining(
@@ -801,11 +934,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       return _buildNoFilterResultsSliver(state);
     }
 
-    // Group games by date; with Live first, each day lists its live games
-    // first.
+    // Group games by date; with Live first, the live games lead the list.
     final gamesByDate = groupCountrymenGamesByDay(
       filteredGames,
       liveFirst: liveFirst,
+      liveIds: liveIds,
     );
 
     // The order a board opened from this list swipes through. With Live
@@ -918,15 +1051,21 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       }
     }
 
-    // Loading indicator for auto-scroll loading (a list being replaced has
-    // its quiet line at the top instead).
-    if (state.isLoading && !state.isReplacing && state.games.isNotEmpty) {
-      listEntries.add(const _CountrymenFooterEntry.loading());
-    } else if (state.hasMore && state.games.isNotEmpty) {
-      // Spacer to ensure scroll triggers auto-load
-      listEntries.add(const _CountrymenFooterEntry.spacer());
-    } else if (!state.hasMore && state.games.isNotEmpty) {
-      listEntries.add(const _CountrymenFooterEntry.end());
+    // The list's end, one slot of one height whatever it holds: the next
+    // days loading (a list being replaced has its quiet line at the top
+    // instead), room to scroll on into them, or the end. The list's length
+    // never changes as a page starts or lands, so nothing under the
+    // reader's finger jumps at the paging point.
+    if (state.games.isNotEmpty) {
+      listEntries.add(
+        _CountrymenFooterEntry(
+          state.isLoading && !state.isReplacing
+              ? _CountrymenFooterType.loading
+              : state.hasMore
+              ? _CountrymenFooterType.spacer
+              : _CountrymenFooterType.end,
+        ),
+      );
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -1051,36 +1190,30 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     }
 
     if (entry is _CountrymenFooterEntry) {
-      switch (entry.type) {
-        case _CountrymenFooterType.loading:
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 24.h),
-            child: Center(
-              child: SizedBox(
-                width: 24.w,
-                height: 24.h,
-                child: CircularProgressIndicator(
-                  color: context.colors.textPrimary,
-                  strokeWidth: 2,
-                ),
+      return SizedBox(
+        key: const ValueKey('countrymen_games_list_end_slot'),
+        height: _CountrymenFooterEntry.height,
+        child: Center(
+          child: switch (entry.type) {
+            _CountrymenFooterType.loading => SizedBox(
+              width: 24.w,
+              height: 24.h,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
+                strokeWidth: 2,
               ),
             ),
-          );
-        case _CountrymenFooterType.spacer:
-          return SizedBox(height: 60.h);
-        case _CountrymenFooterType.end:
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: Center(
-              child: Text(
-                'No more games',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFF52525B),
-                ),
+            _CountrymenFooterType.spacer => const SizedBox.shrink(),
+            _CountrymenFooterType.end => Text(
+              'No more games',
+              maxLines: 1,
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.collectionSubtleInk,
               ),
             ),
-          );
-      }
+          },
+        ),
+      );
     }
 
     return const SizedBox.shrink();
@@ -1340,11 +1473,11 @@ class _CountrymenCardGameEntry extends _CountrymenGamesListEntry {
 enum _CountrymenFooterType { loading, spacer, end }
 
 class _CountrymenFooterEntry extends _CountrymenGamesListEntry {
-  const _CountrymenFooterEntry.loading() : type = _CountrymenFooterType.loading;
+  const _CountrymenFooterEntry(this.type);
 
-  const _CountrymenFooterEntry.spacer() : type = _CountrymenFooterType.spacer;
-
-  const _CountrymenFooterEntry.end() : type = _CountrymenFooterType.end;
+  /// The slot's one height: the tallest of what it can hold (the spinner
+  /// with its room above and below).
+  static double get height => 72.h;
 
   final _CountrymenFooterType type;
 }

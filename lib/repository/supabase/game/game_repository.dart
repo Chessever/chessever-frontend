@@ -487,6 +487,56 @@ Map<String, dynamic> _gameFilterRpcParams(GameFilter? filter) {
   return params;
 }
 
+/// The parameters of `get_live_game_ids` for a scope, or null when the scope
+/// is empty (no tours, no parsable FIDE id, a blank country): nothing in it
+/// can be in play.
+///
+/// [filter] maps as the Favorites and Countrymen RPCs map it
+/// ([_gameFilterRpcParams]), with two differences that match what those
+/// lists query: ECO goes as the exact codes (`p_eco_codes`, as
+/// [applyEcoFilterToSupabaseQuery] filters), and a country's rating floor
+/// is its [minElo] raised to the filter's minimum, always sent, as the
+/// Countrymen list sends it (`player_max_rating >= floor`).
+@visibleForTesting
+Map<String, dynamic>? liveGameIdsRpcParams({
+  List<String>? tourIds,
+  List<String>? fideIds,
+  String? countryCode,
+  int minElo = 0,
+  GameFilter? filter,
+}) {
+  final params = <String, dynamic>{};
+  if (tourIds != null) {
+    final ids = {
+      for (final id in tourIds)
+        if (id.trim().isNotEmpty) id.trim(),
+    }.toList()..sort();
+    if (ids.isEmpty) return null;
+    params['p_tour_ids'] = ids;
+  }
+  if (fideIds != null) {
+    final ids = {
+      for (final id in fideIds) ?int.tryParse(id.trim()),
+    }.where((id) => id > 0).toList()..sort();
+    if (ids.isEmpty) return null;
+    params['p_fide_ids'] = ids;
+  }
+  final filterParams = _gameFilterRpcParams(filter)..remove('p_eco');
+  if (filter != null && !filter.eco.isAll) {
+    filterParams['p_eco_codes'] = filter.eco.exactEcoCodes;
+  }
+  if (countryCode != null) {
+    final code = countryCode.trim().toUpperCase();
+    if (code.isEmpty) return null;
+    params['p_country_code'] = code;
+    final floor = filter == null
+        ? minElo
+        : (minElo > filter.minRating ? minElo : filter.minRating);
+    filterParams['p_min_rating'] = floor;
+  }
+  return {...params, ...filterParams};
+}
+
 String? _timeControlDbValue(GameTimeControlFilter tc) {
   switch (tc) {
     case GameTimeControlFilter.classical:
@@ -2720,6 +2770,76 @@ class GameRepository extends BaseRepository {
       }
 
       return latestByRoundId;
+    });
+  }
+
+  /// When the server last said it has no `get_live_game_ids` (an older
+  /// backend): it is not asked again for [_liveGameIdsRecheck].
+  static DateTime? _liveGameIdsMissingAt;
+  static const Duration _liveGameIdsRecheck = Duration(minutes: 10);
+
+  @visibleForTesting
+  static void resetLiveGameIdsAvailability() => _liveGameIdsMissingAt = null;
+
+  /// The ids of the games in play right now (`get_live_game_ids`): a game
+  /// in a live round that is fresh (a move within two hours), with a move,
+  /// not finished, not a mirror. The one rule "See N live" counts by.
+  ///
+  /// Scope it to an event's tours ([tourIds]: the selected one, Combined
+  /// categories, sibling stages), to the reader's favorite players
+  /// ([fideIds], with Favorites' [filter]) or to a federation
+  /// ([countryCode], with Countrymen's rating floor [minElo] and [filter]).
+  /// An empty scope has nothing in play. The list filters are the ones the
+  /// Favorites and Countrymen lists query with, so the ids are games those
+  /// lists can show ([liveGameIdsRpcParams]).
+  ///
+  /// Null when the answer is unknown: the backend has no such function yet
+  /// (it ships in an additive migration; old backends degrade to "See
+  /// live"), or there is no session (the function is granted to
+  /// `authenticated`, which guests are). Other failures throw.
+  Future<Set<String>?> getLiveGameIds({
+    List<String>? tourIds,
+    List<String>? fideIds,
+    String? countryCode,
+    int minElo = 0,
+    GameFilter? filter,
+  }) async {
+    final params = liveGameIdsRpcParams(
+      tourIds: tourIds,
+      fideIds: fideIds,
+      countryCode: countryCode,
+      minElo: minElo,
+      filter: filter,
+    );
+    if (params == null) return <String>{};
+    final missingAt = _liveGameIdsMissingAt;
+    if (missingAt != null &&
+        DateTime.now().difference(missingAt) < _liveGameIdsRecheck) {
+      return null;
+    }
+    if (!_hasSignedInSession) return null;
+
+    return handleApiCall(() async {
+      try {
+        final response = await supabase.rpc(
+          'get_live_game_ids',
+          params: params,
+        );
+        _liveGameIdsMissingAt = null;
+        return <String>{
+          for (final row in response as List)
+            if ((row as Map)['id'] case final String id when id.isNotEmpty) id,
+        };
+      } on PostgrestException catch (error) {
+        // PGRST202 / 42883: no such function (or signature) on this backend.
+        if (error.code == 'PGRST202' || error.code == '42883') {
+          _liveGameIdsMissingAt = DateTime.now();
+          return null;
+        }
+        // 42501: the session ended between the check and the call.
+        if (error.code == '42501') return null;
+        rethrow;
+      }
     });
   }
 

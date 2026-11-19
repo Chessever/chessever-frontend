@@ -27,6 +27,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:flutter/material.dart';
@@ -187,6 +188,113 @@ void main() {
     });
   });
 
+  group('Today count', () {
+    int? count(ProviderContainer container) {
+      final sub = container.listen(todayLiveEventCountProvider, (_, __) {});
+      addTearDown(sub.close);
+      return sub.read();
+    }
+
+    test('counts the loaded events in play, not every event in play', () async {
+      // 'gone' is in play somewhere, but no event of this feed answers to it.
+      final feed = _Feed([_gb('a', 2900), _gb('b', 2800), _gb('c', 2700)]);
+      final container = _container(feed, liveIds: const ['c', 'gone']);
+      await _loaded(container);
+      await _settle(() => count(container) != null);
+
+      expect(count(container), 1);
+      expect(feed.fetchedByIds, [
+        ['gone'],
+      ]);
+    });
+
+    test(
+      'counts a live event below the loaded pages before any press',
+      () async {
+        final feed = _Feed([
+          for (var i = 0; i < 25; i++) _gb('e$i', 2800 - i * 10),
+        ]);
+        final container = _container(feed, liveIds: const ['e3', 'e23']);
+        await _loaded(container);
+        await _settle(() => count(container) == 2);
+
+        // Counted, not shown: off, Today is still its first page.
+        expect(_ids(container), hasLength(20));
+        expect(_ids(container), isNot(contains('e23')));
+        // On, exactly the counted events lead.
+        _flag(container).state = true;
+        expect(_ids(container).take(2).toSet(), {'e3', 'e23'});
+      },
+    );
+
+    test('leaves out a live event its filters would not list', () async {
+      final feed = _Feed([
+        for (var i = 0; i < 25; i++) _gb('e$i', 2800 - i * 10),
+      ]);
+      final container = _container(
+        feed,
+        liveIds: const ['e23'],
+        filters: defaultFilterPopupState.copyWith(formatsAndStates: {'Blitz'}),
+      );
+      await _loaded(container);
+      await _settle(() => count(container) != null);
+
+      expect(count(container), 0);
+    });
+
+    test(
+      'leaves out a live event whose section has no boards to show',
+      () async {
+        final feed = _Feed([_gb('a', 2900), _gb('b', 2800), _gb('c', 2700)]);
+        final container = _container(
+          feed,
+          liveIds: const ['a', 'c'],
+          boardless: const {'c'},
+        );
+        await _loaded(container);
+        await _settle(() => count(container) != null);
+
+        expect(count(container), 1);
+      },
+    );
+
+    test(
+      'is 0 with nothing in play, and unknown before the first page',
+      () async {
+        final gate = Completer<void>();
+        final feed = _Feed([_gb('a', 2900)], gate: gate.future);
+        final live = StreamController<List<String>>();
+        addTearDown(live.close);
+        final container = _container(feed, liveStream: live.stream);
+        final sub = container.listen(forYouEventsProvider, (_, __) {});
+        addTearDown(sub.close);
+        final ids = container.listen(liveGroupBroadcastIdsProvider, (_, __) {});
+        addTearDown(ids.close);
+
+        live.add(const []);
+        await _settle(
+          () => container.read(liveGroupBroadcastIdsProvider).hasValue,
+        );
+        expect(count(container), 0);
+
+        // In play, but the feed has no page yet: it cannot say how many.
+        live.add(const ['a']);
+        await _settle(
+          () => container.read(liveGroupBroadcastIdsProvider).value!.isNotEmpty,
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(count(container), isNull);
+        expect(
+          LiveFirstCapsule.labelFor(on: false, liveCount: count(container)),
+          LiveFirstCapsule.unknownLabel,
+        );
+
+        gate.complete();
+        await _settle(() => count(container) == 1);
+      },
+    );
+  });
+
   group('liveEventPassesForYouFilters', () {
     final event = _gb('x', 2500, timeControl: 'rapid');
 
@@ -304,12 +412,25 @@ void main() {
 
       expect(toggle, findsOneWidget);
       expect(tester.getRect(filter), rest);
-      // Stacked above it, as tall as it, rims on one trailing edge.
-      expect(tester.getRect(toggle).bottom, lessThan(rest.top));
+      // Stacked as every page's buttons are (the event screen's): the small
+      // capsule a step above the regular filter, rims on one trailing edge.
+      expect(
+        rest.top - tester.getRect(toggle).bottom,
+        moreOrLessEquals(InkFabStack.step, epsilon: 0.01),
+      );
       final capsule = glassOf(tester, toggle);
       final disc = glassOf(tester, filter);
       expect(capsule.right, moreOrLessEquals(disc.right, epsilon: 0.01));
-      expect(capsule.height, moreOrLessEquals(disc.height, epsilon: 0.01));
+      expect(
+        capsule.height,
+        moreOrLessEquals(InkFabSize.small.disc, epsilon: 0.01),
+      );
+      expect(
+        disc.height,
+        moreOrLessEquals(InkFabSize.regular.disc, epsilon: 0.01),
+      );
+      // On the floating buttons' gutter.
+      expect(rest.right, 393 - 16);
 
       // Turned on, it springs to its new words leftward; the filter holds.
       await tester.tap(toggle);
@@ -435,6 +556,38 @@ void main() {
   });
 }
 
+Games _board(String eventId) => Games(
+  id: 'g_$eventId',
+  roundId: 'r_$eventId',
+  roundSlug: 'r_$eventId',
+  tourId: 't_$eventId',
+  tourSlug: 't_$eventId',
+  players: [
+    Player(
+      name: 'White $eventId',
+      title: 'GM',
+      rating: 2700,
+      fideId: 1,
+      fed: 'USA',
+      clock: 600,
+      team: '',
+    ),
+    Player(
+      name: 'Black $eventId',
+      title: 'GM',
+      rating: 2690,
+      fideId: 2,
+      fed: 'USA',
+      clock: 600,
+      team: '',
+    ),
+  ],
+  lastMove: 'e2e4',
+  status: 'ongoing',
+  boardNr: 1,
+  avgElo: 2695,
+);
+
 GroupBroadcast _gb(String id, int elo, {String timeControl = 'standard'}) {
   final now = DateTime.now();
   return GroupBroadcast(
@@ -460,9 +613,10 @@ ProviderContainer _container(
   List<String> liveIds = const [],
   Stream<List<String>>? liveStream,
   FilterPopupState? filters,
+  Set<String> boardless = const {},
 }) {
   final container = ProviderContainer(
-    overrides: _overrides(feed, liveIds, liveStream),
+    overrides: _overrides(feed, liveIds, liveStream, boardless),
   );
   addTearDown(container.dispose);
   if (filters != null) {
@@ -475,9 +629,10 @@ List<Override> _overrides(
   _Feed feed,
   List<String> liveIds, [
   Stream<List<String>>? liveStream,
+  Set<String> boardless = const {},
 ]) => [
   groupBroadcastRepositoryProvider.overrideWithValue(feed),
-  gameRepositoryProvider.overrideWithValue(_Boards()),
+  gameRepositoryProvider.overrideWithValue(_Boards(boardless)),
   forYouFeedLocalStorageProvider.overrideWithValue(
     ForYouFeedLocalStorage(_Database()),
   ),
@@ -641,12 +796,21 @@ class _Feed implements GroupBroadcastRepository {
       throw StateError('Unexpected feed call: ${invocation.memberName}');
 }
 
+/// One board for every event, but the [boardless] ones, whose sections
+/// hide themselves.
 class _Boards implements GameRepository {
+  _Boards([this.boardless = const {}]);
+
+  final Set<String> boardless;
+
   @override
   Future<Map<String, List<Games>>> getForYouTopGamesByEventIds({
     required List<String> eventIds,
     int boardsPerEvent = 4,
-  }) async => {for (final id in eventIds) id: const <Games>[]};
+  }) async => {
+    for (final id in eventIds)
+      id: boardless.contains(id) ? const <Games>[] : [_board(id)],
+  };
 
   @override
   Future<Map<String, List<int>>> getForYouFavoritePlayerFideIdsByEventIds({

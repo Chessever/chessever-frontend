@@ -10,6 +10,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -295,8 +297,18 @@ class _NewsReaderPagerState extends ConsumerState<NewsReaderPager> {
                 surfaceTintColor: Colors.transparent,
                 elevation: 0,
                 scrolledUnderElevation: 0,
-                leading: BackButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
+                // The reader's own way back, at the same place.
+                leadingWidth:
+                    SearchHeaderMetrics.leadingInset +
+                    SearchHeaderMetrics.backTarget,
+                leading: Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: SearchHeaderMetrics.leadingInset,
+                  ),
+                  child: const Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: PageBackButton(),
+                  ),
                 ),
               ),
               body: SafeArea(

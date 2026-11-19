@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
+import 'package:chessever2/screens/library/providers/folder_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -25,6 +28,50 @@ class _FakeBook
   Future<PaginatedBookState> build(BookPaginationKey arg) async {
     _asked.add(arg);
     return PaginatedBookState(totalCount: arg.search.isEmpty ? 12 : 0);
+  }
+
+  @override
+  Future<void> loadMore() async {}
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A database with nothing in it and nothing more to page in.
+class _EmptyBook
+    extends
+        AutoDisposeFamilyAsyncNotifier<PaginatedBookState, BookPaginationKey>
+    implements BookGamesNotifier {
+  @override
+  Future<PaginatedBookState> build(BookPaginationKey arg) async =>
+      const PaginatedBookState(hasMore: false);
+
+  @override
+  Future<void> loadMore() async {}
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Every page waits here, with the key it was asked for, until the test
+/// answers it.
+final List<(BookPaginationKey, Completer<PaginatedBookState>)> _held = [];
+
+class _HeldBook
+    extends
+        AutoDisposeFamilyAsyncNotifier<PaginatedBookState, BookPaginationKey>
+    implements BookGamesNotifier {
+  @override
+  Future<PaginatedBookState> build(BookPaginationKey arg) {
+    final answer = Completer<PaginatedBookState>();
+    _held.add((arg, answer));
+    return answer.future;
   }
 
   @override
@@ -63,15 +110,26 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  bool empty = false,
+  bool held = false,
+}) async {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   _asked.clear();
+  _held.clear();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        bookGamesPaginatedProvider.overrideWith(_FakeBook.new),
+        bookGamesPaginatedProvider.overrideWith(
+          held
+              ? _HeldBook.new
+              : empty
+              ? _EmptyBook.new
+              : _FakeBook.new,
+        ),
         folderTagCountsProvider.overrideWith((ref, key) async => const {}),
         childLibraryFoldersProvider.overrideWith((ref, id) => const []),
       ],
@@ -157,6 +215,56 @@ void main() {
       expect(_field, findsNothing);
       expect(_asked.last.search, isEmpty);
       expect(find.text('12 games'), findsOneWidget);
+    });
+
+    testWidgets('an empty database floats no search over its empty state', (
+      tester,
+    ) async {
+      await _pump(tester, empty: true);
+      expect(_fab, findsNothing);
+      expect(find.byType(InkFabStack), findsNothing);
+    });
+
+    testWidgets('an empty database floats no search while its first page '
+        'is read either, so nothing shows and then vanishes', (tester) async {
+      await _pump(tester, held: true);
+      expect(_held, hasLength(1));
+      expect(_fab, findsNothing);
+
+      _held.single.$2.complete(const PaginatedBookState(hasMore: false));
+      await _settle(tester);
+      expect(_fab, findsNothing);
+    });
+
+    testWidgets('a database with games floats its search once the first '
+        'page lands, and keeps it while a re-read is out', (tester) async {
+      await _pump(tester, held: true);
+      expect(_fab, findsNothing);
+
+      _held.single.$2.complete(const PaginatedBookState(totalCount: 12));
+      await _settle(tester);
+      expect(_fab, findsOneWidget);
+
+      // A tag is a new query, read from its first page: the button stays.
+      ProviderScope.containerOf(
+        tester.element(find.byType(FolderContentsScreen)),
+      ).read(folderFilterProvider(_database.id).notifier).toggleTag('Najdorf');
+      await _settle(tester);
+      expect(_held, hasLength(2));
+      expect(_held.last.$1.tags, {'Najdorf'});
+      expect(_fab, findsOneWidget);
+
+      _held.last.$2.complete(const PaginatedBookState(totalCount: 3));
+      await _settle(tester);
+      expect(_fab, findsOneWidget);
+    });
+
+    testWidgets('the search floats in the floating stack', (tester) async {
+      await _pump(tester);
+      expect(
+        find.ancestor(of: _fab, matching: find.byType(InkFabStack)),
+        findsOneWidget,
+      );
     });
   });
 }

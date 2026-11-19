@@ -6,7 +6,7 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
-import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
 import 'package:chessever2/widgets/page_back_row.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -82,9 +82,13 @@ class _CountryRankingsPageState extends ConsumerState<_CountryRankingsPage>
         backgroundColor: context.colors.background,
         floatingActionButton: SlidingFabs(
           controller: _chrome,
-          child: const SearchInkFab(
-            key: ValueKey('country_rankings_search_fab'),
-            label: 'Search players',
+          child: const InkFabStack(
+            children: [
+              SearchInkFab(
+                key: ValueKey('country_rankings_search_fab'),
+                label: 'Search players',
+              ),
+            ],
           ),
         ),
         body: Center(

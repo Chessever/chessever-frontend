@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -142,7 +144,16 @@ bool pressHomeEventsLiveFirst({
           ref.exists(groupEventScreenProvider)
       ? ref.read(groupEventScreenProvider).valueOrNull
       : null;
-  if (!anyLiveEvent(liveIds: liveIds, currentEvents: currentEvents)) {
+  // From another segment, the button's own count answers once it is known:
+  // Current's events in play under the filters, what a press would lift.
+  final count =
+      currentEvents == null && ref.exists(eventsLiveEventCountProvider)
+      ? ref.read(eventsLiveEventCountProvider)
+      : null;
+  final hasLive = count != null
+      ? count > 0
+      : anyLiveEvent(liveIds: liveIds, currentEvents: currentEvents);
+  if (!hasLive) {
     showAppSnack(
       context,
       noLiveEventsMessage(
@@ -201,18 +212,89 @@ Future<bool> pressForYouLiveFirst({
   return true;
 }
 
-/// How many events are in play right now, by the strict live-ids stream
-/// (else the events list's copy of it): the count the home Live first
-/// capsules read out ("Show 3 live first"). One number for both home tabs,
-/// as they share one flag.
-final homeLiveEventCountProvider = Provider.autoDispose<int>((ref) {
-  return homeLiveEventIds(
-    strict: ref.watch(liveGroupBroadcastIdsProvider).valueOrNull,
-    mirror: ref.watch(liveBroadcastIdsProvider),
-  ).length;
+/// The ids of the events in play ([homeLiveEventIds]) as one value that is
+/// equal to the last one when the set is, so what reads it is not rebuilt
+/// on every identical emission.
+@immutable
+class HomeLiveEventIds {
+  const HomeLiveEventIds(this.ids);
+
+  final Set<String> ids;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HomeLiveEventIds && setEquals(other.ids, ids);
+
+  @override
+  int get hashCode => Object.hashAllUnordered(ids);
+}
+
+/// The events in play, by the strict live-ids stream once it has a value,
+/// else the events list's copy of it ([homeLiveEventIds]).
+final homeLiveEventIdsProvider = Provider.autoDispose<HomeLiveEventIds>((ref) {
+  return HomeLiveEventIds(
+    homeLiveEventIds(
+      strict: ref.watch(liveGroupBroadcastIdsProvider).valueOrNull,
+      mirror: ref.watch(liveBroadcastIdsProvider),
+    ),
+  );
 });
 
-/// Whether the home Live first button is there: while an event is in play,
-/// and while it is on, so a flag left on can always be turned off.
-bool showsHomeLiveFirst({required int liveCount, required bool on}) =>
-    on || liveCount > 0;
+/// Current's events in play under the Current/Past filters: the events the
+/// Events lists' Live first lifts. Fetched by id from Current
+/// (`group_broadcasts_current`, the list's own source) whenever the live
+/// set or the filters change; a refetch keeps the last answer until it lands.
+final _eventsLiveCurrentIdsProvider = FutureProvider.autoDispose<Set<String>>((
+  ref,
+) async {
+  final live = ref.watch(homeLiveEventIdsProvider).ids;
+  final filters = ref.watch(currentPastAppliedFilterProvider);
+  if (live.isEmpty) return const <String>{};
+  final liveIds = live.toList(growable: false)..sort();
+  final current = await ref
+      .read(groupBroadcastRepositoryProvider)
+      .getCurrentGroupBroadcastsByIds(liveIds);
+  return {
+    for (final broadcast in filterBroadcastsByPopupState(
+      current,
+      filters,
+      liveIds: liveIds,
+    ))
+      broadcast.id,
+  };
+});
+
+/// How many events the Events lists' Live first lifts: Current's events in
+/// play, under the filters Current shows ("See 3 live"). 0 with nothing in
+/// play; null until the first answer, which the capsule reads as "See
+/// live".
+final eventsLiveEventCountProvider = Provider.autoDispose<int?>((ref) {
+  if (ref.watch(homeLiveEventIdsProvider).ids.isEmpty) return 0;
+  return ref.watch(_eventsLiveCurrentIdsProvider).valueOrNull?.length;
+});
+
+/// How many events Today's Live first lifts: the loaded events in play and
+/// the ones in play below the loaded pages that Today's filters let through
+/// ([ForYouState.liveEventIds]), less any whose section hides itself for
+/// want of boards, so the count is what a press brings into view. 0 with
+/// nothing in play; null while the feed does not know yet ("See live").
+final todayLiveEventCountProvider = Provider.autoDispose<int?>((ref) {
+  if (ref.watch(homeLiveEventIdsProvider).ids.isEmpty) return 0;
+  final ids = ref.watch(
+    forYouEventsProvider.select((state) => state.liveEventIds),
+  );
+  if (ids == null) return null;
+  if (ids.isEmpty) return 0;
+  return ref.watch(
+    forYouTopGamesSnapshotCacheProvider.select(
+      (snapshots) => ids.where((id) => snapshots[id]?.hasGames != false).length,
+    ),
+  );
+});
+
+/// Whether a home Live first button is there: while an event it would lift
+/// is in play, while the count is not known yet (it reads "See live"), and
+/// while it is on, so a flag left on can always be turned off.
+bool showsHomeLiveFirst({required int? liveCount, required bool on}) =>
+    on || liveCount == null || liveCount > 0;

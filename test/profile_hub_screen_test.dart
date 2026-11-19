@@ -9,6 +9,7 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
 import 'package:chessever2/screens/my_profile/profile_hub_screen.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/services/attention_policy.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -16,6 +17,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,12 +61,30 @@ class _MemoryStore implements DiscoveryDotsSeenStore {
   Future<void> write(Map<String, int> value) async => seen = value;
 }
 
+/// Every route the navigator lost, by name.
+class _Losses extends NavigatorObserver {
+  final List<String?> names = [];
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      names.add(route.settings.name);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      names.add(route.settings.name);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      names.add(oldRoute?.settings.name);
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   bool light = false,
   bool premium = false,
   List<Map<String, Object?>> dots = const [],
   double statusBar = 0,
+  NavigatorObserver? observer,
 }) async {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1;
@@ -108,7 +128,15 @@ Future<void> _pump(
           data: MediaQuery.of(context).copyWith(disableAnimations: true),
           child: AdaptiveWindowScope(child: child!),
         ),
-        home: const Scaffold(body: ProfileHubScreen()),
+        navigatorObservers: [?observer],
+        // As in the app: Home is the one route, named as the app names it.
+        onGenerateRoute: (_) => null,
+        onGenerateInitialRoutes: (_) => [
+          MaterialPageRoute<void>(
+            settings: const RouteSettings(name: '/home_screen'),
+            builder: (_) => const Scaffold(body: ProfileHubScreen()),
+          ),
+        ],
       ),
     ),
   );
@@ -138,6 +166,71 @@ void main() {
     );
   });
   tearDownAll(() => Supabase.instance.dispose());
+
+  testWidgets('Settings opens over Home and goes back to it: Home is never '
+      'popped', (tester) async {
+    final losses = _Losses();
+    await _pump(tester, observer: losses);
+    await tester.ensureVisible(find.text('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(losses.names, isNot(contains('/home_screen')));
+    final page = find.byType(SettingsPage);
+    expect(page, findsOneWidget);
+    // A way back, and a route to go back to (the swipe and Android back
+    // both have somewhere to land).
+    expect(Navigator.of(tester.element(page)).canPop(), isTrue);
+    expect(find.byType(PageBackButton), findsOneWidget);
+    await tester.tap(find.byType(PageBackButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byType(SettingsPage), findsNothing);
+    expect(find.byType(ProfileHubScreen), findsOneWidget);
+    expect(losses.names, isNot(contains('/home_screen')));
+    await _close(tester);
+    // Settings' bodies opened the local store, which gives up after two
+    // timed-out tries in a test.
+    await tester.pump(const Duration(seconds: 20));
+  });
+
+  testWidgets('Feedback opens its form over Home: Home is never popped', (
+    tester,
+  ) async {
+    final losses = _Losses();
+    await _pump(tester, observer: losses);
+    await tester.ensureVisible(find.text('Feedback'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Feedback'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Your Feedback'), findsOneWidget);
+    expect(losses.names, isNot(contains('/home_screen')));
+    // Closed, the form leaves Home where it was.
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    navigator.pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Your Feedback'), findsNothing);
+    expect(find.byType(ProfileHubScreen), findsOneWidget);
+    expect(losses.names, isNot(contains('/home_screen')));
+    await _close(tester);
+  });
+
+  testWidgets('the last row clears the dock the page runs under', (
+    tester,
+  ) async {
+    await _pump(tester);
+    final list = find.byType(Scrollable);
+    final context = tester.element(list);
+    final padding = tester.widget<ListView>(find.byType(ListView)).padding!;
+    expect(
+      padding.resolve(TextDirection.ltr).bottom,
+      greaterThanOrEqualTo(MediaQuery.paddingOf(context).bottom),
+    );
+    await _close(tester);
+  });
 
   testWidgets('each row is read once, with its trailing state', (tester) async {
     final handle = tester.ensureSemantics();

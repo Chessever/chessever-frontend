@@ -11,6 +11,7 @@ import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -157,8 +158,7 @@ class EventViewSearchButtonGap extends StatelessWidget {
   const EventViewSearchButtonGap({super.key});
 
   /// Its height while the button floats over the list.
-  static double get extent =>
-      InkFabSize.regular.side + kFloatingActionButtonMargin;
+  static double get extent => InkFabStack.extent();
 
   @override
   Widget build(BuildContext context) {
@@ -739,11 +739,15 @@ class _EventViewShellState extends State<EventViewShell>
   /// field, and flies the glass back into it as the search closes.
   Widget _searchFab(EventViewSearch search) {
     if (!_searchesTab(_selected)) return const SizedBox.shrink();
-    return SearchInkFab(
-      key: const ValueKey('event_view_search_fab'),
-      label: search.label,
-      // With Filters in the header, the count is on them.
-      badgeCount: search.onFilters == null ? search.badgeCount : 0,
+    return InkFabStack(
+      children: [
+        SearchInkFab(
+          key: const ValueKey('event_view_search_fab'),
+          label: search.label,
+          // With Filters in the header, the count is on them.
+          badgeCount: search.onFilters == null ? search.badgeCount : 0,
+        ),
+      ],
     );
   }
 
@@ -856,31 +860,44 @@ class _EventViewShellState extends State<EventViewShell>
         MediaQuery.viewPaddingOf(context).top +
         (widget.header == null && !widget.homeTab ? 4.h : 0);
 
+    final column = Column(
+      children: [
+        // The status bar's inset stays put: the bars fold up to it, never
+        // into it.
+        SizedBox(height: inset),
+        Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          // A field on the bars with the keyboard up holds them: scrolling
+          // what it searches must not push away the line being typed.
+          onFocusChange: (focused) => _chrome.held = focused,
+          child: CollapsingChrome(
+            controller: _chrome,
+            child: SizedBox(width: double.infinity, child: bars),
+          ),
+        ),
+        Expanded(
+          child: ScrollChromeRegion(
+            controller: _chrome,
+            child: _pageStack(context),
+          ),
+        ),
+      ],
+    );
+    // The default header's way back, kept in reach while the bars are
+    // folded away (a page's own header places its own).
+    final floatsBack =
+        widget.header == null && !widget.homeTab && widget.showBackButton;
     final content = _frame(
-      Column(
-        children: [
-          // The status bar's inset stays put: the bars fold up to it, never
-          // into it.
-          SizedBox(height: inset),
-          Focus(
-            canRequestFocus: false,
-            skipTraversal: true,
-            // A field on the bars with the keyboard up holds them: scrolling
-            // what it searches must not push away the line being typed.
-            onFocusChange: (focused) => _chrome.held = focused,
-            child: CollapsingChrome(
-              controller: _chrome,
-              child: SizedBox(width: double.infinity, child: bars),
-            ),
-          ),
-          Expanded(
-            child: ScrollChromeRegion(
-              controller: _chrome,
-              child: _pageStack(context),
-            ),
-          ),
-        ],
-      ),
+      floatsBack
+          ? Stack(
+              fit: StackFit.passthrough,
+              children: [
+                column,
+                PageBackFloat(controller: _chrome),
+              ],
+            )
+          : column,
     );
 
     final page = ScreenWrapper(

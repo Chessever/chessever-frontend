@@ -46,6 +46,8 @@ import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart'
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
@@ -824,9 +826,18 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       elevation: 0,
       centerTitle: false,
       titleSpacing: 0,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back, size: 24.ic),
-        onPressed: () => Navigator.of(context).pop(),
+      // The app's one way back: the chevron at the search header's inset,
+      // the same glyph at the same x as on every pushed page.
+      leadingWidth:
+          SearchHeaderMetrics.leadingInset + SearchHeaderMetrics.backTarget,
+      leading: Padding(
+        padding: EdgeInsetsDirectional.only(
+          start: SearchHeaderMetrics.leadingInset,
+        ),
+        child: const Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: PageBackButton(),
+        ),
       ),
       title: Tooltip(
         key: _viewsCoachmarkKey,

@@ -54,7 +54,11 @@ class SearchPageLanding extends StatelessWidget {
         _OpeningsSection(picks: picks),
         const _SmartEventsSection(),
         _ComingUpSection(picks: picks),
-        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        // The last card ends clear of the floating dock the page scrolls
+        // under, whose height arrives as the bottom inset.
+        SliverToBoxAdapter(
+          child: SizedBox(height: 24.h + MediaQuery.paddingOf(context).bottom),
+        ),
       ],
     );
   }
@@ -150,6 +154,7 @@ class _RecentSectionState extends ConsumerState<_RecentSection> {
         return SmartEventRequestCard(
           request: SmartEventRequest.forOpeningSelection(selection),
           onTap: widget.picks.opening == null ? null : open,
+          showFilters: false,
         );
     }
   }
@@ -423,9 +428,10 @@ Widget searchOpeningGrid(
   );
 }
 
-/// The built-in smart events (every game averaging GM and IM level), as My
-/// Space shows a saved one: star it to hear about its games, long-press to
-/// keep it in My Space.
+/// The built-in smart events (every game averaging Super GM, GM and IM
+/// level), as My Space shows a saved one: star it to hear about its games
+/// (here a star also keeps it in My Space), long-press for the same.
+/// Super GM leads on a full-width card, GM and IM share the row under it.
 class _SmartEventsSection extends StatelessWidget {
   const _SmartEventsSection();
 
@@ -436,6 +442,7 @@ class _SmartEventsSection extends StatelessWidget {
       body: SliverToBoxAdapter(
         child: SearchSmartEventGrid(
           requests: kDiscoverySmartPresets,
+          leadFullWidth: true,
           keyFor: (index) => ValueKey(
             'search-smart-${kDiscoverySmartPresets[index].tierLabel}',
           ),

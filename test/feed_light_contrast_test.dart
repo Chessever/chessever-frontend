@@ -3,7 +3,9 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_widgets.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
+import 'package:chessever2/screens/feed/widgets/feed_deck.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -57,42 +59,50 @@ void main() {
       }
     });
 
-    testWidgets('$name: the action row reads on the page', (tester) async {
+    testWidgets('$name: the action rail reads on the deck', (tester) async {
       await _pump(
         tester,
         light,
-        FeedActionRow(
-          height: 56,
-          liked: true,
-          inSpace: false,
-          saved: true,
-          likeIconKey: GlobalKey(),
-          onLike: () {},
-          onSpace: () {},
-          onShare: () {},
-          onSave: () {},
-          onAnalyze: () {},
+        SizedBox(
+          width: FeedLayout.railWidth,
+          height: 4 * FeedLayout.railCellMin,
+          child: FeedActionRail(
+            cellHeight: FeedLayout.railCellMin,
+            liked: true,
+            saved: true,
+            likeIconKey: GlobalKey(),
+            onLike: () {},
+            onShare: () {},
+            onSave: () {},
+            onAnalyze: () {},
+          ),
         ),
       );
-      final page = colors().background;
-      for (final text in tester.widgetList<Text>(find.byType(Text))) {
-        expect(
-          feedContrast(text.style!.color!, page),
-          greaterThanOrEqualTo(4.5),
-          reason: text.data,
+      // The rail stands on the deck under the board, anywhere from its top
+      // (the page's own ground) to its foot (its deepest tone).
+      final context = tester.element(find.byType(FeedActionRail));
+      for (final ground in [
+        FeedBottomDeck.toneAt(context, 0),
+        FeedBottomDeck.toneAt(context, 1),
+      ]) {
+        for (final text in tester.widgetList<Text>(find.byType(Text))) {
+          expect(
+            feedContrast(text.style!.color!, ground),
+            greaterThanOrEqualTo(4.5),
+            reason: text.data,
+          );
+        }
+        // The liked heart is a mark: 3:1. The saved disk is in ink, as the
+        // words are: the heart is the rail's one colour.
+        expect(feedContrast(colors().danger, ground), greaterThanOrEqualTo(3));
+        final disk = tester.widget<FeedGlyph>(
+          find.byWidgetPredicate(
+            (w) => w is FeedGlyph && w.svg == FeedGlyphs.saved,
+          ),
         );
+        expect(disk.color, colors().textPrimary);
+        expect(feedContrast(disk.color, ground), greaterThanOrEqualTo(4.5));
       }
-      // The liked heart is a mark: 3:1. The saved disk is in ink, as the
-      // words are and as My Space's tick is: the heart is the row's one
-      // colour.
-      expect(feedContrast(colors().danger, page), greaterThanOrEqualTo(3));
-      final disk = tester.widget<FeedGlyph>(
-        find.byWidgetPredicate(
-          (w) => w is FeedGlyph && w.svg == FeedGlyphs.saved,
-        ),
-      );
-      expect(disk.color, colors().textPrimary);
-      expect(feedContrast(disk.color, page), greaterThanOrEqualTo(4.5));
     });
 
     testWidgets('$name: move-class words on the scrub report', (tester) async {

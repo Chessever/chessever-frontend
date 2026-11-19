@@ -8,12 +8,16 @@ import 'package:flutter/material.dart';
 /// A phone navigation target: the section's mark alone, large, in a slot
 /// that answers anywhere in its column.
 ///
-/// The whole slot is the target, from the bar's top edge down through the
-/// strip above the home indicator ([bottomInset]). A press anywhere in it
-/// takes the mark down under the finger ([PressSpring]); letting go springs
-/// it back with a little overshoot, and a tab change ticks the selection
-/// haptic. The name is announced, never drawn: the marks carry the bar, and
-/// Profile is the reader's own avatar.
+/// The whole slot is the target, from the dock's top edge down through the
+/// strip under it to the screen's edge ([bottomInset]). A press anywhere in
+/// it takes the mark down under the finger ([PressSpring]); letting go
+/// springs it back with a little overshoot, and a tab change ticks the
+/// selection haptic. The name is announced, never drawn: the marks carry
+/// the dock, and Profile is the reader's own avatar.
+///
+/// The dock draws in as the reader reads on: the mark is drawn at its full
+/// [iconSide] and scaled by [markScale], so nothing inside it (a photo's
+/// cache, the dot on its shoulder) changes size under it.
 class BottomNavBarWidget extends StatefulWidget {
   const BottomNavBarWidget({
     required this.isSelected,
@@ -22,6 +26,7 @@ class BottomNavBarWidget extends StatefulWidget {
     required this.title,
     required this.width,
     this.bottomInset = 0,
+    this.markScale = 1,
     this.semanticsValue,
     this.onLongPress,
     this.dotId,
@@ -40,9 +45,13 @@ class BottomNavBarWidget extends StatefulWidget {
   final String title;
   final double width;
 
-  /// The device's bottom safe area, which the slot takes into its own hit
-  /// area instead of leaving a dead strip under the marks.
+  /// The strip under the dock, to the screen's edge, which the slot takes
+  /// into its own hit area instead of leaving it dead under the marks.
   final double bottomInset;
+
+  /// How large the mark is drawn, of [iconSide]: 1 on the full dock, less
+  /// as it draws in.
+  final double markScale;
 
   /// Extra state read after the name ("Unread Inbox messages" on Profile).
   final String? semanticsValue;
@@ -57,7 +66,7 @@ class BottomNavBarWidget extends StatefulWidget {
   /// How far a press takes the mark down.
   static const pressedScale = 0.86;
 
-  /// The bar's height above the safe area.
+  /// The full dock's height above the strip under it.
   static const barHeight = 56.0;
 
   @override
@@ -77,6 +86,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
     final ink = selected ? colors.textPrimary : colors.textSecondary;
     final iconSide = BottomNavBarWidget.iconSide;
     final inset = widget.bottomInset;
+    final markScale = widget.markScale;
 
     return Semantics(
       button: true,
@@ -113,11 +123,15 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                 id: widget.dotId,
                 selected: selected,
                 alignment: Alignment.center,
-                // Off the mark's top-right shoulder, clear of it.
-                offset: navMarkShoulder(iconSide),
+                // Off the mark's top-right shoulder, clear of it, at the
+                // size the mark is drawn.
+                offset: navMarkShoulder(iconSide * markScale),
                 child: SizedBox.square(
                   dimension: iconSide + 6,
-                  child: Center(child: widget.glyph(ink, iconSide)),
+                  child: Transform.scale(
+                    scale: (markScale - 1).abs() < 0.001 ? 1.0 : markScale,
+                    child: Center(child: widget.glyph(ink, iconSide)),
+                  ),
                 ),
               ),
             ),

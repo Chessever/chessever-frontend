@@ -1,5 +1,6 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:chessever2/main.dart' show routeObserver;
 
 import 'package:chessever2/utils/number_format_utils.dart';
@@ -27,6 +28,8 @@ import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -341,18 +344,19 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // The app's one way back, its target starting at the search
+          // header's inset like on every pushed page (this row is already
+          // inset by its own padding).
           Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () {
-                HapticFeedbackService.light();
-                Navigator.of(context).pop();
-              },
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-                size: 20.ic,
+            alignment: AlignmentDirectional.centerStart,
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: math.max(
+                  0.0,
+                  SearchHeaderMetrics.leadingInset - horizontalPadding,
+                ),
               ),
+              child: const PageBackButton(),
             ),
           ),
           Opacity(

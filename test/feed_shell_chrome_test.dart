@@ -1,9 +1,11 @@
-// Feed as the home shell holds it: the top bar and the bottom bar step away
-// as the reader pages on and come back as they page back, on the same
-// chrome as every other root. The posts never change size and are never
-// under a bar at rest; as the bars move, each post is moved (never laid out
-// again) so its centre stays on the centre of the room the bars leave.
+// Feed as the home shell holds it: the top bar steps away and the dock
+// draws in to its compact capsule as the reader pages on; both come back as
+// they page back, on the same chrome as every other root. The posts never
+// change size and are never under a bar at rest; as the bars move, each
+// post is moved (never laid out again) so its centre stays on the centre of
+// the room the bars leave. The deck under the pages moves with the posts.
 
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -21,9 +23,11 @@ import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_centred_between_bars.dart';
+import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -40,12 +44,26 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const Size _phone = Size(393, 852);
 const double _statusBar = 59;
 const double _homeIndicator = 34;
-const double _bar = 56 + _homeIndicator;
+
+/// The dock on an iPhone with a home indicator: the capsule 22 above the
+/// screen's edge.
+const HomeNavMetrics _dock = HomeNavMetrics(
+  gap: _homeIndicator - 12,
+  count: 5,
+  screenWidth: 393,
+);
+
+/// The dock's slot, constant: 78.
+final double _bar = _dock.extent;
+
+/// What the drawn-in capsule covers: 66.
+final double _compact = _dock.compactExtent;
 
 final Finder _pages = find.byKey(const ValueKey('feed_pages'));
+final Finder _deck = find.byKey(const ValueKey('feed_bottom_deck'));
 
-/// The shell's composition for Feed: the page runs under the bottom bar,
-/// which slides over it; the region pages.
+/// The shell's composition for Feed: the page runs under the dock's slot,
+/// which never changes height; the region pages.
 class _Shell extends StatefulWidget {
   const _Shell({required this.onController});
 
@@ -77,20 +95,18 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       extendBody: true,
-      bottomNavigationBar: CollapsingChrome(
-        controller: chrome,
-        edge: VerticalDirection.down,
-        overlay: true,
-        child: const ColoredBox(
-          key: ValueKey('bottom-bar'),
-          color: Colors.black,
-          child: SizedBox(height: _bar, width: double.infinity),
-        ),
+      bottomNavigationBar: SizedBox(
+        key: const ValueKey('bottom-bar'),
+        height: _bar,
+        width: double.infinity,
       ),
-      body: ScrollChromeRegion(
-        controller: chrome,
-        paged: true,
-        child: const FeedScreen(embedded: true),
+      body: HomeNavScope(
+        metrics: _dock,
+        child: ScrollChromeRegion(
+          controller: chrome,
+          paged: true,
+          child: const FeedScreen(embedded: true),
+        ),
       ),
     );
   }
@@ -136,6 +152,7 @@ Future<ScrollChromeController> _pump(
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
+        navigatorObservers: [routeObserver],
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
@@ -180,10 +197,10 @@ Rect _likeOnScreen(WidgetTester tester) {
 
 /// The room the bars leave a post when [shown] of them is on screen (1 all
 /// of it, 0 none): from under the top bar's band (the status bar's strip
-/// always stays) to over the bottom bar (the home indicator always stays).
+/// always stays) to over the dock (its compact capsule always stays).
 ({double top, double bottom}) _room(double shown, double header) => (
   top: _statusBar + shown * (header - _statusBar),
-  bottom: _phone.height - (_homeIndicator + shown * (_bar - _homeIndicator)),
+  bottom: _phone.height - (_compact + shown * (_bar - _compact)),
 );
 
 /// Every post built (the one in view and its neighbours): its laid-out box
@@ -191,12 +208,28 @@ Rect _likeOnScreen(WidgetTester tester) {
 List<({Rect laidOut, Rect drawn})> _posts(WidgetTester tester) => [
   for (final element in find.byType(FeedCentredBetweenBars).evaluate())
     if (element.renderObject case final RenderFeedCentredBetweenBars box
-        when box.attached && box.hasSize)
+        when box.attached && box.hasSize && !_holdsDeck(element))
       (
         laidOut: box.localToGlobal(Offset.zero) & box.size,
         drawn: box.child!.localToGlobal(Offset.zero) & box.child!.size,
       ),
 ];
+
+/// The deck rides the same move as the posts; it is not a post.
+bool _holdsDeck(Element element) {
+  var deck = false;
+  void visit(Element child) {
+    if (deck) return;
+    if (child.widget.key == const ValueKey('feed_bottom_deck')) {
+      deck = true;
+      return;
+    }
+    child.visitChildren(visit);
+  }
+
+  element.visitChildren(visit);
+  return deck;
+}
 
 /// Every post built keeps one size, and is drawn centred in the room the
 /// bars leave at [shown], measured from its own page's top.
@@ -225,9 +258,38 @@ void _expectCentred(
   }
 }
 
+/// The current post's player row ([key]: `feed_row_white` or
+/// `feed_row_black`), as drawn: the slot the row's widget fills.
+Rect _row(WidgetTester tester, String key) {
+  for (final element in find.byKey(ValueKey(key)).evaluate()) {
+    final slot = element.findAncestorRenderObjectOfType<RenderBox>();
+    final box = (slot ?? element.renderObject!) as RenderBox;
+    final rect = box.localToGlobal(Offset.zero) & box.size;
+    if (rect.top >= 0 && rect.bottom <= _phone.height) return rect;
+  }
+  fail('no $key on screen');
+}
+
+Rect _whiteRow(WidgetTester tester) => _row(tester, 'feed_row_white');
+
+/// A point on the current post's black player row, clear of the board: a
+/// swipe from there pages, never moves a piece.
+Offset _onTopRow(WidgetTester tester) =>
+    Offset(_phone.width / 2, _row(tester, 'feed_row_black').center.dy);
+
+/// The deck starts at the current post's board block's foot, wherever the
+/// bars stand, and runs past the screen's foot.
+void _expectDeckUnderPost(WidgetTester tester) {
+  final deck = tester.getRect(_deck);
+  expect(deck.top, closeTo(_whiteRow(tester).bottom, 0.5));
+  expect(deck.bottom, greaterThanOrEqualTo(_phone.height - 0.5));
+}
+
 void main() {
-  testWidgets('paging on sends both bars away and back; every post keeps '
-      'one size and stays centred in the room they leave', (tester) async {
+  testWidgets('paging on sends the top bar away and draws the dock in; every '
+      'post keeps one size and stays centred in the room they leave', (
+    tester,
+  ) async {
     final chrome = await _pump(tester);
     // Measured where the bar is: the pages' own context has had the status
     // bar's inset spent on them.
@@ -240,7 +302,7 @@ void main() {
     final post = Size(_phone.width, _phone.height - header - _bar);
 
     // At rest the post is exactly the room between the bars: its actions
-    // stand clear of the bottom bar and answer taps.
+    // stand clear of the dock and answer taps.
     expect(chrome.value, 1);
     _expectCentred(tester, shown: 1, header: header, post: post);
     final current = _posts(tester).firstWhere((p) => p.laidOut.top >= 0);
@@ -252,8 +314,9 @@ void main() {
       find.byKey(const ValueKey('feed_like_button')).hitTestable(),
       findsOneWidget,
     );
+    _expectDeckUnderPost(tester);
 
-    // Page on: the bars leave on their spring. In every frame the pages and
+    // Page on: the bars move on their spring. In every frame the pages and
     // the posts keep one size, and each post's centre rides the centre of
     // the room the bars leave, on the bars' own value.
     await tester.fling(_pages, const Offset(0, -320), 1500);
@@ -278,13 +341,14 @@ void main() {
       tester.getRect(find.byType(HomeTopBarFrame)).height,
       closeTo(_statusBar, 0.5),
     );
+    // The dock never leaves: its slot keeps its place.
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('bottom-bar'))).dy,
-      closeTo(_phone.height, 0.5),
+      closeTo(_phone.height - _bar, 0.5),
     );
-    // With the bars away, the post is framed in the middle of the screen,
-    // clear of the status bar and the home indicator, and still answers
-    // where it is drawn.
+    // With the bars away, the post is framed between the status bar and
+    // the compact capsule, and still answers where it is drawn. The deck
+    // moved with it.
     final away = _room(0, header);
     final shownPost = _posts(tester).firstWhere(
       (p) => p.drawn.center.dy > 0 && p.drawn.center.dy < _phone.height,
@@ -297,15 +361,12 @@ void main() {
       find.byKey(const ValueKey('feed_like_button')).hitTestable(),
       findsOneWidget,
     );
+    _expectDeckUnderPost(tester);
 
-    // Page back, from the post's header line (the board's centre may hold
-    // a piece by now, and a drag there moves it): the bars come back and
-    // the post settles where it stood, clear of them.
-    await tester.flingFrom(
-      Offset(_phone.width / 2, header + 20),
-      const Offset(0, 320),
-      1500,
-    );
+    // Page back, from the post's black player row (the board's centre may
+    // hold a piece by now, and a drag there moves it): the bars come back
+    // and the post settles where it stood, clear of them.
+    await tester.flingFrom(_onTopRow(tester), const Offset(0, 320), 1500);
     for (var i = 0; i < 60; i++) {
       await tester.pump(const Duration(milliseconds: 16));
       expect(tester.getSize(_pages), page);
@@ -313,10 +374,6 @@ void main() {
     }
     expect(position.position.pixels, moreOrLessEquals(0, epsilon: 0.01));
     expect(chrome.value, 1);
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey('bottom-bar'))).dy,
-      closeTo(_phone.height - _bar, 0.5),
-    );
     like = _likeOnScreen(tester);
     expect(like.bottom, lessThanOrEqualTo(_phone.height - _bar + 0.5));
     await _tearDown(tester);
@@ -335,23 +392,17 @@ void main() {
         )
         .position;
     for (var i = 0; i < 2; i++) {
-      await tester.flingFrom(
-        Offset(_phone.width / 2, header + 20),
-        const Offset(0, -320),
-        1500,
-      );
+      await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
       await _frames(tester);
     }
     expect(chrome.value, 0);
     expect(position.pixels, moreOrLessEquals(2 * _phone.height, epsilon: 0.01));
     _expectCentred(tester, shown: 0, header: header, post: post);
 
-    // A short pull back from the post's header line, far from turning the
+    // A short pull back from the post's top row, far from turning the
     // page: the reader who wanted the bars gets them, and the post springs
     // back to its page, moving with them.
-    final gesture = await tester.startGesture(
-      Offset(_phone.width / 2, header + 20),
-    );
+    final gesture = await tester.startGesture(_onTopRow(tester));
     await gesture.moveBy(const Offset(0, 20));
     for (var i = 0; i < 10; i++) {
       await gesture.moveBy(const Offset(0, 10));
@@ -364,10 +415,6 @@ void main() {
     }
     expect(chrome.value, 1);
     expect(position.pixels, moreOrLessEquals(2 * _phone.height, epsilon: 0.01));
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey('bottom-bar'))).dy,
-      closeTo(_phone.height - _bar, 0.5),
-    );
     // At rest under the bars, the post's actions are clear of them and
     // still answer.
     expect(
@@ -381,6 +428,52 @@ void main() {
     await _tearDown(tester);
   });
 
+  testWidgets('a tap on the post brings the bars back; a tap on the board '
+      'leaves them where they are', (tester) async {
+    final chrome = await _pump(tester);
+    await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
+    await _frames(tester);
+    expect(chrome.value, 0);
+
+    // The board takes its taps (play, pause, a move in two taps): bringing
+    // the bars back would move the post under the second.
+    final board = find.byType(FeedLiveBoard).hitTestable();
+    await tester.tapAt(tester.getCenter(board.first));
+    await _frames(tester);
+    expect(chrome.value, 0);
+
+    // A press held there is not a tap (a player's focus menu opens on a
+    // hold): letting go leaves the bars, so the post never slides under it.
+    final row = _whiteRow(tester);
+    await tester.longPressAt(Offset(row.right - 8, row.center.dy));
+    await _frames(tester);
+    expect(chrome.value, 0);
+
+    // The empty end of the white player row: the bars come back.
+    await tester.tapAt(Offset(row.right - 8, row.center.dy));
+    await _frames(tester);
+    expect(chrome.value, 1);
+    await tester.pump(const Duration(seconds: 5));
+    await _tearDown(tester);
+  });
+
+  testWidgets('back from a page opened over Feed, the bars are in view', (
+    tester,
+  ) async {
+    final chrome = await _pump(tester);
+    await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
+    await _frames(tester);
+    expect(chrome.value, 0);
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    navigator.push(MaterialPageRoute<void>(builder: (_) => const Scaffold()));
+    await _frames(tester);
+    navigator.pop();
+    await _frames(tester);
+    await _frames(tester);
+    expect(chrome.value, 1);
+    await _tearDown(tester);
+  });
+
   testWidgets('re-tapping the Feed tab rides home to the first post, with '
       'the bars back', (tester) async {
     final chrome = await _pump(tester);
@@ -389,11 +482,7 @@ void main() {
     );
     final post = Size(_phone.width, _phone.height - header - _bar);
     for (var i = 0; i < 2; i++) {
-      await tester.flingFrom(
-        Offset(_phone.width / 2, header + 20),
-        const Offset(0, -320),
-        1500,
-      );
+      await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
       await _frames(tester);
     }
     expect(chrome.value, 0);
@@ -438,11 +527,7 @@ void main() {
       tester.element(find.byType(FeedScreen)),
     );
     final post = Size(_phone.width, _phone.height - header - _bar);
-    await tester.flingFrom(
-      Offset(_phone.width / 2, header + 20),
-      const Offset(0, -320),
-      1500,
-    );
+    await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
     for (var i = 0; i < 60; i++) {
       await tester.pump(const Duration(milliseconds: 16));
       expect(chrome.value, 1);
@@ -452,15 +537,15 @@ void main() {
   });
 
   test('the travel centres a post between the bars', () {
-    // Shown: a 80pt band under a 59pt status bar, a 90pt bottom bar over a
-    // 34pt home indicator. Away: the strips alone.
+    // Shown: a 80pt band under a 59pt status bar, the dock's 78pt slot.
+    // Away: the status bar's strip, and the compact capsule's 66.
     final travel = FeedCentredBetweenBars.travelFor(
-      shown: const EdgeInsets.only(top: 139, bottom: 90),
-      away: const EdgeInsets.only(top: 59, bottom: 34),
+      shown: const EdgeInsets.only(top: 139, bottom: 78),
+      away: const EdgeInsets.only(top: 59, bottom: 66),
     );
-    // The room gains 80 at the top and 56 at the bottom: its centre rises
-    // by 12.
-    expect(travel, -12);
+    // The room gains 80 at the top and 12 at the bottom: its centre rises
+    // by 34.
+    expect(travel, -34);
   });
 }
 

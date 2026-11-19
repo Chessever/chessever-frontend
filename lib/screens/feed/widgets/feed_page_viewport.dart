@@ -13,6 +13,9 @@ import 'package:flutter/widgets.dart';
 class FeedPageViewport extends StatefulWidget {
   const FeedPageViewport({required this.builder, super.key});
 
+  /// A page shorter than this scrolls its post in a readable column.
+  static const double shortWindow = 500;
+
   final LayoutWidgetBuilder builder;
 
   @override
@@ -137,7 +140,7 @@ class _FeedPageViewportState extends State<FeedPageViewport> {
       // A folded landscape window can lose its wide aspect ratio after the
       // navigation rail and system-safe edge take their space. Its remaining
       // height still needs the same scrollable post and edge handoff.
-      _shortWindow = constraints.maxHeight < 500;
+      _shortWindow = constraints.maxHeight < FeedPageViewport.shortWindow;
       final width = _shortWindow
           ? math.min(420.0, constraints.maxWidth)
           : constraints.maxWidth;

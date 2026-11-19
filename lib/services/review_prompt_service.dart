@@ -51,30 +51,19 @@ class ReviewPromptService {
 
   AppDatabase get _db => AppDatabase.instance;
 
-  /// Closes the sidebar drawer, then opens the feedback form on a context
-  /// that outlives that route.
+  /// Opens the deliberate feedback destination (Profile › Feedback)
+  /// directly. This does not participate in review-prompt cooldowns,
+  /// ratings, or feature surveys.
   ///
-  /// The menu used to `Navigator.pop` and immediately pass the drawer's
-  /// context into [showDirectFeedback]. By the time the user hit Send, that
-  /// context was unmounted and the Telegram relay never ran.
-  Future<void> openSidebarDirectFeedback(BuildContext drawerContext) async {
-    final rootContext = Navigator.of(
-      drawerContext,
-      rootNavigator: true,
-    ).context;
-    Navigator.of(drawerContext).pop();
-    await WidgetsBinding.instance.endOfFrame;
-    if (!rootContext.mounted) return;
-    await showDirectFeedback(context: rootContext);
-  }
-
-  /// Opens the deliberate sidebar feedback destination directly. This does
-  /// not participate in review-prompt cooldowns, ratings, or feature surveys.
+  /// Hand it a context that outlives the form: the root navigator's (as
+  /// Profile does). Never pop a route to get there: on a Home tab the only
+  /// route under the finger is Home itself, and popping it left the app
+  /// blank behind the form.
   Future<void> showDirectFeedback({required BuildContext context}) async {
     if (!context.mounted) return;
-    // The sidebar drawer that hosts this entry point unmounts as soon as it
-    // closes, so never gate the relay on `context.mounted`: that guard
-    // silently dropped every sidebar report on the floor.
+    // The context that opened the form may be gone by the time Send is
+    // pressed, so never gate the relay on `context.mounted`: that guard
+    // silently dropped every report on the floor.
     final messenger = ScaffoldMessenger.of(context);
     final result = await showDirectFeedbackDialog(context);
     if (result == null) {

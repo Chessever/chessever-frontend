@@ -7,6 +7,8 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/press_spring.dart';
 import 'package:chessever2/widgets/search_mode/search_count_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +25,7 @@ class _FixedEnabled extends BotvinnikEnabledNotifier {
 
 void main() {
   setUp(() {
-    // The 393pt design phone, so `56.ic` is exactly 56dp.
+    // The 393pt design phone, so `52.ic` is exactly 52dp.
     final view =
         TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
     view.physicalSize = const Size(393 * 3, 852 * 3);
@@ -44,11 +46,11 @@ void main() {
     int unreadCount = 0,
     bool reduceMotion = false,
     Animation<double>? fade,
+    InkFabSize size = InkFabSize.regular,
   }) {
     Widget button = BotvinnikChatButton(
-      heroTag: 'botvinnik-test',
       screenContext: const ChatScreenContext(screen: 'test'),
-      iconOnly: true,
+      size: size,
       onPressed: onPressed,
     );
     if (fade != null) button = GlassFade(opacity: fade, child: button);
@@ -157,7 +159,7 @@ void main() {
     ('light', AppTheme.lightTheme),
   ]) {
     group('$name theme', () {
-      testWidgets('renders the trimmed mark on a 56dp launcher', (
+      testWidgets('renders the trimmed mark on the regular floating disc', (
         tester,
       ) async {
         await tester.pumpWidget(host(theme: theme));
@@ -165,14 +167,17 @@ void main() {
 
         final launcher = find.byType(BotvinnikChatButton);
         expect(launcher, findsOneWidget);
-        expect(tester.getSize(launcher), const Size(56, 56));
+        // The same disc as the search it shares a stack with.
+        final disc = InkFabSize.regular.disc;
+        expect(disc, 52);
+        expect(tester.getSize(launcher), Size.square(InkFabSize.regular.side));
 
         final mark = find.byType(BotvinnikMark);
         expect(mark, findsOneWidget);
         // The king fills ~70% of the launcher's height.
         final markSide = tester.getSize(mark).height;
         expect(
-          markSide * BotvinnikMark.artworkHeightFactor / 56,
+          markSide * BotvinnikMark.artworkHeightFactor / disc,
           closeTo(0.70, 0.02),
         );
         // Drawn from the trimmed PNG, not the tinted SVG.
@@ -219,7 +224,28 @@ void main() {
     });
   }
 
-  testWidgets('press settles back to exact identity', (tester) async {
+  testWidgets('small sits above the main button at the small disc', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(theme: AppTheme.darkTheme, size: InkFabSize.small),
+    );
+    await tester.pumpAndSettle();
+    expect(InkFabSize.small.disc, 44);
+    expect(
+      tester.getSize(find.byType(BotvinnikChatButton)),
+      Size.square(InkFabSize.small.side),
+    );
+    expect(tester.getSize(find.byType(GlassSurface)), const Size.square(44));
+    expect(
+      tester.getRect(find.byType(BotvinnikMark)).height,
+      closeTo(44 * 0.73, 1e-6),
+    );
+  });
+
+  testWidgets('presses like every floating button and settles to identity', (
+    tester,
+  ) async {
     await tester.pumpWidget(host(theme: AppTheme.darkTheme, onPressed: () {}));
     await tester.pumpAndSettle();
 
@@ -234,37 +260,41 @@ void main() {
     final rest = tester.getRect(find.byType(BotvinnikMark)).height;
 
     expect(pressed, lessThan(rest));
-    expect(pressed / rest, closeTo(0.97, 0.005));
-    expect(rest, 56 * 0.73);
+    // [PressSpring] at 0.9, the floating buttons' press.
+    expect(pressed / rest, closeTo(0.9, 0.005));
+    expect(rest, closeTo(52 * 0.73, 1e-6));
+    expect(
+      find.descendant(
+        of: find.byType(BotvinnikChatButton),
+        matching: find.byType(PressSpring),
+      ),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('the one-time entrance rises in but never fades', (tester) async {
-    BotvinnikChatButton.debugResetSessionEntrance();
+  testWidgets('arrives at rest with its page: no entrance, no hero', (
+    tester,
+  ) async {
     await tester.pumpWidget(host(theme: AppTheme.darkTheme));
-    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump();
 
     final launcher = find.byType(BotvinnikChatButton);
     final mark = find.byType(BotvinnikMark);
     expect(mark, findsOneWidget);
+    // At rest on its very first frame.
+    expect(tester.getRect(mark).height, closeTo(52 * 0.73, 1e-6));
     for (final fader in [Opacity, FadeTransition, AnimatedOpacity]) {
       expect(
         find.descendant(of: launcher, matching: find.byType(fader)),
         findsNothing,
-        reason: 'the entrance must never gate visibility on $fader',
+        reason: 'the launcher must never gate visibility on $fader',
       );
     }
-    final entering = tester.getRect(mark).height;
-    expect(entering, lessThan(56 * 0.73));
-    expect(entering, greaterThan(56 * 0.73 * 0.88));
-
-    await tester.pumpAndSettle();
-    expect(tester.getRect(mark).height, 56 * 0.73);
-
-    // A second launcher in the same session (the next screen) arrives still.
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(host(theme: AppTheme.darkTheme));
-    await tester.pump(const Duration(milliseconds: 16));
-    expect(tester.getRect(mark).height, 56 * 0.73);
+    // Nothing matched its hero; it no longer flies between routes.
+    expect(
+      find.descendant(of: launcher, matching: find.byType(Hero)),
+      findsNothing,
+    );
   });
 
   testWidgets('hidden when the user turned Botvinnik off', (tester) async {
@@ -277,17 +307,13 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('reduced motion keeps press feedback tonal, not moving', (
-    tester,
-  ) async {
-    BotvinnikChatButton.debugResetSessionEntrance();
+  testWidgets('reduced motion keeps the press still', (tester) async {
     await tester.pumpWidget(
       host(theme: AppTheme.darkTheme, reduceMotion: true, onPressed: () {}),
     );
     await tester.pump();
-    // No entrance either: the launcher is at rest on its first frame.
     final rest = tester.getRect(find.byType(BotvinnikMark)).height;
-    expect(rest, 56 * 0.73);
+    expect(rest, closeTo(52 * 0.73, 1e-6));
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(BotvinnikChatButton)),
@@ -295,7 +321,7 @@ void main() {
     await tester.pump();
     expect(tester.getRect(find.byType(BotvinnikMark)).height, rest);
     await gesture.up();
-    await tester.pump();
+    await tester.pump(PressSpring.minHold);
   });
 }
 

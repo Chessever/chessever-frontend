@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/native_ads_config.dart';
 import 'package:chessever2/services/home_ad_remote_config.dart';
@@ -26,6 +28,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
@@ -282,11 +285,66 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _onScroll() {
     if (!mounted || _isDisposing) return;
     if (!widget.scrollController.hasClients) return;
-    final max = widget.scrollController.position.maxScrollExtent;
-    final current = widget.scrollController.position.pixels;
-    if (max - current <= 300) {
+    final position = widget.scrollController.position;
+    if (!position.hasContentDimensions) return;
+    _loadMoreNear(position);
+  }
+
+  bool _endCheckScheduled = false;
+
+  // The list the last after-layout end check was made for. One check per
+  // new list (a first page, a page landing, the live block changing), never
+  // for a rebuild that left the list as it was: a failed page changes only
+  // the error, and checking again on it would ask for the same page every
+  // frame ([ForYouNotifier.loadMore] backs off as well).
+  List<GroupEventCardModel>? _endCheckedEvents;
+
+  void _checkEndAfterLayout() {
+    if (_endCheckScheduled) return;
+    _endCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _endCheckScheduled = false;
+      _onScroll();
+    });
+  }
+
+  /// Asks for the next page once the list's end is within reach. Called on
+  /// every scroll, and on every change of the list's size or its viewport
+  /// ([ScrollMetricsNotification]): a page landing, sections hiding
+  /// themselves, the bars folding in or out. A list that stops short of the
+  /// screen, or ends up near its end without a scroll, still pages on.
+  void _loadMoreNear(ScrollMetrics metrics) {
+    if (!mounted || _isDisposing) return;
+    if (metrics.axis != Axis.vertical) return;
+    if (metrics.maxScrollExtent - metrics.pixels <= 300) {
       ref.read(forYouEventsProvider.notifier).loadMore();
     }
+  }
+
+  /// The list under its page metrics listener ([_loadMoreNear]).
+  Widget _pagingOnMetrics(Widget list) {
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0) _loadMoreNear(notification.metrics);
+        return false;
+      },
+      child: list,
+    );
+  }
+
+  /// The list's end, clear of Today's floating buttons (the filter with
+  /// Live first above it, [InkFabStack.reach]) and of a bottom bar the page
+  /// runs under (the shell's padding beyond the home indicator's inset,
+  /// which the reach already holds), with the feed's own gap above them.
+  /// One height whether Live first is showing or not, so the end never
+  /// jumps as the capsule comes and goes.
+  double _listEndPadding(BuildContext context) {
+    final viewInset = MediaQuery.viewPaddingOf(context).bottom;
+    final barShare = math.max(
+      0.0,
+      MediaQuery.paddingOf(context).bottom - viewInset,
+    );
+    return 16.sp + InkFabStack.reach(context, smallAbove: 1) + barShare;
   }
 
   @override
@@ -348,6 +406,16 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       return _buildEmptyState();
     }
 
+    // A list laid out short of its end (sections that hid themselves, a
+    // first page smaller than the screen) has no scroll and no change of
+    // size to page on: look once it is laid out, once per list.
+    if (state.hasMore &&
+        !state.isLoading &&
+        !identical(events, _endCheckedEvents)) {
+      _endCheckedEvents = events;
+      _checkEndAfterLayout();
+    }
+
     return RefreshIndicator(
       onRefresh: () => ref.read(forYouEventsProvider.notifier).refresh(),
       color: context.colors.accentText,
@@ -365,7 +433,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
               useColumns: useColumns,
               showNativeAd: showNativeAd,
               viewMode: viewMode,
-              showLoadingMore: state.hasMore && !state.isLoading,
+              // One slot of one height while a page can still follow: it
+              // never appears or leaves as a page starts or lands, so the
+              // list's end never shifts under the reader at the page point.
+              showLoadingMore: state.hasMore || state.isLoading,
             ),
           );
         },
@@ -466,53 +537,60 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // +1 for premium cards, +1 for loading.
     final itemCount = events.length + 1 + (showLoadingMore ? 1 : 0);
 
-    return ListView.builder(
-      key: const PageStorageKey<String>('for_you_events_list'),
-      controller: widget.scrollController,
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
-      ),
-      itemCount: itemCount,
-      scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
-      addAutomaticKeepAlives: true,
-      addRepaintBoundaries: true,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      itemBuilder: (context, index) {
-        // Premium collection cards at top
-        if (index == 0) {
-          return const PremiumCollectionCards();
-        }
+    return _pagingOnMetrics(
+      ListView.builder(
+        key: const PageStorageKey<String>('for_you_events_list'),
+        controller: widget.scrollController,
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          16.sp,
+          horizontalPadding,
+          _listEndPadding(context),
+        ),
+        itemCount: itemCount,
+        scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
+        addAutomaticKeepAlives: true,
+        addRepaintBoundaries: true,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        itemBuilder: (context, index) {
+          // Premium collection cards at top
+          if (index == 0) {
+            return const PremiumCollectionCards();
+          }
 
-        // Loading indicator at bottom
-        if (showLoadingMore && index == itemCount - 1) {
-          return _buildLoadingMoreIndicator();
-        }
+          // Loading indicator at bottom
+          if (showLoadingMore && index == itemCount - 1) {
+            return _buildLoadingMoreIndicator();
+          }
 
-        final event = events[index - 1];
-        if (showNativeAd && index == 1) {
-          return Column(
+          final event = events[index - 1];
+          if (showNativeAd && index == 1) {
+            return Column(
+              key: ValueKey('event_${event.id}'),
+              children: [
+                _ForYouEventSection(event: event, isFirst: true),
+                const TodayNativeAd(),
+              ],
+            );
+          }
+          return _ForYouEventSection(
             key: ValueKey('event_${event.id}'),
-            children: [
-              _ForYouEventSection(event: event, isFirst: true),
-              const TodayNativeAd(),
-            ],
+            event: event,
+            isFirst: index == 1,
           );
-        }
-        return _ForYouEventSection(
-          key: ValueKey('event_${event.id}'),
-          event: event,
-          isFirst: index == 1,
-        );
-      },
+        },
+      ),
     );
   }
 
+  /// The load-more slot at the list's end: a spinner in a fixed height,
+  /// there while a page can still follow.
   Widget _buildLoadingMoreIndicator() {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 16.sp),
+    return SizedBox(
+      key: const ValueKey('for_you_load_more_slot'),
+      height: 56.sp,
       child: Center(
         child: SizedBox(
           width: 24.sp,
@@ -545,71 +623,75 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // +1 for premium cards at top, +1 for loading indicator if showing.
     final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
 
-    return ListView.builder(
-      key: const PageStorageKey<String>('for_you_events_tablet_grid'),
-      controller: widget.scrollController,
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
-      ),
-      itemCount: itemCount,
-      scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
-      addAutomaticKeepAlives: true,
-      addRepaintBoundaries: true,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      itemBuilder: (context, index) {
-        // Premium collection cards at top
-        if (index == 0) {
-          return const PremiumCollectionCards();
-        }
+    return _pagingOnMetrics(
+      ListView.builder(
+        key: const PageStorageKey<String>('for_you_events_tablet_grid'),
+        controller: widget.scrollController,
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          16.sp,
+          horizontalPadding,
+          _listEndPadding(context),
+        ),
+        itemCount: itemCount,
+        scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
+        addAutomaticKeepAlives: true,
+        addRepaintBoundaries: true,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        itemBuilder: (context, index) {
+          // Premium collection cards at top
+          if (index == 0) {
+            return const PremiumCollectionCards();
+          }
 
-        // Loading indicator at bottom
-        if (showLoadingMore && index == itemCount - 1) {
-          return _buildLoadingMoreIndicator();
-        }
+          // Loading indicator at bottom
+          if (showLoadingMore && index == itemCount - 1) {
+            return _buildLoadingMoreIndicator();
+          }
 
-        final rowIndex = index - 1;
-        if (showNativeAd && rowIndex == 0) {
-          return Column(
-            key: ValueKey('native_first_event_${events.first.id}'),
-            children: [
-              _ForYouTabletEventColumn(event: events.first),
-              const TodayNativeAd(),
-            ],
-          );
-        }
-        final i = showNativeAd ? 1 + (rowIndex - 1) * 2 : rowIndex * 2;
-        final event1 = events[i];
-        final event2 = i + 1 < events.length ? events[i + 1] : null;
+          final rowIndex = index - 1;
+          if (showNativeAd && rowIndex == 0) {
+            return Column(
+              key: ValueKey('native_first_event_${events.first.id}'),
+              children: [
+                _ForYouTabletEventColumn(event: events.first),
+                const TodayNativeAd(),
+              ],
+            );
+          }
+          final i = showNativeAd ? 1 + (rowIndex - 1) * 2 : rowIndex * 2;
+          final event1 = events[i];
+          final event2 = i + 1 < events.length ? events[i + 1] : null;
 
-        return Padding(
-          padding: EdgeInsets.only(top: rowIndex == 0 ? 0 : 20.sp),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Left column: event1 + its games
-              Expanded(
-                child: _ForYouTabletEventColumn(
-                  key: ValueKey('tablet_col_${event1.id}'),
-                  event: event1,
+          return Padding(
+            padding: EdgeInsets.only(top: rowIndex == 0 ? 0 : 20.sp),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left column: event1 + its games
+                Expanded(
+                  child: _ForYouTabletEventColumn(
+                    key: ValueKey('tablet_col_${event1.id}'),
+                    event: event1,
+                  ),
                 ),
-              ),
-              SizedBox(width: columnSpacing),
-              // Right column: event2 + its games (or empty space)
-              Expanded(
-                child: event2 != null
-                    ? _ForYouTabletEventColumn(
-                        key: ValueKey('tablet_col_${event2.id}'),
-                        event: event2,
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
-        );
-      },
+                SizedBox(width: columnSpacing),
+                // Right column: event2 + its games (or empty space)
+                Expanded(
+                  child: event2 != null
+                      ? _ForYouTabletEventColumn(
+                          key: ValueKey('tablet_col_${event2.id}'),
+                          event: event2,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 

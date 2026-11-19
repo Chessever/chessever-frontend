@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/providers/game_list_live_first_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -118,6 +119,10 @@ class FavoritesCombinedGamesNotifier
   /// A failed replacement keeps the list it was replacing (a background
   /// refresh) instead of showing the error.
   bool _keepListOnError = false;
+
+  /// Game ids [ensureListed] is fetching, so a second call for the same
+  /// live set does not fetch them again.
+  final Set<String> _listing = <String>{};
 
   int _beginRequest() => ++_requestGeneration;
 
@@ -621,15 +626,25 @@ class FavoritesCombinedGamesNotifier
 
     newGames.sort(_compareByDateDesc);
 
-    final allGames = isInitial ? newGames : [...state.games, ...newGames];
+    if (!_isCurrentRequest(requestGeneration)) return;
+
+    // A later page lands after the list may have gained games meanwhile
+    // ([ensureListed]): those stay where they are, never listed twice.
+    final listedNow = isInitial ? const <String>{} : state.seenGameIds;
+    final allGames = isInitial
+        ? newGames
+        : [
+            ...state.games,
+            for (final game in newGames)
+              if (!listedNow.contains(game.gameId)) game,
+          ];
+    seenKeys.addAll(listedNow);
     final newDateOffset = dateOffset + dates.length;
     final hasMore = newDateOffset < _availableDates.length || _hasMoreDates;
 
     debugPrint(
       '[FavoritesGames] Total games: ${allGames.length}, hasMore: $hasMore',
     );
-
-    if (!_isCurrentRequest(requestGeneration)) return;
 
     state = state.copyWith(
       games: allGames,
@@ -640,6 +655,72 @@ class FavoritesCombinedGamesNotifier
       // The plain list's days: no search behind them.
       searchQuery: '',
     );
+  }
+
+  /// Lists the games among [ids] the loaded days do not hold yet, so Live
+  /// first lifts every game its capsule counted ([listedLiveGameIds]): a
+  /// game that started after the list loaded, or one filed under a day the
+  /// loaded pages do not reach. Each is merged in the list's own order
+  /// (normally today, at the top); nothing already listed moves.
+  ///
+  /// Not while a search's hits are listed, nor while the list is being
+  /// replaced or first loaded: the list that lands is ensured again by the
+  /// page. A list that loaded with nothing in it (the game started after
+  /// it loaded, or the filter is narrow) is listed into like any other, so
+  /// the capsule over its empty state lifts what it counts. A failure
+  /// leaves the list as it is.
+  Future<void> ensureListed(Iterable<String> ids) async {
+    final current = state;
+    if (_currentSearchQuery.isNotEmpty ||
+        current.isSearching ||
+        current.isReplacing ||
+        (current.isLoading && current.games.isEmpty)) {
+      return;
+    }
+    final missing = <String>[
+      for (final id in ids.toSet())
+        if (id.isNotEmpty &&
+            !current.seenGameIds.contains(id) &&
+            !_listing.contains(id))
+          id,
+    ];
+    if (missing.isEmpty) return;
+    final requestGeneration = _requestGeneration;
+    _listing.addAll(missing);
+    try {
+      final rows = await _ref
+          .read(gameRepositoryProvider)
+          .getGamesByIds(missing);
+      if (!_isCurrentRequest(requestGeneration) ||
+          _currentSearchQuery.isNotEmpty ||
+          state.isSearching ||
+          state.isReplacing) {
+        return;
+      }
+      final seen = Set<String>.of(state.seenGameIds);
+      final added = <GamesTourModel>[];
+      for (final row in rows) {
+        final GamesTourModel model;
+        try {
+          model = GamesTourModel.fromGame(row);
+        } catch (_) {
+          // A board without two named players cannot be drawn.
+          continue;
+        }
+        if (seen.add(_generateDedupeKey(model))) added.add(model);
+      }
+      if (added.isEmpty) return;
+      added.sort(_compareByDateDesc);
+      state = state.copyWith(
+        games: insertGamesInOrder(state.games, added, _compareByDateDesc),
+        seenGameIds: seen,
+        error: state.error,
+      );
+    } catch (error) {
+      debugPrint('[FavoritesGames] Listing live games failed: $error');
+    } finally {
+      _listing.removeAll(missing);
+    }
   }
 
   /// Generate dedupe key based on game ID (unique identifier)

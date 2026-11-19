@@ -123,8 +123,11 @@ void main() {
   test('the seeded Smart Events are the app\'s own GM and Classical', () {
     final gm = kSpaceDefaultSmartEvents[0];
     final classical = kSpaceDefaultSmartEvents[1];
-    expect(gm.criteriaKey, kDiscoverySmartPresets.first.criteriaKey);
+    // GM by name: Super GM, offered first, never takes the seed's place.
+    expect(gm.criteriaKey, kGmSmartPreset.criteriaKey);
+    expect(gm.criteriaKey, kSpaceGmLevelPreset.criteriaKey);
     expect(gm.displayName, 'GM Games');
+    expect(kSpaceSmartLevelPresets.first.displayName, 'Super GM Games');
     expect(classical.displayName, 'Classical Games');
 
     // What the Events filter builds for "Classical" alone.

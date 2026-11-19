@@ -4,6 +4,7 @@ import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
     show smartEventSpaceDraft;
+import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -97,6 +98,16 @@ class _Space extends SpaceShortcutsNotifier {
 
   @override
   Future<List<SpaceShortcut>> build() async => seed;
+
+  @override
+  Future<bool> add(SpaceShortcut draft) async {
+    final list = state.valueOrNull ?? const <SpaceShortcut>[];
+    if (!draft.canAddToMySpace || list.any((s) => s.key == draft.key)) {
+      return false;
+    }
+    state = AsyncData([draft, ...list]);
+    return true;
+  }
 }
 
 class _Hidden extends SpaceHiddenAutoKeys {
@@ -156,6 +167,7 @@ Future<_Favorites> _pump(
   SpaceShortcut? spaceDraft,
   VoidCallback? onTap,
   List<SpaceShortcut> pins = const [],
+  bool starPins = false,
 }) async {
   final store = _Favorites(favorites);
   await tester.pumpWidget(
@@ -171,19 +183,18 @@ Future<_Favorites> _pump(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return Scaffold(
-              body: SmartEventCard(
-                tierLabel: 'GM',
-                minElo: 2500,
-                liveCount: 3,
-                avgElo: 2728,
-                formatsAndStates: const {'standard'},
-                starRequest: starRequest,
-                editing: editing,
-                spaceDraft: spaceDraft,
-                onTap: onTap ?? () {},
-              ),
+            final card = SmartEventCard(
+              tierLabel: 'GM',
+              minElo: 2500,
+              liveCount: 3,
+              avgElo: 2728,
+              formatsAndStates: const {'standard'},
+              starRequest: starRequest,
+              editing: editing,
+              spaceDraft: spaceDraft,
+              onTap: onTap ?? () {},
             );
+            return Scaffold(body: starPins ? SpaceStarPins(child: card) : card);
           },
         ),
       ),
@@ -335,6 +346,58 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  group('on the Search tab (SpaceStarPins)', () {
+    bool pinned(WidgetTester tester, SmartEventRequest request) =>
+        ProviderScope.containerOf(
+          tester.element(find.byType(SmartEventCard)),
+        ).read(spaceShortcutExistsProvider(smartEventSpaceDraft(request).key));
+
+    testWidgets('a star also keeps the smart event in My Space, and says so '
+        'once', (tester) async {
+      final request = _request();
+      final store = await _pump(tester, starRequest: request, starPins: true);
+      expect(pinned(tester, request), isFalse);
+
+      await tester.tap(_star);
+      await _settle(tester);
+      expect(store.added.single.eventId, request.favoriteEventId);
+      expect(pinned(tester, request), isTrue);
+      expect(find.text('Added to My Space'), findsOneWidget);
+
+      // An unstar stops the pushes and leaves My Space as it is.
+      await tester.tap(_star);
+      await _settle(tester);
+      expect(store.removed, [request.favoriteEventId]);
+      expect(pinned(tester, request), isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a smart event already in My Space is starred without a word '
+        'about it', (tester) async {
+      final request = _request();
+      await _pump(
+        tester,
+        starRequest: request,
+        starPins: true,
+        pins: [smartEventSpaceDraft(request)],
+      );
+      await tester.tap(_star);
+      await _settle(tester);
+      expect(pinned(tester, request), isTrue);
+      expect(find.text('Added to My Space'), findsNothing);
+    });
+
+    testWidgets('anywhere else a star is a star only', (tester) async {
+      final request = _request();
+      final store = await _pump(tester, starRequest: request);
+      await tester.tap(_star);
+      await _settle(tester);
+      expect(store.added, hasLength(1));
+      expect(pinned(tester, request), isFalse);
+      expect(find.text('Added to My Space'), findsNothing);
+    });
   });
 
   testWidgets('unstarring removes the row and asks nothing', (tester) async {

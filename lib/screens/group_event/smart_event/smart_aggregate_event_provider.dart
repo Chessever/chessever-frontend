@@ -17,7 +17,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_tiers.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show RangeValues;
@@ -226,7 +226,6 @@ class SmartEventRequest {
 
   static const _timeControlCriteria = {'standard', 'rapid', 'blitz'};
   static const _stateCriteria = {'live', 'completed'};
-  static const _tierFloors = {'GM': 2500, 'IM': 2400, 'FM': 2300, 'CM': 2200};
 
   /// The dialog-representable projection of the criteria this smart event
   /// was generated from. Seeds the in-event Games tab filter so the root
@@ -303,10 +302,8 @@ class SmartEventRequest {
     Set<String> newFormatsAndStates,
     GameEcoFilter newEco,
   ) {
-    final eloFull = hasEloRange
-        ? RatingTierFilter.labelForMinRating(minElo)
-        : null;
-    final eloPart = eloFull?.split(' ').first;
+    // The tier the floor reaches ("Super GM" for 2700), from the one table.
+    final eloPart = hasEloRange ? smartTierAtOrBelow(minElo)?.name : null;
 
     final rawFormat = _labelForFormatsAndStates(newFormatsAndStates);
     final formatPart =
@@ -350,7 +347,7 @@ class SmartEventRequest {
   /// follow the new tier immediately; the included events, format criteria
   /// and labels otherwise stay.
   SmartEventRequest withTierSelection(String tier) {
-    final floor = _tierFloors[tier];
+    final floor = smartTierNamed(tier)?.floor;
     final newMinElo = floor ?? kFilterMinElo.round();
     final eloPart = floor == null ? null : tier;
 
@@ -637,11 +634,11 @@ class SmartEventCardData {
     final minElo = filter.minElo ?? kFilterMinElo.round();
     final maxElo = filter.maxElo ?? kFilterMaxElo.round();
 
-    // ELO segment: e.g. "GM" / "IM" / "FM" / "CM". Null when no ELO filter.
-    final eloFull = filter.hasEloFilter
-        ? RatingTierFilter.labelForMinRating(minElo)
+    // ELO segment: the tier the floor reaches ("Super GM", "GM" ... "CM"),
+    // from the one tier table. Null when no ELO filter.
+    final eloPart = filter.hasEloFilter
+        ? smartTierAtOrBelow(minElo)?.name
         : null;
-    final eloPart = eloFull?.split(' ').first;
 
     // Format / state segment: single-value labels stay as-is; multi-value
     // combinations fall back to "Filtered". When the user has both an ELO

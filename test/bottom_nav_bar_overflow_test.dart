@@ -4,6 +4,7 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
+import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -107,18 +108,32 @@ void main() {
         expect(find.bySemanticsLabel(title), findsOneWidget);
       }
       semantics.dispose();
+      // Equal slots across the full capsule (the screen less its margins),
+      // inside its round ends.
+      const capsule = 393 - 2 * HomeNavMetrics.sideMargin;
       for (final widget in tester.widgetList<BottomNavBarWidget>(
         find.byType(BottomNavBarWidget),
       )) {
-        expect(widget.width, closeTo(393 / titles.length, 0.001));
+        expect(
+          widget.width,
+          closeTo(
+            (capsule - 2 * HomeNavMetrics.padding) / titles.length,
+            0.001,
+          ),
+        );
       }
+      expect(
+        tester.getSize(find.byKey(const ValueKey('home-nav-capsule'))),
+        const Size(capsule, HomeNavMetrics.normalHeight),
+      );
 
-      // A fixed bar, whatever the text scale: its height plus the gesture
-      // area.
+      // A fixed slot, whatever the text scale: the full capsule plus the
+      // strip under it, which on Android (the test's platform) clears the
+      // whole gesture area.
       final bar = tester.getSize(find.byType(BottomNavBar)).height - 34;
       expect(bar, closeTo(BottomNavBarWidget.barHeight, 1.01));
-      // Every slot answers down through the gesture area: no dead strip
-      // under the marks.
+      // Every slot answers down through the strip under the capsule: no
+      // dead strip under the marks.
       for (final slot in tester.widgetList<BottomNavBarWidget>(
         find.byType(BottomNavBarWidget),
       )) {

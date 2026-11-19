@@ -291,6 +291,30 @@ class InkFabStack extends StatelessWidget {
 
   final List<Widget> children;
 
+  /// The gap between two buttons of the stack.
+  static const double step = 12;
+
+  /// How far up from the bottom a stack reaches: the main (regular) button,
+  /// [smallAbove] smaller buttons stacked over it (each a [step] above the
+  /// last), the Scaffold's margin and the home indicator's inset. A list
+  /// under the stack ends this far clear, so no button covers its last row.
+  ///
+  /// Read it from the list's context: inside the button slot the Scaffold
+  /// has already taken the inset away. A page inside the Home shell, whose
+  /// bottom bar the body runs under, adds `MediaQuery.paddingOf(context)
+  /// .bottom` on top (the shell hands the bar's slot to the body as padding,
+  /// not as view padding).
+  static double reach(BuildContext context, {int smallAbove = 0}) =>
+      extent(smallAbove: smallAbove) + MediaQuery.viewPaddingOf(context).bottom;
+
+  /// [reach] above the home indicator: the stack and the Scaffold's margin
+  /// under it. For a list end that keeps the inset in a part of its own
+  /// (one that stays while the search is open and the buttons give way).
+  static double extent({int smallAbove = 0}) =>
+      InkFabSize.regular.side +
+      smallAbove * (step + InkFabSize.small.side) +
+      kFloatingActionButtonMargin;
+
   @override
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
@@ -318,7 +342,7 @@ class InkFabStack extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         for (var i = 0; i < children.length; i++) ...[
-          if (i > 0) const SizedBox(height: 12),
+          if (i > 0) const SizedBox(height: step),
           place(children[i]),
         ],
       ],

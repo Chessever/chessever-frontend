@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_tiers.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
     show smartEventSpaceDraft;
 import 'package:chessever2/screens/group_event/widget/filter_popup/event_filter_matching.dart';
@@ -74,10 +75,16 @@ void main() {
       EventFormat.values.map((f) => f.name).toSet(),
     );
     expect(kSmartBuilderFormats, hasLength(EventFormat.values.length));
+    // The dialog's four tiers, and Super GM above them: the smart event
+    // tier table, which the smart event's own Filters offer too.
     expect(kSmartBuilderLevels, [
       null,
+      for (final tier in kSmartEventTiers) tier.floor,
+    ]);
+    expect(kSmartBuilderLevels.skip(2), [
       for (final tier in RatingTierFilter.tiers) tier.minRating,
     ]);
+    expect(kSmartBuilderLevels[1], 2700);
   });
 
   test('every opening the dialog can pick is in the builder\'s browser', () {
@@ -209,7 +216,7 @@ void main() {
         }
       }
     }
-    expect(combos, 4 * 8 * 5 * 5);
+    expect(combos, 4 * 8 * 6 * 5);
   });
 
   test('a lone level or time control is the seeded preset itself', () {
@@ -218,7 +225,25 @@ void main() {
         eloRange: const RangeValues(2500, kFilterMaxElo),
       ),
     );
-    expect(identical(gm, kSpaceSmartLevelPresets.first), isTrue);
+    expect(identical(gm, kSpaceGmLevelPreset), isTrue);
+    final superGm = smartEventBuilderRequest(
+      defaultFilterPopupState.copyWith(
+        eloRange: const RangeValues(2700, kFilterMaxElo),
+      ),
+    );
+    expect(identical(superGm, kSpaceSmartLevelPresets.first), isTrue);
+    expect(superGm?.displayName, 'Super GM Games');
+    // The name follows the floor (never GM for 2700), whichever path built
+    // it.
+    expect(
+      smartEventRequestFromFilterState(
+        defaultFilterPopupState.copyWith(
+          eloRange: const RangeValues(2700, kFilterMaxElo),
+          formatsAndStates: {'rapid'},
+        ),
+      )?.tierLabel,
+      startsWith('Super GM'),
+    );
     final classical = smartEventBuilderRequest(
       defaultFilterPopupState.copyWith(formatsAndStates: {'standard'}),
     );

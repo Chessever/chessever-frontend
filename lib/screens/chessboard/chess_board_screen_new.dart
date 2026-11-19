@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/video/game_video_submission_screen
 import 'package:chessever2/providers/game_video_sources_provider.dart';
 import 'video/game_analysis_sources.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
+import 'package:chessever2/screens/chessboard/board_edge_guard.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
@@ -67,6 +68,9 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
     show GameCardChessboard, showGameShareOverlay;
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
+import 'package:chessever2/screens/chessboard/video/video_session.dart'
+    show EventVideoSession;
+import 'package:chessever2/screens/chessboard/board_page_route.dart';
 import 'package:chessever2/providers/event_video_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/rest_aware_opacity.dart';
@@ -128,6 +132,8 @@ import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1388,6 +1394,82 @@ class _GameSwitcherScope extends InheritedWidget {
       controller != oldWidget.controller;
 }
 
+/// The board's back handling.
+///
+/// Back first closes what is open inside the board, one layer per press: the
+/// expanded video, the game switcher, a Game Analysis report. (Provider
+/// fullscreen video refuses the pop with its own [PopScope].) While none of
+/// them is open the route pops like any other page, so the iOS edge swipe and
+/// Android predictive back leave the board, and a [BoardPageRoute] answers
+/// that pop with the last viewed index, as the chevron does.
+///
+/// The Game Analysis sheet has no [PopScope] of its own on purpose: two
+/// handlers would both fire and pop the board out from under the sheet.
+class _BoardBackScope extends StatefulWidget {
+  const _BoardBackScope({
+    required this.switcher,
+    required this.reviewTarget,
+    required this.onBlockedBack,
+    required this.child,
+  });
+
+  final _GameSwitcherController switcher;
+  final ValueListenable<ChessBoardProviderParams?> reviewTarget;
+
+  /// A back press arrived while the board refused to pop.
+  final void Function(EventVideoSession? video) onBlockedBack;
+  final Widget child;
+
+  /// Whether the expanded video viewer is on screen.
+  static bool videoExpanded(EventVideoSession? video) =>
+      video != null && video.expanded && video.showVideo;
+
+  @override
+  State<_BoardBackScope> createState() => _BoardBackScopeState();
+}
+
+class _BoardBackScopeState extends State<_BoardBackScope> {
+  Listenable? _blockers;
+  EventVideoSession? _blockersVideo;
+
+  /// One merged listenable per video session, so a board rebuild does not
+  /// re-subscribe. The switcher and review target live as long as the board.
+  Listenable _blockersFor(EventVideoSession? video) {
+    if (_blockers == null || !identical(video, _blockersVideo)) {
+      _blockersVideo = video;
+      _blockers = Listenable.merge([
+        widget.switcher,
+        widget.reviewTarget,
+        video,
+      ]);
+    }
+    return _blockers!;
+  }
+
+  bool _ownsBack(EventVideoSession? video) =>
+      widget.switcher.isOpen ||
+      widget.reviewTarget.value != null ||
+      _BoardBackScope.videoExpanded(video);
+
+  @override
+  Widget build(BuildContext context) {
+    // Read without subscribing: the session lives as long as the video host.
+    // The builder below hears its changes and rebuilds only the PopScope.
+    final video = EventVideoScope.sessionOf(context);
+    return ListenableBuilder(
+      listenable: _blockersFor(video),
+      builder: (context, child) => PopScope(
+        canPop: !_ownsBack(video),
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) widget.onBlockedBack(video);
+        },
+        child: child!,
+      ),
+      child: widget.child,
+    );
+  }
+}
+
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     with WidgetsBindingObserver, TickerProviderStateMixin, RouteAware {
   late PageController _pageController;
@@ -1417,6 +1499,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   FlutterView? _metricsView;
   // REMOVED: bool analysisMode - was causing useless full rebuilds
   int? _lastViewedIndex;
+
+  /// The route this board answers a result-less pop for (the iOS edge swipe,
+  /// Android back): it returns [_lastViewedIndex], as the chevron does.
+  BoardPageRoute? _resultRoute;
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
   bool _isRevertingPage = false;
@@ -2295,10 +2381,49 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  /// Hands a [BoardPageRoute] the last viewed index as its result for pops
+  /// that carry none. Other routes keep their own result.
+  void _bindResultRoute(ModalRoute<Object?> route) {
+    final boardRoute = route is BoardPageRoute ? route : null;
+    if (identical(boardRoute, _resultRoute)) return;
+    _resultRoute?.unbindResult(this);
+    _resultRoute = boardRoute?..bindResult(this, () => _lastViewedIndex);
+  }
+
+  /// A back press the board refused to pop on, because something inside it
+  /// was open ([_BoardBackScope]). Closes one layer per press, innermost first.
+  void _closeInnermostOnBack(EventVideoSession? video) {
+    // Provider fullscreen (Android custom view) owns the first back.
+    if (_eventVideoHostKey.currentState?.closeFullscreenIfOpen() == true) {
+      return;
+    }
+    if (_BoardBackScope.videoExpanded(video)) {
+      video!.setExpanded(false);
+      return;
+    }
+    // Back dismisses the game switcher before it leaves the board: the panel
+    // outlives game changes, so it owns the first back.
+    if (_gameSwitcher.isOpen) {
+      _gameSwitcher.close(force: true);
+      return;
+    }
+    // An open Game Analysis report owns the next back, so the board is never
+    // yanked out from under it.
+    if (_gameReviewTarget.value != null) {
+      _closeGameReviewSheet();
+      return;
+    }
+    // Nothing is open any more: the press raced a close whose rebuild has not
+    // reached the scope yet. Leave, as the chevron does.
+    Navigator.of(context).pop(_lastViewedIndex);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    routeObserver.subscribe(this, ModalRoute.of(context)!);
+    final route = ModalRoute.of(context)!;
+    routeObserver.subscribe(this, route);
+    _bindResultRoute(route);
     // Baseline for the rotation/resize check in [didChangeMetrics].
     _metricsView = View.of(context);
     _lastMetricsSize = _metricsView!.physicalSize;
@@ -3157,6 +3282,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    _resultRoute?.unbindResult(this);
     WidgetsBinding.instance.removeObserver(this);
     PipService.instance.removeListener(_handlePipModeChanged);
     ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
@@ -3557,34 +3683,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           : '',
       eventTourIds: eventTourIds,
       child: withLikeFlightScope(
-        PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, result) {
-            if (didPop) return;
-            // Provider fullscreen (Android custom view) owns the first back.
-            if (_eventVideoHostKey.currentState?.closeFullscreenIfOpen() ==
-                true) {
-              return;
-            }
-            final video = _eventVideoHostKey.currentState?.session;
-            if (video?.expanded == true) {
-              video!.setExpanded(false);
-              return;
-            }
-            // Back dismisses the game switcher before it leaves the board —
-            // the panel now outlives game changes, so it owns the first back.
-            if (_gameSwitcher.isOpen) {
-              _gameSwitcher.close(force: true);
-              return;
-            }
-            // An open Game Analysis report owns the next back, so the board is
-            // never yanked out from under it.
-            if (_gameReviewTarget.value != null) {
-              _closeGameReviewSheet();
-              return;
-            }
-            Navigator.of(context).pop(_lastViewedIndex);
-          },
+        _BoardBackScope(
+          switcher: _gameSwitcher,
+          reviewTarget: _gameReviewTarget,
+          onBlockedBack: _closeInnermostOnBack,
           child: AnnotatedRegion<SystemUiOverlayStyle>(
             value:
                 (context.isLightTheme
@@ -5486,15 +5588,21 @@ class _AppBarState extends ConsumerState<_AppBar> {
         elevation: 0,
         backgroundColor: context.colors.background,
         surfaceTintColor: context.colors.background,
-        leadingWidth: 44.sp,
+        // Every pushed page's back ([PageBackButton]): the one glyph, size
+        // and x, at the leading inset.
+        leadingWidth:
+            SearchHeaderMetrics.leadingInset + SearchHeaderMetrics.backTarget,
         titleSpacing: 4.sp,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new,
-            color: context.colors.textPrimary,
-            size: 20.sp,
+        leading: Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: SearchHeaderMetrics.leadingInset,
           ),
-          onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
+          child: Center(
+            child: PageBackButton(
+              key: const ValueKey('board_back'),
+              onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
+            ),
+          ),
         ),
         title: widget.hideEventInfo
             ? Text(
@@ -10333,7 +10441,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   Widget _wrapWithFlipGesture(Widget child) {
     return Stack(
       clipBehavior: Clip.none,
-      children: [_wrapWithBoardGestures(child)],
+      // The board can sit on the screen's edge (eval bar hidden): a piece
+      // dragged from there must never start the page's back swipe.
+      children: [BoardEdgeGuard(child: _wrapWithBoardGestures(child))],
     );
   }
 

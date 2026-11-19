@@ -47,8 +47,8 @@ import 'fixtures/duo_window_matrix.dart';
 /// Every Feed post type starts and ends cleanly on a small, a common and a
 /// tall phone, in both themes, at the default and a large text size: nothing
 /// thrown, nothing cropped at the page edges, no text touching the sides,
-/// the one-line header, the board right under it, and the action row clear
-/// of the scrub line.
+/// the board block whole, and under it the chart, the scrub line and the
+/// one-line caption beside the action rail, nothing over the board.
 ///
 /// On-device checks this cannot make (for the report): the status bar icons
 /// flip with the theme; the bottom nav sits below the scrub line with no
@@ -203,7 +203,7 @@ void main() {
       final graphBefore = tester.getRect(
         find.byKey(const ValueKey('feed_evaluation_graph')),
       );
-      final actionsBefore = tester.getRect(find.byType(FeedActionRow));
+      final actionsBefore = tester.getRect(find.byType(FeedActionRail));
       Offset square(String name) {
         final square = Square.fromName(name);
         final side = board.width / 8;
@@ -221,7 +221,7 @@ void main() {
       expect(find.text('Your line'), findsOneWidget);
       // Playing a line shifts nothing: same board, same rows.
       expect(tester.getRect(find.byType(FeedLiveBoard)), board);
-      expect(tester.getRect(find.byType(FeedActionRow)), actionsBefore);
+      expect(tester.getRect(find.byType(FeedActionRail)), actionsBefore);
       final strip = tester.getRect(find.byType(FeedMoveStrip));
       expect(
         strip.height,
@@ -283,9 +283,15 @@ void main() {
           );
           expect(graph.top, greaterThanOrEqualTo(page.top));
           expect(graph.bottom, lessThanOrEqualTo(page.bottom));
-          expect(graph.left, greaterThanOrEqualTo(page.left + 16));
-          expect(graph.right, lessThanOrEqualTo(page.right - 16));
-          final header = tester.getRect(
+          expect(
+            graph.left,
+            greaterThanOrEqualTo(page.left + FeedLayout.boardGutter),
+          );
+          expect(
+            graph.right,
+            lessThanOrEqualTo(page.right - FeedLayout.boardGutter),
+          );
+          final caption = tester.getRect(
             find.byKey(const ValueKey('feed_post_header')),
           );
           final top = tester.getRect(
@@ -295,51 +301,84 @@ void main() {
           final bottom = tester.getRect(
             find.byKey(const ValueKey('feed_row_white')),
           );
-          final actions = tester.getRect(
+          final like = tester.getRect(
             find.byKey(const ValueKey('feed_like_button')),
           );
           final scrub = tester.getRect(find.byType(FeedScrubStrip));
-          final actionRow = tester.getRect(find.byType(FeedActionRow));
-          final counter = tester.getRect(
+          final rail = tester.getRect(find.byType(FeedActionRail));
+          final speed = tester.getRect(
             find.byKey(const ValueKey('feed_speed_button')),
           );
-
-          expect(header.height, closeTo(44, 0.01));
-          expect(board.width, closeTo(board.height, 0.01));
-          // Surfaces share the board column; toolbar contents have their
-          // own centered rhythm rather than being pinned to its edges.
-          expect(bottom.right, closeTo(board.right, 0.01));
-          expect(actionRow.left, closeTo(bottom.left, 0.01));
-          expect(actionRow.right, closeTo(board.right, 0.01));
-          expect(graph.left, closeTo(bottom.left, 0.01));
-          expect(graph.right, closeTo(board.right, 0.01));
-          expect(counter.right, closeTo(board.right, 0.01));
-          final buttons = find.descendant(
-            of: find.byType(FeedActionRow),
-            matching: find.byType(FeedActionLabel),
+          final evalBar = tester.getRect(
+            find.byKey(const ValueKey('feed_eval_bar')),
           );
-          final cellWidth = actionRow.width / buttons.evaluate().length;
-          for (var i = 0; i < buttons.evaluate().length; i++) {
-            final label = buttons.at(i);
-            final expectedCenter = actionRow.left + cellWidth * (i + 0.5);
-            final word = tester.getRect(
-              find.descendant(of: label, matching: find.byType(Text)),
-            );
-            expect(word.center.dx, closeTo(expectedCenter, 0.01));
+
+          // The caption: one 44pt line at the zone's foot, beside Like.
+          expect(caption.height, closeTo(44, 0.01));
+          expect(caption.bottom, closeTo(like.bottom, 0.5));
+          expect(caption.top, greaterThanOrEqualTo(scrub.bottom - 0.5));
+          expect(caption.right, lessThanOrEqualTo(rail.left + 0.01));
+          expect(board.width, closeTo(board.height, 0.01));
+          // The board column: eval bar and board, the rows over and under
+          // it, the zone under it all on the same left edge, the rail on
+          // the board's right edge.
+          expect(bottom.right, closeTo(board.right, 0.01));
+          expect(top.left, closeTo(evalBar.left, 0.01));
+          expect(bottom.left, closeTo(evalBar.left, 0.01));
+          expect(graph.left, closeTo(evalBar.left, 0.01));
+          expect(caption.left, closeTo(evalBar.left, 0.01));
+          expect(rail.right, closeTo(board.right, 0.01));
+          expect(rail.width, closeTo(FeedLayout.railWidth, 0.01));
+          expect(graph.right + FeedLayout.railGap, closeTo(rail.left, 0.01));
+          expect(speed.right + FeedLayout.railGap, closeTo(rail.left, 0.01));
+          // The rail's cells, glyph over word, stacked to its foot: Analyze,
+          // Share, Save, Like, Like nearest the thumb. Each is a full
+          // target, its word centred under its glyph.
+          final cells = [
+            for (final key in [
+              'feed_analyze_button',
+              'feed_share_button',
+              'feed_save_button',
+              'feed_like_button',
+            ])
+              tester.getRect(find.byKey(ValueKey(key))),
+          ];
+          for (var i = 0; i < cells.length; i++) {
+            expect(cells[i].width, closeTo(FeedLayout.railWidth, 0.01));
+            expect(cells[i].height, greaterThanOrEqualTo(44));
+            if (i > 0) expect(cells[i].top, closeTo(cells[i - 1].bottom, 0.01));
           }
-          // Header, row, board, row: in order, tight, no stretch between.
-          expect(top.top, greaterThanOrEqualTo(header.bottom));
+          expect(like.bottom, closeTo(rail.bottom, 0.01));
+          for (final label in tester.widgetList<FeedActionLabel>(
+            find.descendant(
+              of: find.byType(FeedActionRail),
+              matching: find.byType(FeedActionLabel),
+            ),
+          )) {
+            final word = tester.getRect(
+              find.descendant(
+                of: find.byWidget(label),
+                matching: find.byType(Text),
+              ),
+            );
+            final glyph = tester.getRect(find.byWidget(label.icon));
+            expect(word.center.dx, closeTo(glyph.center.dx, 0.01));
+            expect(word.left, greaterThanOrEqualTo(rail.left));
+            expect(word.right, lessThanOrEqualTo(rail.right));
+          }
+          // Row, board, row: in order, tight, no stretch between. Nothing
+          // of the zone stands over the board: ranks 1 and 2 and the
+          // h-file stay clear.
           expect(board.top, greaterThanOrEqualTo(top.bottom));
-          expect(board.top - header.bottom, lessThanOrEqualTo(36));
+          expect(board.top - top.bottom, lessThanOrEqualTo(4.01));
           expect(bottom.top, greaterThanOrEqualTo(board.bottom));
-          expect(actions.bottom, lessThanOrEqualTo(scrub.top));
+          expect(rail.top, greaterThanOrEqualTo(bottom.bottom));
           final graphSlot = tester.getRect(find.byType(FeedEvaluationGraph));
-          expect(graphSlot.right, closeTo(board.right, 0.01));
-          expect(graphSlot.top, greaterThanOrEqualTo(actions.bottom));
+          expect(graphSlot.top, greaterThanOrEqualTo(bottom.bottom));
           expect(graphSlot.bottom, closeTo(scrub.top, 0.5));
-          expect(scrub.bottom, lessThanOrEqualTo(page.bottom + 0.5));
-          expect(header.top, greaterThanOrEqualTo(page.top));
-          _expectTextInside(tester, page);
+          expect(caption.bottom, lessThanOrEqualTo(page.bottom + 0.5));
+          expect(top.top, greaterThanOrEqualTo(page.top));
+          _expectTextInside(tester, page, margin: FeedLayout.boardGutter);
           await _tearDown(tester);
         });
 
@@ -353,15 +392,23 @@ void main() {
           final board = tester.getRect(
             find.byKey(const ValueKey('feed_puzzle_board')),
           );
+          // The caption, under the board beside the rail, as on a game
+          // post; the board on the game posts' geometry.
           expect(header.height, closeTo(44, 0.01));
-          expect(header.top, greaterThanOrEqualTo(page.top));
+          expect(header.top, greaterThan(board.bottom));
+          expect(header.bottom, lessThanOrEqualTo(page.bottom + 0.5));
           expect(board.width, closeTo(board.height, 0.01));
-          expect(board.top - header.bottom, lessThanOrEqualTo(36));
+          final next = tester.getRect(
+            find.byKey(const ValueKey('feed_puzzle_next')),
+          );
+          expect(next.bottom, closeTo(header.bottom, 0.5));
+          expect(next.right, closeTo(board.right, 0.01));
+          expect(next.left, greaterThanOrEqualTo(header.right));
           expect(
             find.byKey(const ValueKey('feed_header_difficulty')),
             findsOneWidget,
           );
-          _expectTextInside(tester, page);
+          _expectTextInside(tester, page, margin: FeedLayout.boardGutter);
           await _tearDown(tester);
         });
 
@@ -448,10 +495,15 @@ Rect _pageRect(WidgetTester tester) {
   );
 }
 
-/// Every line of text on the current page sits inside it, at least 16pt
-/// from either side; lines inside a horizontal scroller (the move strip)
-/// are only checked against the page itself.
-void _expectTextInside(WidgetTester tester, Rect page) {
+/// Every line of text on the current page sits inside it, at least
+/// [margin] from either side (a page's reading gutter; a post's board
+/// gutter); lines inside a horizontal scroller (the move strip) are only
+/// checked against the page itself.
+void _expectTextInside(
+  WidgetTester tester,
+  Rect page, {
+  double margin = FeedLayout.sidePadding,
+}) {
   for (final element in find.byType(RichText).evaluate()) {
     final box = element.renderObject as RenderBox?;
     if (box == null || !box.hasSize || !box.attached) continue;
@@ -471,8 +523,16 @@ void _expectTextInside(WidgetTester tester, Rect page) {
     final text = (element.widget as RichText).text.toPlainText();
     expect(rect.top, greaterThanOrEqualTo(page.top - 0.5), reason: text);
     expect(rect.bottom, lessThanOrEqualTo(page.bottom + 0.5), reason: text);
-    expect(rect.left, greaterThanOrEqualTo(page.left + 15.5), reason: text);
-    expect(rect.right, lessThanOrEqualTo(page.right - 15.5), reason: text);
+    expect(
+      rect.left,
+      greaterThanOrEqualTo(page.left + margin - 0.5),
+      reason: text,
+    );
+    expect(
+      rect.right,
+      lessThanOrEqualTo(page.right - margin + 0.5),
+      reason: text,
+    );
   }
 }
 

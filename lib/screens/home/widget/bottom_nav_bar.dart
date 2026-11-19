@@ -7,15 +7,12 @@ import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
-import 'package:chessever2/screens/home/start_screen.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
+import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/phone_update_route_observer.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -387,62 +384,13 @@ Future<void> writeDefaultBottomTab(BottomNavBarItem item) async {
   await prefs?.setString(defaultBottomTabPrefsKey, item.name);
 }
 
-/// The phone's bottom bar: one large mark per section, no names drawn (each
-/// slot announces its own).
-class BottomNavBar extends ConsumerWidget {
+/// The phone's dock standing full: one large mark per section, no names
+/// drawn (each slot announces its own). The home shell builds
+/// [HomeNavDock] itself, on the section's chrome; this is the dock with
+/// none, for a page or a test that only needs the marks.
+class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(selectedBottomNavBarItemProvider);
-    final items = ref.watch(visibleBottomNavItemsProvider);
-    final unread = ref.watch(inboxHasUnreadProvider);
-    // Aspect-specific: `MediaQuery.of` subscribes this bar to viewInsets too,
-    // so it rebuilt on every frame of the software keyboard sliding in.
-    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-    final width = MediaQuery.sizeOf(context).width;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        border: Border(
-          top: BorderSide(color: context.colors.divider, width: 1.w),
-        ),
-      ),
-      // Each slot takes the device's bottom safe area into its own target,
-      // so the whole column under a tab answers.
-      // A fixed bar: every slot is its full height, safe area included, so
-      // no strip of it is dead.
-      child: SizedBox(
-        height: BottomNavBarWidget.barHeight + bottomPadding,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final item in items)
-              BottomNavBarWidget(
-                key: bottomNavBarItemKey(item),
-                width: width / items.length,
-                bottomInset: bottomPadding,
-                semanticsValue: item == BottomNavBarItem.profile && unread
-                    ? 'Unread Inbox messages'
-                    : null,
-                isSelected: selected == item,
-                dotId: bottomNavBarDotIds[item],
-                onTap: () => selectBottomNavBarItem(ref, item),
-                glyph: (ink, side) => bottomNavBarGlyph(
-                  item,
-                  ink: ink,
-                  side: side,
-                  selected: selected == item,
-                ),
-                title: namesBottomNavBarIcons[item]!,
-                onLongPress: () => unawaited(
-                  makeStartScreenDefault(context, ref, section: item),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const HomeNavDock();
 }

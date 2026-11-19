@@ -9,6 +9,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
     show smartEventSpaceDraft;
+import 'package:chessever2/screens/group_event/smart_event/smart_event_tiers.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
@@ -22,7 +23,6 @@ import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
@@ -32,11 +32,11 @@ import 'package:motor/motor.dart';
 
 // ------------------------------------------------------------------ options
 
-/// Level choices, in the Events filter's order: any rating, then the tier
-/// floors GM to CM. Taken from the dialog's own [RatingTierFilter.tiers].
+/// Level choices: any rating, then the tier floors Super GM to CM, from the
+/// one smart event tier table ([kSmartEventTiers]).
 List<int?> get kSmartBuilderLevels => [
   null,
-  for (final tier in RatingTierFilter.tiers) tier.minRating,
+  for (final tier in kSmartEventTiers) tier.floor,
 ];
 
 /// Time controls, slow to fast. The same [EventFormat] values the dialog
@@ -580,7 +580,10 @@ class _Controls extends StatelessWidget {
         _Group(
           label: 'Level',
           child: _LevelTrack(
-            selected: RatingTierFilter.normalizeMinRating(filter.minElo),
+            selected: switch (filter.minElo) {
+              final min? => smartTierAtOrBelow(min)?.floor,
+              null => null,
+            },
             onPick: onLevel,
           ),
         ),
@@ -624,7 +627,7 @@ class _Group extends StatelessWidget {
 
 // -------------------------------------------------------------------- level
 
-/// Any rating, GM, IM, FM, CM on one track. A thumb slides to the pick;
+/// Any rating, Super GM, GM, IM, FM, CM on one track. A thumb slides to the pick;
 /// the labels over it are a second, clipped copy in the thumb's ink, so
 /// every letter reads correctly on every frame of the slide.
 class _LevelTrack extends StatelessWidget {
@@ -745,7 +748,7 @@ class _ThumbClip extends CustomClipper<Rect> {
 
 String _levelCode(int? level) {
   if (level == null) return 'Any';
-  return RatingTierFilter.tiers.firstWhere((t) => t.minRating == level).label;
+  return smartTierForFloor(level)?.code ?? '$level';
 }
 
 String _levelFloor(int? level) => level == null ? 'rating' : '$level+';
@@ -808,14 +811,20 @@ class _LevelTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final code = _levelCode(level);
+    // The tier's name, never its track code: a screen reader spells "SGM"
+    // out letter by letter, so it hears "Super GM".
+    final floor = level;
+    final label = floor == null
+        ? 'Any rating'
+        : '${smartTierForFloor(floor)?.name ?? '$floor'}, '
+              'game average $floor+';
     return Semantics(
       key: ValueKey('smart-builder-level-${level ?? 'any'}'),
       container: true,
       button: true,
       selected: selected,
       inMutuallyExclusiveGroup: true,
-      label: level == null ? 'Any rating' : '$code, game average $level+',
+      label: label,
       onTap: onTap,
       excludeSemantics: true,
       child: GestureDetector(
@@ -1181,7 +1190,7 @@ class _Footer extends StatelessWidget {
         for (final s in kSmartBuilderStatuses) s.name,
       },
       eloRange: RangeValues(
-        RatingTierFilter.tiers.first.minRating.toDouble(),
+        kSmartEventTiers.first.floor.toDouble(),
         kFilterMaxElo,
       ),
       eco: filter.eco,

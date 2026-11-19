@@ -14,6 +14,7 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
     show filterBroadcastsByPopupState, liveBroadcastIdsProvider;
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_tiers.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
@@ -340,9 +341,22 @@ SmartEventRequest discoveryTierPreset({
   );
 }
 
+/// The built-in level smart events, each named for what the Search tab and
+/// tests mean by it, so none of them is found by its place in a list.
+final SmartEventRequest kSuperGmSmartPreset = _tierPreset('Super GM');
+final SmartEventRequest kGmSmartPreset = _tierPreset('GM');
+final SmartEventRequest kImSmartPreset = _tierPreset('IM');
+
+SmartEventRequest _tierPreset(String name) {
+  final tier = smartTierNamed(name)!;
+  return discoveryTierPreset(tier: tier.name, minElo: tier.floor);
+}
+
+/// Strongest first: Super GM (2700+), GM, IM.
 final List<SmartEventRequest> kDiscoverySmartPresets = [
-  discoveryTierPreset(tier: 'GM', minElo: 2500),
-  discoveryTierPreset(tier: 'IM', minElo: 2400),
+  kSuperGmSmartPreset,
+  kGmSmartPreset,
+  kImSmartPreset,
 ];
 
 /// At most this many Smart Events show on Discovery.

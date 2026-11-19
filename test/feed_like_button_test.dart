@@ -96,7 +96,18 @@ void main() {
       await _frames(tester, 5500);
       expect(find.text('2 selected'), findsOneWidget);
       expect(feed.likes.tagWrites, isEmpty);
-      await tester.tap(find.text('Save'));
+      // The picker's own Save (the post's rail keeps its Save beside it).
+      await tester.tap(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.byType(GridView),
+                matching: find.byType(Material),
+              )
+              .first,
+          matching: find.text('Save'),
+        ),
+      );
       await _frames(tester, 800);
       expect(feed.likes.tagWrites, hasLength(1));
       expect(feed.likes.tagWrites.single.$1, 'g0');

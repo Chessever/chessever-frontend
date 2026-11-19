@@ -23,6 +23,8 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_card.dart'
+    show SmartCardLead;
 import 'package:chessever2/widgets/event_card/smart_event_request_card.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
@@ -286,11 +288,16 @@ int searchSmartEventColumns(double width) {
 }
 
 /// One smart event card of a grid: [requests]`[index]` in its slot's key,
-/// opening through [onTap] when that gives one.
+/// opening through [onTap] when that gives one. Every grid here is on the
+/// Search tab, so the smart event it opens shows no Filters. A half card
+/// lays its plate across its width: every half card of a row here is a
+/// smart event, so the rows still line up. [lead] sets a row card on the
+/// grid it leads ([SearchSmartEventGrid.leadFullWidth]).
 Widget _smartEventCard(
   List<SmartEventRequest> requests,
   int index, {
   required bool stacked,
+  SmartCardLead? lead,
   VoidCallback? Function(int index)? onTap,
   Key? Function(int index)? keyFor,
 }) => KeyedSubtree(
@@ -298,7 +305,10 @@ Widget _smartEventCard(
   child: SmartEventRequestCard(
     request: requests[index],
     stacked: stacked,
+    fillPlate: stacked,
+    lead: lead,
     onTap: onTap?.call(index),
+    showFilters: false,
   ),
 );
 
@@ -336,16 +346,26 @@ Widget _smartEventRow(
 /// Smart events as My Space sets them: one alone is the full-width card;
 /// two or more are half cards, the plate over the words, side by side (more
 /// to a row on a tablet). Every half card reserves two title lines, so the
-/// rows line up whatever the names.
+/// rows line up whatever the names. With [leadFullWidth], an odd count on
+/// a phone leads with the full-width card (Super GM over GM and IM), so no
+/// row is left half empty. The lead sits on the grid under it: its plate
+/// the half cards' own over the first column, its words and star where the
+/// second column's stand, so the card that leads never draws the smallest
+/// board of the section.
 class SearchSmartEventGrid extends StatelessWidget {
   const SearchSmartEventGrid({
     super.key,
     required this.requests,
     this.onTap,
     this.keyFor,
+    this.leadFullWidth = false,
   });
 
   final List<SmartEventRequest> requests;
+
+  /// The first card takes a row of its own when the rest pair up. Off for
+  /// openings, whose room is held for an even grid before they land.
+  final bool leadFullWidth;
 
   /// Replaces the card's own open, per card.
   final VoidCallback? Function(int index)? onTap;
@@ -368,10 +388,30 @@ class SearchSmartEventGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = searchSmartEventColumns(constraints.maxWidth);
+        final lead = leadFullWidth && columns == 2 && requests.length.isOdd
+            ? 1
+            : 0;
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (var start = 0; start < requests.length; start += columns) ...[
+            if (lead == 1)
+              _smartEventCard(
+                requests,
+                0,
+                stacked: false,
+                lead: SmartCardLead(
+                  column: (constraints.maxWidth - searchCardGap) / 2,
+                  gap: searchCardGap,
+                ),
+                onTap: onTap,
+                keyFor: keyFor,
+              ),
+            for (
+              var start = lead;
+              start < requests.length;
+              start += columns
+            ) ...[
               if (start > 0) SizedBox(height: searchCardGap),
               _smartEventRow(
                 requests,

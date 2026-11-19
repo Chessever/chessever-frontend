@@ -1,6 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart'
+    show
+        FabEndOffsetX,
+        FabFloatOffsetY,
+        ScaffoldPrelayoutGeometry,
+        StandardFabLocation;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
@@ -11,7 +18,7 @@ import 'package:motor/motor.dart';
 /// Instagram and every browser do it: scrolling down a list pushes the top
 /// bar up off the screen with the finger, pixel for pixel; scrolling back up
 /// pulls it back the same way. When the finger lets go between the two, the
-/// bar settles on whichever side is nearer.
+/// bar settles the way the reader was heading.
 ///
 /// One controller per screen. A [ScrollChromeRegion] around the screen's
 /// scrolling content feeds it; [CollapsingChrome] (bars) and [SlidingFabs]
@@ -22,11 +29,20 @@ import 'package:motor/motor.dart';
 ///
 /// * the outermost vertical list of the region, by drag, fling and let-go;
 ///   never a horizontal scroll, a list nested in another, or a list too
-///   short to need the room ([minScrollRange]);
-/// * a let-go or a fling always settles it fully shown or fully gone;
-/// * a pull at the top, or the bounce at either end, never moves it;
-/// * the app moving the list any real distance, and a switch of tab or
-///   page, bring it back;
+///   short to need the room ([minRange]);
+/// * a finger moves it only once it has travelled [listTurn] one way, and
+///   turns it round only after [listTurn] back: a thumb resting on the
+///   glass never pumps the bars;
+/// * a let-go settles it the way the finger was heading, a fling the way
+///   the fling goes; it is never left part-way, and once the finger has let
+///   go nothing else in that scroll moves it (the bounce at an end, a page
+///   landing under the fling, the list drifting);
+/// * at either end, a finger past the edge never moves it; a push for more
+///   at the end sends it away on let-go, a pull at the top brings it home;
+/// * the app moving the list (a jump, a restore, keeping the reader's place
+///   as rows arrive) never moves it, unless that scroll ends at the top or
+///   carries the reader a screen or more; a switch of tab or page, a new
+///   list and a list put back at its top bring it back;
 /// * a focused text field ([held], or any field in the region), reduced
 ///   motion and a screen reader keep it shown;
 /// * a paged region ([ScrollChromeRegion.paged]) follows the direction of
@@ -67,16 +83,14 @@ class ScrollChromeController extends ChangeNotifier
   /// moves (a tab switch, a scroll to the top), where the list may move.
   ScrollPosition? _carried;
 
-  /// Spring steps not yet given back to [_carried], in pixels.
-  double _pendingCarry = 0;
+  /// Spring steps not yet given back to [_carried], in [value] units.
+  double _pendingStep = 0;
 
   void _onMotion() {
     final v = value;
     final step = v - _lastValue;
     _lastValue = v;
-    if (_carried != null && step != 0 && _topExtent > 0) {
-      _pendingCarry += step * _topExtent;
-    }
+    if (_carried != null && step != 0) _pendingStep += step;
     notifyListeners();
   }
 
@@ -88,21 +102,87 @@ class ScrollChromeController extends ChangeNotifier
   /// its fling from there.
   void _flushCarry() {
     final list = _carried;
-    final by = _pendingCarry;
-    _pendingCarry = 0;
-    if (list != null && by != 0 && list.hasPixels) {
-      // Hiding gives the list room at its top, so it is put back by as much;
-      // coming back takes room, so it is pushed on. Near the top the list
-      // has nothing to give: there it moves with the bar.
-      final room = list.pixels - list.minScrollExtent;
-      if (by < 0 || room > _topExtent) list.correctBy(by);
-    }
+    final step = _pendingStep;
+    _pendingStep = 0;
+    if (list != null && step != 0) _give(list, step);
     if (!_motion.isAnimating) _carried = null;
   }
 
+  /// Moves [list] so its content holds still on screen while the chrome
+  /// changes by [step] (negative leaving), never out of the range it is
+  /// about to have.
+  void _give(ScrollPosition list, double step) {
+    if (_topExtent <= 0 || !_live(list) || !list.hasContentDimensions) return;
+    final by = _carryFor(list, step);
+    if (by == 0) return;
+    list.correctBy(by);
+    _see(list);
+  }
+
+  /// How far to move [list] for a spring step of [step] (see [_give]).
+  ///
+  /// Leaving gives the list room at its top, so it is put back by as much,
+  /// but never above its first row: near the top the list goes up with the
+  /// bar instead (a short first scroll is never undone by the list springing
+  /// back). At its end it also follows the bottom bar down, by the room that
+  /// bar gives up, instead of bouncing back down after it. Coming back takes
+  /// room, so the list is pushed on; near its top it comes down with the
+  /// bar instead.
+  ///
+  /// A list past either end is in its bounce, which its physics brings
+  /// back: it is left alone. Pulled into its range mid-bounce it would
+  /// restart as a fling at the bounce's speed and run off the other way.
+  double _carryFor(ScrollPosition list, double step) {
+    final pixels = list.pixels;
+    if (pixels < list.minScrollExtent - 0.5 ||
+        pixels > list.maxScrollExtent + 0.5) {
+      return 0;
+    }
+    final top = _topExtent;
+    final anchor = _anchorOf(list);
+    // What the list's viewport gains (negative: loses) as the bars move.
+    final grow = -(top + _bottomFold) * step;
+    var by = _holdStill(top, anchor, step);
+    if (step < 0) {
+      final maxAfter = list.maxScrollExtent - (1 - anchor) * grow;
+      final minAfter = list.minScrollExtent + anchor * grow;
+      by = math.min(by, maxAfter - pixels);
+      by = math.max(by, math.min(0.0, minAfter - pixels));
+    } else if (pixels - list.minScrollExtent <= top) {
+      by = 0;
+    }
+    return by;
+  }
+
+  /// The correction that keeps a list's content still on screen while the
+  /// chrome changes by [step]: the top bar moves the viewport's top edge,
+  /// and a viewport anchored part-way down ([RenderViewport.anchor], as
+  /// ScrollablePositionedList anchors its list) moves its anchor with the
+  /// viewport's height too.
+  double _holdStill(double top, double anchor, double step) =>
+      top * step - anchor * (top + _bottomFold) * step;
+
   /// A list that scrolls less than this never moves the chrome: there is
-  /// nothing to make room for.
+  /// nothing to make room for. The floor of [minRange].
   static const double minScrollRange = 160;
+
+  /// A list that scrolls less than this never moves the chrome: at least
+  /// [minScrollRange], and never less than the bars' own travel and a
+  /// little more, so a list never runs out of room part-way through
+  /// folding them.
+  double get minRange =>
+      math.max(minScrollRange, _topExtent + _bottomFold + 48);
+
+  /// How far a finger has to travel one way before the bars follow it, and
+  /// how far back before they turn round: past a thumb's wobble, so a reader
+  /// resting on the glass never pumps the bars. Travel past it goes to the
+  /// bars 1:1.
+  static const double listTurn = 16;
+
+  /// How long a list has to stay too short to scroll before the chrome comes
+  /// back for it, so a list that empties for a moment (a skeleton swapped,
+  /// a section hiding itself while it reloads) never flashes the bars.
+  static const Duration shortGrace = Duration(milliseconds: 150);
 
   /// How much of the chrome is on screen: 1 shown, 0 gone.
   @override
@@ -125,10 +205,15 @@ class ScrollChromeController extends ChangeNotifier
   /// follows the list, over this much travel.
   double _bottomExtent = 0;
 
+  /// What the bottom bar hands the list's viewport as it folds away: its
+  /// height when it folds out of the layout, 0 when it slides over the
+  /// content ([CollapsingChrome.overlay]) or reports nothing.
+  double _bottomFold = 0;
+
   /// Where the chrome is headed: the value it rests at, or the one its
-  /// spring is carrying it to. A paged region asks for a side only when it
-  /// is not already headed there, so a finger holding still on a line never
-  /// restarts the spring.
+  /// spring is carrying it to. A region asks for a side only when it is not
+  /// already headed there, so a finger holding still never restarts the
+  /// spring.
   double _aim = 1;
 
   /// The travel that takes the chrome all the way out.
@@ -218,12 +303,54 @@ class ScrollChromeController extends ChangeNotifier
   /// Settles snap instead of springing.
   bool reduceMotion = false;
 
-  void _reportExtent(VerticalDirection edge, double height) {
+  void _reportExtent(
+    VerticalDirection edge,
+    double height, {
+    required bool folds,
+  }) {
     if (edge == VerticalDirection.up) {
+      final was = _topExtent;
       _topExtent = height;
+      // A bar arriving (or one withdrawn) is not a resize.
+      if (folds && was > 0 && height > 0) _holdThroughResize(height - was);
     } else {
       _bottomExtent = height;
+      _bottomFold = folds ? height : 0;
     }
+  }
+
+  /// The top bar's height changed by [delta] (a row growing in under the
+  /// title, a header swapped for another) while it is part-way out. What
+  /// shows of it changes by [value] of that, which would push the list's
+  /// content by as much under the reader's finger: the list being scrolled
+  /// (or carried by a spring) is moved with it, so the content holds still.
+  ///
+  /// Run from the bar's own layout, which comes before the list's in the
+  /// frame, like [_flushCarry]. Shown, the bar's growth is the page's own
+  /// layout and moves the content as any header would; gone, nothing of it
+  /// shows.
+  void _holdThroughResize(double delta) {
+    final v = value;
+    if (delta.abs() < 0.5 || v <= 0 || v >= 1) return;
+    final list = _moving ?? _carried;
+    if (!_live(list) || !list!.hasContentDimensions) return;
+    final pixels = list.pixels;
+    // A list in its bounce is left to its physics.
+    if (pixels < list.minScrollExtent - 0.5 ||
+        pixels > list.maxScrollExtent + 0.5) {
+      return;
+    }
+    final shown = v * delta;
+    // The viewport's top moves by what shows; an anchored viewport's anchor
+    // moves with its height too ([_holdStill]).
+    var by = shown * (1 - _anchorOf(list));
+    // Never out of the range the list is about to have: growing, the bar
+    // takes viewport (more room at the end); shrinking, it gives some.
+    by = math.max(by, list.minScrollExtent - pixels);
+    by = math.min(by, list.maxScrollExtent + math.max(0.0, shown) - pixels);
+    if (by.abs() < 0.01) return;
+    list.correctBy(by);
+    _see(list);
   }
 
   void _setNow(double value) {
@@ -231,7 +358,7 @@ class ScrollChromeController extends ChangeNotifier
     _aim = next;
     // A finger (or the app) takes over from a spring carrying the list.
     _carried = null;
-    _pendingCarry = 0;
+    _pendingStep = 0;
     if (_motion.isAnimating) _motion.stop(canceled: true);
     if ((_motion.value - next).abs() < 1e-6) return;
     // Notifies through the listener in the constructor.
@@ -246,12 +373,7 @@ class ScrollChromeController extends ChangeNotifier
       final from = value;
       _setNow(target);
       // No spring to carry the list: give it the whole step at once.
-      if (carry != null && carry.hasPixels && _topExtent > 0) {
-        final by = (target - from) * _topExtent;
-        if (by < 0 || carry.pixels - carry.minScrollExtent > _topExtent) {
-          carry.correctBy(by);
-        }
-      }
+      if (carry != null && carry.hasPixels) _give(carry, target - from);
       return;
     }
     if ((value - target).abs() < 1e-3 && !_motion.isAnimating) {
@@ -259,13 +381,16 @@ class ScrollChromeController extends ChangeNotifier
       return;
     }
     _aim = target;
+    // Steps the spring has not yet given back belong to the list it was
+    // carrying, never to another.
+    if (!identical(carry, _carried)) _pendingStep = 0;
     _carried = carry;
     _motion.animateTo(target);
   }
 
   /// Springs the chrome to [target] unless it is already there or on its
-  /// way: what a paged region asks for, frame after frame, as the reader
-  /// pages. Sending it away waits on [enabled] and [held] like [hide].
+  /// way: what a region asks for, frame after frame, as the reader scrolls
+  /// or pages. Sending it away waits on [enabled] and [held] like [hide].
   void _headFor(double target) {
     if (target < 1 && (!_enabled || _holding)) return;
     if (_aim == target && (_motion.isAnimating || value == target)) return;
@@ -285,6 +410,7 @@ class ScrollChromeController extends ChangeNotifier
   /// carrying that list with it.
   void _settleOver(ScrollNotification notification, double target) {
     if (target < 1 && (!_enabled || _holding)) return;
+    if (_aim == target && _motion.isAnimating) return;
     _settleTo(target, carry: _positionOf(notification));
   }
 
@@ -292,6 +418,7 @@ class ScrollChromeController extends ChangeNotifier
     if (!_enabled || _holding || _travel <= 0) return false;
     if (metrics.axis != Axis.vertical) return false;
     if (axisDirectionIsReversed(metrics.axisDirection)) return false;
+    if (!metrics.hasContentDimensions) return false;
     // The range as it would be with the chrome shown: hiding the bars grew
     // the viewport by what they gave up (the top bar above the list, the
     // bottom bar under it), which shrank the range by as much. Counting both
@@ -300,34 +427,68 @@ class ScrollChromeController extends ChangeNotifier
     final range =
         metrics.maxScrollExtent -
         metrics.minScrollExtent +
-        (1 - value) * (_topExtent + _bottomExtent);
-    return range >= minScrollRange;
+        (1 - value) * (_topExtent + _bottomFold);
+    return range >= minRange;
   }
 
-  /// The current scroll session began with a finger on the list: updates
-  /// with no finger after it are its fling. A scroll that began without one
-  /// is the app moving the list (a restore, a jump to a round, a scroll to
-  /// the top), which never sends the chrome away and, once it has moved the
-  /// list any real distance ([_jumpToShow]), brings it back.
-  bool _fromDrag = false;
+  /// What is moving the list in the current scroll.
+  _Mover _mover = _Mover.none;
 
-  /// This scroll went past the end of the list: what follows is the list
-  /// springing back, down to its very last frame, not the reader heading up.
-  bool _pastEnd = false;
+  /// The list the current scroll is on.
+  ScrollPosition? _moving;
 
-  /// How far the app has moved the list in the current scroll that no finger
+  /// Where the current finger is heading, as far as the bars are concerned:
+  /// 1 on (they leave), -1 back (they come), 0 not decided yet. Every
+  /// scroll starts undecided; [listTurn] of travel decides it.
+  int _way = 0;
+
+  /// While undecided, the finger's travel so far (signed); once decided,
+  /// how far the finger has come back against [_way] from the furthest it
+  /// went.
+  double _against = 0;
+
+  /// The chrome's value when the current scroll began.
+  double _startValue = 1;
+
+  /// How far the app has moved the list in the current scroll no finger
   /// started.
-  double _jumped = 0;
+  double _appTravel = 0;
 
-  /// The distance an app's own scroll has to cover before it brings the
-  /// chrome back: a bar's height, so the small nudges a list gives itself
-  /// (keeping a field in view, holding its place as rows load) never do.
-  double get _jumpToShow => _topExtent > 0 ? _topExtent : 48;
+  /// Per list: where the chrome last saw it (or put it). A list whose
+  /// metrics arrive somewhere else was moved without a scroll (a settle,
+  /// a correction); one with none here is new.
+  final Expando<double> _seen = Expando<double>('scrollChromeSeen');
+
+  /// The pending check that a list too short to scroll is still too short
+  /// ([shortGrace]) before the chrome comes back for it.
+  Timer? _shortTimer;
+  ScrollPosition? _shortList;
+
+  void _see(ScrollPosition? list) {
+    if (list != null && list.hasPixels) _seen[list] = list.pixels;
+  }
+
+  /// Nothing is moving the chrome or the list it reads: no finger, no
+  /// fling, no app scroll, no spring.
+  bool _isIdle() {
+    if (_mover != _Mover.none && !_live(_moving)) {
+      // The list went away mid-scroll (its page was rebuilt): the scroll
+      // ended with it.
+      _mover = _Mover.none;
+      _moving = null;
+    }
+    return _mover == _Mover.none && !_motion.isAnimating;
+  }
 
   /// The list's size changed without a scroll (it was filtered, a page
-  /// loaded or went away). One that can no longer scroll enough to need the
-  /// room brings the chrome back: with nothing to scroll, the reader could
-  /// never bring it back by scrolling up.
+  /// loaded or went away, it was rebuilt or put back at its top).
+  ///
+  /// * A new list, or one the app moved to its top without scrolling it,
+  ///   brings the chrome back: at the top the bars are home.
+  /// * One that can no longer scroll enough to need the room brings the
+  ///   chrome back once it has stayed that way for [shortGrace]: with
+  ///   nothing to scroll, the reader could never bring it back by scrolling
+  ///   up; a list that empties for a moment never flashes the bars.
   bool handleMetrics(ScrollMetricsNotification notification) {
     final metrics = notification.metrics;
     if (metrics.axis != Axis.vertical ||
@@ -345,13 +506,78 @@ class ScrollChromeController extends ChangeNotifier
       }
       return false;
     }
-    if (value < 1 && !_holding && _enabled && !_movable(metrics)) {
-      // Not from within a layout pass that is sizing the bars: after it.
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (!_disposed && value < 1) show();
-      });
+    final list = _positionOf(notification);
+    if (list == null) return false;
+    final seen = _seen[list];
+    if (value >= 1 ||
+        _holding ||
+        !_enabled ||
+        !metrics.hasContentDimensions ||
+        !metrics.hasPixels) {
+      _see(list);
+      return false;
     }
+    if (!_movable(metrics)) {
+      // Where it was seen is kept: a list that comes back long at its top
+      // was still put there without a scroll.
+      _checkShortSoon(list);
+      return false;
+    }
+    final top = metrics.minScrollExtent + 0.5;
+    if (metrics.pixels <= top && (seen == null || seen > top)) {
+      // Put at its top without a scroll, or new. While something is still
+      // moving, the next metrics look again.
+      if (_isIdle()) {
+        _see(list);
+        _whenOutOfFrame(show);
+      }
+      return false;
+    }
+    _see(list);
     return false;
+  }
+
+  void _checkShortSoon(ScrollPosition? list) {
+    if (list == null) return;
+    _shortList = list;
+    _shortTimer ??= Timer(shortGrace, _checkShort);
+  }
+
+  void _checkShort() {
+    _shortTimer = null;
+    final list = _shortList;
+    if (_disposed || list == null) return;
+    if (value >= 1 ||
+        _holding ||
+        !_enabled ||
+        !_live(list) ||
+        !list.hasContentDimensions ||
+        _movable(list)) {
+      _shortList = null;
+      return;
+    }
+    if (!_isIdle()) {
+      // The reader (or the app) is still moving it: look again after.
+      _shortTimer = Timer(shortGrace, _checkShort);
+      return;
+    }
+    _shortList = null;
+    show();
+  }
+
+  /// Runs [action] now, or after the frame when called from inside one
+  /// (a build or a layout must never start the bars moving).
+  void _whenOutOfFrame(VoidCallback action) {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) action();
+      });
+      SchedulerBinding.instance.scheduleFrame();
+      return;
+    }
+    action();
   }
 
   /// Reads one scroll notification. Returns false so it keeps bubbling.
@@ -365,92 +591,223 @@ class ScrollChromeController extends ChangeNotifier
       _onPage(notification);
       return false;
     }
-    if (notification is ScrollStartNotification) {
-      _fromDrag = notification.dragDetails != null;
-      _pastEnd = false;
-      _jumped = 0;
-    } else if (notification is ScrollUpdateNotification) {
-      _onUpdate(notification, metrics);
-    } else if (notification is ScrollEndNotification ||
-        (notification is UserScrollNotification &&
-            notification.direction == ScrollDirection.idle)) {
-      if (notification is ScrollEndNotification) {
-        _fromDrag = false;
-        _pastEnd = false;
-        _jumped = 0;
-      }
-      final v = value;
-      if (v > 0 && v < 1 && !_motion.isAnimating) {
-        // Let go between the two: the bar settles on the nearer side and the
-        // list holds still under it. Never left part-way.
-        _settleOver(notification, v >= 0.5 ? 1 : 0);
-      }
-    } else if (notification is OverscrollNotification &&
-        notification.overscroll < 0) {
-      if (value < 1) show();
+    final list = _positionOf(notification);
+    switch (notification) {
+      case ScrollStartNotification(:final dragDetails):
+        _begin(dragDetails != null ? _Mover.finger : _Mover.app, list);
+      case ScrollUpdateNotification():
+        _onUpdate(notification, metrics, list);
+      case OverscrollNotification():
+        _onOverscroll(notification, metrics, list);
+      case ScrollEndNotification():
+        _end(notification, metrics);
+      case UserScrollNotification(direction: ScrollDirection.idle):
+        _end(notification, metrics);
+      default:
+        break;
     }
+    _see(list);
     return false;
   }
 
-  void _onUpdate(ScrollUpdateNotification notification, ScrollMetrics m) {
-    // At the top (or pulled past it) the chrome is always home.
-    if (m.pixels <= m.minScrollExtent + 0.5) {
-      if (value < 1) show();
-      return;
-    }
+  void _begin(_Mover mover, ScrollPosition? list) {
+    _mover = mover;
+    _moving = list;
+    _way = 0;
+    _against = 0;
+    _startValue = value;
+    _appTravel = 0;
+  }
+
+  void _onUpdate(
+    ScrollUpdateNotification notification,
+    ScrollMetrics m,
+    ScrollPosition? list,
+  ) {
     final delta = notification.scrollDelta ?? 0;
-    if (delta == 0 || !_movable(m)) return;
-
-    if (notification.dragDetails == null) {
-      // Springing back from a pull past the end is the list settling, not
-      // the reader heading back up: the bars stay away.
-      if (m.pixels > m.maxScrollExtent) _pastEnd = true;
-      if (_motion.isAnimating || _pastEnd) return;
-      if (_fromDrag) {
-        // A fling carries the chrome the rest of the way, in the fling's
-        // direction: the bar springs away while the list flows on under it,
-        // or back while the list flows back.
-        if (delta < 0 && value < 1) {
-          _settleOver(notification, 1);
-        } else if (delta > 0 && value > 0) {
-          _settleOver(notification, 0);
-        }
-        return;
-      }
-      // The app moving the list itself: towards the top, or any real
-      // distance, brings the chrome back. The list may move: not carried.
-      _jumped += delta.abs();
-      if (value < 1 && (delta < 0 || _jumped >= _jumpToShow)) show();
+    if (notification.dragDetails != null) {
+      if (_mover != _Mover.finger) _begin(_Mover.finger, list);
+      _onFinger(notification, m, delta);
       return;
     }
-    _fromDrag = true;
+    switch (_mover) {
+      case _Mover.finger:
+        // The finger has let go and the list runs on without it: the bars'
+        // way is decided here, once, for the rest of this scroll.
+        _mover = _Mover.fling;
+        _onLetGo(notification, m, delta);
+      case _Mover.fling:
+        // Decided: the bounce at an end, a page landing under the fling
+        // and the list's drift never move the bars.
+        break;
+      case _Mover.app:
+      case _Mover.none:
+        _appTravel += delta.abs();
+    }
+  }
 
-    // Bouncing past the end: leave the bars where they are, so the finger
-    // turning round in the bounce never pulls them back in.
+  /// One step of a finger on the list.
+  void _onFinger(
+    ScrollUpdateNotification notification,
+    ScrollMetrics m,
+    double delta,
+  ) {
+    if (delta == 0) return;
+    final top = m.minScrollExtent;
+    // At the top heading up, or pulled past it: the bars are home.
+    if (m.pixels < top || (m.pixels <= top + 0.5 && delta < 0)) {
+      _home();
+      return;
+    }
+    if (!_movable(m)) return;
     if (m.pixels > m.maxScrollExtent) {
-      _pastEnd = true;
+      // Past the end: the finger never moves the bars here. A push for
+      // more leans on (the bars leave when it lets go); easing back in the
+      // bounce is the list's rubber band, not the reader heading back.
+      if (delta > 0) _steer(delta);
       return;
     }
-    if (_topExtent <= 0) {
+    final take = _steer(delta);
+    if (take != 0) _take(notification, take);
+  }
+
+  /// A finger pushing past an end the list does not bounce at.
+  void _onOverscroll(
+    OverscrollNotification notification,
+    ScrollMetrics m,
+    ScrollPosition? list,
+  ) {
+    if (notification.dragDetails == null) return;
+    if (_mover != _Mover.finger) _begin(_Mover.finger, list);
+    final overscroll = notification.overscroll;
+    if (overscroll < 0) {
+      _home();
+    } else if (overscroll > 0 && _movable(m)) {
+      // A pull for more at the end: on, but the bars stay where they are
+      // until the finger lets go.
+      _steer(overscroll);
+    }
+  }
+
+  /// The bars are home: at the top, heading up.
+  void _home() {
+    _way = -1;
+    _against = 0;
+    _headFor(1);
+  }
+
+  /// Runs [delta] of finger travel through the turn ([listTurn]) and returns
+  /// how much of it goes to the bars: positive sends them away, negative
+  /// brings them back, 0 leaves them.
+  double _steer(double delta) {
+    final dir = delta > 0 ? 1 : -1;
+    if (_way == 0) {
+      _against += delta;
+      if (_against.abs() < listTurn) return 0;
+      _way = _against > 0 ? 1 : -1;
+      final beyond = _against.abs() - listTurn;
+      _against = 0;
+      return _way * beyond;
+    }
+    if (dir == _way) {
+      _against = math.max(0.0, _against - delta.abs());
+      return delta;
+    }
+    _against += delta.abs();
+    if (_against < listTurn) return 0;
+    _way = dir;
+    final beyond = _against - listTurn;
+    _against = 0;
+    return _way * beyond;
+  }
+
+  /// Gives [amount] of the finger's travel to the bars (positive away,
+  /// negative back), as far as they can go, and puts the list back by what
+  /// they took.
+  void _take(ScrollNotification notification, double amount) {
+    final top = _topExtent;
+    if (top <= 0) {
       // Only a bottom bar: it leaves from under the list, which never moves
       // the content, so it simply follows the finger.
-      _setNow(value - delta / _bottomExtent);
+      _setNow(value - amount / _bottomExtent);
       return;
     }
-    final extent = _topExtent;
-    final double take;
-    if (delta > 0) {
-      // Reading on: the bar goes first.
-      take = math.min(delta, value * extent);
-      if (take <= 0) return;
-      _setNow(value - take / extent);
-      _putListBack(notification, -take);
+    final room = amount > 0 ? value * top : (1 - value) * top;
+    final take = math.min(amount.abs(), room);
+    if (take <= 0) return;
+    final step = (amount > 0 ? -take : take) / top;
+    _setNow(value + step);
+    _putListBack(notification, step);
+  }
+
+  /// The finger has let go and the list runs on ([delta] its first step
+  /// without the finger).
+  void _onLetGo(ScrollNotification notification, ScrollMetrics m, double d) {
+    final pastAnEnd =
+        m.pixels < m.minScrollExtent || m.pixels > m.maxScrollExtent;
+    if (!pastAnEnd && d != 0) {
+      // A fling: the bars go its way, the list flowing on under them.
+      if (_movable(m)) _settleOver(notification, d > 0 ? 0 : 1);
+      return;
+    }
+    // The list springing back from past an end is not a fling: the finger's
+    // own way decides, as if it had let go still.
+    _settleByWay(notification, m);
+  }
+
+  /// A let-go with no fling: the bars settle the way the finger was
+  /// heading (away on, home back); a finger that never decided leaves them
+  /// where they were.
+  void _settleByWay(ScrollNotification notification, ScrollMetrics m) {
+    final double target;
+    if (_way > 0) {
+      target = 0;
+    } else if (_way < 0) {
+      target = 1;
     } else {
-      // Heading back: the bar comes back first, wherever the list is.
-      take = math.min(-delta, (1 - value) * extent);
-      if (take <= 0) return;
-      _setNow(value + take / extent);
-      _putListBack(notification, take);
+      final v = value;
+      if (_motion.isAnimating || v == 0 || v == 1) return;
+      target = _startValue >= 0.5 ? 1 : 0;
+    }
+    if (target == 0 && !_movable(m)) {
+      // A list that cannot take the bars away never leaves them part-way.
+      if (value > 0 && value < 1) _settleOver(notification, 1);
+      return;
+    }
+    if (value == target && !_motion.isAnimating) return;
+    _settleOver(notification, target);
+  }
+
+  /// A scroll ended: the finger let go without a fling, a fling came to
+  /// rest, or the app's own scroll is done.
+  void _end(ScrollNotification notification, ScrollMetrics m) {
+    final mover = _mover;
+    _mover = _Mover.none;
+    _moving = null;
+    switch (mover) {
+      case _Mover.finger:
+        _settleByWay(notification, m);
+      case _Mover.app:
+        // The app's own scroll: home when it ends at the top, or when it
+        // has carried the reader a screen or more. Its small moves (keeping
+        // a field in view, holding the reader's place as rows arrive, an
+        // edit grid scrolling under a lifted card) never move the bars.
+        if (value < 1 &&
+            m.hasPixels &&
+            m.hasContentDimensions &&
+            (m.pixels <= m.minScrollExtent + 0.5 ||
+                (m.hasViewportDimension &&
+                    _appTravel >= m.viewportDimension))) {
+          show();
+        }
+      case _Mover.fling:
+      case _Mover.none:
+        break;
+    }
+    // Never left part-way.
+    final v = value;
+    if (v > 0 && v < 1 && !_motion.isAnimating) {
+      _settleOver(notification, v >= 0.5 ? 1 : 0);
     }
   }
 
@@ -524,6 +881,10 @@ class ScrollChromeController extends ChangeNotifier
     }
   }
 
+  /// In a paged region, the current scroll began with a finger on the
+  /// pager: updates with no finger after it are its fling.
+  bool _fromDrag = false;
+
   /// One step of the reader's paging (their drag, or the fling after it),
   /// [at] pixels from the first page. See [_onPage].
   void _follow(double at, double viewport, {required bool finger}) {
@@ -551,28 +912,92 @@ class ScrollChromeController extends ChangeNotifier
     }
   }
 
-  static ScrollPosition? _positionOf(ScrollNotification notification) =>
-      notification.context
-          ?.findAncestorStateOfType<ScrollableState>()
-          ?.position;
+  static ScrollPosition? _positionOf(Notification notification) {
+    final BuildContext? context = switch (notification) {
+      ScrollNotification(:final context) => context,
+      ScrollMetricsNotification(:final context) => context,
+      _ => null,
+    };
+    return context?.findAncestorStateOfType<ScrollableState>()?.position;
+  }
 
-  /// Undoes [by] of the list's last step: the bar took it.
-  static void _putListBack(ScrollNotification notification, double by) {
-    final position = _positionOf(notification);
-    if (position == null || !position.hasPixels) return;
-    position.correctBy(by);
+  /// Whether [list] still belongs to a mounted scrollable.
+  static bool _live(ScrollPosition? list) =>
+      list != null &&
+      list.hasPixels &&
+      list.context.notificationContext != null;
+
+  /// Where [list]'s viewport anchors its scroll offset, as a share of its
+  /// height from the top: 0 for every ordinary list, the item alignment for
+  /// a ScrollablePositionedList. Found by walking down from the scrollable
+  /// to its viewport (a handful of single-child boxes).
+  static double _anchorOf(ScrollPosition list) {
+    final context = list.context.notificationContext;
+    if (context == null) return 0;
+    // A list taken out of the tree earlier in this frame (its page rebuilt
+    // while a spring still carries it) is still reachable until the frame
+    // ends, and has no render object to ask.
+    var active = true;
+    assert(() {
+      active = context is! Element || context.debugIsActive;
+      return true;
+    }());
+    if (!active) return 0;
+    RenderObject? node = context.findRenderObject();
+    for (var depth = 0; node != null && depth < 16; depth++) {
+      if (node is RenderViewport) return node.anchor;
+      if (node is RenderAbstractViewport) return 0;
+      RenderObject? only;
+      var children = 0;
+      node.visitChildren((child) {
+        children++;
+        only = child;
+      });
+      if (children != 1) return 0;
+      node = only;
+    }
+    return 0;
+  }
+
+  /// Undoes the list's share of the last finger step: the bars took it
+  /// ([step] of [value]).
+  void _putListBack(ScrollNotification notification, double step) {
+    final list = _positionOf(notification);
+    if (list == null || !list.hasPixels) return;
+    list.correctBy(_holdStill(_topExtent, _anchorOf(list), step));
+    _see(list);
   }
 
   @override
   void dispose() {
     _disposed = true;
     _carried = null;
-    _pendingCarry = 0;
+    _pendingStep = 0;
+    _shortTimer?.cancel();
+    _shortTimer = null;
+    _shortList = null;
+    _moving = null;
     _motion
       ..removeListener(_onMotion)
       ..dispose();
     super.dispose();
   }
+}
+
+/// What is moving a list in the current scroll ([ScrollChromeController]).
+enum _Mover {
+  /// No scroll is under way.
+  none,
+
+  /// A finger is on the list.
+  finger,
+
+  /// The finger has let go and the list runs on: a fling, or the list
+  /// springing back from past an end.
+  fling,
+
+  /// The app, with no finger: a jump, a restore, an animated scroll.
+  app,
 }
 
 /// A [ScrollChromeController] owned by a hook widget.
@@ -772,12 +1197,22 @@ class CollapsingChrome extends StatelessWidget {
     required this.child,
     this.edge = VerticalDirection.up,
     this.overlay = false,
+    this.reportsExtent = true,
   });
 
   final ScrollChromeController controller;
   final Widget child;
   final VerticalDirection edge;
   final bool overlay;
+
+  /// Off, the bar's height never counts: it is not the chrome's travel, and
+  /// no list makes room for it ([ScrollChromeController.minRange]). For an
+  /// [overlay] bar over content that already keeps clear of it.
+  ///
+  /// A bar that only changes shape with the chrome and never leaves (a
+  /// dock that shrinks) needs neither: it listens to the controller's
+  /// [ScrollChromeController.value] itself and reports nothing.
+  final bool reportsExtent;
 
   /// Whether [context] is inside a [CollapsingChrome]: a bar there already
   /// leaves with it, and must not fold a second time.
@@ -792,6 +1227,8 @@ class CollapsingChrome extends StatelessWidget {
       child: _ReportHeight(
         controller: controller,
         edge: edge,
+        folds: !overlay,
+        reports: reportsExtent,
         child: RepaintBoundary(child: _InsideCollapsingChrome(child: child)),
       ),
       builder: (context, child) {
@@ -836,33 +1273,55 @@ class _InsideCollapsingChrome extends InheritedWidget {
 /// Floating buttons that slide down off the screen with the chrome and come
 /// back up with it. They keep their place in the layout, so nothing under
 /// them moves; while away they take no taps.
+///
+/// With [ride] they never leave: they ride down [ride] as the chrome goes
+/// (over a dock that shrinks by as much but stays) and back up as it comes,
+/// in view, tappable and announced the whole way.
 class SlidingFabs extends StatelessWidget {
-  const SlidingFabs({super.key, required this.controller, required this.child});
+  const SlidingFabs({
+    super.key,
+    required this.controller,
+    required this.child,
+    this.ride,
+  });
 
   final ScrollChromeController? controller;
   final Widget child;
+
+  /// How far the buttons ride down with the chrome gone, instead of
+  /// leaving. Their slot is [ride] taller than the buttons, reaching down to
+  /// where they stand with the chrome gone, so a tap anywhere on them lands
+  /// at every point of the ride. Put the slot there with
+  /// `floatingActionButtonLocation: RidingFabLocation(ride)`: the buttons
+  /// then rest exactly where [StandardFabLocation]'s end-float corner puts
+  /// them (without it they rest [ride] higher).
+  final double? ride;
 
   @override
   Widget build(BuildContext context) {
     final chrome = controller;
     if (chrome == null) return child;
+    final ride = this.ride;
     // Off the bottom of the window, measured from where the buttons really
     // sit: the Scaffold strips the safe-area inset inside its button slot,
     // so a distance built from the inset stopped short and left the buttons
     // peeking at the rounded corner.
-    final window = MediaQuery.sizeOf(context).height;
+    final window = ride == null ? MediaQuery.sizeOf(context).height : 0.0;
     return AnimatedBuilder(
       animation: chrome,
       child: child,
       builder: (context, child) {
         final shown = chrome.value;
+        // One shape either way, so the buttons keep their state when a
+        // screen starts or stops riding.
         return IgnorePointer(
-          ignoring: shown < 0.5,
+          ignoring: ride == null && shown < 0.5,
           child: ExcludeSemantics(
-            excluding: shown <= 0,
+            excluding: ride == null && shown <= 0,
             child: _SlideDown(
               fraction: 1 - shown,
               window: window,
+              ride: ride,
               child: child!,
             ),
           ),
@@ -873,53 +1332,89 @@ class SlidingFabs extends StatelessWidget {
 }
 
 /// Reports its child's laid-out height to the controller as the [edge]
-/// bar's, and withdraws it when it leaves the tree.
+/// bar's (and whether it [folds] out of the layout), and withdraws it when
+/// it leaves the tree. With [reports] off it reports nothing.
 class _ReportHeight extends SingleChildRenderObjectWidget {
   const _ReportHeight({
     required this.controller,
     required this.edge,
+    required this.folds,
+    required this.reports,
     required Widget super.child,
   });
 
   final ScrollChromeController controller;
   final VerticalDirection edge;
+  final bool folds;
+  final bool reports;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderReportHeight(controller, edge);
+      _RenderReportHeight(controller, edge, folds: folds, reports: reports);
 
   @override
   void updateRenderObject(
     BuildContext context,
     _RenderReportHeight renderObject,
   ) {
-    renderObject.update(controller, edge);
+    renderObject.update(controller, edge, folds: folds, reports: reports);
   }
 }
 
 class _RenderReportHeight extends RenderProxyBox {
-  _RenderReportHeight(this._controller, this._edge);
+  _RenderReportHeight(
+    this._controller,
+    this._edge, {
+    required this._folds,
+    required this._reports,
+  });
 
   ScrollChromeController _controller;
   VerticalDirection _edge;
+  bool _folds;
+  bool _reports;
 
-  void update(ScrollChromeController controller, VerticalDirection edge) {
-    if (identical(controller, _controller) && edge == _edge) return;
-    _controller._reportExtent(_edge, 0);
+  void update(
+    ScrollChromeController controller,
+    VerticalDirection edge, {
+    required bool folds,
+    required bool reports,
+  }) {
+    if (identical(controller, _controller) &&
+        edge == _edge &&
+        folds == _folds &&
+        reports == _reports) {
+      return;
+    }
+    _withdraw();
     _controller = controller;
     _edge = edge;
-    if (hasSize) _controller._reportExtent(_edge, size.height);
+    _folds = folds;
+    _reports = reports;
+    if (hasSize) _report();
+  }
+
+  void _report() {
+    if (_reports) {
+      _controller._reportExtent(_edge, size.height, folds: _folds);
+    }
+  }
+
+  void _withdraw() {
+    if (_reports && !_controller._disposed) {
+      _controller._reportExtent(_edge, 0, folds: false);
+    }
   }
 
   @override
   void performLayout() {
     super.performLayout();
-    _controller._reportExtent(_edge, size.height);
+    _report();
   }
 
   @override
   void detach() {
-    if (!_controller._disposed) _controller._reportExtent(_edge, 0);
+    _withdraw();
     super.detach();
   }
 }
@@ -956,13 +1451,46 @@ class _RenderCarryFlush extends RenderProxyBox {
   }
 }
 
+/// Where a Scaffold stands buttons that ride a dock ([SlidingFabs.ride]):
+/// the end-float corner, lowered by [ride]. The buttons' slot, [ride]
+/// taller than they are, then reaches from where they stand with the chrome
+/// shown (exactly where the end-float corner puts them) down to where they
+/// stand with it gone.
+class RidingFabLocation extends StandardFabLocation
+    with FabEndOffsetX, FabFloatOffsetY {
+  const RidingFabLocation(this.ride);
+
+  /// The [SlidingFabs.ride] of the buttons in the slot.
+  final double ride;
+
+  @override
+  double getOffsetY(
+    ScaffoldPrelayoutGeometry scaffoldGeometry,
+    double adjustment,
+  ) => super.getOffsetY(scaffoldGeometry, adjustment) + ride;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RidingFabLocation && other.ride == ride;
+
+  @override
+  int get hashCode => ride.hashCode;
+
+  @override
+  String toString() => 'RidingFabLocation($ride)';
+}
+
 /// Moves [child] down by [fraction] of the way from where it sits to just
 /// past the bottom of the window, without changing its layout. Fully away,
 /// the buttons and their one-light shadow are wholly off the screen.
+///
+/// With [ride], [child] moves down [fraction] of [ride] instead, inside a
+/// box [ride] taller than it, so it takes taps at every point of the ride.
 class _SlideDown extends SingleChildRenderObjectWidget {
   const _SlideDown({
     required this.fraction,
     required this.window,
+    this.ride,
     required Widget super.child,
   });
 
@@ -971,25 +1499,30 @@ class _SlideDown extends SingleChildRenderObjectWidget {
   /// The window's height, in the same logical pixels as the layout.
   final double window;
 
+  final double? ride;
+
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderSlideDown(fraction: fraction, window: window);
+      _RenderSlideDown(fraction: fraction, window: window, ride: ride);
 
   @override
   void updateRenderObject(BuildContext context, _RenderSlideDown renderObject) {
     renderObject
       ..fraction = fraction
-      ..window = window;
+      ..window = window
+      ..ride = ride;
   }
 }
 
 class _RenderSlideDown extends RenderProxyBox {
-  _RenderSlideDown({required double fraction, required double window})
-    : _fraction = fraction,
-      _window = window;
+  _RenderSlideDown({
+    required this._fraction,
+    required this._window,
+    this._ride,
+  });
 
-  /// Past the window's edge by the buttons' shadow (10 blur, 4 down), so no
-  /// smear is left behind.
+  /// Past the window's edge by the buttons' one-light glass shadow (at most
+  /// 6 blur, 2 down) with room to spare, so no smear is left behind.
   static const double _shadowReach = 16;
 
   double _fraction;
@@ -1006,12 +1539,54 @@ class _RenderSlideDown extends RenderProxyBox {
     markNeedsPaint();
   }
 
+  double? _ride;
+  set ride(double? value) {
+    if (value == _ride) return;
+    _ride = value;
+    markNeedsLayout();
+  }
+
   double get _dy {
     if (_fraction <= 0 || !attached || !hasSize) return 0;
+    final ride = _ride;
+    if (ride != null) return _fraction * ride;
     final top = localToGlobal(Offset.zero).dy;
     final travel = math.max(0.0, _window - top + _shadowReach);
     return _fraction * travel;
   }
+
+  @override
+  void performLayout() {
+    final ride = _ride;
+    final child = this.child;
+    if (ride == null || child == null) {
+      super.performLayout();
+      return;
+    }
+    child.layout(constraints.loosen(), parentUsesSize: true);
+    size = constraints.constrain(
+      Size(child.size.width, child.size.height + ride),
+    );
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    final ride = _ride;
+    final child = this.child;
+    if (ride == null || child == null) {
+      return super.computeDryLayout(constraints);
+    }
+    final inner = child.getDryLayout(constraints.loosen());
+    return constraints.constrain(Size(inner.width, inner.height + ride));
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      super.computeMinIntrinsicHeight(width) + (_ride ?? 0);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      super.computeMaxIntrinsicHeight(width) + (_ride ?? 0);
 
   @override
   void paint(PaintingContext context, Offset offset) {

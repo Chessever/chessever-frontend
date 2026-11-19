@@ -20,7 +20,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -100,12 +100,17 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      final state = ref.read(miniaturesPaginatedProvider);
-      if (!state.isLoading && state.hasMore) {
-        ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
-      }
+    _loadMoreNearEnd(_scrollController.position);
+  }
+
+  /// The next page, once the reader is near the end. Read on every scroll
+  /// and on every change of the list's own measure: the header folding away
+  /// grows the viewport (and shrinks what is left below) without a scroll.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
+    if (metrics.extentAfter > 200) return;
+    final state = ref.read(miniaturesPaginatedProvider);
+    if (!state.isLoading && state.hasMore) {
+      ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
     }
   }
 
@@ -276,34 +281,45 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        key: PageStorageKey<String>('miniatures_games_list_${viewMode.index}'),
-        controller: _scrollController,
-        scrollCacheExtent: kListScrollCacheExtent,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (notification) {
+          if (notification.depth == 0 &&
+              notification.metrics.axis == Axis.vertical) {
+            _loadMoreNearEnd(notification.metrics);
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          key: PageStorageKey<String>(
+            'miniatures_games_list_${viewMode.index}',
+          ),
+          controller: _scrollController,
+          scrollCacheExtent: kListScrollCacheExtent,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
+            SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+            SliverLayoutBuilder(
+              builder: (context, constraints) => shown == null
+                  ? SliverToBoxAdapter(child: _buildSkeletonList())
+                  : _buildContentSliver(
+                      shown,
+                      viewMode,
+                      constraints.crossAxisExtent,
+                      held: held,
+                    ),
+            ),
+            // Clear of the floating search button at the list's end (its
+            // square, and the margin that lifts it over the home indicator);
+            // the button's room gives way on the search's own timeline while
+            // nothing floats there.
+            SearchModeListEnd.sliver(
+              base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+              buttons: InkFabStack.extent(),
+            ),
+          ],
         ),
-        slivers: [
-          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-          SliverLayoutBuilder(
-            builder: (context, constraints) => shown == null
-                ? SliverToBoxAdapter(child: _buildSkeletonList())
-                : _buildContentSliver(
-                    shown,
-                    viewMode,
-                    constraints.crossAxisExtent,
-                    held: held,
-                  ),
-          ),
-          // Clear of the floating search button at the list's end (its
-          // square, and the margin that lifts it over the home indicator);
-          // the button's room gives way on the search's own timeline while
-          // nothing floats there.
-          SearchModeListEnd.sliver(
-            base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
-            buttons: InkFabSize.regular.side + kFloatingActionButtonMargin,
-          ),
-        ],
       ),
     );
 
@@ -618,36 +634,33 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
 
     if (entry is _MiniatureFooterEntry) {
-      switch (entry.type) {
-        case _MiniatureFooterType.loading:
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 24.h),
-            child: Center(
-              child: SizedBox(
-                width: 24.w,
-                height: 24.h,
-                child: CircularProgressIndicator(
-                  color: context.colors.textPrimary,
-                  strokeWidth: 2,
-                ),
-              ),
-            ),
-          );
-        case _MiniatureFooterType.spacer:
-          return SizedBox(height: 60.h);
-        case _MiniatureFooterType.end:
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: Center(
-              child: Text(
-                'No more miniatures',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFF52525B),
-                ),
-              ),
-            ),
-          );
-      }
+      // One slot whatever it holds (room, the spinner, the end), as tall as
+      // the tallest of them: the list's end never moves as a page starts or
+      // lands, so the bars and the reader's place hold still at the very
+      // point the next page is asked for.
+      final Widget? shown = switch (entry.type) {
+        _MiniatureFooterType.loading => SizedBox(
+          width: 24.w,
+          height: 24.h,
+          child: CircularProgressIndicator(
+            color: context.colors.textPrimary,
+            strokeWidth: 2,
+          ),
+        ),
+        _MiniatureFooterType.spacer => null,
+        _MiniatureFooterType.end => Text(
+          'No more miniatures',
+          style: AppTypography.textXsRegular.copyWith(
+            color: const Color(0xFF52525B),
+          ),
+        ),
+      };
+      return ConstrainedBox(
+        key: const ValueKey('miniatures_games_list_end'),
+        // Grows past it only for text scaled beyond what it was sized for.
+        constraints: BoxConstraints(minHeight: 72.h),
+        child: Center(child: shown),
+      );
     }
 
     return const SizedBox.shrink();

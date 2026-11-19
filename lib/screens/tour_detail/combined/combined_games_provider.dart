@@ -6,13 +6,13 @@ import 'package:chessever2/screens/tour_detail/combined/combined_group_expansion
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_live_game_ids.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
@@ -340,8 +340,13 @@ final combinedGamesPresentationProvider =
       final liveFirst = combinedLiveGamesFirst(ref.watch, {
         for (final section in source.sections) section.category.tourId,
       });
+      // What it lifts is what its capsule counts: every category's games in
+      // play by the server, watched only while it is on.
+      final liveIds = liveFirst
+          ? ref.watch(combinedGamesServerLiveIdsProvider)
+          : null;
       List<GamesTourModel> ordered(List<GamesTourModel> games) =>
-          liveFirst ? applyCurrentLiveFocusOrder(games: games) : games;
+          liveFirst ? eventLiveFocusOrder(games, liveIds) : games;
 
       final rounds = <GamesAppBarModel>[];
       final gamesByRound = <String, List<GamesTourModel>>{};

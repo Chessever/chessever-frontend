@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -548,7 +549,13 @@ void main() {
 
       expect(segments.hitTestable(), findsOneWidget);
       expect(date.hitTestable(), findsOneWidget);
-      expect(tester.getTopLeft(segments).dy, top);
+      // The controls keep their place under the top bar, which steps
+      // away as the list scrolls down.
+      final chrome = ScrollChromeScope.maybeOf(tester.element(segments))!;
+      expect(
+        tester.getTopLeft(segments).dy,
+        moreOrLessEquals(top - chrome.extent * (1 - chrome.value)),
+      );
       expect(tester.takeException(), isNull);
       await _teardown(tester, container);
     });

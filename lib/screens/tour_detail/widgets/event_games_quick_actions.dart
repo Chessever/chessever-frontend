@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_live_game_ids.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
@@ -12,6 +14,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expans
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/widgets.dart' show BuildContext, ModalRoute;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // The event Games tab's list controls (Trello #1420): Live first (a floating
@@ -54,16 +58,14 @@ enum EventLiveFirstPress { turnedOn, turnedOff, nothingLive }
 /// Presses Live first in the event's Games list.
 ///
 /// Turning it off always works. Turning it on needs a game in play among the
-/// games on screen; with none it stays off and returns
+/// games on screen ([eventGamesAnyLiveProvider]: the server's count once it
+/// has answered); with none it stays off and returns
 /// [EventLiveFirstPress.nothingLive], for the caller to say so.
 EventLiveFirstPress pressEventGamesLiveFirst(EventProviderReader read) {
   if (read(combinedCategorySelectedProvider)) {
     final tourIds = read(combinedCategoriesProvider).tourIds;
     final isOn = combinedLiveGamesFirst(read, tourIds);
-    if (!isOn &&
-        !_anyLive(
-          read(combinedGamesPresentationProvider).gamesByRound.values,
-        )) {
+    if (!isOn && !read(eventGamesAnyLiveProvider)) {
       return EventLiveFirstPress.nothingLive;
     }
     final next = isOn ? GameDisplayMode.all : GameDisplayMode.hideFinishedGames;
@@ -75,7 +77,7 @@ EventLiveFirstPress pressEventGamesLiveFirst(EventProviderReader read) {
 
   final screen = read(gamesTourScreenProvider).valueOrNull;
   final isOn = screen?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
-  if (!isOn && !_anyLive(read(gamesTourGroupedProvider).gamesByRound.values)) {
+  if (!isOn && !read(eventGamesAnyLiveProvider)) {
     return EventLiveFirstPress.nothingLive;
   }
   // Switching the order rebuilds the screen model from every game, which
@@ -96,10 +98,35 @@ EventLiveFirstPress pressEventGamesLiveFirst(EventProviderReader read) {
   return isOn ? EventLiveFirstPress.turnedOff : EventLiveFirstPress.turnedOn;
 }
 
+/// The games in play in the event's Games list (single category or
+/// Combined, every category): the server's set (`get_live_game_ids`)
+/// limited to the boards the list shows, less any it already shows as
+/// finished. The same set Live first lifts, so the count and the lift
+/// agree. Null until the server answers (or on a backend that cannot).
+final eventGamesLiveIdsProvider = Provider.autoDispose<Set<String>?>((ref) {
+  if (ref.watch(combinedCategorySelectedProvider)) {
+    final live = ref.watch(combinedGamesServerLiveIdsProvider);
+    return eventLiveIdsAmong(live, [
+      for (final games
+          in ref.watch(combinedGamesPresentationProvider).gamesByRound.values)
+        ...games,
+    ]);
+  }
+  final grouped = ref.watch(gamesTourGroupedProvider);
+  final live = watchEventServerLiveIds(ref.watch, grouped.liveScopes);
+  return eventLiveIdsAmong(live, [
+    for (final games in grouped.gamesByRound.values) ...games,
+  ]);
+});
+
 /// Whether a game is in play in the event's Games list (single category or
 /// Combined). Live first floats over the list only while this holds (Trello
-/// #1420): with nothing live it has nothing to do.
+/// #1420): with nothing live it has nothing to do. Until the server answers,
+/// the boards' own status decides, so a backend that cannot say keeps the
+/// capsule (with no number).
 final eventGamesAnyLiveProvider = Provider.autoDispose<bool>((ref) {
+  final live = ref.watch(eventGamesLiveIdsProvider);
+  if (live != null) return live.isNotEmpty;
   if (ref.watch(combinedCategorySelectedProvider)) {
     return _anyLive(
       ref.watch(combinedGamesPresentationProvider).gamesByRound.values,
@@ -109,26 +136,89 @@ final eventGamesAnyLiveProvider = Provider.autoDispose<bool>((ref) {
 });
 
 /// How many games are in play in the event's Games list (single category or
-/// Combined), each board once however many sections list it: the count Live
-/// first shows ("See 3 live").
-final eventGamesLiveCountProvider = Provider.autoDispose<int>((ref) {
-  if (ref.watch(combinedCategorySelectedProvider)) {
-    return _liveCount(
-      ref.watch(combinedGamesPresentationProvider).gamesByRound.values,
-    );
-  }
-  return _liveCount(ref.watch(gamesTourGroupedProvider).gamesByRound.values);
-});
-
-bool _anyLive(Iterable<List<GamesTourModel>> rounds) => rounds.any(
-  (games) => games.any((game) => GameFilterHelper.isLiveNow(game)),
+/// Combined, every category), each board once however many sections list
+/// it: the count Live first shows ("See 3 live"). Null while unknown ("See
+/// live").
+final eventGamesLiveCountProvider = Provider.autoDispose<int?>(
+  (ref) => ref.watch(eventGamesLiveIdsProvider)?.length,
 );
 
-int _liveCount(Iterable<List<GamesTourModel>> rounds) => {
-  for (final games in rounds)
-    for (final game in games)
-      if (GameFilterHelper.isLiveNow(game)) game.gameId,
-}.length;
+bool _anyLive(Iterable<List<GamesTourModel>> rounds) => rounds.any(
+  (games) => games.any((game) => GameFilterHelper.isInPlay(game)),
+);
+
+/// The event Games list's live-game polls that are running (the floating
+/// buttons' count keeps them alive): only what already runs, nothing is
+/// started from here.
+List<LiveGameIdsNotifier> _runningEventLivePolls(WidgetRef ref) {
+  final List<EventLiveGamesScope> scopes;
+  if (ref.read(combinedCategorySelectedProvider)) {
+    scopes = ref.exists(combinedGamesLiveScopeProvider)
+        ? [?ref.read(combinedGamesLiveScopeProvider)]
+        : const <EventLiveGamesScope>[];
+  } else {
+    scopes = ref.exists(gamesTourGroupedProvider)
+        ? ref.read(gamesTourGroupedProvider).liveScopes
+        : const <EventLiveGamesScope>[];
+  }
+  return [
+    for (final scope in scopes)
+      if (ref.exists(eventLiveGameIdsProvider(scope)))
+        ref.read(eventLiveGameIdsProvider(scope).notifier),
+  ];
+}
+
+/// Pauses the event Games list's live-game polls while the list is out of
+/// view, another tab in front of it ([gamesInView] false) or a route (a
+/// board) over the page, and resumes them as it comes back
+/// ([LiveGameIdsNotifier.visible]). With Live first on, the Games list keeps
+/// them running from its kept-alive tab, so without this they would poll
+/// every 5 s under Standings, and under a board opened from it.
+///
+/// Call from the build of the event's floating buttons, on every tab: they
+/// rebuild as the tab changes and as the page is covered or uncovered. A
+/// poll Live first starts later in the same frame (a category picked from
+/// another tab) is paused once the frame is done.
+void syncEventGamesLiveIdsVisibility(
+  BuildContext context,
+  WidgetRef ref, {
+  required bool gamesInView,
+}) {
+  final visible = gamesInView && (ModalRoute.isCurrentOf(context) ?? true);
+  _setEventLivePollsVisible(ref, visible);
+  final scheduled = _eventLivePollsHiddenAfterFrame[context] != null;
+  if (visible) {
+    // A pause still due from earlier in this frame no longer holds.
+    if (scheduled) _eventLivePollsHiddenAfterFrame[context] = false;
+    return;
+  }
+  // One check per frame, with the buttons' latest wish.
+  _eventLivePollsHiddenAfterFrame[context] = true;
+  if (scheduled) return;
+  SchedulerBinding.instance.addPostFrameCallback((_) {
+    final hidden = _eventLivePollsHiddenAfterFrame[context] ?? false;
+    _eventLivePollsHiddenAfterFrame[context] = null;
+    if (hidden && context.mounted) _setEventLivePollsVisible(ref, false);
+  });
+}
+
+/// The buttons whose end-of-frame pause is pending: true while the list is
+/// still out of view by their latest build.
+final Expando<bool> _eventLivePollsHiddenAfterFrame = Expando<bool>(
+  'eventLivePollsHiddenAfterFrame',
+);
+
+void _setEventLivePollsVisible(WidgetRef ref, bool visible) {
+  for (final poll in _runningEventLivePolls(ref)) {
+    if (poll.visible != visible) poll.visible = visible;
+  }
+}
+
+/// Asks the server again for the event Games list's games in play: a pull
+/// to refresh takes the count along with the boards.
+Future<void> refreshEventGamesLiveIds(WidgetRef ref) => Future.wait<void>([
+  for (final poll in _runningEventLivePolls(ref)) poll.refresh(),
+]);
 
 /// The round (and knockout match) sections Collapse all acts on.
 @immutable

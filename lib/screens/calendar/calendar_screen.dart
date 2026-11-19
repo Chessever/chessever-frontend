@@ -27,6 +27,8 @@ import 'package:intl/intl.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -200,8 +202,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     if (canPop) ...[
-                      _CalendarBackButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
+                      // The app's one way back, its target starting at the
+                      // search header's inset like on every pushed page
+                      // (this row is already inset by its own gutter).
+                      Padding(
+                        padding: EdgeInsetsDirectional.only(
+                          start: math.max(
+                            0.0,
+                            SearchHeaderMetrics.leadingInset - 16.sp,
+                          ),
+                        ),
+                        child: const PageBackButton(),
                       ),
                       SizedBox(width: 4.w),
                     ],
@@ -1371,33 +1382,6 @@ class _FilterButton extends StatelessWidget {
               ],
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Back to wherever the calendar was opened from, on a 44pt target.
-class _CalendarBackButton extends StatelessWidget {
-  const _CalendarBackButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 44,
-      child: IconButton(
-        tooltip: 'Back',
-        padding: EdgeInsets.zero,
-        onPressed: () {
-          HapticFeedbackService.navigation();
-          onPressed();
-        },
-        icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: context.colors.iconPrimary,
-          size: 20.ic,
         ),
       ),
     );

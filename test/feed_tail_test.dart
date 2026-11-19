@@ -17,7 +17,9 @@ import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
+import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
@@ -767,11 +769,21 @@ void main() {
           counterWidest: '4/4',
         );
         expect(resting.left, closeTo(strip.left + run.trackLeft, 0.5));
+        // The chart ends where the rail begins, beside it: the board's
+        // right edge less the rail and its gap.
+        final rail = tester.getRect(find.byType(FeedActionRail));
+        expect(resting.right, closeTo(rail.left - FeedLayout.railGap, 0.01));
         expect(
-          resting.right,
+          rail.right,
           closeTo(tester.getRect(find.byType(FeedLiveBoard)).right, 0.01),
         );
-        expect(graph.top, greaterThanOrEqualTo(actions.bottom));
+        expect(
+          graph.top,
+          greaterThanOrEqualTo(
+            tester.getRect(find.byKey(const ValueKey('feed_row_white'))).bottom,
+          ),
+        );
+        expect(actions.left, greaterThanOrEqualTo(graph.right));
         expect(graph.bottom, closeTo(strip.top, 0.5));
         final gesture = await tester.startGesture(
           Offset(trackLeft + 30, strip.top + 18),

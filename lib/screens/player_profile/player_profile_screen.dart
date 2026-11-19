@@ -55,6 +55,7 @@ import 'package:chessever2/widgets/player_name_share_target.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
+import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -881,17 +882,21 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       backgroundColor: context.colors.background,
       // Games' search, in the thumb's reach where the search row above the
       // list used to be (Trello #1420). Filters, counted, sit on the list's
-      // toolbar, which is in view whenever this button is (both come back
-      // as the list scrolls up), and in the search header while searching:
-      // so the button carries no count of its own. Kept while searching:
-      // the host hides it and flies the glass back into it as the search
-      // closes.
+      // toolbar at its head and in the search header while searching, and
+      // the filter line under the profile's header (back whenever this
+      // button is) marks them anywhere in the list: so the button carries
+      // no count of its own. Kept while searching: the host hides it and
+      // flies the glass back into it as the search closes.
       floatingActionButton: SlidingFabs(
         controller: _chrome,
         child: selectedTab == PlayerProfileTab.games
-            ? SearchInkFab(
-                key: e2eKey(E2eIds.playerGamesSearchFab),
-                label: 'Search games',
+            ? InkFabStack(
+                children: [
+                  SearchInkFab(
+                    key: e2eKey(E2eIds.playerGamesSearchFab),
+                    label: 'Search games',
+                  ),
+                ],
               )
             : const SizedBox.shrink(),
       ),
@@ -902,107 +907,118 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 ? ResponsiveHelper.contentMaxWidth
                 : double.infinity,
           ),
-          child: Column(
+          child: Stack(
+            fit: StackFit.passthrough,
             children: [
-              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+              Column(
+                children: [
+                  SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
 
-              // The whole header folds up under the status bar as the list
-              // scrolls down and comes back as it scrolls up: name, tabs and
-              // the tab's actions together, so the list gains all of it.
-              CollapsingChrome(
-                controller: _chrome,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // The profile's header and the Games search take turns
-                    // here; the chevron holds its spot between them.
-                    SearchModeHeaderSlot(
-                      header: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildAppBar(
-                            context,
-                            isFavorite,
-                            effectiveFederation: effectiveFederation,
-                            effectiveName: effectiveName,
-                            effectiveTitle: effectiveTitle,
-                            hasPlayerExplorer: hasPlayerExplorer,
+                  // The whole header folds up under the status bar as the list
+                  // scrolls down and comes back as it scrolls up: name, tabs and
+                  // the tab's actions together, so the list gains all of it.
+                  CollapsingChrome(
+                    controller: _chrome,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // The profile's header and the Games search take turns
+                        // here; the chevron holds its spot between them.
+                        SearchModeHeaderSlot(
+                          header: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildAppBar(
+                                context,
+                                isFavorite,
+                                effectiveFederation: effectiveFederation,
+                                effectiveName: effectiveName,
+                                effectiveTitle: effectiveTitle,
+                                hasPlayerExplorer: hasPlayerExplorer,
+                              ),
+
+                              // Live streaks, one line under the name, only when
+                              // the line was there on the first frame (see
+                              // [_streakLineAboveTabs]).
+                              if (streakFideId != null &&
+                                  _streakLineAboveTabs == true)
+                                _ProfileStreakRow(
+                                  fideId: streakFideId,
+                                  playerName: effectiveName,
+                                ),
+
+                              SizedBox(height: 8.h),
+
+                              _buildTabSwitcher(selectedTab),
+
+                              // A live streak that arrives after first paint
+                              // opens here, under the tabs, so the tab bar never
+                              // moves.
+                              if (streakFideId != null &&
+                                  _streakLineAboveTabs == false)
+                                _ProfileStreakRow(
+                                  fideId: streakFideId,
+                                  playerName: effectiveName,
+                                  growIn: true,
+                                ),
+                              if (hasPlayerExplorer &&
+                                  selectedTab == PlayerProfileTab.about)
+                                _buildStudyOpeningRow(),
+                              if (selectedTab == PlayerProfileTab.games)
+                                _buildGamesActionButtons(
+                                  showStudyOpening: hasPlayerExplorer,
+                                  playerKey: activePlayerKey,
+                                  hasActiveFilter: hasActiveFilter,
+                                  knownTotalCount:
+                                      twicSummaryAsync.valueOrNull?.totalGames,
+                                ),
+                            ],
                           ),
-
-                          // Live streaks, one line under the name, only when
-                          // the line was there on the first frame (see
-                          // [_streakLineAboveTabs]).
-                          if (streakFideId != null &&
-                              _streakLineAboveTabs == true)
-                            _ProfileStreakRow(
-                              fideId: streakFideId,
-                              playerName: effectiveName,
+                          search: SearchModeHeader(
+                            hintText: 'Search',
+                            rotatingHints: _searchHintWords,
+                            textFieldKey: e2eKey(E2eIds.playerGamesSearchField),
+                            closeKey: const ValueKey(
+                              'player_games_search_close',
                             ),
+                            // The list's board view and Filters, as every Games
+                            // search header ends; its toolbar keeps the count.
+                            trailing: [
+                              PlayerGamesSearchControls(
+                                playerKey: activePlayerKey,
+                              ),
+                            ],
+                          ),
+                        ),
 
-                          SizedBox(height: 8.h),
-
-                          _buildTabSwitcher(selectedTab),
-
-                          // A live streak that arrives after first paint
-                          // opens here, under the tabs, so the tab bar never
-                          // moves.
-                          if (streakFideId != null &&
-                              _streakLineAboveTabs == false)
-                            _ProfileStreakRow(
-                              fideId: streakFideId,
-                              playerName: effectiveName,
-                              growIn: true,
-                            ),
-                          if (hasPlayerExplorer &&
-                              selectedTab == PlayerProfileTab.about)
-                            _buildStudyOpeningRow(),
-                          if (selectedTab == PlayerProfileTab.games)
-                            _buildGamesActionButtons(
-                              showStudyOpening: hasPlayerExplorer,
-                              playerKey: activePlayerKey,
-                              hasActiveFilter: hasActiveFilter,
-                              knownTotalCount:
-                                  twicSummaryAsync.valueOrNull?.totalGames,
-                            ),
-                        ],
-                      ),
-                      search: SearchModeHeader(
-                        hintText: 'Search',
-                        rotatingHints: _searchHintWords,
-                        textFieldKey: e2eKey(E2eIds.playerGamesSearchField),
-                        closeKey: const ValueKey('player_games_search_close'),
-                        // The list's board view and Filters, as every Games
-                        // search header ends; its toolbar keeps the count.
-                        trailing: [
-                          PlayerGamesSearchControls(playerKey: activePlayerKey),
-                        ],
-                      ),
-                    ),
-
-                    // Filter and loading line, right over the list under
-                    // either header: where a TWIC query shows it working
-                    // while the list it replaces stays on screen.
-                    _buildIndicatorBar(
-                      hasActiveFilter: hasActiveFilter,
-                      isTwicLoading: isTwicLoading,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Tab content
-              Expanded(
-                child: ScrollChromeRegion(
-                  controller: _chrome,
-                  child: ListenableBuilder(
-                    listenable: _search,
-                    builder: (context, _) => _buildTabContent(
-                      effectiveTitle: effectiveTitle,
-                      effectiveFederation: effectiveFederation,
+                        // Filter and loading line, right over the list under
+                        // either header: where a TWIC query shows it working
+                        // while the list it replaces stays on screen.
+                        _buildIndicatorBar(
+                          hasActiveFilter: hasActiveFilter,
+                          isTwicLoading: isTwicLoading,
+                        ),
+                      ],
                     ),
                   ),
-                ),
+
+                  // Tab content
+                  Expanded(
+                    child: ScrollChromeRegion(
+                      controller: _chrome,
+                      child: ListenableBuilder(
+                        listenable: _search,
+                        builder: (context, _) => _buildTabContent(
+                          effectiveTitle: effectiveTitle,
+                          effectiveFederation: effectiveFederation,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              // The way back while the header is folded away.
+              PageBackFloat(controller: _chrome),
             ],
           ),
         ),

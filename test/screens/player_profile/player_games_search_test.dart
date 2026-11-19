@@ -21,6 +21,7 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:fake_async/fake_async.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -412,6 +413,42 @@ void main() {
       expect(tester.getSize(end).height, lessThan(closed));
     });
 
+    testWidgets('the search floats in the floating stack, and the list\'s '
+        'toolbar heads the list instead of snapping back as a second header', (
+      tester,
+    ) async {
+      final pages = _Pages();
+      await _pumpProfile(tester, pages);
+      expect(
+        find.ancestor(
+          of: find.byKey(_fabKey),
+          matching: find.byType(InkFabStack),
+        ),
+        findsOneWidget,
+      );
+      final bar = tester.widget<SliverAppBar>(
+        find.ancestor(
+          of: find.byType(PlayerGamesListToolbar),
+          matching: find.byType(SliverAppBar),
+        ),
+      );
+      expect(bar.floating, isFalse);
+      expect(bar.snap, isFalse);
+      expect(bar.pinned, isFalse);
+    });
+
+    testWidgets('a first page that leaves the list\'s end in view asks '
+        'for the next one with no scroll', (tester) async {
+      final pages = _Pages()..more = true;
+      await _pumpProfile(tester, pages);
+      // Three games end well inside the screen and nothing scrolls: the
+      // list asks on its own. This pins the behaviour, not which of the
+      // list's two askers (the footer as it is built, the list's measure as
+      // the page lands) gets there first.
+      expect(pages.pageNumbers.first, 0);
+      expect(pages.pageNumbers, contains(1));
+    });
+
     testWidgets('system back closes the search before the profile', (
       tester,
     ) async {
@@ -458,6 +495,12 @@ class _Pages {
   bool hold = false;
   Completer<void>? _held;
 
+  /// The first page says more can come; the next one is empty and last.
+  bool more = false;
+
+  /// The page numbers asked for, in order.
+  final List<int> pageNumbers = [];
+
   static final List<GamesTourModel> all = [
     _game('a1', event: 'Event A', white: 'Nakamura', day: 3),
     _game('a2', event: 'Event A', white: 'Carlsen', day: 2),
@@ -469,6 +512,7 @@ class _Pages {
     int pageNumber,
   ) async {
     requests.add(state);
+    pageNumbers.add(pageNumber);
     if (hold) {
       hold = false;
       await (_held = Completer<void>()).future;
@@ -493,12 +537,13 @@ class _Pages {
         )
         // No blitz games on record.
         .where((_) => state.filter.timeControl != GameTimeControlFilter.blitz)
+        .where((_) => !more || pageNumber == 0)
         .toList();
     return (
       games: games,
-      hasMore: false,
-      nextPageNumber: 1,
-      totalCount: games.length,
+      hasMore: more && pageNumber == 0,
+      nextPageNumber: pageNumber + 1,
+      totalCount: more ? all.length : games.length,
     );
   }
 

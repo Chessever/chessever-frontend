@@ -11,6 +11,7 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/chessboard/board_page_route.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -623,7 +624,9 @@ class _GameCardWrapperProvider {
     final callerRoute = ModalRoute.of(context);
     var callerWasRevealed = false;
     SwipeCoachingVisit? swipeCoachingVisit;
-    final boardRoute = MaterialPageRoute<int>(
+    // Returns the last viewed index however the board is left: the chevron,
+    // the iOS edge swipe or Android back.
+    final boardRoute = BoardPageRoute(
       builder: (_) {
         final board = _ExpandingChessBoardScreen(
           swipeCoachingVisit: swipeCoachingVisit,

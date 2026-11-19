@@ -736,9 +736,13 @@ class _PrepLibraryDatabaseScreenState
               // whenever this button is (both come back as the list scrolls
               // up); while searching the search header's Filters count them.
               // So the button carries no count.
-              ? const SearchInkFab(
-                  key: ValueKey('prep_library_search_fab'),
-                  label: 'Search games',
+              ? const InkFabStack(
+                  children: [
+                    SearchInkFab(
+                      key: ValueKey('prep_library_search_fab'),
+                      label: 'Search games',
+                    ),
+                  ],
                 )
               : const SizedBox.shrink(),
         ),

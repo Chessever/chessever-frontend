@@ -29,6 +29,7 @@ Future<GameFilter?> showGameFilterDialog({
   bool showFinishFilter = false,
   bool showRatingRange = false,
   bool allowMultiSort = false,
+  List<RatingTier>? levelTiers,
 }) {
   return showAlertModal<GameFilter>(
     context: context,
@@ -47,6 +48,7 @@ Future<GameFilter?> showGameFilterDialog({
       showFinishFilter: showFinishFilter,
       showRatingRange: showRatingRange,
       allowMultiSort: allowMultiSort,
+      levelTiers: levelTiers,
     ),
   );
 }
@@ -67,6 +69,7 @@ class GameFilterDialog extends StatefulWidget {
     this.showFinishFilter = false,
     this.showRatingRange = false,
     this.allowMultiSort = false,
+    this.levelTiers,
   });
 
   final GameFilter initialFilter;
@@ -88,6 +91,11 @@ class GameFilterDialog extends StatefulWidget {
   final bool showFinishFilter;
   final bool showRatingRange;
   final bool allowMultiSort;
+
+  /// The Level chips offered, strongest first; the app-wide
+  /// [RatingTierFilter.tiers] when null. A smart event passes its own
+  /// tiers, so a Super GM floor (2700) comes back as 2700.
+  final List<RatingTier>? levelTiers;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -128,6 +136,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     );
     _selectedMinRating = RatingTierFilter.normalizeMinRating(
       widget.initialFilter.minRating,
+      among: widget.levelTiers ?? RatingTierFilter.tiers,
     );
     _sorts = List<GameSortCriterion>.of(widget.initialFilter.sorts);
   }
@@ -261,6 +270,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       _sectionLabel('Level'),
                       SizedBox(height: 8.h),
                       RatingTierFilter(
+                        tierOptions: widget.levelTiers,
                         selectedMinRating: _selectedMinRating,
                         onChanged: (value) {
                           HapticFeedbackService.selection();
@@ -532,6 +542,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       );
       _selectedMinRating = RatingTierFilter.normalizeMinRating(
         GameFilter.defaultMinRating,
+        among: widget.levelTiers ?? RatingTierFilter.tiers,
       );
       _sorts = const [];
     });

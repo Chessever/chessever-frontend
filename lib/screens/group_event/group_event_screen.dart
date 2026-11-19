@@ -27,6 +27,9 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/page_back_float.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/stable_height_slot.dart';
@@ -198,6 +201,16 @@ class GroupEventScreen extends HookConsumerWidget {
     final pagingFlights = useRef(0);
     final focusNode = useFocusNode();
     final chrome = useScrollChromeController();
+    // While the field has the keyboard the bar holds still, shown: the
+    // field sits on the bar, outside the lists' region, so the page holds
+    // it ([ScrollChromeController.held]) and the bar springs back if it was
+    // away, instead of snapping as a disabled region would.
+    useEffect(() {
+      void hold() => chrome.held = focusNode.hasFocus;
+      hold();
+      focusNode.addListener(hold);
+      return () => focusNode.removeListener(hold);
+    }, [focusNode, chrome]);
 
     // The field's panel reads the app-wide search providers, which the
     // Search tab's field writes too. This page opens with its own query (or
@@ -322,15 +335,20 @@ class GroupEventScreen extends HookConsumerWidget {
       );
     }
 
+    // Past pages in as its end comes near: on a scroll, and on a change of
+    // the list's size or its viewport (a page landing, a spinner going, the
+    // bars folding), so a list that stops short of the screen asks for the
+    // next page without waiting for a scroll that cannot come.
     void onScroll() {
-      if (!context.mounted || activeCategory != GroupEventCategory.past) {
+      if (!context.mounted ||
+          activeCategory != GroupEventCategory.past ||
+          !pastScrollController.hasClients) {
         return;
-      } else {
-        final max = pastScrollController.position.maxScrollExtent;
-        final current = pastScrollController.position.pixels;
-        if (max - current <= 200) {
-          ref.read(groupEventScreenProvider.notifier).loadMorePast();
-        }
+      }
+      final position = pastScrollController.position;
+      if (!position.hasContentDimensions) return;
+      if (position.maxScrollExtent - position.pixels <= 200) {
+        ref.read(groupEventScreenProvider.notifier).loadMorePast();
       }
     }
 
@@ -342,18 +360,40 @@ class GroupEventScreen extends HookConsumerWidget {
     // The segments share the top bar's gutter.
     final horizontalPadding = HomeTopBarMetrics.horizontalPadding;
 
-    return Material(
-      key: e2eKey(E2eIds.eventsRoot),
-      color: context.colors.background,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: ResponsiveHelper.contentMaxWidth,
-                ),
-                child: Column(
+    // The page is its own Scaffold, so Live first floats in the button slot
+    // every page's floating buttons use ([SlidingFabs] over an
+    // [InkFabStack]), on the window's insets, and a snack it raises lands
+    // above it rather than over it.
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      backgroundColor: context.colors.background,
+      // Live first floats in the thumb's reach (Trello #1420), while an
+      // event is in play, while its count is not known yet, or while it is
+      // on, and steps away with the bar as the list scrolls. Anchored by its
+      // trailing edge, so it grows and shrinks away from the gutter.
+      floatingActionButton: SlidingFabs(
+        controller: chrome,
+        child: InkFabStack(
+          children: [
+            EventsLiveFirstFab(
+              key: const ValueKey(kHomeLiveFirstButtonKey),
+              onTurnedOn: showCurrentTop,
+            ),
+          ],
+        ),
+      ),
+      body: Material(
+        key: e2eKey(E2eIds.eventsRoot),
+        color: context.colors.background,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: [
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -528,7 +568,7 @@ class GroupEventScreen extends HookConsumerWidget {
                                   );
                                 },
                                 showProfile: false,
-                                leading: const HomeTopBarBackButton(
+                                leading: const PageBackButton(
                                   key: ValueKey('events_back'),
                                 ),
                                 onClearSearchField: () {
@@ -604,159 +644,250 @@ class GroupEventScreen extends HookConsumerWidget {
                       ),
                     ),
                     Expanded(
-                      child: ListenableBuilder(
-                        // While the field has the keyboard the bar holds still.
-                        listenable: focusNode,
-                        builder: (context, child) => ScrollChromeRegion(
-                          controller: chrome,
-                          enabled: !focusNode.hasFocus,
-                          child: child!,
-                        ),
-                        child: StableHeightSlot(
-                          child: PageView.builder(
-                            controller: pageController,
-                            itemCount: visibleCategories.length,
-                            onPageChanged: (index) {
-                              if (pagingFlights.value == 0 &&
-                                  index < visibleCategories.length) {
-                                final newCategory = visibleCategories[index];
-                                ref
-                                        .read(
-                                          selectedGroupCategoryProvider
-                                              .notifier,
-                                        )
-                                        .state =
-                                    newCategory;
-                              }
-                            },
-                            itemBuilder: (context, index) {
-                              if (index >= visibleCategories.length) {
-                                return const SizedBox.shrink();
-                              }
-                              final currentCategory = visibleCategories[index];
-                              final isPast =
-                                  currentCategory == GroupEventCategory.past;
-                              final isUpcoming =
-                                  currentCategory ==
-                                  GroupEventCategory.upcoming;
-                              final isSearch =
-                                  currentCategory == GroupEventCategory.search;
-                              final scrollController = scrollControllerFor(
-                                currentCategory,
-                              );
-
-                              // Only load data for the currently selected tab. Heavy
-                              // tabs keep their provider caches, not their widget trees.
-                              if (currentCategory != activeCategory) {
-                                return const SizedBox.shrink();
-                              }
-
-                              final buildPage = pageBuilder;
-                              if (buildPage != null) {
-                                return buildPage(
-                                  context,
+                      child: ScrollChromeRegion(
+                        controller: chrome,
+                        child: NotificationListener<ScrollMetricsNotification>(
+                          // The list in a page, one scrollable below the
+                          // pager: Past asks for its next page when its end
+                          // comes into reach without a scroll.
+                          onNotification: (notification) {
+                            if (notification.depth == 1 &&
+                                notification.metrics.axis == Axis.vertical) {
+                              onScroll();
+                            }
+                            return false;
+                          },
+                          child: StableHeightSlot(
+                            child: PageView.builder(
+                              controller: pageController,
+                              itemCount: visibleCategories.length,
+                              onPageChanged: (index) {
+                                if (pagingFlights.value == 0 &&
+                                    index < visibleCategories.length) {
+                                  final newCategory = visibleCategories[index];
+                                  ref
+                                          .read(
+                                            selectedGroupCategoryProvider
+                                                .notifier,
+                                          )
+                                          .state =
+                                      newCategory;
+                                }
+                              },
+                              itemBuilder: (context, index) {
+                                if (index >= visibleCategories.length) {
+                                  return const SizedBox.shrink();
+                                }
+                                final currentCategory =
+                                    visibleCategories[index];
+                                final isPast =
+                                    currentCategory == GroupEventCategory.past;
+                                final isUpcoming =
+                                    currentCategory ==
+                                    GroupEventCategory.upcoming;
+                                final isSearch =
+                                    currentCategory ==
+                                    GroupEventCategory.search;
+                                final scrollController = scrollControllerFor(
                                   currentCategory,
-                                  scrollController,
                                 );
-                              }
 
-                              // Special handling for "Search" tab - show search results
-                              if (isSearch) {
-                                return SearchResultsWidget(
-                                  scrollController: searchScrollController,
-                                  searchQuery: searchQuery,
-                                );
-                              }
+                                // Only load data for the currently selected tab. Heavy
+                                // tabs keep their provider caches, not their widget trees.
+                                if (currentCategory != activeCategory) {
+                                  return const SizedBox.shrink();
+                                }
 
-                              return ref
-                                  .watch(groupEventScreenProvider)
-                                  .when(
-                                    data: (filteredEvents) {
-                                      final isLoadingMore =
-                                          isPast &&
-                                          ref
-                                              .read(
-                                                groupEventScreenProvider
-                                                    .notifier,
-                                              )
-                                              .isFetchingMore;
+                                final buildPage = pageBuilder;
+                                if (buildPage != null) {
+                                  return buildPage(
+                                    context,
+                                    currentCategory,
+                                    scrollController,
+                                  );
+                                }
 
-                                      // Get favorites from unified favorites system (Supabase + local cache)
-                                      final favoritesAsync = ref.watch(
-                                        favoriteEventsProvider,
-                                      );
-                                      final favoriteEvents =
-                                          favoritesAsync.valueOrNull ?? [];
+                                // Special handling for "Search" tab - show search results
+                                if (isSearch) {
+                                  return SearchResultsWidget(
+                                    scrollController: searchScrollController,
+                                    searchQuery: searchQuery,
+                                  );
+                                }
 
-                                      // Extract event IDs from favorites
-                                      final allFavorites = favoriteEvents
-                                          .map((e) => e.eventId)
-                                          .where((id) => id.isNotEmpty)
-                                          .toList();
-
-                                      // Build timestamp map for sorting within groups
-                                      final favoriteTimestamps =
-                                          <String, DateTime>{};
-                                      for (final fav in favoriteEvents) {
-                                        favoriteTimestamps[fav.eventId] =
-                                            fav.createdAt;
-                                      }
-
-                                      final isSearching = searchController.text
-                                          .trim()
-                                          .isNotEmpty;
-
-                                      // Get cached favorite player data (populated by event cards as they render)
-                                      final cachedEventFavoritePlayers = ref
-                                          .watch(
-                                            eventFavoritePlayersCacheProvider,
-                                          );
-
-                                      // Past keeps its date order; Upcoming keeps its
-                                      // soonest-first order with starred events pinned
-                                      // on top; Current ranks favourites and hearts.
-                                      final List<GroupEventCardModel>
-                                      finalEvents;
-                                      if (isSearching || isPast) {
-                                        finalEvents = filteredEvents;
-                                      } else if (isUpcoming) {
-                                        finalEvents = sortUpcomingEvents(
-                                          filteredEvents,
-                                          starredIds: allFavorites.toSet(),
-                                        );
-                                      } else {
-                                        // Live first is laid over the ranking here
-                                        // too: re-ranking the favourites would undo
-                                        // the order the list arrives in.
-                                        final liveFirst = ref.watch(
-                                          homeEventsLiveFirstProvider,
-                                        );
-                                        finalEvents = currentEventsDisplayOrder(
-                                          events: filteredEvents,
-                                          sorter: ref.read(
-                                            tournamentSortingServiceProvider,
-                                          ),
-                                          favorites: allFavorites,
-                                          eventFavoritePlayersMap:
-                                              cachedEventFavoritePlayers,
-                                          favoriteTimestamps:
-                                              favoriteTimestamps,
-                                          liveFirst: liveFirst,
-                                          liveIds: liveFirst
-                                              ? homeLiveEventIds(
-                                                  strict: ref
-                                                      .watch(
-                                                        liveGroupBroadcastIdsProvider,
-                                                      )
-                                                      .valueOrNull,
-                                                  mirror: ref.watch(
-                                                    liveBroadcastIdsProvider,
-                                                  ),
+                                return ref
+                                    .watch(groupEventScreenProvider)
+                                    .when(
+                                      data: (filteredEvents) {
+                                        final isLoadingMore =
+                                            isPast &&
+                                            ref
+                                                .read(
+                                                  groupEventScreenProvider
+                                                      .notifier,
                                                 )
-                                              : const <String>{},
+                                                .isFetchingMore;
+
+                                        // Get favorites from unified favorites system (Supabase + local cache)
+                                        final favoritesAsync = ref.watch(
+                                          favoriteEventsProvider,
                                         );
-                                      }
-                                      return RefreshIndicator(
+                                        final favoriteEvents =
+                                            favoritesAsync.valueOrNull ?? [];
+
+                                        // Extract event IDs from favorites
+                                        final allFavorites = favoriteEvents
+                                            .map((e) => e.eventId)
+                                            .where((id) => id.isNotEmpty)
+                                            .toList();
+
+                                        // Build timestamp map for sorting within groups
+                                        final favoriteTimestamps =
+                                            <String, DateTime>{};
+                                        for (final fav in favoriteEvents) {
+                                          favoriteTimestamps[fav.eventId] =
+                                              fav.createdAt;
+                                        }
+
+                                        final isSearching = searchController
+                                            .text
+                                            .trim()
+                                            .isNotEmpty;
+
+                                        // Get cached favorite player data (populated by event cards as they render)
+                                        final cachedEventFavoritePlayers = ref
+                                            .watch(
+                                              eventFavoritePlayersCacheProvider,
+                                            );
+
+                                        // Past keeps its date order; Upcoming keeps its
+                                        // soonest-first order with starred events pinned
+                                        // on top; Current ranks favourites and hearts.
+                                        final List<GroupEventCardModel>
+                                        finalEvents;
+                                        if (isSearching || isPast) {
+                                          finalEvents = filteredEvents;
+                                        } else if (isUpcoming) {
+                                          finalEvents = sortUpcomingEvents(
+                                            filteredEvents,
+                                            starredIds: allFavorites.toSet(),
+                                          );
+                                        } else {
+                                          // Live first is laid over the ranking here
+                                          // too: re-ranking the favourites would undo
+                                          // the order the list arrives in.
+                                          final liveFirst = ref.watch(
+                                            homeEventsLiveFirstProvider,
+                                          );
+                                          finalEvents = currentEventsDisplayOrder(
+                                            events: filteredEvents,
+                                            sorter: ref.read(
+                                              tournamentSortingServiceProvider,
+                                            ),
+                                            favorites: allFavorites,
+                                            eventFavoritePlayersMap:
+                                                cachedEventFavoritePlayers,
+                                            favoriteTimestamps:
+                                                favoriteTimestamps,
+                                            liveFirst: liveFirst,
+                                            liveIds: liveFirst
+                                                ? homeLiveEventIds(
+                                                    strict: ref
+                                                        .watch(
+                                                          liveGroupBroadcastIdsProvider,
+                                                        )
+                                                        .valueOrNull,
+                                                    mirror: ref.watch(
+                                                      liveBroadcastIdsProvider,
+                                                    ),
+                                                  )
+                                                : const <String>{},
+                                          );
+                                        }
+                                        return RefreshIndicator(
+                                          onRefresh: ref
+                                              .read(homeScreenProvider)
+                                              .onEventsPullRefresh,
+                                          color: context.colors.textSecondary,
+                                          backgroundColor:
+                                              context.colors.surface,
+                                          displacement: 60.h,
+                                          strokeWidth: 3.w,
+                                          child:
+                                              isUpcoming && finalEvents.isEmpty
+                                              ? UpcomingEventsEmptyState(
+                                                  filtersActive:
+                                                      filterBadgeCount > 0,
+                                                  onResetFilters: () {
+                                                    HapticFeedbackService.buttonPress();
+                                                    ref
+                                                            .read(
+                                                              eventAppliedFilterProvider
+                                                                  .notifier,
+                                                            )
+                                                            .state =
+                                                        defaultFilterPopupState;
+                                                    ref.invalidate(
+                                                      forYouEventsProvider,
+                                                    );
+                                                  },
+                                                  scrollController:
+                                                      scrollController,
+                                                )
+                                              : AllEventsTabWidget(
+                                                  filteredEvents: finalEvents,
+                                                  onSelect:
+                                                      (
+                                                        tourEventCardModel,
+                                                      ) => ref
+                                                          .read(
+                                                            groupEventScreenProvider
+                                                                .notifier,
+                                                          )
+                                                          .onSelectTournament(
+                                                            context: context,
+                                                            id: tourEventCardModel
+                                                                .id,
+                                                          ),
+                                                  isLoadingMore: isLoadingMore,
+                                                  paged: isPast,
+                                                  scrollController:
+                                                      scrollController,
+                                                  clearsFloatingButtons: true,
+                                                ),
+                                        );
+                                      },
+                                      loading: () => SkeletonWidget(
+                                        child: AllEventsTabWidget(
+                                          onSelect: (_) {},
+                                          filteredEvents: List.generate(
+                                            10,
+                                            (index) => GroupEventCardModel(
+                                              id: 'tour_001',
+                                              title:
+                                                  'World Chess Championship 2025',
+                                              dates: 'Mar 15 - 25,2025',
+                                              timeUntilStart:
+                                                  'Starts in 8 months',
+                                              tourEventCategory:
+                                                  TourEventCategory
+                                                      .values[Random().nextInt(
+                                                    TourEventCategory
+                                                        .values
+                                                        .length,
+                                                  )],
+                                              maxAvgElo: 0,
+                                              timeControl: 'Standard',
+                                              endDate: null,
+                                              startDate: null,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // A failed load (nothing cached to fall back on)
+                                      // says so and offers Retry on every tab; only a
+                                      // successful empty load shows an empty state.
+                                      error: (error, stackTrace) => RefreshIndicator(
                                         onRefresh: ref
                                             .read(homeScreenProvider)
                                             .onEventsPullRefresh,
@@ -764,132 +895,52 @@ class GroupEventScreen extends HookConsumerWidget {
                                         backgroundColor: context.colors.surface,
                                         displacement: 60.h,
                                         strokeWidth: 3.w,
-                                        child: isUpcoming && finalEvents.isEmpty
-                                            ? UpcomingEventsEmptyState(
-                                                filtersActive:
-                                                    filterBadgeCount > 0,
-                                                onResetFilters: () {
-                                                  HapticFeedbackService.buttonPress();
-                                                  ref
-                                                          .read(
-                                                            eventAppliedFilterProvider
-                                                                .notifier,
-                                                          )
-                                                          .state =
-                                                      defaultFilterPopupState;
-                                                  ref.invalidate(
-                                                    forYouEventsProvider,
-                                                  );
-                                                },
-                                                scrollController:
-                                                    scrollController,
-                                              )
-                                            : AllEventsTabWidget(
-                                                filteredEvents: finalEvents,
-                                                onSelect:
-                                                    (tourEventCardModel) => ref
-                                                        .read(
-                                                          groupEventScreenProvider
-                                                              .notifier,
-                                                        )
-                                                        .onSelectTournament(
-                                                          context: context,
-                                                          id: tourEventCardModel
-                                                              .id,
-                                                        ),
-                                                isLoadingMore: isLoadingMore,
-                                                scrollController:
-                                                    scrollController,
-                                              ),
-                                      );
-                                    },
-                                    loading: () => SkeletonWidget(
-                                      child: AllEventsTabWidget(
-                                        onSelect: (_) {},
-                                        filteredEvents: List.generate(
-                                          10,
-                                          (index) => GroupEventCardModel(
-                                            id: 'tour_001',
-                                            title:
-                                                'World Chess Championship 2025',
-                                            dates: 'Mar 15 - 25,2025',
-                                            timeUntilStart:
-                                                'Starts in 8 months',
-                                            tourEventCategory:
-                                                TourEventCategory
-                                                    .values[Random().nextInt(
-                                                  TourEventCategory
-                                                      .values
-                                                      .length,
-                                                )],
-                                            maxAvgElo: 0,
-                                            timeControl: 'Standard',
-                                            endDate: null,
-                                            startDate: null,
+                                        child: EventsLoadErrorState(
+                                          key: ValueKey(
+                                            'events_load_error_${currentCategory.name}',
                                           ),
+                                          error: error,
+                                          fallbackMessage: isUpcoming
+                                              ? "Couldn't load upcoming events."
+                                              : "Couldn't load these events.",
+                                          scrollController: scrollController,
+                                          onRetry: () {
+                                            HapticFeedbackService.buttonPress();
+                                            unawaited(
+                                              ref
+                                                  .read(
+                                                    groupEventScreenProvider
+                                                        .notifier,
+                                                  )
+                                                  .loadTours(),
+                                            );
+                                          },
                                         ),
                                       ),
-                                    ),
-                                    // A failed load (nothing cached to fall back on)
-                                    // says so and offers Retry on every tab; only a
-                                    // successful empty load shows an empty state.
-                                    error: (error, stackTrace) => RefreshIndicator(
-                                      onRefresh: ref
-                                          .read(homeScreenProvider)
-                                          .onEventsPullRefresh,
-                                      color: context.colors.textSecondary,
-                                      backgroundColor: context.colors.surface,
-                                      displacement: 60.h,
-                                      strokeWidth: 3.w,
-                                      child: EventsLoadErrorState(
-                                        key: ValueKey(
-                                          'events_load_error_${currentCategory.name}',
-                                        ),
-                                        error: error,
-                                        fallbackMessage: isUpcoming
-                                            ? "Couldn't load upcoming events."
-                                            : "Couldn't load these events.",
-                                        scrollController: scrollController,
-                                        onRetry: () {
-                                          HapticFeedbackService.buttonPress();
-                                          unawaited(
-                                            ref
-                                                .read(
-                                                  groupEventScreenProvider
-                                                      .notifier,
-                                                )
-                                                .loadTours(),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  );
-                            },
+                                    );
+                              },
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
+                // The way back while the bar is folded away, centred where the
+                // bar's chevron was (on the bar's row, under its top gap).
+                PageBackFloat(
+                  controller: chrome,
+                  top:
+                      MediaQuery.viewPaddingOf(context).top +
+                      HomeTopBarMetrics.topGap +
+                      (HomeTopBarMetrics.rowExtent(context) -
+                              SearchHeaderMetrics.backTarget) /
+                          2,
+                ),
+              ],
             ),
           ),
-          // Live first floats in the thumb's reach (Trello #1420), while an
-          // event is in play or while it is on, and steps away with the bar
-          // as the list scrolls. Anchored by its trailing edge, so it grows
-          // and shrinks away from the gutter.
-          PositionedDirectional(
-            end: 16,
-            bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
-            child: SlidingFabs(
-              controller: chrome,
-              child: EventsLiveFirstFab(
-                key: const ValueKey(kHomeLiveFirstButtonKey),
-                onTurnedOn: showCurrentTop,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1009,12 +1060,15 @@ const String kHomeLiveFirstButtonKey = 'events_live_first_button';
 
 /// Live first on the Events lists (Trello #1420), in words
 /// ([LiveFirstCapsule]), floating where the thumb rests: "See 3 live" while
-/// events are in play, and one tap lists the live events first, from any
-/// segment ([pressHomeEventsLiveFirst]); on, it reads "Live first". It only
-/// reorders ([LiveFirstMode.reorder]): every event stays listed. It is there
-/// while an event is in play or while it is on ([showsHomeLiveFirst]), so a
-/// flag left on can always be turned off. [onTurnedOn] runs once it has come
-/// on.
+/// events are in play, counting exactly the events a press lifts (Current's
+/// events in play under its filters, [eventsLiveEventCountProvider]), "See
+/// live" until that count is known, and one tap lists the live events
+/// first, from any segment ([pressHomeEventsLiveFirst]); on, it reads "Live
+/// first". It only reorders ([LiveFirstMode.reorder]): every event stays
+/// listed. It is there while an event is in play, while the count is not
+/// known, or while it is on ([showsHomeLiveFirst]), so a flag left on can
+/// always be turned off. The small capsule, as over every list's buttons.
+/// [onTurnedOn] runs once it has come on.
 class EventsLiveFirstFab extends ConsumerWidget {
   const EventsLiveFirstFab({super.key, this.onTurnedOn});
 
@@ -1023,14 +1077,12 @@ class EventsLiveFirstFab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final on = ref.watch(homeEventsLiveFirstProvider);
-    final liveCount = ref.watch(homeLiveEventCountProvider);
+    final liveCount = ref.watch(eventsLiveEventCountProvider);
     if (!showsHomeLiveFirst(liveCount: liveCount, on: on)) {
       return const SizedBox.shrink();
     }
-    // The page's only floating button, so the regular height.
     return LiveFirstCapsule(
       subject: 'events',
-      size: InkFabSize.regular,
       on: on,
       liveCount: liveCount,
       onTap: () {

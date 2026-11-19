@@ -368,13 +368,21 @@ class _MiniaturesSearchFab extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (mode) {
       MiniaturesScreenMode.about => const SizedBox.shrink(),
-      MiniaturesScreenMode.games => const SearchInkFab(
-        key: ValueKey('miniatures_search_fab'),
-        label: 'Search games',
+      MiniaturesScreenMode.games => const InkFabStack(
+        children: [
+          SearchInkFab(
+            key: ValueKey('miniatures_search_fab'),
+            label: 'Search games',
+          ),
+        ],
       ),
-      MiniaturesScreenMode.players => const SearchInkFab(
-        key: ValueKey('miniatures_search_fab'),
-        label: 'Search players',
+      MiniaturesScreenMode.players => const InkFabStack(
+        children: [
+          SearchInkFab(
+            key: ValueKey('miniatures_search_fab'),
+            label: 'Search players',
+          ),
+        ],
       ),
     };
   }

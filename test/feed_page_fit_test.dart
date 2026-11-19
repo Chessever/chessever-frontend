@@ -3,11 +3,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Every Feed page is the whole screen, one post to a page, so nothing of
-/// the next post shows under it. The height a post does not need is spread
-/// through it, never left as one empty band.
+/// the next post shows under it. The post uses the whole of it: the board
+/// as large as the screen allows, the zone (chart, scrub line, caption and
+/// the rail) under it, and the height the board cannot take spread through
+/// the post, never left as one empty band.
 void main() {
   // Phone and tablet widths, the Feed viewport heights they give (the screen
-  // less the bar and the insets), and the text sizes Feed allows.
+  // less the bars and the insets), and the text sizes Feed allows.
   const widths = [360.0, 375.0, 393.0, 402.0, 412.0, 430.0, 440.0, 820.0];
   const scales = [1.0, 1.12, 1.3, 1.4];
 
@@ -24,36 +26,72 @@ void main() {
         for (var height = 480.0; height <= 1200; height += 7.5) {
           final l = resolve(width, height, scale);
           final why = '$width x $height at ${scale}x';
-          // Everything stacked, the scrub row and the foot under it: the
-          // page, to the point, with nothing hanging over.
-          final bottom = l.scrubTop + FeedLayout.scrubHeight + l.foot;
+          // Everything stacked, the zone and the foot under it: the page, to
+          // the point, with nothing hanging over.
           if (l.board > FeedLayout.minBoard) {
-            expect(bottom, closeTo(height, 1e-6), reason: why);
+            expect(l.zoneBottom + l.foot, closeTo(height, 1e-6), reason: why);
           }
           // Every gap at least its least.
           expect(l.top, greaterThanOrEqualTo(FeedLayout.topGap), reason: why);
           expect(
-            l.infoSpace,
-            greaterThanOrEqualTo(FeedLayout.infoGap),
-            reason: why,
-          );
-          expect(
-            l.actionsSpace,
-            greaterThanOrEqualTo(FeedLayout.actionsGap),
-            reason: why,
-          );
-          expect(
-            l.scrubSpace,
-            greaterThanOrEqualTo(FeedLayout.minSpacer),
+            l.zoneSpace,
+            greaterThanOrEqualTo(FeedLayout.zoneGap),
             reason: why,
           );
           expect(l.foot, greaterThanOrEqualTo(0), reason: why);
-          // The header and the board stay one block, whatever the spare.
+          // The board block stays one block, whatever the spare.
           expect(
-            l.boardTop - l.top - l.metaHeight,
-            closeTo(FeedLayout.gap + l.rowHeight + FeedLayout.gap, 1e-9),
+            l.boardTop - l.top,
+            closeTo(l.rowHeight + FeedLayout.gap, 1e-9),
             reason: why,
           );
+          expect(
+            l.deckTop - l.boardBottom,
+            closeTo(FeedLayout.gap + l.rowHeight, 1e-9),
+            reason: why,
+          );
+          // The zone holds its left column and the rail, both inside it.
+          expect(
+            l.scrubTop + FeedLayout.scrubHeight,
+            lessThanOrEqualTo(l.captionTop + 1e-6),
+            reason: why,
+          );
+          expect(l.captionTop + l.captionHeight, closeTo(l.zoneBottom, 1e-9));
+          expect(l.railTop, greaterThanOrEqualTo(l.zoneTop - 1e-9));
+          expect(l.railTop + l.railHeight, closeTo(l.zoneBottom, 1e-9));
+        }
+      }
+    }
+  });
+
+  test('the rail stands at the board column\'s right edge, clear of the '
+      'left column, and never over the board', () {
+    for (final width in widths) {
+      for (final scale in scales) {
+        for (var height = 480.0; height <= 1200; height += 15) {
+          final l = resolve(width, height, scale);
+          final why = '$width x $height at ${scale}x';
+          expect(
+            l.railLeft + FeedLayout.railWidth,
+            closeTo(l.contentRight, 1e-9),
+            reason: why,
+          );
+          expect(
+            l.leftColumnRight + FeedLayout.railGap,
+            closeTo(l.railLeft, 1e-9),
+            reason: why,
+          );
+          // Ranks 1 and 2 and the h-file stay playable: nothing of the zone
+          // reaches the board.
+          expect(l.zoneTop, greaterThan(l.boardBottom), reason: why);
+          expect(l.contentLeft, greaterThanOrEqualTo(FeedLayout.boardGutter));
+          expect(
+            l.contentRight,
+            lessThanOrEqualTo(width - FeedLayout.boardGutter + 1e-9),
+            reason: why,
+          );
+          // Every rail cell is a full target.
+          expect(l.railCell, greaterThanOrEqualTo(44));
         }
       }
     }
@@ -66,33 +104,20 @@ void main() {
           final l = resolve(width, height, scale);
           final why = '$width x $height at ${scale}x';
           expect(
-            l.infoSpace - FeedLayout.infoGap,
+            l.zoneSpace - FeedLayout.zoneGap,
             lessThanOrEqualTo(30.001),
             reason: why,
           );
-          expect(
-            l.actionsSpace - FeedLayout.actionsGap,
-            lessThanOrEqualTo(18.001),
-            reason: why,
-          );
-          expect(
-            l.scrubSpace - FeedLayout.minSpacer,
-            lessThanOrEqualTo(36.001),
-            reason: why,
-          );
           // Past every cap the post stands centred: what is over goes
-          // evenly above the header and under the scrub line.
-          if (l.foot > 0) {
-            final spare =
-                (l.top - FeedLayout.topGap) +
-                (l.infoSpace - FeedLayout.infoGap) +
-                (l.actionsSpace - FeedLayout.actionsGap) +
-                (l.scrubSpace - FeedLayout.minSpacer) +
-                l.foot;
-            final share = (spare * 0.30).clamp(0.0, 36.0);
+          // evenly above and under it.
+          final spare =
+              (l.top - FeedLayout.topGap) +
+              (l.zoneSpace - FeedLayout.zoneGap) +
+              l.foot;
+          if (spare > 110) {
             expect(
-              l.top - FeedLayout.topGap - share,
-              closeTo(l.foot, 1e-6),
+              l.top - FeedLayout.topGap - 36,
+              closeTo(l.foot - 36, 1e-6),
               reason: why,
             );
           }
@@ -101,21 +126,23 @@ void main() {
     }
   });
 
-  test('the spread keeps its shape: top, strip, actions, scrub line', () {
-    // The Feed viewport on an iPhone 15: 852 less the insets and the bar.
-    final l = resolve(393, 687, 1);
-    final spare = 687 - FeedLayout.naturalHeight(393, TextScaler.noScaling);
-    expect(spare, greaterThan(40));
-    // Every point of it is used, none of it past the scrub line.
-    expect(l.foot, 0);
-    expect(l.top - FeedLayout.topGap, closeTo(spare * 0.30, 1e-6));
-    expect(l.infoSpace - FeedLayout.infoGap, closeTo(spare * 0.25, 1e-6));
-    expect(l.actionsSpace - FeedLayout.actionsGap, closeTo(spare * 0.15, 1e-6));
-    expect(l.scrubSpace - FeedLayout.minSpacer, closeTo(spare * 0.30, 1e-6));
-    // The strip and the actions stay closer to each other than to anything
-    // else: they are one group.
-    expect(l.actionsSpace, lessThan(l.infoSpace));
-    expect(l.actionsSpace, lessThan(l.scrubSpace));
+  test('the base phone: a 357pt board on 8pt gutters, the rail beside the '
+      'chart, the caption at the foot', () {
+    // The Feed page on an iPhone 15 in the home shell: 852 less the top bar
+    // (139) and the dock's slot (78).
+    final l = resolve(393, 635, 1);
+    expect(l.board, 357);
+    expect(l.contentLeft, FeedLayout.boardGutter);
+    expect(l.contentRight, 393 - FeedLayout.boardGutter);
+    expect(l.railLeft, 329);
+    expect(l.leftColumnWidth, 313);
+    expect(l.railCell, FeedLayout.railCellMin);
+    // Chart, scrub line, caption: 118 + 44 + 44.
+    expect(l.zoneHeight, 206);
+    expect(l.graphHeight, 118);
+    // Stacked to the page's foot, the little spare spread over it.
+    expect(l.zoneBottom + l.foot, closeTo(635, 1e-9));
+    expect(l.deckTop, closeTo(l.top + 24 + 4 + 357 + 4 + 24, 1e-9));
   });
 
   test(
@@ -123,73 +150,40 @@ void main() {
     () {
       // A short screen: the board gives way, the gaps stay at their least.
       final l = resolve(393, 560, 1);
-      expect(l.board, lessThan(393 - 2 * FeedLayout.sidePadding - 20));
+      expect(l.board, lessThan(393 - 2 * FeedLayout.boardGutter - 20));
       expect(l.top, FeedLayout.topGap);
-      expect(l.infoSpace, FeedLayout.infoGap);
-      expect(l.actionsSpace, FeedLayout.actionsGap);
-      expect(l.scrubSpace, FeedLayout.minSpacer);
+      expect(l.zoneSpace, FeedLayout.zoneGap);
       expect(l.foot, 0);
+      // The column is centred on the screen, the rail with it.
+      expect(l.contentLeft, closeTo((393 - l.contentWidth) / 2, 1e-9));
     },
   );
 
-  test('a puzzle, with no scrub line, fills its page too: no band under its '
-      'buttons, and they end where a game post ends', () {
+  test('the natural height is the post with a full-width board', () {
     for (final width in widths) {
       for (final scale in scales) {
-        for (var height = 480.0; height <= 1200; height += 7.5) {
-          final l = resolve(width, height, scale);
-          if (l.board <= FeedLayout.minBoard) continue;
-          final why = '$width x $height at ${scale}x';
-          // The puzzle page, top to bottom, as feed_puzzle.dart stacks it.
-          final actionsBottom =
-              l.scrublessTop +
-              l.metaHeight +
-              FeedLayout.gap +
-              l.rowHeight +
-              FeedLayout.gap +
-              l.board +
-              FeedLayout.gap +
-              l.rowHeight +
-              l.scrublessInfoSpace +
-              l.infoHeight +
-              l.scrublessActionsSpace +
-              l.actionsHeight;
-          expect(
-            actionsBottom + l.scrublessFoot,
-            closeTo(height, 1e-6),
-            reason: why,
-          );
-          // What is left under the buttons is the part of a game page's
-          // scrub row under its line, never the line's whole room.
-          expect(l.scrublessFoot - l.foot, lessThan(10), reason: why);
-          // The room goes above the post and between its rows, never
-          // taking a gap under its least.
-          expect(l.scrublessTop, greaterThan(l.top), reason: why);
-          expect(l.scrublessInfoSpace, greaterThan(l.infoSpace), reason: why);
-          expect(
-            l.scrublessActionsSpace,
-            greaterThan(l.actionsSpace),
-            reason: why,
-          );
-        }
+        final scaler = TextScaler.linear(scale);
+        final natural = FeedLayout.naturalHeight(
+          width,
+          scaler,
+          evalWidth: 20 * width / 393,
+        );
+        final l = resolve(width, natural, scale);
+        expect(
+          l.board,
+          (width - 2 * FeedLayout.boardGutter - 20 * width / 393)
+              .floorToDouble(),
+        );
+        expect(l.foot, closeTo(0, 1e-6));
       }
     }
   });
 
   test('the spread on its own: nothing for nothing, every point placed', () {
-    expect(FeedLayout.spread(0), (
-      top: 0.0,
-      info: 0.0,
-      actions: 0.0,
-      scrub: 0.0,
-      foot: 0.0,
-    ));
+    expect(FeedLayout.spread(0), (top: 0.0, zone: 0.0, foot: 0.0));
     for (var spare = 1.0; spare < 400; spare += 3) {
       final s = FeedLayout.spread(spare);
-      expect(
-        s.top + s.info + s.actions + s.scrub + s.foot,
-        closeTo(spare, 1e-9),
-      );
+      expect(s.top + s.zone + s.foot, closeTo(spare, 1e-9));
     }
   });
 }

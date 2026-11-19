@@ -62,6 +62,7 @@ import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -552,79 +553,88 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                           ? ResponsiveHelper.contentMaxWidth
                           : double.infinity,
                     ),
-                    child: Column(
+                    child: Stack(
+                      fit: StackFit.passthrough,
                       children: [
-                        SizedBox(
-                          height: MediaQuery.viewPaddingOf(context).top + 4.h,
-                        ),
-                        // Folds up under the status bar as the list scrolls
-                        // down, comes back as it scrolls up. Searching, the
-                        // search header takes the header's place whatever
-                        // state the event is in (loaded, loading, failed).
-                        CollapsingChrome(
-                          controller: _chrome,
-                          child: SearchModeHeaderSlot(
-                            header: tourDetailAsync.when(
-                              data: (data) => _buildSuccessAppBar(
-                                data,
-                                effectiveMode,
-                                visibleModes,
-                              ),
-                              error: (error, stackTrace) => _buildErrorAppBar(
-                                error,
-                                effectiveMode,
-                                visibleModes,
-                              ),
-                              loading: () => const _LoadingAppBarWithTitle(
-                                title: "ChessEver",
-                              ),
+                        Column(
+                          children: [
+                            SizedBox(
+                              height:
+                                  MediaQuery.viewPaddingOf(context).top + 4.h,
                             ),
-                            search: _EventSearchHeader(
-                              gamesTab: gamesTab,
-                              label: searchLabel,
-                              hintIndex: _hintIndex,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              ScrollChromeRegion(
-                                controller: _chrome,
-                                // The Bracket is a canvas, not a list.
-                                enabled:
-                                    effectiveMode !=
-                                    TournamentDetailScreenMode.bracket,
-                                child: ScrollToTopScope(
-                                  bus: _scrollToTopBus,
-                                  child: ListenableBuilder(
-                                    listenable: _search,
-                                    builder: (context, _) => _buildPages(
-                                      scopedRef,
-                                      effectiveMode: effectiveMode,
-                                      visibleModes: visibleModes,
-                                      isTeam: isTeam,
-                                      combinedSelected: combinedSelected,
-                                    ),
+                            // Folds up under the status bar as the list scrolls
+                            // down, comes back as it scrolls up. Searching, the
+                            // search header takes the header's place whatever
+                            // state the event is in (loaded, loading, failed).
+                            CollapsingChrome(
+                              controller: _chrome,
+                              child: SearchModeHeaderSlot(
+                                header: tourDetailAsync.when(
+                                  data: (data) => _buildSuccessAppBar(
+                                    data,
+                                    effectiveMode,
+                                    visibleModes,
+                                  ),
+                                  error: (error, stackTrace) =>
+                                      _buildErrorAppBar(
+                                        error,
+                                        effectiveMode,
+                                        visibleModes,
+                                      ),
+                                  loading: () => const _LoadingAppBarWithTitle(
+                                    title: "ChessEver",
                                   ),
                                 ),
-                              ),
-                              // Along the list's top while the Games search
-                              // runs, as on every other Games list: the list
-                              // keeps what it shows meanwhile.
-                              PositionedDirectional(
-                                top: 0,
-                                start: 0,
-                                end: 0,
-                                child: _SearchProgress(
-                                  search: _search,
-                                  active: gamesTab && !combinedSelected,
+                                search: _EventSearchHeader(
+                                  gamesTab: gamesTab,
+                                  label: searchLabel,
+                                  hintIndex: _hintIndex,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            Expanded(
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ScrollChromeRegion(
+                                    controller: _chrome,
+                                    // The Bracket is a canvas, not a list.
+                                    enabled:
+                                        effectiveMode !=
+                                        TournamentDetailScreenMode.bracket,
+                                    child: ScrollToTopScope(
+                                      bus: _scrollToTopBus,
+                                      child: ListenableBuilder(
+                                        listenable: _search,
+                                        builder: (context, _) => _buildPages(
+                                          scopedRef,
+                                          effectiveMode: effectiveMode,
+                                          visibleModes: visibleModes,
+                                          isTeam: isTeam,
+                                          combinedSelected: combinedSelected,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  // Along the list's top while the Games search
+                                  // runs, as on every other Games list: the list
+                                  // keeps what it shows meanwhile.
+                                  PositionedDirectional(
+                                    top: 0,
+                                    start: 0,
+                                    end: 0,
+                                    child: _SearchProgress(
+                                      search: _search,
+                                      active: gamesTab && !combinedSelected,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
+                        // The way back while the header is folded away.
+                        PageBackFloat(controller: _chrome),
                       ],
                     ),
                   ),
@@ -1054,9 +1064,11 @@ bool _listHoldsSearchHits(EventProviderReader read) =>
 ///
 /// Games: the search (the tab's full-page search) and, above it while a
 /// game is in play or while it is on, Live first. Standings: the search and
-/// Botvinnik above it. Players: the search. About: Botvinnik. Bracket keeps
-/// its corner for the canvas's zoom controls. Botvinnik stays on About and
-/// Standings only (Trello #1420); everywhere else it has its own tab.
+/// Botvinnik above it, the smaller button over the main one as everywhere.
+/// Players: the search. About: Botvinnik, the page's main button. Bracket
+/// keeps its corner for the canvas's zoom controls. Botvinnik stays on
+/// About and Standings only (Trello #1420); everywhere else it has its own
+/// tab.
 ///
 /// Searching, they all stay: the search page's host flies the search
 /// button's glass into the field (and back on close) and steps the others
@@ -1084,11 +1096,19 @@ class _EventFabs extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The Games list's live-game polls (Live first keeps them running from
+    // its kept-alive tab) wait while another tab is in front or a board
+    // covers the event, whichever tab it was opened from.
+    syncEventGamesLiveIdsVisibility(
+      context,
+      ref,
+      gamesInView: mode == TournamentDetailScreenMode.games,
+    );
     final botvinnik = ref.watch(botvinnikTabAvailableProvider);
-    Widget chat() => BotvinnikChatButton(
-      heroTag: 'botvinnik-tournament',
+    Widget chat(InkFabSize size) => BotvinnikChatButton(
       screenContext: chatContext,
       iconOnly: true,
+      size: size,
     );
     // The host opens the search from it: no tap of its own.
     final search = SearchInkFab(
@@ -1102,12 +1122,14 @@ class _EventFabs extends ConsumerWidget {
         // Through the same stack as on Standings, so Botvinnik stays the
         // same button as the reader moves between the two.
         return botvinnik
-            ? InkFabStack(children: [chat()])
+            ? InkFabStack(children: [chat(InkFabSize.regular)])
             : const SizedBox.shrink();
       case TournamentDetailScreenMode.players:
         return InkFabStack(children: [search]);
       case TournamentDetailScreenMode.standings:
-        return InkFabStack(children: [if (botvinnik) chat(), search]);
+        return InkFabStack(
+          children: [if (botvinnik) chat(InkFabSize.small), search],
+        );
       case TournamentDetailScreenMode.games:
         final liveFirst = ref.watch(eventGamesLiveFirstProvider);
         final anyLive = ref.watch(eventGamesAnyLiveProvider);
@@ -1120,7 +1142,8 @@ class _EventFabs extends ConsumerWidget {
         // always be seen and turned off. It only reorders (every game stays
         // listed), so left on with nothing live it changes nothing.
         final offered = (anyLive || liveFirst) && !holdsHits;
-        // Counted only while it is offered.
+        // Counted only while it is offered: the server's count of the
+        // boards in play, null ("See live") until it answers.
         final liveCount = offered
             ? ref.watch(eventGamesLiveCountProvider)
             : null;

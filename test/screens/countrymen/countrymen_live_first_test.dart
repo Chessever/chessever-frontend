@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
@@ -32,6 +35,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../../support/fake_live_game_ids.dart';
 
 /// Records filters and searches instead of refetching from Supabase, and
 /// answers a search the way the real notifier does: the list on screen stays
@@ -96,9 +101,56 @@ class _FakeGames extends StateNotifier<CountrymenCombinedGamesState>
   @override
   Future<void> refreshGames({bool keepList = true}) async {}
 
+  /// Every set Live first asked to have listed.
+  final List<Set<String>> listed = [];
+
+  /// The games [ensureListed] adds, by id, as the real one fetches them.
+  final Map<String, GamesTourModel> rows = {};
+
+  @override
+  Future<void> ensureListed(Iterable<String> ids) async {
+    listed.add(ids.toSet());
+    final missing = [
+      for (final id in ids)
+        if (!state.games.any((game) => game.gameId == id) && rows[id] != null)
+          rows[id]!,
+    ];
+    if (missing.isEmpty) return;
+    state = state.copyWith(games: [...missing, ...state.games]);
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+/// Whose games the Countrymen list asks about in these tests.
+final _scope = CountrymenLiveGamesScope(countryCode: 'NOR');
+
+/// The live-game polls the page started, the newest last.
+final List<FakeLiveGameIds> _polls = [];
+
+/// The boards a fixture marks in play: what the server says by default.
+Set<String> _inPlay(Iterable<GamesTourModel> games) => {
+  for (final game in games)
+    if (game.gameStatus == GameStatus.ongoing) game.gameId,
+};
+
+/// The server's games in play for the list ([serverLive], or the fixture's
+/// boards in play), or no answer yet when [answered] is false.
+List<Override> _serverLive(
+  List<GamesTourModel> games, {
+  Set<String>? serverLive,
+  bool answered = true,
+}) => [
+  countrymenGamesLiveScopeProvider.overrideWith((ref) => _scope),
+  countrymenLiveGameIdsProvider.overrideWith((ref, scope) {
+    final poll = FakeLiveGameIds(
+      answered ? serverLive ?? _inPlay(games) : null,
+    );
+    _polls.add(poll);
+    return poll;
+  }),
+];
 
 class _FakeEvents extends StateNotifier<CountrymenEventsState>
     implements CountrymenEventsNotifier {
@@ -198,6 +250,8 @@ Future<void> _pumpScreen(
   bool? anyLive,
   List<GamesTourModel> games = const [],
   GamesListViewMode viewMode = GamesListViewMode.gamesCard,
+  Set<String>? serverLive,
+  bool serverAnswered = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -208,9 +262,11 @@ Future<void> _pumpScreen(
 
   final persisted = pinned ?? _norway;
   final shown = temporary ?? persisted;
+  _polls.clear();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ..._serverLive(games, serverLive: serverLive, answered: serverAnswered),
         countrymenCombinedGamesProvider.overrideWith(
           (ref) => _games = _FakeGames(games: games),
         ),
@@ -248,6 +304,7 @@ Future<void> _pumpScreen(
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
+        navigatorObservers: [routeObserver],
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
@@ -374,6 +431,8 @@ GamesTourModel _game(
     gameStatus: ongoing ? GameStatus.ongoing : GameStatus.draw,
     tourId: 'tour',
     roundId: 'round',
+    // A game in play has a move; a 0-move shell never is.
+    lastMove: ongoing ? 'e2e4' : null,
     lastMoveTime: lastMoveTime,
   );
 }
@@ -588,6 +647,7 @@ void main() {
         'search, says how many, and turns on and off', (tester) async {
       final container = ProviderContainer(
         overrides: [
+          ..._serverLive(const [], serverLive: const {'live'}),
           countrymenCombinedGamesProvider.overrideWith(
             (ref) => _FakeGames(
               games: [
@@ -1288,5 +1348,132 @@ void main() {
       // Days stay newest first.
       expect(grouped.keys.first.compareTo(grouped.keys.last), greaterThan(0));
     });
+
+    test('with the server\'s set, every game in play leads today', () {
+      final grouped = groupCountrymenGamesByDay(
+        games,
+        liveFirst: true,
+        // 'e' is in play after midnight; 'b' has finished by the server.
+        liveIds: const {'d', 'e'},
+        now: now,
+      );
+      expect(ids(grouped), [
+        ['d', 'e', 'a', 'b', 'c'],
+        ['f'],
+      ]);
+    });
   });
+
+  group('Countrymen Live first counts what the server has in play', () {
+    testWidgets('games in play the loaded days miss are counted, and listed '
+        'as it turns on', (tester) async {
+      final now = DateTime.now();
+      await _pumpScreen(
+        tester,
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [
+          _game('done', lastMoveTime: now),
+          _game('live', lastMoveTime: now, ongoing: true),
+        ],
+        serverLive: const {'live', 'later'},
+      );
+      _games.rows['later'] = _game('later', lastMoveTime: now, ongoing: true);
+
+      expect(find.text(_liveLabel(2)), findsOneWidget);
+      await tester.tap(_liveFirst);
+      await _settle(tester);
+
+      expect(_liveFirstOn(), isTrue);
+      expect(_games.listed.first, {'live', 'later'});
+      expect(find.byType(GridGameCardWrapperWidget), findsNWidgets(3));
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('a row that reads in play is not counted when the server '
+        'has nothing in play', (tester) async {
+      await _pumpScreen(
+        tester,
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [_game('live', lastMoveTime: DateTime.now(), ongoing: true)],
+        serverLive: const {},
+      );
+      expect(_liveFirst, findsNothing);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('until the server answers: "See live", floated by the rows', (
+      tester,
+    ) async {
+      await _pumpScreen(
+        tester,
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [_game('live', lastMoveTime: DateTime.now(), ongoing: true)],
+        serverAnswered: false,
+      );
+      expect(find.text(LiveFirstCapsule.unknownLabel), findsOneWidget);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('covered by a board the count waits, and asks again on the '
+        'way back', (tester) async {
+      await _pumpScreen(
+        tester,
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [_game('live', lastMoveTime: DateTime.now(), ongoing: true)],
+      );
+      final poll = _polls.last;
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await _settle(tester);
+      expect(poll.visible, isFalse);
+
+      navigator.pop();
+      await _settle(tester);
+      expect(poll.visible, isTrue);
+      expect(poll.refreshes, 1);
+      await _dropLiveCards(tester);
+    });
+
+    testWidgets('back from a board after a resume it missed, the poll asks '
+        'by itself and the page does not ask again', (tester) async {
+      await _pumpScreen(
+        tester,
+        viewMode: GamesListViewMode.chessBoardGrid,
+        games: [_game('live', lastMoveTime: DateTime.now(), ongoing: true)],
+      );
+      final poll = _polls.last;
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await _settle(tester);
+      // The real poll marks this missed while hidden, and asks for it as it
+      // is shown again.
+      _container.read(appResumedSignalProvider.notifier).state++;
+
+      navigator.pop();
+      await _settle(tester);
+      expect(poll.visible, isTrue);
+      expect(poll.refreshes, 0);
+      await _dropLiveCards(tester);
+    });
+  });
+}
+
+/// Takes the screen down and lets the live cards' own timers run out.
+Future<void> _dropLiveCards(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(minutes: 1));
 }

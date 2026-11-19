@@ -12,6 +12,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -60,12 +61,12 @@ class _TestSpaceShortcutsNotifier extends SpaceShortcutsNotifier {
   Future<List<SpaceShortcut>> build() async => const [];
 }
 
-SmartEventRequest _request({String tierLabel = 'All'}) {
+SmartEventRequest _request({String tierLabel = 'All', int minElo = 0}) {
   return SmartEventRequest(
     source: SmartEventSource.forYou,
     tierLabel: tierLabel,
     titleSuffix: 'Games',
-    minElo: 0,
+    minElo: minElo,
     maxElo: 3200,
     caption: 'From your filters',
     countSingular: 'event',
@@ -79,6 +80,7 @@ Future<ProviderContainer> _pumpSmartEvent(
   SmartEventRequest request, {
   SmartAggregateEventNotifier Function(Ref ref, SmartEventGamesQuery query)?
   aggregate,
+  bool showFilters = true,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -100,7 +102,7 @@ Future<ProviderContainer> _pumpSmartEvent(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return SmartEventScreen(request: request);
+            return SmartEventScreen(request: request, showFilters: showFilters);
           },
         ),
       ),
@@ -562,10 +564,10 @@ void main() {
   );
 
   testWidgets(
-    'Filters is in the header without the search, wearing the one count '
-    'the search shows',
+    'Filters is in the header without the search, clean on entry, then '
+    'wearing the one count the search shows',
     (tester) async {
-      await _pumpSmartEvent(tester, _request(tierLabel: 'GM'));
+      await _pumpSmartEvent(tester, _request(tierLabel: 'GM', minElo: 2500));
 
       final filters = find.byKey(const ValueKey('smart_event_filters'));
       expect(filters.hitTestable(), findsOneWidget);
@@ -573,10 +575,19 @@ void main() {
         of: filters,
         matching: find.byType(SearchCountBadge),
       );
+      // The GM floor is what this smart event is, not a filter on it.
+      expect(badge, findsNothing);
+
+      // A level the reader picks is a change: it counts.
+      await tester.tap(find.text('GM+').first);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('International Master · 2400+').last);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(badge, findsOneWidget);
       final count = tester.widget<SearchCountBadge>(badge).count;
-      // The GM floor narrows the list.
-      expect(count, greaterThan(0));
+      expect(count, 1);
       // The floating search does not repeat it.
       expect(
         find.descendant(
@@ -620,6 +631,199 @@ void main() {
     },
   );
 
+  testWidgets('an untouched GM smart event with no games says so plainly, '
+      'never "no matches"', (tester) async {
+    await _pumpSmartEvent(tester, _request(tierLabel: 'GM', minElo: 2500));
+    expect(find.text('No games right now'), findsOneWidget);
+    expect(find.byType(SearchNoMatches), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('a Super GM smart event opens on Super GM and loads 2700+ '
+      'games', (tester) async {
+    final queries = <SmartEventGamesQuery>[];
+    await _pumpSmartEvent(
+      tester,
+      _request(tierLabel: 'Super GM', minElo: 2700),
+      aggregate: (ref, query) {
+        queries.add(query);
+        return _LoadedAggregateNotifier(ref, query);
+      },
+    );
+    // The chip names the tier the floor is, read from the floor, never
+    // from the name's first word.
+    expect(find.text('Super GM'), findsWidgets);
+    expect(queries, isNotEmpty);
+    for (final query in queries) {
+      expect(query.filter?.minRating, 2700);
+    }
+    // Its own floor is no filter on it.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('smart_event_filters')),
+        matching: find.byType(SearchCountBadge),
+      ),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('Super GM survives a trip through Filters: the dialog offers '
+      'it and gives 2700 back', (tester) async {
+    await _pumpSmartEvent(
+      tester,
+      _request(tierLabel: 'Super GM', minElo: 2700),
+    );
+    await tester.tap(find.byKey(const ValueKey('smart_event_filters')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(GameFilterDialog), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(GameFilterDialog),
+        matching: find.text('Super GM'),
+      ),
+      findsOneWidget,
+    );
+    final apply = find.text('Apply Filters');
+    await tester.ensureVisible(apply);
+    await tester.pump();
+    await tester.tap(apply);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(GameFilterDialog), findsNothing);
+    // Still Super GM, and nothing changed from what it opened with.
+    expect(find.text('Super GM'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('smart_event_filters')),
+        matching: find.byType(SearchCountBadge),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('Apply in Filters keeps the opening an opening smart event is '
+      'built on: the dialog offers none, so it gives none back', (
+    tester,
+  ) async {
+    final request = SmartEventRequest.forOpening(GameEcoFilter.forCode('B90'));
+    final queries = <SmartEventGamesQuery>[];
+    await _pumpSmartEvent(
+      tester,
+      request,
+      aggregate: (ref, query) {
+        queries.add(query);
+        return _LoadedAggregateNotifier(ref, query);
+      },
+    );
+    expect(queries, isNotEmpty);
+    expect(queries.last.filter?.eco, request.eco);
+    final filters = find.byKey(const ValueKey('smart_event_filters'));
+    final badge = find.descendant(
+      of: filters,
+      matching: find.byType(SearchCountBadge),
+    );
+    // Its opening is what it is, not a filter on it.
+    expect(badge, findsNothing);
+
+    await tester.tap(filters);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(GameFilterDialog), findsOneWidget);
+    final apply = find.text('Apply Filters');
+    await tester.ensureVisible(apply);
+    await tester.pump();
+    await tester.tap(apply);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(GameFilterDialog), findsNothing);
+
+    // Still the Najdorf's games, and nothing changed from what it opened
+    // with: no badge.
+    expect(queries.last.filter?.eco, request.eco);
+    expect(badge, findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('an untouched GM smart event with nothing on About or Events '
+      'says so plainly, never "no matches"; a change the reader makes does', (
+    tester,
+  ) async {
+    await _pumpSmartEvent(tester, _request(tierLabel: 'GM', minElo: 2500));
+
+    await tester.tap(find.text('About'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('No tournaments match your filters'), findsNothing);
+
+    await tester.tap(find.text('Events'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('No events right now'), findsOneWidget);
+    expect(find.byType(SearchNoMatches), findsNothing);
+
+    // A level the reader picks narrows it: now the empty list is theirs.
+    await tester.tap(find.text('GM+').first);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('International Master · 2400+').last);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('No events right now'), findsNothing);
+    expect(find.byType(SearchNoMatches), findsOneWidget);
+
+    await tester.tap(find.text('About'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('No tournaments match your filters'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('opened from Search: no Filters in the header or the search', (
+    tester,
+  ) async {
+    await _pumpSmartEvent(
+      tester,
+      _request(tierLabel: 'GM', minElo: 2500),
+      showFilters: false,
+    );
+    expect(find.byKey(const ValueKey('smart_event_filters')), findsNothing);
+    expect(find.byType(SearchModeFilterButton), findsNothing);
+
+    await tester.tap(find.byKey(_fab));
+    await _settleMorph(tester);
+    expect(find.byKey(_close).hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('smart_event_search_filters')),
+      findsNothing,
+    );
+    expect(find.byType(SearchModeFilterButton), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(_close));
+    await _settleMorph(tester);
+    expect(find.byKey(_close), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets('the back chevron holds its place as the search opens', (
     tester,
   ) async {
@@ -644,7 +848,7 @@ void main() {
   testWidgets('Filters hold their place on the gutter as the search opens', (
     tester,
   ) async {
-    await _pumpSmartEvent(tester, _request(tierLabel: 'GM'));
+    await _pumpSmartEvent(tester, _request(tierLabel: 'GM', minElo: 2500));
     final page = tester.getRect(
       find.byKey(const ValueKey('smart_event_filters')),
     );

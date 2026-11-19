@@ -17,6 +17,7 @@ import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
@@ -89,10 +90,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         return;
       }
 
+      // Home anew, alone: a guest who signed up from Profile has the old
+      // Home under this page, and replacing only this page stacked a second
+      // Home over it (a back swipe on the new one showed the old).
       final navigator = Navigator.of(context);
-      navigator.pushReplacementNamed('/home_screen');
+      navigator.pushNamedAndRemoveUntil('/home_screen', (_) => false);
       unawaited(offerNotificationsAfterSignIn(navigator));
     });
+
+    // Opened over the app (a guest's Sign up), the page has a way back
+    // where every pushed page keeps it. As the app's first page (a cold
+    // start signed out, the guest window run out) there is nothing to go
+    // back to.
+    final canGoBack =
+        !isForcedGuestUpgrade && (ModalRoute.of(context)?.canPop ?? false);
 
     return ScreenWrapper(
       child: Scaffold(
@@ -176,6 +187,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 },
               ),
             ),
+            if (canGoBack)
+              PositionedDirectional(
+                top: MediaQuery.viewPaddingOf(context).top + 4.h,
+                start: SearchHeaderMetrics.leadingInset,
+                child: const PageBackButton(key: ValueKey('auth_back')),
+              ),
           ],
         ),
       ),

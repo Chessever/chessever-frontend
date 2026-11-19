@@ -1,7 +1,9 @@
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_live_game_ids.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -38,6 +40,12 @@ class GroupedGamesData {
   /// otherwise ([gamesByRound] is then the full membership).
   final Map<String, List<GamesTourModel>> fullGamesByRound;
 
+  /// What the server is asked about for this list's games in play
+  /// ([eventLiveGameIdsProvider]): the selected tour, and the sibling-stage
+  /// tours it lists. Their answer is what Live first lifts and what its
+  /// capsule counts. Empty while loading.
+  final List<EventLiveGamesScope> liveScopes;
+
   GroupedGamesData({
     required this.filteredRounds,
     required this.gamesByRound,
@@ -50,6 +58,7 @@ class GroupedGamesData {
     required this.providerGameCount,
     this.upcomingPairingRoundIds = const {},
     this.fullGamesByRound = const {},
+    this.liveScopes = const [],
   });
 }
 
@@ -62,10 +71,9 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     ),
   );
   final isVirtualGamebaseEvent = isVirtualGamebaseId(tourId);
-  final rawGamesAsync =
-      tourId == null
-          ? const AsyncValue<List<Games>>.data(<Games>[])
-          : ref.watch(gamesTourProvider(tourId));
+  final rawGamesAsync = tourId == null
+      ? const AsyncValue<List<Games>>.data(<Games>[])
+      : ref.watch(gamesTourProvider(tourId));
   final rawGames = rawGamesAsync.valueOrNull ?? const <Games>[];
   final gamesAppBar = ref.watch(gamesAppBarProvider);
   final roundResolution = resolveGamesTourRounds(
@@ -95,12 +103,12 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final isSearchMode = screenModelAsync.valueOrNull?.isSearchMode ?? false;
   final displayMode =
       screenModelAsync.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all;
-  final pinState =
-      tourId == null
-          ? const GamesPinState(hasResolvedAutoPins: true)
-          : ref.watch(gamesPinprovider(tourId));
-  final stableOrder =
-      tourId == null ? null : ref.watch(gamesTourStableOrderProvider(tourId));
+  final pinState = tourId == null
+      ? const GamesPinState(hasResolvedAutoPins: true)
+      : ref.watch(gamesPinprovider(tourId));
+  final stableOrder = tourId == null
+      ? null
+      : ref.watch(gamesTourStableOrderProvider(tourId));
 
   final providerGameCount = rawGames.length;
   final modelGameCount = allGamesScreenModel.length;
@@ -135,8 +143,10 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   if (!isKnockoutTournament) {
     final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
     final allTours = tourDetail?.tours ?? [];
-    final currentTour =
-        allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
+    final currentTour = allTours
+        .where((t) => t.tour.id == tourId)
+        .firstOrNull
+        ?.tour;
     final formatString = currentTour?.info.format;
 
     if (KnockoutMatchDetector.isMatchFormat(
@@ -474,22 +484,37 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         for (final game in games) game.gameId: game,
     },
   };
-  final favoritePriorityIds =
-      hasSupplementalPriorityGames
-          ? pinState.effectiveFavoritePriorityIdsForGames(
-            allPriorityGamesById.values,
-          )
-          : pinState.effectiveFavoritePriorityIds;
-  final countrymanPriorityIds =
-      hasSupplementalPriorityGames
-          ? pinState.effectiveCountrymanPriorityIdsForGames(
-            allPriorityGamesById.values,
-          )
-          : pinState.effectiveCountrymanPriorityIds;
+  final favoritePriorityIds = hasSupplementalPriorityGames
+      ? pinState.effectiveFavoritePriorityIdsForGames(
+          allPriorityGamesById.values,
+        )
+      : pinState.effectiveFavoritePriorityIds;
+  final countrymanPriorityIds = hasSupplementalPriorityGames
+      ? pinState.effectiveCountrymanPriorityIdsForGames(
+          allPriorityGamesById.values,
+        )
+      : pinState.effectiveCountrymanPriorityIds;
   final manualPinnedIds = pinState.effectiveManualPinIds;
   final hadGroupedGamesBeforeOrdering = gamesByRound.values.any(
     (games) => games.isNotEmpty,
   );
+  // The tours whose games this list shows: the selected one and, for a
+  // knockout whose stages are tours of their own, those it lists. Their
+  // games in play, by the server, are what Live first lifts (and what its
+  // capsule counts), watched only while it is on.
+  final liveScopes = isVirtualGamebaseEvent
+      ? const <EventLiveGamesScope>[]
+      : eventGamesLiveScopes(
+          tourId,
+          siblingTourIds: isMultiStageKnockout && hasSiblingStageTours
+              ? stageReferences.values
+                    .map((reference) => reference.siblingTourId)
+                    .whereType<String>()
+              : const <String>[],
+        );
+  final serverLiveIds = displayMode == GameDisplayMode.hideFinishedGames
+      ? watchEventServerLiveIds(ref.watch, liveScopes)
+      : null;
   for (final roundId in gamesByRound.keys.toList(growable: false)) {
     final roundGames = gamesByRound[roundId]!;
     final newestBoardsFirst =
@@ -510,25 +535,25 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       pinnedGameIds: manualPinnedIds,
       newestBoardsFirst: newestBoardsFirst,
     );
-    // "Focus on live games" is derived here, on every rebuild, from the boards'
-    // current effective status — this provider watches `gamesTourProvider`, so
-    // each Supabase games update re-runs the partition. Stable priority order
-    // stays the baseline, which is what returns a finished board to its normal
-    // slot instead of leaving it stranded at the top.
-    gamesByRound[roundId] =
-        displayMode == GameDisplayMode.hideFinishedGames
-            ? applyCurrentLiveFocusOrder(games: ordered)
-            : ordered;
+    // "Focus on live games" is derived here, on every rebuild, from the
+    // server's set of games in play (the one the capsule counts), less any
+    // board already shown as finished; until the server answers, from the
+    // boards' current effective status. This provider watches both, so each
+    // games update and each new answer re-runs the partition. Stable
+    // priority order stays the baseline, which is what returns a finished
+    // board to its normal slot instead of leaving it stranded at the top.
+    gamesByRound[roundId] = displayMode == GameDisplayMode.hideFinishedGames
+        ? eventLiveFocusOrder(ordered, serverLiveIds)
+        : ordered;
   }
 
-  final playedRounds =
-      rounds
-          .where(
-            (round) =>
-                !upcomingPairingRoundIds.contains(round.id) &&
-                (gamesByRound[round.id]?.isNotEmpty ?? false),
-          )
-          .toList();
+  final playedRounds = rounds
+      .where(
+        (round) =>
+            !upcomingPairingRoundIds.contains(round.id) &&
+            (gamesByRound[round.id]?.isNotEmpty ?? false),
+      )
+      .toList();
   final upcomingPairingRounds = sortRoundsForDisplay(
     rounds
         .where((round) => upcomingPairingRoundIds.contains(round.id))
@@ -564,6 +589,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     providerGameCount: providerGameCount,
     upcomingPairingRoundIds: upcomingPairingRoundIds,
     fullGamesByRound: fullGamesByRound,
+    liveScopes: liveScopes,
   );
 });
 
@@ -581,8 +607,10 @@ class _RoundGrouping {
   final bool representedSiblingIsLoading;
 }
 
-typedef GamesTourRoundResolution =
-    ({List<GamesAppBarModel> rounds, bool isLoading});
+typedef GamesTourRoundResolution = ({
+  List<GamesAppBarModel> rounds,
+  bool isLoading,
+});
 
 /// Resolves the round metadata required to group already-fetched games.
 ///
@@ -882,12 +910,11 @@ bool _hasPlayedPosition(GamesTourModel game) {
 bool _pgnContainsMoves(String? pgn) {
   final text = pgn?.trim();
   if (text == null || text.isEmpty) return false;
-  final withoutHeaders =
-      text
-          .split('\n')
-          .where((line) => !line.trimLeft().startsWith('['))
-          .join(' ')
-          .trim();
+  final withoutHeaders = text
+      .split('\n')
+      .where((line) => !line.trimLeft().startsWith('['))
+      .join(' ')
+      .trim();
   return RegExp(r'\b\d+\s*\.').hasMatch(withoutHeaders) ||
       RegExp(
         r'\b[a-h][1-8][a-h][1-8][qrbn]?\b',

@@ -782,17 +782,20 @@ void main() {
     'the post actions retain Analyze, Share and Like without adding game pins',
     (tester) async {
       await _pumpFeed(tester);
-      final xs = [
+      // Down the rail, Like at the foot where the thumb rests; My Space is
+      // in the post's long-press menu.
+      final centres = [
         for (final key in [
           'feed_analyze_button',
           'feed_share_button',
           'feed_like_button',
         ])
-          tester.getCenter(find.byKey(ValueKey(key))).dx,
+          tester.getCenter(find.byKey(ValueKey(key))),
       ];
       expect(find.byKey(const ValueKey('feed_space_button')), findsNothing);
-      for (var i = 1; i < xs.length; i++) {
-        expect(xs[i], greaterThan(xs[i - 1]));
+      for (var i = 1; i < centres.length; i++) {
+        expect(centres[i].dy, greaterThan(centres[i - 1].dy));
+        expect(centres[i].dx, closeTo(centres[0].dx, 0.01));
       }
       await _tearDown(tester);
     },

@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:chessever2/providers/live_game_ids_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_games_provider.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_round_sections.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_live_game_ids.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
@@ -9,12 +13,16 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../support/fake_live_game_ids.dart';
+
 /// The event Games tab's Live first and Collapse all, moved out of the ⋮
 /// menu into the search row (Trello #1420). Same rules as the menu rows,
-/// for one category and for Combined.
+/// for one category and for Combined. What is in play is the server's
+/// answer (`get_live_game_ids`), faked here per scope.
 
 PlayerCard _player(String name) => PlayerCard(
   name: name,
@@ -41,6 +49,7 @@ GamesTourModel _game(
   gameStatus: live ? GameStatus.ongoing : GameStatus.whiteWins,
   roundId: roundId,
   tourId: tourId,
+  lastMove: 'e2e4',
   lastMoveTime: DateTime.now().toUtc(),
 );
 
@@ -56,6 +65,23 @@ GroupedGamesData _grouped(
   rounds: const [],
   allGames: games,
   providerGameCount: games.length,
+  liveScopes: eventGamesLiveScopes('tour-1'),
+);
+
+/// The boards a fixture marks in play: what the server says by default.
+Set<String> _inPlay(Iterable<GamesTourModel> games) => {
+  for (final game in games)
+    if (game.gameStatus == GameStatus.ongoing) game.gameId,
+};
+
+/// The server's answer for every scope: [server] (by default the boards the
+/// fixture marks in play), or none yet when [answered] is false.
+Override _serverLive(
+  Iterable<GamesTourModel> games, {
+  Set<String>? server,
+  bool answered = true,
+}) => eventLiveGameIdsProvider.overrideWith(
+  (ref, scope) => FakeLiveGameIds(answered ? server ?? _inPlay(games) : null),
 );
 
 /// The single-category screen model, with the two order switches recorded.
@@ -117,7 +143,10 @@ List<Override> _singleCategory({
   bool isSearchMode = false,
   String? searchQuery,
   EventGamesSections? sections,
+  Set<String>? server,
+  bool answered = true,
 }) => [
+  _serverLive(games, server: server, answered: answered),
   combinedCategorySelectedProvider.overrideWithValue(false),
   gamesTourScreenProvider.overrideWith(
     (ref) => _GamesScreen(
@@ -173,7 +202,10 @@ CombinedGamesPresentation _combinedPresentation(
 List<Override> _combined(
   List<GamesTourModel> games, {
   String searchQuery = '',
+  Set<String>? server,
+  bool answered = true,
 }) => [
+  _serverLive(games, server: server, answered: answered),
   combinedCategorySelectedProvider.overrideWithValue(true),
   combinedCategoriesProvider.overrideWithValue(
     const CombinedCategories(_categories),
@@ -232,12 +264,14 @@ void main() {
       expect(container.read(eventGamesLiveFirstProvider), isFalse);
     });
 
-    test('a game that went quiet yesterday is not in play', () async {
-      final stale = _game('a', live: true).copyWith(
-        lastMoveTime: DateTime.now().toUtc().subtract(const Duration(days: 2)),
-      );
+    test('a board whose row still reads in play is not, when the server '
+        'says no game is', () async {
+      // A 0-move shell, or a game whose finish the list has not seen yet.
       final container = ProviderContainer(
-        overrides: _singleCategory(games: [stale]),
+        overrides: _singleCategory(
+          games: [_game('a', live: true)],
+          server: const {},
+        ),
       );
       addTearDown(container.dispose);
 
@@ -245,6 +279,29 @@ void main() {
         pressEventGamesLiveFirst(container.read),
         EventLiveFirstPress.nothingLive,
       );
+    });
+
+    test('until the server answers, the boards\' own status decides', () {
+      final stale = _game('a', live: true).copyWith(
+        lastMoveTime: DateTime.now().toUtc().subtract(const Duration(days: 2)),
+      );
+      final quiet = ProviderContainer(
+        overrides: _singleCategory(games: [stale], answered: false),
+      );
+      addTearDown(quiet.dispose);
+      expect(
+        pressEventGamesLiveFirst(quiet.read),
+        EventLiveFirstPress.nothingLive,
+      );
+
+      final live = ProviderContainer(
+        overrides: _singleCategory(
+          games: [_game('b', live: true)],
+          answered: false,
+        ),
+      );
+      addTearDown(live.dispose);
+      expect(pressEventGamesLiveFirst(live.read), EventLiveFirstPress.turnedOn);
     });
 
     test('turning off works after the last live game ends', () async {
@@ -583,15 +640,49 @@ void main() {
       expect(container.read(eventGamesLiveCountProvider), 2);
     });
 
-    test('one category: a game that went quiet yesterday is not counted', () {
-      final stale = _game('a', live: true).copyWith(
-        lastMoveTime: DateTime.now().toUtc().subtract(const Duration(days: 2)),
-      );
+    test('one category: the server decides, not the rows', () {
+      // 'a' reads in play but the server has it finished (or never
+      // started); 'c' is in play by the server though its row is behind.
       final container = ProviderContainer(
-        overrides: _singleCategory(games: [stale, _game('b', live: false)]),
+        overrides: _singleCategory(
+          games: [
+            _game('a', live: true),
+            _game('b', live: true),
+            _game('c', live: false).copyWith(gameStatus: GameStatus.unknown),
+          ],
+          server: const {'b', 'c'},
+        ),
       );
       addTearDown(container.dispose);
-      expect(container.read(eventGamesLiveCountProvider), 0);
+      expect(container.read(eventGamesLiveCountProvider), 2);
+      expect(container.read(eventGamesLiveIdsProvider), {'b', 'c'});
+    });
+
+    test('one category: only boards the list shows, and none it already '
+        'shows as finished', () {
+      final container = ProviderContainer(
+        overrides: _singleCategory(
+          games: [_game('a', live: true), _game('b', live: false)],
+          // 'elsewhere' is another tour's board; 'b' finished since.
+          server: const {'a', 'b', 'elsewhere'},
+        ),
+      );
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveIdsProvider), {'a'});
+      expect(container.read(eventGamesLiveCountProvider), 1);
+    });
+
+    test('unknown until the server answers: no number ("See live"), and the '
+        'boards\' own status floats the capsule', () {
+      final container = ProviderContainer(
+        overrides: _singleCategory(
+          games: [_game('a', live: true)],
+          answered: false,
+        ),
+      );
+      addTearDown(container.dispose);
+      expect(container.read(eventGamesLiveCountProvider), isNull);
+      expect(container.read(eventGamesAnyLiveProvider), isTrue);
     });
 
     test('Combined: every merged category\'s boards in play', () {
@@ -604,6 +695,195 @@ void main() {
       );
       addTearDown(container.dispose);
       expect(container.read(eventGamesLiveCountProvider), 2);
+    });
+
+    test('Combined asks about every category at once, at its own pace', () {
+      final container = ProviderContainer(overrides: _combined(const []));
+      addTearDown(container.dispose);
+      expect(
+        container.read(combinedGamesLiveScopeProvider),
+        EventLiveGamesScope(const ['women', 'open']),
+      );
+      expect(
+        container.read(combinedGamesLiveScopeProvider)!.poll,
+        EventLiveGamesScope.combinedPoll,
+      );
+    });
+  });
+
+  group('event live scopes', () {
+    test('the tour at the event pace, sibling stages at their own', () {
+      expect(eventGamesLiveScopes(null), isEmpty);
+      expect(eventGamesLiveScopes('t1'), [
+        EventLiveGamesScope(const ['t1']),
+      ]);
+      final scopes = eventGamesLiveScopes(
+        't1',
+        siblingTourIds: const ['t3', 't1', 't2', ' '],
+      );
+      expect(scopes, [
+        EventLiveGamesScope(const ['t1']),
+        EventLiveGamesScope(const ['t2', 't3'], poll: kSiblingStageLivePoll),
+      ]);
+      expect(scopes.first.poll, EventLiveGamesScope.eventPoll);
+    });
+  });
+
+  group('eventLiveFocusOrder', () {
+    final games = [
+      _game('a', live: false),
+      _game('b', live: true),
+      _game('c', live: true),
+      _game('d', live: false).copyWith(gameStatus: GameStatus.unknown),
+    ];
+    List<String> ids(List<GamesTourModel> games) => [
+      for (final game in games) game.gameId,
+    ];
+
+    test('lifts what the server has in play, less boards shown finished', () {
+      expect(ids(eventLiveFocusOrder(games, const {'c', 'a', 'd'})), [
+        'c',
+        'd',
+        'a',
+        'b',
+      ]);
+    });
+
+    test('nothing in play keeps the usual order', () {
+      expect(ids(eventLiveFocusOrder(games, const {})), ['a', 'b', 'c', 'd']);
+    });
+
+    test('until the server answers, the boards in play by their own rows '
+        'lead (ongoing, with a move)', () {
+      expect(ids(eventLiveFocusOrder(games, null)), ['b', 'c', 'a', 'd']);
+      // A 0-move shell is never lifted, whatever its day.
+      final shell = _game('s', live: true).copyWith(lastMove: '');
+      expect(ids(eventLiveFocusOrder([games.first, shell], null)), ['a', 's']);
+    });
+  });
+
+  group('the event list\'s live-game polls wait while it is out of view', () {
+    // Live first keeps the polls running from the kept-alive Games tab: they
+    // wait while another tab is in front or a board covers the event,
+    // whichever tab the board was opened from.
+    final scope = EventLiveGamesScope(const ['tour-1']);
+
+    /// Polls started, newest last; [gamesInView] is the event's tab.
+    Future<(List<FakeLiveGameIds>, StateProvider<bool>, StateProvider<bool>)>
+    pumpEvent(WidgetTester tester) async {
+      final polls = <FakeLiveGameIds>[];
+      final gamesInView = StateProvider<bool>((ref) => true);
+      // Live first is on: the list watches the poll.
+      final listWatches = StateProvider<bool>((ref) => true);
+      final container = ProviderContainer(
+        overrides: [
+          combinedCategorySelectedProvider.overrideWithValue(false),
+          gamesTourGroupedProvider.overrideWithValue(_grouped(const [])),
+          eventLiveGameIdsProvider.overrideWith((ref, scope) {
+            final poll = FakeLiveGameIds(const <String>{});
+            polls.add(poll);
+            return poll;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              // The floating buttons, above the list in the tree. They
+              // rebuild with the page (a category picked rebuilds both).
+              builder: (context, ref, _) {
+                ref.watch(listWatches);
+                syncEventGamesLiveIdsVisibility(
+                  context,
+                  ref,
+                  gamesInView: ref.watch(gamesInView),
+                );
+                return Consumer(
+                  // The kept-alive Games list.
+                  builder: (context, ref, _) {
+                    ref.watch(gamesTourGroupedProvider);
+                    if (ref.watch(listWatches)) {
+                      ref.watch(eventLiveGameIdsProvider(scope));
+                    }
+                    return const SizedBox.shrink();
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      return (polls, gamesInView, listWatches);
+    }
+
+    ProviderContainer containerOf(WidgetTester tester) =>
+        ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+
+    testWidgets('another tab in front, then a board opened from it', (
+      tester,
+    ) async {
+      final (polls, gamesInView, _) = await pumpEvent(tester);
+      final poll = polls.single;
+      expect(poll.visible, isTrue);
+
+      containerOf(tester).read(gamesInView.notifier).state = false;
+      await tester.pump();
+      expect(poll.visible, isFalse);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(poll.visible, isFalse);
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(poll.visible, isFalse);
+
+      containerOf(tester).read(gamesInView.notifier).state = true;
+      await tester.pump();
+      expect(poll.visible, isTrue);
+    });
+
+    testWidgets('a board over the Games tab', (tester) async {
+      final (polls, _, _) = await pumpEvent(tester);
+      final poll = polls.single;
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(poll.visible, isFalse);
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(poll.visible, isTrue);
+    });
+
+    testWidgets('a poll the list starts while another tab is in front waits '
+        'too', (tester) async {
+      final (polls, gamesInView, listWatches) = await pumpEvent(tester);
+      final container = containerOf(tester);
+      container.read(listWatches.notifier).state = false;
+      container.read(gamesInView.notifier).state = false;
+      await tester.pump();
+      // Nothing watches the first poll any more.
+      await tester.pump();
+
+      // Live first starts a poll again (a category picked from Standings),
+      // in the same frame as the buttons' build, after it.
+      container.read(listWatches.notifier).state = true;
+      await tester.pump();
+      expect(polls, hasLength(2));
+      expect(polls.last.visible, isFalse);
     });
   });
 }

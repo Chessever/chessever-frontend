@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'dart:async';
 
@@ -780,7 +781,64 @@ class _Subscribed extends SubscriptionNotifier {
       super.state = value.copyWith(isSubscribed: true, isLoading: false);
 }
 
+/// My Space under a section's scroll chrome, as the home shell holds it.
+class _ChromeHost extends StatefulWidget {
+  const _ChromeHost({required this.onChrome});
+
+  final ValueChanged<ScrollChromeController> onChrome;
+
+  @override
+  State<_ChromeHost> createState() => _ChromeHostState();
+}
+
+class _ChromeHostState extends State<_ChromeHost>
+    with SingleTickerProviderStateMixin {
+  late final ScrollChromeController chrome = ScrollChromeController(
+    vsync: this,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onChrome(chrome);
+  }
+
+  @override
+  void dispose() {
+    chrome.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      ScrollChromeRegion(controller: chrome, child: const MySpaceView());
+}
+
 void main() {
+  testWidgets('Edit holds the bars in view: a lifted card\'s autoscroll '
+      'never sends them away or brings them back under it', (tester) async {
+    late ScrollChromeController chrome;
+    await _pumpSpace(
+      tester,
+      const [],
+      body: _ChromeHost(onChrome: (c) => chrome = c),
+    );
+    expect(chrome.held, isFalse);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MySpaceView)),
+    );
+    container.read(spaceEditModeProvider.notifier).state = true;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(chrome.held, isTrue);
+    container.read(spaceEditModeProvider.notifier).state = false;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(chrome.held, isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('empty My Space can enter Edit and Done returns to its home', (
     tester,
   ) async {

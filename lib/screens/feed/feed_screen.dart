@@ -14,19 +14,26 @@ import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
+import 'package:chessever2/screens/feed/widgets/feed_bars_on_tap.dart';
 import 'package:chessever2/screens/feed/widgets/feed_centred_between_bars.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
+import 'package:chessever2/screens/feed/widgets/feed_deck.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
+import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton;
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -47,15 +54,19 @@ import 'package:motor/motor.dart';
 /// with the bars in view, as every root's re-tap takes its page back to the
 /// top, but never draws afresh.
 ///
-/// As the Feed tab its bars step away as the reader pages on and come back
-/// the moment they page back ([ScrollChromeRegion.paged]). Each page is the
-/// whole screen with one framed post laid out clear of the bars as they
-/// stand when shown, so a post never changes size and is never under a bar
-/// at rest. As the bars leave, the post is moved, never laid out again, so
-/// it stays centred in the room the bars leave it, on the bars' own spring
-/// value ([FeedCentredBetweenBars]): with the bars away it is the one thing
-/// on the screen, framed in the middle of it, not a post sitting under two
-/// empty strips.
+/// As the Feed tab its top bar steps away and the dock draws in to its
+/// compact capsule as the reader pages on; both come back the moment they
+/// page back ([ScrollChromeRegion.paged]), when a post is tapped
+/// ([FeedBarsOnTap]), and when the reader returns from a page opened here.
+/// Each page is the whole screen with one framed post laid out clear of the
+/// bars as they stand when shown, so a post never changes size and is never
+/// under a bar at rest. As the bars move, the post is moved, never laid out
+/// again, so it stays centred in the room they leave, on the bars' own
+/// spring value ([FeedCentredBetweenBars]).
+///
+/// Under the pages one still deck ([FeedBottomDeck]) rises from the board
+/// block's foot to the screen's edge, under the dock: the posts page over
+/// it, and each post's chart is drawn straight on it.
 ///
 /// A page pushed from For You › Discovery: it follows the app theme (light
 /// or dark surfaces, status bar icons to match) and wears the home bar's
@@ -422,6 +433,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _syncSeen();
     _rebuildSoon();
     _reclaim();
+    // Back from a page opened here (Analyze, the news reader): the bars are
+    // in view, so the way on to another tab is too.
+    ScrollChromeScope.maybeOf(context)?.show();
   }
 
   /// Back on top. When what was on top held another Feed (Watch, from a
@@ -1018,22 +1032,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         ? EdgeInsets.zero
         : EdgeInsets.only(
             top: HomeTopBarMetrics.headerExtent(context),
-            // The shell's bottom bar keeps its place in the layout and the
-            // page runs under it, so this is the bar's whole height.
+            // The shell's dock keeps one slot in the layout and the page
+            // runs under it, so this is the slot's whole height.
             bottom: MediaQuery.paddingOf(context).bottom,
           );
     // The system's own insets, read from the window: the shell spends the
-    // home indicator's on its bottom bar before the page sees it.
+    // home indicator's on its dock before the page sees it.
     final system = chrome == null
         ? EdgeInsets.zero
         : MediaQueryData.fromView(View.of(context)).viewPadding;
     final centring = FeedCentredBetweenBars.travelFor(
       shown: clear,
       away: EdgeInsets.only(
-        // The status bar's strip stays when the bars are away, and the home
-        // indicator still sits over the foot of the screen.
+        // The status bar's strip stays when the bars are away. The dock
+        // never leaves: it draws in to its compact capsule, which the post
+        // keeps clear of; with no dock (a tablet's rail) the home indicator
+        // still sits over the foot of the screen.
         top: math.min(system.top, clear.top),
-        bottom: math.min(system.bottom, clear.bottom),
+        bottom: math.min(
+          HomeNavScope.maybeOf(context)?.compactExtent ?? system.bottom,
+          clear.bottom,
+        ),
       ),
     );
     Widget clearOfBars(Widget page) {
@@ -1133,7 +1152,18 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     );
     final pages = MediaQuery.withClampedTextScaling(
       maxScaleFactor: HomeTopBarMetrics.maxTextScale,
-      child: FeedSeen(seen: _seen, child: body),
+      child: FeedSeen(
+        seen: _seen,
+        child: _FeedDeckUnder(
+          clear: clear,
+          chrome: chrome,
+          travel: centring,
+          // Below the screen's edge by as far as the post rises, so its foot
+          // never shows above the edge as the bars leave.
+          overhang: math.max(0, -centring),
+          child: FeedBarsOnTap(chrome: chrome, child: body),
+        ),
+      ),
     );
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: context.isLightTheme
@@ -1184,6 +1214,76 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   }
 }
 
+/// The pages over the deck that rises under every post's foot
+/// ([FeedBottomDeck]): one still layer, laid where each post's board block
+/// ends ([FeedLayout.deckTop]) in a page [clear] of the bars, and moved
+/// with the posts as the bars come and go ([FeedCentredBetweenBars]), so
+/// the board always flows into it at the same line. A short window, whose
+/// posts scroll inside their page, has none.
+class _FeedDeckUnder extends StatelessWidget {
+  const _FeedDeckUnder({
+    required this.clear,
+    required this.chrome,
+    required this.travel,
+    required this.overhang,
+    required this.child,
+  });
+
+  final EdgeInsets clear;
+  final ScrollChromeController? chrome;
+  final double travel;
+  final double overhang;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final pageHeight = constraints.maxHeight - clear.vertical;
+        final hasDeck =
+            pageHeight.isFinite && pageHeight >= FeedPageViewport.shortWindow;
+        final shown = chrome;
+        const deck = FeedBottomDeck();
+        // One tree with or without the deck: a window folding across the
+        // short line never rebuilds the pages (a clip keeps its state).
+        final Widget under;
+        if (!hasDeck) {
+          under = const Positioned(
+            left: 0,
+            top: 0,
+            width: 0,
+            height: 0,
+            child: SizedBox.shrink(),
+          );
+        } else {
+          final l = FeedLayout.resolve(
+            BoxConstraints(
+              maxWidth: constraints.maxWidth,
+              maxHeight: pageHeight,
+            ),
+            MediaQuery.textScalerOf(context),
+            evalWidth: 20.w,
+          );
+          under = Positioned(
+            left: 0,
+            right: 0,
+            top: clear.top + l.deckTop,
+            bottom: -overhang,
+            child: shown == null
+                ? deck
+                : FeedCentredBetweenBars(
+                    chrome: shown,
+                    travel: travel,
+                    child: deck,
+                  ),
+          );
+        }
+        return Stack(fit: StackFit.expand, children: [under, child]);
+      },
+    );
+  }
+}
+
 class _FeedHeader extends StatelessWidget {
   const _FeedHeader({
     required this.showBack,
@@ -1217,7 +1317,7 @@ class _FeedHeader extends StatelessWidget {
     return HomeTopBarFrame(
       child: HomeTopBarTitleRow(
         leading: showBack
-            ? const HomeTopBarBackButton(key: ValueKey('feed_back'))
+            ? const PageBackButton(key: ValueKey('feed_back'))
             : null,
         title: _FeedTitle(onTap: onTitleTap),
         trailing: [

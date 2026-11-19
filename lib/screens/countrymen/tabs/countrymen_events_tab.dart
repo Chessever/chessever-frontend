@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
-import 'package:chessever2/screens/favorites/widgets/tab_search_fab.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -13,6 +12,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -216,10 +216,27 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      ref.read(countrymenEventsProvider.notifier).loadMore();
+    if (!_scrollController.hasClients) return;
+    _loadMoreNearEnd(_scrollController.position);
+  }
+
+  /// The next page, once the reader is within 200pt of the list's end.
+  /// Asked on every scroll and whenever the list's size changes under a
+  /// still reader ([ScrollMetricsNotification]): a page landing short, the
+  /// header folding away and growing the viewport.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
+    if (!mounted || !metrics.hasContentDimensions) return;
+    if (metrics.maxScrollExtent - metrics.pixels > 200) return;
+    // Nothing listed yet (a first load, an error): nothing to page on from.
+    if (ref.read(countrymenEventsProvider).events.isEmpty) return;
+    ref.read(countrymenEventsProvider.notifier).loadMore();
+  }
+
+  bool _onScrollMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
+      _loadMoreNearEnd(notification.metrics);
     }
+    return false;
   }
 
   @override
@@ -235,24 +252,27 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // The search is the page's, from its floating button (Trello
-          // #1420): the list starts right under the header.
-          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-          // Content
-          _buildContentSliver(state),
-          // The last card ends clear of the floating search button; the
-          // room gives way on the search's own timeline while it is open.
-          SearchModeListEnd.sliver(
-            base: 24.h,
-            buttons: TabSearchFab.reach(context),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onScrollMetrics,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
-        ],
+          slivers: [
+            // The search is the page's, from its floating button (Trello
+            // #1420): the list starts right under the header.
+            SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+            // Content
+            _buildContentSliver(state),
+            // The last card ends clear of the floating search button; the
+            // room gives way on the search's own timeline while it is open.
+            SearchModeListEnd.sliver(
+              base: 24.h,
+              buttons: InkFabStack.reach(context),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -308,8 +328,10 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
 
   Widget _buildEventsSliver(CountrymenEventsState state) {
     final events = state.events;
-    final showLoadingIndicator =
-        (state.hasMore || state.isLoading) && events.isNotEmpty;
+    // The list's end, one slot of one height whatever it holds: the next
+    // page loading, room to scroll on into it, or the end. Nothing under
+    // the reader's finger jumps as a page starts or lands.
+    final showLoadingIndicator = events.isNotEmpty;
 
     // Get live event IDs for status indicators
     final liveEventIds =
@@ -327,8 +349,9 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate((context, index) {
           if (index >= events.length) {
-            return Padding(
-              padding: EdgeInsets.symmetric(vertical: 24.h),
+            return SizedBox(
+              key: const ValueKey('countrymen_events_list_end_slot'),
+              height: 96.h,
               child: Center(
                 child: state.isLoading
                     ? Column(
@@ -356,7 +379,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
                     : Text(
                         'No more events',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: const Color(0xFF52525B),
+                          color: context.collectionSubtleInk,
                         ),
                       ),
               ),

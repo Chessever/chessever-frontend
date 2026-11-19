@@ -70,8 +70,10 @@ import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/card_plate_layout.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_request_card.dart'
+    show smartEventCardFace;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart'
-    show smartEventCardSummary, watchSmartEventLive;
+    show watchSmartEventLive;
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -1710,33 +1712,34 @@ class _SavedSmartEvent extends ConsumerWidget {
       return SpaceSavedRow(shortcut: shortcut, stacked: stacked);
     }
     // Today's broadcasts, read once for every Smart Event card and filtered
-    // per card in memory.
-    final members = ref
-        .watch(discoverySmartEventMembersProvider(saved.criteria))
-        .valueOrNull;
-    final request = members == null ? saved : saved.withEvents(members);
-    final events = request.events;
-    final elos = [
-      for (final e in events)
-        if (e.maxAvgElo > 0) e.maxAvgElo,
-    ];
-    final avg = elos.isEmpty
-        ? 0
-        : (elos.reduce((a, b) => a + b) / elos.length).round();
+    // per card in memory. An opening reads none: they are not its games.
+    final members = saved.eco.isAll
+        ? ref
+              .watch(discoverySmartEventMembersProvider(saved.criteria))
+              .valueOrNull
+        : null;
+    // The Search card's face (SmartEventRequestCard): an opening shows its
+    // codes and its position, a level its floor and its piece, anything
+    // else its count.
+    final face = smartEventCardFace(saved, members);
+    final request = face.shown;
     return SmartEventCard(
       key: ValueKey<String>('space_smart_${shortcut.key}'),
       quiet: true,
       stacked: stacked,
       tierLabel: request.tierLabel,
       minElo: request.minElo,
-      liveCount: events.length,
-      avgElo: avg,
+      liveCount: face.count,
+      deckEvents: face.deckEvents,
+      metaText: face.metaText,
+      opening: face.opening,
+      avgElo: face.avg,
       titleSuffix: request.titleSuffix,
       caption: request.caption,
       countSingular: request.countSingular,
       countPlural: request.countPlural,
       formatsAndStates: request.formatsAndStates,
-      summary: smartEventCardSummary(request),
+      summary: face.summary,
       live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
       disclosure: disclosure,

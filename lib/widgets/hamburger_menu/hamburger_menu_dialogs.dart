@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
-import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -9,12 +8,6 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-void showSettingsDialog(BuildContext context) {
-  // Close hamburger drawer, then push the unified Settings page.
-  Navigator.pop(context);
-  Navigator.of(context).push(SettingsPage.route());
-}
 
 void showDeleteAccountDialog(BuildContext context) {
   showAlertModal<void>(
@@ -82,11 +75,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.delete_forever_rounded,
-            size: 36.ic,
-            color: colors.danger,
-          ),
+          Icon(Icons.delete_forever_rounded, size: 36.ic, color: colors.danger),
           SizedBox(height: 12.h),
           Text(
             'Delete account?',
@@ -135,26 +124,23 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(6),
-                                color:
-                                    _hasReadWarning
-                                        ? colors.danger
-                                        : Colors.transparent,
+                                color: _hasReadWarning
+                                    ? colors.danger
+                                    : Colors.transparent,
                                 border: Border.all(
-                                  color:
-                                      _hasReadWarning
-                                          ? colors.danger
-                                          : colors.textSecondary,
+                                  color: _hasReadWarning
+                                      ? colors.danger
+                                      : colors.textSecondary,
                                   width: 2,
                                 ),
                               ),
-                              child:
-                                  _hasReadWarning
-                                      ? Icon(
-                                        Icons.check_rounded,
-                                        size: 14.ic,
-                                        color: onDanger,
-                                      )
-                                      : null,
+                              child: _hasReadWarning
+                                  ? Icon(
+                                      Icons.check_rounded,
+                                      size: 14.ic,
+                                      color: onDanger,
+                                    )
+                                  : null,
                             ),
                           ),
                           SizedBox(width: 12.w),
@@ -193,13 +179,12 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
             children: [
               Expanded(
                 child: TextButton(
-                  onPressed:
-                      _isDeleting
-                          ? null
-                          : () {
-                            HapticFeedbackService.buttonPress();
-                            Navigator.of(context).pop();
-                          },
+                  onPressed: _isDeleting
+                      ? null
+                      : () {
+                          HapticFeedbackService.buttonPress();
+                          Navigator.of(context).pop();
+                        },
                   style: TextButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     backgroundColor: colors.surface,
@@ -223,13 +208,12 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                 child: Opacity(
                   opacity: _hasReadWarning ? 1.0 : 0.5,
                   child: TextButton(
-                    onPressed:
-                        (_hasReadWarning && !_isDeleting)
-                            ? () {
-                              HapticFeedbackService.heavy();
-                              _deleteAccount();
-                            }
-                            : null,
+                    onPressed: (_hasReadWarning && !_isDeleting)
+                        ? () {
+                            HapticFeedbackService.heavy();
+                            _deleteAccount();
+                          }
+                        : null,
                     style: TextButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                       backgroundColor: colors.danger,
@@ -239,24 +223,23 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child:
-                        _isDeleting
-                            ? SizedBox.square(
-                              dimension: 16.ic,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  onDanger,
-                                ),
-                              ),
-                            )
-                            : Text(
-                              'Delete',
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: onDanger,
-                                fontWeight: FontWeight.w600,
+                    child: _isDeleting
+                        ? SizedBox.square(
+                            dimension: 16.ic,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                onDanger,
                               ),
                             ),
+                          )
+                        : Text(
+                            'Delete',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: onDanger,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ),

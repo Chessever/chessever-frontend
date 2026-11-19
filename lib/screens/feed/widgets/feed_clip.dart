@@ -18,6 +18,7 @@ import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
+import 'package:chessever2/screens/feed/widgets/feed_bars_on_tap.dart';
 import 'package:chessever2/screens/feed/widgets/feed_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
 import 'package:chessever2/screens/feed/widgets/feed_end_card.dart';
@@ -41,7 +42,6 @@ import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
-import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_flame.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -67,14 +67,17 @@ import 'package:flutter/scheduler.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// One page of the Feed: a finished game replaying itself on a playable
-/// board, laid out exactly like the app's game cards (the same
+/// board, laid out like the app's game cards (the same
 /// [PlayerFirstRowDetailWidget] rows over and under the board, the board
-/// screen's [EvaluationBarWidget] beside it) under a one-line
-/// [FeedPostHeader].
+/// screen's [EvaluationBarWidget] beside it), the board as large as the
+/// screen allows. Under it ([FeedLayout]) the evaluation chart, the scrub
+/// line and the one-line caption ([FeedPostHeader]) stand on the left, the
+/// action rail ([FeedActionRail]) on the right.
 ///
-/// Gestures belong to the parts they sit on. The header's event and opening
-/// open the event and the board editor; the player names open the scorecard
-/// (long-press: the player's focus menu). Over the board and its eval bar:
+/// Gestures belong to the parts they sit on. The caption's event and
+/// opening open the event and the board editor; the player names open the
+/// scorecard (long-press: the player's focus menu). Over the board and its
+/// eval bar:
 /// * tap a piece of the side to move, then its square, to play a legal move.
 ///   Playback holds while a piece is in hand; a move that differs from the
 ///   game starts the viewer's own line (autoplay waits, "Back to game"
@@ -1539,11 +1542,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
     }
   }
 
-  Future<void> _toggleSpace(SpaceShortcut draft) async {
-    _note(FeedAction.mySpace);
-    await toggleSpaceShortcut(context: context, ref: ref, draft: draft);
-  }
-
   /// Whether the header's event opens somewhere: a broadcast or an archive
   /// game, or a saved copy of a broadcast game (a like keeps its tour id). A
   /// game Watch brought from the user's own analysis or the board editor
@@ -1819,8 +1817,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
     return _openingFenValue;
   }
 
-  /// The one line over the board: time control, the signal that earned the
-  /// game its place, the event and the opening (both tappable).
+  /// The post's one line, under its chart: time control, the signal that
+  /// earned the game its place, the event and the opening (both tappable).
   Widget _buildHeader(FeedLayout l) {
     final game = _game;
     final parts = <FeedHeaderPart>[];
@@ -1888,7 +1886,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final timeControl = feedTimeControlOf(game, event);
     return FeedPostHeader(
       key: const ValueKey('feed_post_header'),
-      height: l.metaHeight,
+      height: l.captionHeight,
       // The app's shared time-control mark: light mode draws its baked
       // paper twins, dark the original art.
       leading: timeControl == null
@@ -2150,12 +2148,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _likedAtOpen ??= likedStored;
     final liked = _likeIntent ?? likedStored;
     final tagOffer = _tagOffer;
-    final draft = _spaceDraft;
-    final inSpace =
-        draft != null &&
-            (ref.watch(spaceShortcutExistsProvider(draft.key)) == true)
-        ? true
-        : null;
     final saved =
         ref.watch(feedGameSavedProvider(_game.likeId)).valueOrNull ?? false;
 
@@ -2207,10 +2199,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: 20.w,
-          infoHeight: 0,
-          chartHeight: FeedEvaluationGraph.heightFor(
-            MediaQuery.textScalerOf(context),
-          ),
         );
         _zoneWidth = l.contentWidth;
         _boardRect = Rect.fromLTWH(l.evalWidth, 0, l.board, l.board);
@@ -2218,34 +2206,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
         final n = math.max(1, _item.plyCount);
         final progress = _item.plyCount <= 0 ? 1.0 : shown / n;
-        // One column for the board, player rows and all controls below it,
-        // including when the board is height-bound.
-        Widget content(Widget child) => Padding(
-          padding: EdgeInsets.only(left: l.contentLeft),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(width: l.contentWidth, child: child),
-          ),
-        );
-
-        // The post header keeps the page gutter for its title and menu.
-        Widget fullRow(Widget child) => Padding(
-          padding: const EdgeInsets.only(left: FeedLayout.sidePadding),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(width: l.rowWidth, child: child),
-          ),
-        );
-
-        // A short window can leave a board column narrower than the line's
-        // existing controls. Borrow the page gutter in that case, keeping the
-        // graph slot, board and action row at their original positions.
-        final stripRow =
+        // A narrow column can leave the zone's left column narrower than
+        // the line's controls. The strip then borrows the page gutter, so
+        // the graph slot, the board and the rail keep their places.
+        final stripLeft =
             exploring &&
-                l.contentWidth <
+                l.leftColumnWidth <
                     FeedBackToGameButton.minimumWidth(context) + 44 * 3 + 4
-            ? fullRow
-            : content;
+            ? 0.0
+            : l.contentLeft;
 
         final board = SizedBox.square(
           key: _boardKey,
@@ -2407,81 +2376,67 @@ class _FeedClipState extends ConsumerState<FeedClip>
           ),
         );
 
+        // The post, placed on its geometry: the board block under the top
+        // bar, then the zone (the chart, the scrub line and the caption on
+        // the left, the rail on the right) over the deck that rises under
+        // the pages ([FeedLayout.deckTop]).
         return Stack(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: l.top),
-                fullRow(_buildHeader(l)),
-                const SizedBox(height: FeedLayout.gap),
-                content(
-                  _playerRow(l, white: false, revealResult: revealResult),
-                ),
-                const SizedBox(height: FeedLayout.gap),
-                content(zone),
-                const SizedBox(height: FeedLayout.gap),
-                content(_playerRow(l, white: true, revealResult: revealResult)),
-                SizedBox(height: l.infoSpace),
-                SizedBox(height: l.actionsSpace),
-                content(
-                  FeedActionRow(
-                    height: l.actionsHeight,
-                    liked: liked,
-                    likes: _likesShown(liked),
-                    // Until an incoming heart lands, the button shows the
-                    // game as it was.
-                    shownLiked: liked && !_heartInbound,
-                    shownLikes: _likesShown(liked && !_heartInbound),
-                    heartPop: _heartDocks,
-                    tagPrompt: tagOffer != null
-                        ? LikeTagChip(
-                            key: ValueKey(tagOffer.token),
-                            offer: tagOffer,
-                            onDismiss: () => _dismissTagOffer(tagOffer.token),
-                          )
-                        : null,
-                    inSpace: inSpace,
-                    saved: saved,
-                    likeIconKey: _likeIconKey,
-                    onLike: _item.likeable ? _likeFromButton : null,
-                    onSpace: () {
-                      if (draft != null) unawaited(_toggleSpace(draft));
-                    },
-                    onShare: _share,
-                    onSave: _item.exportable ? () => unawaited(_save()) : null,
-                    onAnalyze: _openGame,
-                  ),
-                ),
-                // [FeedLayout.scrubSpace]: what the rows leave, so the page
-                // never overflows by a rounding error.
-                const Spacer(),
-                // The graph and its evaluation end at the board edge. The
-                // timeline shares its row with the playback control. While
-                // the viewer plays their own line, its move strip (steps,
-                // "Back to game") stands in the graph's slot: the game's
-                // curve says nothing about the line, and swapping within a
-                // fixed slot keeps the board and every row where they were.
-                stripRow(
-                  SizedBox(
-                    height: l.chartHeight,
-                    child: exploring
-                        ? Align(
-                            child: RepaintBoundary(
-                              child: _buildStrip(l, shown),
-                            ),
-                          )
-                        : FeedEvaluationGraph(
-                            item: _item,
-                            ply: shown,
-                            onSeek: _onScrubTap,
-                            onStart: _onScrubStart,
-                            onUpdate: _onScrubUpdate,
-                            onEnd: _onScrubEnd,
-                          ),
-                  ),
-                ),
-                Row(
+            Positioned(
+              left: l.contentLeft,
+              top: l.blackRowTop,
+              width: l.contentWidth,
+              height: l.rowHeight,
+              child: _playerRow(l, white: false, revealResult: revealResult),
+            ),
+            Positioned(
+              left: l.contentLeft,
+              top: l.boardTop,
+              width: l.contentWidth,
+              height: l.board,
+              child: FeedKeepsBars(child: zone),
+            ),
+            Positioned(
+              left: l.contentLeft,
+              top: l.whiteRowTop,
+              width: l.contentWidth,
+              height: l.rowHeight,
+              child: _playerRow(l, white: true, revealResult: revealResult),
+            ),
+            // The graph, under the board block. While the viewer plays
+            // their own line, its move strip (steps, "Back to game") stands
+            // in the graph's slot: the game's curve says nothing about the
+            // line, and swapping within a fixed slot keeps the board and
+            // every row where they were.
+            Positioned(
+              left: stripLeft,
+              top: l.graphTop,
+              width: l.leftColumnRight - stripLeft,
+              height: l.graphHeight,
+              child: FeedKeepsBars(
+                child: exploring
+                    ? Align(
+                        child: RepaintBoundary(child: _buildStrip(l, shown)),
+                      )
+                    : FeedEvaluationGraph(
+                        item: _item,
+                        ply: shown,
+                        onSeek: _onScrubTap,
+                        onStart: _onScrubStart,
+                        onUpdate: _onScrubUpdate,
+                        onEnd: _onScrubEnd,
+                      ),
+              ),
+            ),
+            // The timeline shares its row with the playback speed, the row
+            // running from the screen's edge (its target) to the rail.
+            Positioned(
+              left: 0,
+              top: l.scrubTop,
+              width: l.leftColumnRight,
+              height: FeedLayout.scrubHeight,
+              child: FeedKeepsBars(
+                child: Row(
                   children: [
                     Expanded(
                       child: FeedScrubStrip(
@@ -2508,24 +2463,72 @@ class _FeedClipState extends ConsumerState<FeedClip>
                         onStep: (delta) => _stepTo(shown + delta),
                       ),
                     ),
-                    Padding(
-                      padding: EdgeInsets.only(right: l.contentLeft),
-                      child: FeedSpeedButton(
-                        key: const ValueKey('feed_speed_button'),
-                        labelOffset: const Offset(
-                          0,
-                          FeedLayout.scrubTrackCenter -
-                              FeedLayout.scrubHeight / 2,
-                        ),
-                        speed: p.speed,
-                        onTap: _cycleSpeed,
+                    FeedSpeedButton(
+                      key: const ValueKey('feed_speed_button'),
+                      labelOffset: const Offset(
+                        0,
+                        FeedLayout.scrubTrackCenter -
+                            FeedLayout.scrubHeight / 2,
                       ),
+                      speed: p.speed,
+                      onTap: _cycleSpeed,
                     ),
                   ],
                 ),
-                SizedBox(height: l.foot),
-              ],
+              ),
             ),
+            // The caption: what the post is, its event and its opening, at
+            // the zone's foot beside Like.
+            Positioned(
+              left: l.contentLeft,
+              top: l.captionTop,
+              width: l.leftColumnWidth,
+              height: l.captionHeight,
+              child: _buildHeader(l),
+            ),
+            Positioned(
+              left: l.railLeft,
+              top: l.railTop,
+              width: FeedLayout.railWidth,
+              height: l.railHeight,
+              // A tap on the rail answers at once (a heart, a save): the
+              // bars stay where they are, so the post never slides under it.
+              child: FeedKeepsBars(
+                child: FeedActionRail(
+                  cellHeight: l.railCell,
+                  liked: liked,
+                  likes: _likesShown(liked),
+                  // Until an incoming heart lands, the button shows the game
+                  // as it was.
+                  shownLiked: liked && !_heartInbound,
+                  shownLikes: _likesShown(liked && !_heartInbound),
+                  heartPop: _heartDocks,
+                  saved: saved,
+                  likeIconKey: _likeIconKey,
+                  onLike: _item.likeable ? _likeFromButton : null,
+                  onShare: _share,
+                  onSave: _item.exportable ? () => unawaited(_save()) : null,
+                  onAnalyze: _openGame,
+                ),
+              ),
+            ),
+            // A like's tag picker stands beside Like, over the caption and
+            // the scrub line, so it can be answered or undone at once.
+            if (tagOffer != null)
+              Positioned(
+                left: l.contentLeft,
+                width: math.max(0, l.leftColumnWidth - 4),
+                top: l.zoneBottom - l.railCell,
+                height: l.railCell,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: LikeTagChip(
+                    key: ValueKey(tagOffer.token),
+                    offer: tagOffer,
+                    onDismiss: () => _dismissTagOffer(tagOffer.token),
+                  ),
+                ),
+              ),
           ],
         );
       },

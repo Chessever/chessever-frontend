@@ -37,7 +37,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show SearchModeFilterButton, SearchModeListEnd, SearchModeScope;
 import 'package:flutter/material.dart';
@@ -378,9 +378,18 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     _markLiveCardsScrolling();
+    _loadMoreNearEnd(_scrollController.position);
+  }
+
+  /// TWIC pages in as the reader nears the end. Read on every scroll and on
+  /// every change of the list's own measure, as every paged list reads it:
+  /// the profile's header folding away grows the viewport (and shrinks what
+  /// is left below) without a scroll. The pagination footer also asks as
+  /// soon as it is built ([_buildPaginationFooter]), so on this list the
+  /// measure is a second line under it, not the only one.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
     if (widget.dataSource != PlayerProfileDataSource.twic) return;
-    final position = _scrollController.position;
-    if (position.pixels < position.maxScrollExtent - 560) return;
+    if (metrics.extentAfter > 560) return;
     ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
   }
 
@@ -618,9 +627,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       tablet: 24.w,
     );
     // The search row left the list for the profile's own search page
-    // (Trello #1420). Over the list floats its toolbar (count, what narrows
-    // it, layout, filters), one height whatever it says, and the picking
-    // panel while games are being picked.
+    // (Trello #1420). At the head of the list sits its toolbar (count, what
+    // narrows it, layout, filters), one height whatever it says, and the
+    // picking panel while games are being picked.
     final headerHeight =
         PlayerGamesListToolbar.heightOf(context) +
         (isSelectionMode
@@ -638,55 +647,67 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        key: PageStorageKey<String>(_scrollStorageKey),
-        controller: _scrollController,
-        scrollCacheExtent: kListScrollCacheExtent,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          SliverAppBar(
-            primary: false,
-            floating: true,
-            snap: true,
-            pinned: false,
-            elevation: 0,
-            backgroundColor: Colors.transparent,
-            automaticallyImplyLeading: false,
-            toolbarHeight: headerHeight,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Align(
-                alignment: Alignment.bottomCenter,
-                child: _buildStickyHeader(
-                  state,
-                  horizontalPadding,
-                  isSelectionMode,
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (notification) {
+          if (notification.depth == 0 &&
+              notification.metrics.axis == Axis.vertical) {
+            _loadMoreNearEnd(notification.metrics);
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          key: PageStorageKey<String>(_scrollStorageKey),
+          controller: _scrollController,
+          scrollCacheExtent: kListScrollCacheExtent,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
+            // The list's toolbar heads the list and scrolls with it. It does
+            // not float back on its own: the profile's header above already
+            // comes back with the reader's direction, and a second, snapping
+            // header followed the gesture's start instead and disagreed with
+            // it on every short peek.
+            SliverAppBar(
+              primary: false,
+              pinned: false,
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              automaticallyImplyLeading: false,
+              toolbarHeight: headerHeight,
+              flexibleSpace: FlexibleSpaceBar(
+                background: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _buildStickyHeader(
+                    state,
+                    horizontalPadding,
+                    isSelectionMode,
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // Content
-          SliverLayoutBuilder(
-            builder: (context, constraints) => _buildContentSliver(
-              state,
-              viewMode,
-              eventsAsync,
-              isSelectionMode,
-              constraints.crossAxisExtent,
+            // Content
+            SliverLayoutBuilder(
+              builder: (context, constraints) => _buildContentSliver(
+                state,
+                viewMode,
+                eventsAsync,
+                isSelectionMode,
+                constraints.crossAxisExtent,
+              ),
             ),
-          ),
 
-          // Clear of the profile's floating search at the list's end (its
-          // square, and the margin that lifts it over the home indicator);
-          // the button's room gives way on the search's own timeline while
-          // nothing floats.
-          SearchModeListEnd.sliver(
-            base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
-            buttons: InkFabSize.regular.side + kFloatingActionButtonMargin,
-          ),
-        ],
+            // Clear of the profile's floating search at the list's end (its
+            // square, and the margin that lifts it over the home indicator);
+            // the button's room gives way on the search's own timeline while
+            // nothing floats.
+            SearchModeListEnd.sliver(
+              base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+              buttons: InkFabStack.extent(),
+            ),
+          ],
+        ),
       ),
     );
 

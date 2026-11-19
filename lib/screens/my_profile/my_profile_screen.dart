@@ -1,4 +1,3 @@
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
@@ -9,6 +8,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/manage_subscription_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -43,15 +43,10 @@ final myProfileIdentityProvider = Provider.autoDispose<MyProfileIdentity>((
 double? _pressScale(BuildContext context) =>
     MediaQuery.disableAnimationsOf(context) ? null : 0.97;
 
-/// The smallest hit box on this screen, in logical pixels. Fixed rather than
-/// `.w`-scaled: `44.w` shrinks to about 40 on a 360-wide phone.
-const double _minTarget = 44;
-
 /// Header-scale text stops growing here, the way the Feed header does; the
 /// rows under it still take the full system scale.
 TextScaler _headerScaler(BuildContext context) =>
     MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.4);
-
 
 /// The signed-in user's own page: who they are and their plan.
 class MyProfileScreen extends ConsumerWidget {
@@ -110,26 +105,23 @@ class _ProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final ink = context.colors.textPrimary;
     return Padding(
-      padding: EdgeInsets.fromLTRB(8.w, 0, 16.w, 0),
+      // The way back every pushed page wears ([PageBackButton]): one glyph,
+      // one size, at the one inset.
+      padding: EdgeInsets.fromLTRB(
+        SearchHeaderMetrics.leadingInset,
+        0,
+        16.w,
+        0,
+      ),
       // A floor, not a fixed height: at large text sizes the bar grows
       // instead of slicing the title.
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: _minTarget),
+        constraints: const BoxConstraints(
+          minHeight: SearchHeaderMetrics.backTarget,
+        ),
         child: Row(
           children: [
-            SizedBox.square(
-              dimension: _minTarget,
-              child: IconButton(
-                tooltip: 'Back',
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: ink,
-                  size: 20.w,
-                ),
-              ),
-            ),
+            const PageBackButton(),
             SizedBox(width: 4.w),
             Expanded(
               child: Semantics(
@@ -300,8 +292,11 @@ class _PlanRow extends ConsumerWidget {
         if (isPremium) {
           showManageSubscriptionSheet(context);
         } else {
-          showPremiumPaywallSheet(allowRewarded: false,
-            context: context, featureId: 'my_profile');
+          showPremiumPaywallSheet(
+            allowRewarded: false,
+            context: context,
+            featureId: 'my_profile',
+          );
         }
       },
     );
@@ -311,10 +306,7 @@ class _PlanRow extends ConsumerWidget {
 /// A full-width row that opens something: a title, an optional line under
 /// it, a chevron.
 class _ProfileRow extends StatelessWidget {
-  const _ProfileRow({
-    required this.title,
-    this.subtitle,
-    required this.onTap});
+  const _ProfileRow({required this.title, this.subtitle, required this.onTap});
 
   final String title;
   final String? subtitle;

@@ -23,6 +23,7 @@ import 'package:chessever2/screens/search/search_tab_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
@@ -34,6 +35,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'widget/bottom_nav_bar.dart';
+import 'widget/home_nav_dock.dart';
 import 'widget/tablet_nav_rail.dart';
 
 /// A launch opens on For You › Today. The For You page memory must not carry
@@ -60,16 +62,20 @@ void forgetForYouPageForLaunch() {
   );
 }
 
-/// The app's home: five sections under one bar (Home, Feed, Botvinnik,
+/// The app's home: five sections over one dock (Home, Feed, Botvinnik,
 /// Search, Profile). There is no sidebar; what it held lives on Profile.
 ///
 /// Every section wears the same top bar ([HomeTopBarFrame]): one inset, one
 /// height, one gutter, one centre line, and the page under it starting at
-/// the same line ([HomeTopBarMetrics.headerExtent]). The bottom bar and the
-/// section's top bar step out of the way together, on one value, as the
-/// reader scrolls down a list and come back as they scroll up; Feed's follow
-/// the posts a page at a time and slide over them ([ScrollChromeRegion]).
-/// Botvinnik is a conversation with its composer under it: its bars stay.
+/// the same line ([HomeTopBarMetrics.headerExtent]). On a phone the sections
+/// run under a frosted dock ([HomeNavDock]) that never leaves: as the reader
+/// scrolls down a list the top bar steps away and the dock draws in to a
+/// compact capsule, on one value; scrolling back up brings both back. Feed's
+/// follow the posts a page at a time ([ScrollChromeRegion]). Botvinnik is a
+/// conversation with its composer under it: its bars stay, full.
+///
+/// Android's back on a section first brings hidden bars back, then goes to
+/// Home, and only on Home with its bars in view closes the app.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -256,46 +262,249 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
     );
 
-    final fab = SlidingFabs(controller: chrome, child: const _HomeFab());
-
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {
-      return Scaffold(
-        resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
-        floatingActionButton: fab,
-        body: Row(
-          children: [
-            const TabletNavRail(),
-            // Vertical divider
-            Container(width: 1, color: context.colors.divider),
-            // Main content
-            Expanded(child: body),
-          ],
+      return _backOnSection(
+        section: section,
+        chrome: chrome,
+        child: Scaffold(
+          resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
+          floatingActionButton: SlidingFabs(
+            controller: chrome,
+            child: const _HomeFab(),
+          ),
+          body: Row(
+            children: [
+              const TabletNavRail(),
+              // Vertical divider
+              Container(width: 1, color: context.colors.divider),
+              // Main content
+              Expanded(child: body),
+            ],
+          ),
         ),
       );
     }
 
-    // Phone layout: Bottom navigation bar. Botvinnik's composer rides the
-    // keyboard: the shell lifts the page over it (the keyboard covers the
-    // bar anyway), and the chat page does not lift itself again.
+    // Phone layout: the dock. Every section but Botvinnik runs under it
+    // ([Scaffold.extendBody]): its lists pad their end by the dock's slot
+    // ([MediaQuery.paddingOf]) and scroll on under the frosted capsule. The
+    // slot keeps one height whatever the capsule's shape, so the capsule
+    // drawing in never lays the page out again.
     //
-    // Feed's posts never change size: the page runs under the bar, which
-    // slides over it and keeps its place in the layout, so the inset Feed
-    // keeps clear at its foot is the bar's whole height at every frame.
-    final overFeed = section.barsOverPage;
-    return Scaffold(
-      resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
-      extendBody: overFeed,
-      floatingActionButton: fab,
-      bottomNavigationBar: CollapsingChrome(
-        controller: chrome,
-        edge: VerticalDirection.down,
-        overlay: overFeed,
-        child: const BottomNavBar(),
+    // Botvinnik's composer rides the keyboard: the shell lifts the page
+    // over it (the keyboard covers the dock anyway), and the chat page does
+    // not lift itself again. Its page stops above the dock, so the
+    // conversation's own drawer never runs under the capsule.
+    final items = ref.watch(visibleBottomNavItemsProvider);
+    final metrics = HomeNavMetrics.of(context, count: items.length);
+    final underDock = section != BottomNavBarItem.botvinnik;
+    return _backOnSection(
+      section: section,
+      chrome: chrome,
+      child: Scaffold(
+        resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
+        extendBody: underDock,
+        // The buttons ride down with the capsule's top as it draws in,
+        // keeping their distance from it, and never leave.
+        floatingActionButton: SlidingFabs(
+          controller: chrome,
+          ride: metrics.ride,
+          child: const _HomeFab(),
+        ),
+        floatingActionButtonLocation: RidingFabLocation(metrics.ride),
+        bottomNavigationBar: HomeNavDock(
+          chrome: chrome,
+          // Feed lays its own deck under the dock.
+          scrim: underDock && section != BottomNavBarItem.feed,
+        ),
+        body: HomeNavScope(metrics: metrics, child: body),
       ),
-      body: body,
     );
   }
+
+  /// Android's back (and the predictive back gesture) on a section: see
+  /// [HomeBackScope].
+  Widget _backOnSection({
+    required BottomNavBarItem section,
+    required ScrollChromeController chrome,
+    required Widget child,
+  }) {
+    return HomeBackScope(
+      chrome: chrome,
+      atHome: section == BottomNavBarItem.forYou,
+      onGoHome: () => selectBottomNavBarItem(
+        ref,
+        BottomNavBarItem.forYou,
+        navigationType: 'back',
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Android's back (and the predictive back gesture) on the Home shell:
+/// hidden bars come back first, then Home opens, and only Home with its bars
+/// in view lets the app close. iOS has no back on the first route.
+///
+/// The shell is the last to answer a back. What the page itself holds back
+/// with comes first and alone:
+///
+/// * Another [PopScope] of the route refusing (My Space in Edit, an in-place
+///   search): the back is that page's. Every refusing entry of a route hears
+///   the refused back, the shell's included; the shell then leaves the bars
+///   and the section where they are, so one back never both leaves Edit and
+///   throws the reader to the top of the page.
+/// * The route's own local history (a [Scaffold] drawer such as Botvinnik's
+///   conversations, a persistent bottom sheet): the shell lets the back
+///   through while there is one, and the route closes it. A route with a
+///   refusing entry never reaches its local history, so a shell that
+///   refused would leave the drawer open.
+///
+/// It registers a [PopEntry] of its own rather than a [PopScope], so that
+/// whether it lets a back through is read when the back comes: the drawer
+/// opens and closes without rebuilding anything here.
+class HomeBackScope extends StatefulWidget {
+  const HomeBackScope({
+    super.key,
+    required this.chrome,
+    required this.atHome,
+    required this.onGoHome,
+    required this.child,
+  });
+
+  /// The open section's chrome: hidden bars come back before anything else.
+  final ScrollChromeController chrome;
+
+  /// Whether the open section is Home, where a back with the bars in view
+  /// closes the app.
+  final bool atHome;
+
+  /// Opens Home.
+  final VoidCallback onGoHome;
+
+  final Widget child;
+
+  @override
+  State<HomeBackScope> createState() => _HomeBackScopeState();
+}
+
+class _HomeBackScopeState extends State<HomeBackScope> {
+  late final _HomeBackEntry _entry = _HomeBackEntry(this);
+  ModalRoute<dynamic>? _route;
+
+  /// Set while the shell asks the route whether anything else refuses.
+  bool _probing = false;
+
+  /// Whether the shell itself lets a back through: Home with its bars in
+  /// view, where the back closes the app.
+  bool get _shellLetsGo => widget.atHome && widget.chrome.value >= 1;
+
+  bool get _canPop =>
+      _probing || _shellLetsGo || (_route?.willHandlePopInternally ?? false);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.chrome.addListener(_entry.refresh);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != _route) {
+      _route?.unregisterPopEntry(_entry);
+      _route = route;
+      _route?.registerPopEntry(_entry);
+    }
+  }
+
+  @override
+  void didUpdateWidget(HomeBackScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.chrome != widget.chrome) {
+      oldWidget.chrome.removeListener(_entry.refresh);
+      widget.chrome.addListener(_entry.refresh);
+    }
+    _entry.refresh();
+  }
+
+  @override
+  void dispose() {
+    widget.chrome.removeListener(_entry.refresh);
+    _route?.unregisterPopEntry(_entry);
+    _entry.dispose();
+    super.dispose();
+  }
+
+  /// Whether an entry of the route other than the shell refuses the back,
+  /// asked with the shell letting it through.
+  bool _anotherRefuses() {
+    final route = _route;
+    if (route == null) return false;
+    _probing = true;
+    try {
+      return route.popDisposition == RoutePopDisposition.doNotPop;
+    } finally {
+      _probing = false;
+    }
+  }
+
+  void _onBack(bool didPop) {
+    if (didPop || !mounted || _anotherRefuses()) return;
+    final chrome = widget.chrome;
+    if (chrome.value < 1) {
+      chrome.show();
+      return;
+    }
+    if (!widget.atHome) widget.onGoHome();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// The shell's [PopEntry]: whether it lets a back through is read live
+/// ([_HomeBackScopeState._canPop]), and its listeners (the route, which
+/// tells Android whether the app takes the back) hear when the shell's own
+/// answer changes.
+class _HomeBackEntry extends PopEntry<Object?> {
+  _HomeBackEntry(this._scope) : _canPop = _HomeBackCanPop(_scope);
+
+  final _HomeBackScopeState _scope;
+  final _HomeBackCanPop _canPop;
+
+  /// The shell's own answer at the last notification.
+  late bool _last = _scope._shellLetsGo;
+
+  @override
+  ValueListenable<bool> get canPopNotifier => _canPop;
+
+  /// Tells the listeners when the shell's own answer changed.
+  void refresh() {
+    final now = _scope._shellLetsGo;
+    if (now == _last) return;
+    _last = now;
+    _canPop.changed();
+  }
+
+  @override
+  void onPopInvokedWithResult(bool didPop, Object? result) =>
+      _scope._onBack(didPop);
+
+  void dispose() => _canPop.dispose();
+}
+
+class _HomeBackCanPop extends ChangeNotifier implements ValueListenable<bool> {
+  _HomeBackCanPop(this._scope);
+
+  final _HomeBackScopeState _scope;
+
+  @override
+  bool get value => _scope._canPop;
+
+  void changed() => notifyListeners();
 }
 
 extension on BottomNavBarItem {
@@ -304,14 +513,11 @@ extension on BottomNavBarItem {
   bool get scrollsChrome => this != BottomNavBarItem.botvinnik;
 
   /// Feed pages through whole posts rather than scrolling a list
-  /// ([ScrollChromeRegion.paged]): its bars leave as the reader pages on and
-  /// come back as they page back, and each post moves to stay centred in the
-  /// room they leave, never changing size (see `FeedScreen`).
+  /// ([ScrollChromeRegion.paged]): its top bar leaves and its dock draws in
+  /// as the reader pages on, both come back as they page back, and each
+  /// post moves to stay centred in the room they leave, never changing size
+  /// (see `FeedScreen`).
   bool get pagesChrome => this == BottomNavBarItem.feed;
-
-  /// The section's page runs under the bars, which stand over it instead of
-  /// handing it their room: each post is composed between them.
-  bool get barsOverPage => this == BottomNavBarItem.feed;
 }
 
 /// The selected section, switched in place. No scale or fade on a switch:
@@ -405,6 +611,9 @@ class BottomNavBarView extends HookConsumerWidget {
 /// an event is in play or while it is on, so a flag left on can always be
 /// turned off ([ForYouTodayFabs]). Discovery has none. Botvinnik has a tab
 /// now; it no longer floats over Home.
+///
+/// Every set stands in an [InkFabStack], as the event screen's do: one
+/// right edge, one step, the main button in the corner.
 class _HomeFab extends ConsumerWidget {
   const _HomeFab();
 
@@ -415,7 +624,7 @@ class _HomeFab extends ConsumerWidget {
     if (!home) return const SizedBox.shrink();
     final tab = ref.watch(selectedForYouTabProvider);
     return switch (tab) {
-      ForYouTab.mySpace => const SpaceAddFab(),
+      ForYouTab.mySpace => const InkFabStack(children: [SpaceAddFab()]),
       ForYouTab.today => const ForYouTodayFabs(),
       ForYouTab.discovery => const SizedBox.shrink(),
     };

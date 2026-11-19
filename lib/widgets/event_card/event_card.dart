@@ -246,6 +246,7 @@ class EventCard extends ConsumerWidget {
                           tourEventCardModel: tourEventCardModel,
                           showHeartIndicator: showHeartIndicator,
                           favoritePlayersSource: favoritePlayersSource,
+                          spaceDraft: spaceDraft,
                         ),
                   ],
                 ),
@@ -358,6 +359,7 @@ class EventCard extends ConsumerWidget {
                 tourEventCardModel: tourEventCardModel,
                 showHeartIndicator: showHeartIndicator,
                 favoritePlayersSource: favoritePlayersSource,
+                spaceDraft: spaceDraft,
               ),
         ),
       ),
@@ -1186,7 +1188,12 @@ class _StarWidget extends ConsumerWidget {
     required this.tourEventCardModel,
     required this.showHeartIndicator,
     required this.favoritePlayersSource,
+    this.spaceDraft,
   });
+
+  /// The card's save target ([EventCard.spaceDraft]): what a star under
+  /// `SpaceStarPins` (the Search tab) also keeps in My Space.
+  final SpaceShortcut? spaceDraft;
 
   final GroupEventCardModel tourEventCardModel;
   final bool showHeartIndicator;
@@ -1232,6 +1239,7 @@ class _StarWidget extends ConsumerWidget {
         context: context,
         ref: ref,
         model: tourEventCardModel,
+        spaceDraft: spaceDraft,
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),

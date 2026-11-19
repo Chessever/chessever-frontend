@@ -61,6 +61,15 @@ const List<Duration> _kForYouRetryDelays = [Duration(milliseconds: 500)];
 /// resume or refresh replaces it rather than waiting.
 const Duration _kForYouStalledFetchAge = Duration(seconds: 65);
 
+/// How long Today waits before asking again for a next page that failed
+/// [failures] times in a row: 2 s, doubling, at most a minute. The first
+/// page is never held back; the reader's refresh asks for it at once.
+@visibleForTesting
+Duration forYouLoadMoreBackoff(int failures) {
+  const steps = [2, 4, 8, 16, 32, 60];
+  return Duration(seconds: steps[(failures - 1).clamp(0, steps.length - 1)]);
+}
+
 /// Disk budget for the saved feed at launch, where it races the network.
 const Duration _kForYouLaunchCacheBudget = Duration(milliseconds: 250);
 
@@ -151,11 +160,19 @@ class ForYouState {
   final bool hasMore;
   final String? error;
 
+  /// The events Live first lifts on Today, whether it is on or not: the
+  /// loaded events in play and the ones in play below the loaded pages that
+  /// Today's filters let through. Empty while nothing is in play; null until
+  /// the feed knows (its first page, or a live event it has not looked up
+  /// yet, with no earlier answer to keep).
+  final Set<String>? liveEventIds;
+
   const ForYouState({
     this.events = const [],
     this.isLoading = false,
     this.hasMore = true,
     this.error,
+    this.liveEventIds,
   });
 
   ForYouState copyWith({
@@ -163,12 +180,14 @@ class ForYouState {
     bool? isLoading,
     bool? hasMore,
     String? error,
+    Set<String>? liveEventIds,
   }) {
     return ForYouState(
       events: events ?? this.events,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       error: error,
+      liveEventIds: liveEventIds ?? this.liveEventIds,
     );
   }
 }
@@ -183,6 +202,13 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   int _fetchGeneration = 0;
   DateTime? _fetchStartedAt;
   bool _queuedFeedRefresh = false;
+  // A next page that failed is not asked for again before this time, later
+  // after each failure in a row ([forYouLoadMoreBackoff]). Today asks for a
+  // page on every scroll, layout and size change near its end, so without
+  // it a reader parked there while the server fails, or offline, would send
+  // a request (and a Sentry event) per frame. A page that lands clears it.
+  int _loadMoreFailures = 0;
+  DateTime? _loadMoreRetryAt;
   DateTime? _lastRefreshAt;
   final Map<String, int> _sessionEventOrder = <String, int>{};
   int _nextSessionEventOrder = 0;
@@ -203,17 +229,16 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   List<GroupEventCardModel> _sessionEvents = const <GroupEventCardModel>[];
   // Events in play that the loaded pages do not hold: the feed pages
   // [_kPageSize] events at a time by rating, and a live event can rank well
-  // below them. Fetched by id while Live first is on and shown only then, in
-  // the live block; a page that later brings one in takes it over.
+  // below them. Fetched by id whenever the live set changes, so Live first's
+  // count ([ForYouState.liveEventIds]) names them too, and shown only while
+  // it is on, in the live block; a page that later brings one in takes it
+  // over.
   List<GroupEventCardModel> _liveExtras = const <GroupEventCardModel>[];
   // Live ids fetched once and not shown in this feed (its filters keep them
   // out, or no event answers to them): never fetched again.
   final Set<String> _unlistedLiveIds = <String>{};
   Future<void>? _liveExtrasLoad;
   bool _liveExtrasAgain = false;
-  // Bumped when Live first goes off, so a fetch begun before cannot bring
-  // its events back.
-  int _liveExtrasGeneration = 0;
 
   ForYouNotifier(this.ref, {DateTime Function()? now})
     : _now = now ?? DateTime.now,
@@ -221,6 +246,54 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     _liveFirst = ref.read(homeEventsLiveFirstProvider);
     _setupListeners();
     _loadInitial();
+  }
+
+  /// Every state the feed publishes carries the events Live first would
+  /// lift as it stands ([ForYouState.liveEventIds]), so the count on Today's
+  /// capsule always names exactly the events a press brings to the top.
+  @override
+  set state(ForYouState value) {
+    final live = _liveEventIdsFor(value);
+    super.state =
+        identical(live, value.liveEventIds) ||
+            (live != null &&
+                value.liveEventIds != null &&
+                setEquals(live, value.liveEventIds))
+        ? value
+        : ForYouState(
+            events: value.events,
+            isLoading: value.isLoading,
+            hasMore: value.hasMore,
+            error: value.error,
+            liveEventIds: live,
+          );
+  }
+
+  /// The events Live first lifts for [next]: every loaded event in play and
+  /// every one kept below the pages ([_liveExtras]). Null while the first
+  /// page is still loading, or while an event in play has not been looked up
+  /// yet and there is no earlier answer to keep.
+  Set<String>? _liveEventIdsFor(ForYouState next) {
+    final liveIds = _liveIds();
+    if (liveIds.isEmpty) return const <String>{};
+    if (_sessionEvents.isEmpty && _liveExtras.isEmpty && next.isLoading) {
+      return null;
+    }
+    final held = <String>{};
+    final live = <String>{};
+    for (final event in [..._sessionEvents, ..._liveExtras]) {
+      held
+        ..add(event.id)
+        ..add(event.title);
+      if (isLiveEvent(event, liveIds)) live.add(event.id);
+    }
+    final unresolved = liveIds.any(
+      (id) => !held.contains(id) && !_unlistedLiveIds.contains(id),
+    );
+    // A live event not looked up yet: the lookup is on its way
+    // ([_loadLiveExtras]); until it answers, the last answer stands.
+    if (unresolved) return state.liveEventIds;
+    return live;
   }
 
   void _setupListeners() {
@@ -255,8 +328,8 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           _refreshFeedForLiveChange();
         }
         // Live first lists an event that just went live wherever the feed
-        // ranks it, loaded or not.
-        if (_liveFirst) unawaited(_loadLiveExtras());
+        // ranks it, loaded or not, and its count names it before a press.
+        unawaited(_loadLiveExtras());
       });
     });
 
@@ -502,8 +575,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     return true;
   }
 
+  /// Asks for the next page, unless one is on its way, none can follow, or
+  /// the last one failed too recently ([forYouLoadMoreBackoff]).
   Future<void> loadMore() async {
     if (_isFetching || !state.hasMore || state.isLoading) return;
+    final retryAt = _loadMoreRetryAt;
+    if (retryAt != null && _now().isBefore(retryAt)) return;
     await _fetchPage(isInitial: false);
   }
 
@@ -706,9 +783,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           .toList();
 
       // A first page replaces the loaded ones, and with them the boards of
-      // every event it does not hold. Live first still lists the live ones
-      // among those, so their boards are fetched along with the page's.
-      final keptLive = isInitial && _liveFirst
+      // every event it does not hold. Live first still lists (and counts)
+      // the live ones among those, so their boards are fetched along with
+      // the page's.
+      final keptLive = isInitial
           ? _liveRowsOutside(models)
           : const <GroupEventCardModel>[];
       final gamesByEventId = await _prefetchTopGames(
@@ -729,6 +807,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final currentLiveIds = _getLiveIdsSnapshot();
       models = models.map((model) => model.withLiveIds(currentLiveIds)).toList();
 
+      // A page landed: the next one may be asked for at once.
+      _loadMoreFailures = 0;
+      _loadMoreRetryAt = null;
+
       // Update state
       if (isInitial) {
         final hasGenuinelyNewEvent =
@@ -742,7 +824,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           _sessionEventOrder.clear();
           _nextSessionEventOrder = 0;
         }
-        if (_liveFirst) _liveExtras = _liveRowsOutside(models);
+        _liveExtras = _liveRowsOutside(models);
         state = ForYouState(
           events: _present(_sortPageOnceForSession(models)),
           isLoading: false,
@@ -751,7 +833,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         _lastRefreshAt = _now();
         // Events that went live below the first page since, and boards for
         // live rows kept while this page was in flight.
-        if (_liveFirst) unawaited(_loadLiveExtras());
+        unawaited(_loadLiveExtras());
         _maybeFinalizePendingFavoritePlayerOrder();
         unawaited(
           ref
@@ -786,6 +868,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           _now().difference(startedAt) >= _kForYouStalledFetchAge) {
         _queuedFeedRefresh = true;
         return;
+      }
+      if (!isInitial) {
+        // Not again until the back-off ends, however often the reader's end
+        // of the list asks ([loadMore]).
+        _loadMoreFailures++;
+        _loadMoreRetryAt = _now().add(forYouLoadMoreBackoff(_loadMoreFailures));
       }
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
@@ -876,11 +964,18 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     );
   }
 
-  /// Shows the session order again, laid out for Live first as it stands.
+  /// Shows the session order again, laid out for Live first as it stands,
+  /// and what Live first would lift ([ForYouState.liveEventIds]).
   void _republish() {
     if (!mounted) return;
     final next = _present(_sessionEvents);
-    if (listEquals(next, state.events)) return;
+    final live = _liveEventIdsFor(state);
+    final sameLive =
+        identical(live, state.liveEventIds) ||
+        (live != null &&
+            state.liveEventIds != null &&
+            setEquals(live, state.liveEventIds));
+    if (listEquals(next, state.events) && sameLive) return;
     state = state.copyWith(events: next, error: state.error);
   }
 
@@ -895,18 +990,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     ];
   }
 
+  /// Off, the session order shows again exactly; the live events kept
+  /// below the pages stay kept (unshown), as the count still names them.
   void _setLiveFirst(bool on) {
     if (on == _liveFirst) return;
     _liveFirst = on;
-    if (!on) {
-      _liveExtrasGeneration++;
-      _liveExtras = const <GroupEventCardModel>[];
-    }
     _republish();
     if (on) unawaited(_loadLiveExtras());
   }
 
-  /// Whether the feed has an event in play ([isLiveEvent]), loaded or not.
+  /// Whether the feed has an event in play ([isLiveEvent]) that it draws
+  /// (one with boards), loaded or not: what Today's count names.
   ///
   /// Answered from the loaded events when one of them is live, or when no
   /// event is live anywhere. Otherwise the live events below the loaded pages
@@ -914,10 +1008,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   /// yes, lists them at once. Before the first page, the live set alone
   /// answers, as it does for the Events bar before its list loads.
   Future<bool> hasLiveEvent() async {
+    // A section with no boards hides itself: lifting it would show nothing.
+    bool drawn(GroupEventCardModel event) =>
+        ref.read(forYouTopGamesSnapshotCacheProvider)[event.id]?.hasGames !=
+        false;
     final liveIds = _liveIds();
     if (anyLiveEvent(
       liveIds: liveIds,
-      currentEvents: [..._sessionEvents, ..._liveExtras],
+      currentEvents: [
+        for (final event in [..._sessionEvents, ..._liveExtras])
+          if (drawn(event)) event,
+      ],
     )) {
       return true;
     }
@@ -926,12 +1027,13 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     await _loadLiveExtras();
     if (!mounted) return false;
     final now = _liveIds();
-    return _liveExtras.any((event) => isLiveEvent(event, now));
+    return _liveExtras.any((event) => isLiveEvent(event, now) && drawn(event));
   }
 
   /// Fetches, by id, the events in play that no loaded page holds, keeps the
   /// ones this feed's filters let through ([liveEventPassesForYouFilters]) in
-  /// [_liveExtras] with their boards, and shows them.
+  /// [_liveExtras] with their boards, counts them in
+  /// [ForYouState.liveEventIds], and shows them while Live first is on.
   ///
   /// One run at a time. A call during a run gets another run once it ends,
   /// against the live set and the flag as they are then, and its future
@@ -955,11 +1057,19 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   Future<void> _fetchLiveExtras() async {
-    final generation = _liveExtrasGeneration;
-    bool isCurrent() => mounted && generation == _liveExtrasGeneration;
     final liveIds = _liveIds();
-    // Without a page there is nothing to be below; the first page asks again.
-    if (liveIds.isEmpty || _sessionEvents.isEmpty) return;
+    if (liveIds.isEmpty) {
+      // Nothing in play: the count says so at once.
+      _republish();
+      return;
+    }
+    // Before the first page there is nothing to be below; it asks again.
+    if (_sessionEvents.isEmpty && state.isLoading) return;
+    // Kept events whose play has ended are neither shown nor counted.
+    _liveExtras = [
+      for (final event in _liveExtras)
+        if (isLiveEvent(event, liveIds)) event,
+    ];
 
     // A live id names an event by id, or by name for a few configured ones.
     final held = <String>{
@@ -979,7 +1089,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
             .read(groupBroadcastRepositoryProvider)
             .getGroupBroadcastsByIdsOrNames(missing)
             .timeout(_kForYouRequestTimeout);
-        if (!isCurrent()) return;
+        if (!mounted) return;
         final filters = ref.read(forYouAppliedFilterProvider);
         final liveIdList = liveIds.toList(growable: false);
         found = [
@@ -994,7 +1104,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       } catch (error) {
         // Asked again on the next live change or press.
         debugPrint('[ForYou] Live events below the loaded pages: $error');
-        if (!isCurrent()) return;
+        if (!mounted) return;
       }
     }
 
@@ -1012,7 +1122,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         // wait for the next run instead.
         found = const <GroupEventCardModel>[];
       }
-      if (!isCurrent()) return;
+      if (!mounted) return;
     }
 
     if (found.isNotEmpty) {

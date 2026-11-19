@@ -57,7 +57,12 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: EdgeInsets.only(top: 16.sp, bottom: 96.sp),
+        // The home dock floats over the page's foot ([MediaQuery.paddingOf]
+        // is its slot): the last row ends clear of it.
+        padding: EdgeInsets.only(
+          top: 16.sp,
+          bottom: 24.sp + MediaQuery.paddingOf(context).bottom,
+        ),
         children: [
           Align(
             alignment: Alignment.topCenter,

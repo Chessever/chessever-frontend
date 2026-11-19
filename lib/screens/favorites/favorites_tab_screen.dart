@@ -10,9 +10,10 @@ import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
-import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
 import 'package:chessever2/widgets/page_back_row.dart';
 import 'package:chessever2/widgets/page_spring.dart';
+import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -205,66 +206,75 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen>
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: Column(
+            child: Stack(
+              fit: StackFit.passthrough,
               children: [
-                SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
-                // Folds up under the status bar as the list scrolls down,
-                // comes back as it scrolls up.
-                CollapsingChrome(
-                  controller: _chrome,
-                  child: SearchModeHeaderSlot(
-                    header: Column(
-                      children: [
-                        _buildAppBar(context, shownMode),
-                        SizedBox(height: 8.h),
-                        _buildSegmentedSwitcher(selectedMode),
-                        SizedBox(height: 4.h),
-                      ],
+                Column(
+                  children: [
+                    SizedBox(
+                      height: MediaQuery.viewPaddingOf(context).top + 4.h,
                     ),
-                    // The chevron (and on Games, Classical and Filters) stay
-                    // where the title row has them; the title and the board
-                    // view give way to the field.
-                    search: _buildSearchHeader(shownMode),
-                  ),
-                ),
-                Expanded(
-                  child: ScrollChromeRegion(
-                    controller: _chrome,
-                    child: ScrollToTopScope(
-                      bus: _scrollToTopBus,
-                      // Searching holds the page: the search belongs to the
-                      // tab it opened on.
-                      child: ListenableBuilder(
-                        listenable: _search,
-                        builder: (context, _) => PageView.builder(
-                          controller: _pageController,
-                          physics: _search.pagePhysics(),
-                          itemCount: 3,
-                          onPageChanged: _handlePageChanged,
-                          itemBuilder: (context, index) {
-                            switch (index) {
-                              case 0:
-                                return const FavoritesListTab();
-                              case 1:
-                                return const FavoritesGamesTab();
-                              case 2:
-                                return const FavoritesPlayersTab();
-                              default:
-                                return Center(
-                                  child: Text(
-                                    'Invalid page index: $index',
-                                    style: TextStyle(
-                                      color: context.colors.textPrimary,
-                                    ),
-                                  ),
-                                );
-                            }
-                          },
+                    // Folds up under the status bar as the list scrolls down,
+                    // comes back as it scrolls up.
+                    CollapsingChrome(
+                      controller: _chrome,
+                      child: SearchModeHeaderSlot(
+                        header: Column(
+                          children: [
+                            _buildAppBar(context, shownMode),
+                            SizedBox(height: 8.h),
+                            _buildSegmentedSwitcher(selectedMode),
+                            SizedBox(height: 4.h),
+                          ],
+                        ),
+                        // The chevron (and on Games, Classical and Filters) stay
+                        // where the title row has them; the title and the board
+                        // view give way to the field.
+                        search: _buildSearchHeader(shownMode),
+                      ),
+                    ),
+                    Expanded(
+                      child: ScrollChromeRegion(
+                        controller: _chrome,
+                        child: ScrollToTopScope(
+                          bus: _scrollToTopBus,
+                          // Searching holds the page: the search belongs to the
+                          // tab it opened on.
+                          child: ListenableBuilder(
+                            listenable: _search,
+                            builder: (context, _) => PageView.builder(
+                              controller: _pageController,
+                              physics: _search.pagePhysics(),
+                              itemCount: 3,
+                              onPageChanged: _handlePageChanged,
+                              itemBuilder: (context, index) {
+                                switch (index) {
+                                  case 0:
+                                    return const FavoritesListTab();
+                                  case 1:
+                                    return const FavoritesGamesTab();
+                                  case 2:
+                                    return const FavoritesPlayersTab();
+                                  default:
+                                    return Center(
+                                      child: Text(
+                                        'Invalid page index: $index',
+                                        style: TextStyle(
+                                          color: context.colors.textPrimary,
+                                        ),
+                                      ),
+                                    );
+                                }
+                              },
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
+                // The way back while the header is folded away.
+                PageBackFloat(controller: _chrome),
               ],
             ),
           ),
@@ -343,8 +353,9 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen>
 
 /// The floating buttons over the tab in view: Games floats its own (Live
 /// first above the search, [FavoritesGamesFabs]); the Favorites list and
-/// Rankings float the search alone, searching their own list. One test id
-/// on every tab's search button, so a flow finds it wherever it is.
+/// Rankings float the search alone, searching their own list, through the
+/// same stack ([InkFabStack]) as every page's buttons. One test id on every
+/// tab's search button, so a flow finds it wherever it is.
 class _FavoritesFabs extends StatelessWidget {
   const _FavoritesFabs({required this.mode});
 
@@ -354,13 +365,21 @@ class _FavoritesFabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (mode) {
       FavoritesScreenMode.games => const FavoritesGamesFabs(),
-      FavoritesScreenMode.favorites => SearchInkFab(
-        key: e2eKey(E2eIds.favoritesSearchFab),
-        label: 'Search favorites',
+      FavoritesScreenMode.favorites => InkFabStack(
+        children: [
+          SearchInkFab(
+            key: e2eKey(E2eIds.favoritesSearchFab),
+            label: 'Search favorites',
+          ),
+        ],
       ),
-      FavoritesScreenMode.players => SearchInkFab(
-        key: e2eKey(E2eIds.favoritesSearchFab),
-        label: 'Search players',
+      FavoritesScreenMode.players => InkFabStack(
+        children: [
+          SearchInkFab(
+            key: e2eKey(E2eIds.favoritesSearchFab),
+            label: 'Search players',
+          ),
+        ],
       ),
     };
   }

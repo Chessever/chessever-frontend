@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -216,6 +217,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
       );
       futures.add(ref.read(gamesAppBarProvider.notifier).refresh());
       futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
+      // The count of games in play comes along with the boards.
+      futures.add(refreshEventGamesLiveIds(ref));
       await Future.wait(futures);
     } catch (_) {}
   }

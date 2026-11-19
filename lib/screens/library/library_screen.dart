@@ -32,6 +32,8 @@ import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton;
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -327,7 +329,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         onOpenSidebar: canOpenSidebar
             ? () => Scaffold.maybeOf(context)?.openDrawer()
             : null,
-        leading: canPop ? const HomeTopBarBackButton() : null,
+        leading: canPop ? const PageBackButton() : null,
         focusNode: _searchFocusNode,
         content: _buildSearchField(),
         // One canonical Board entry plus Add, on the avatar's centre line.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
@@ -273,10 +275,50 @@ void main() {
       );
       final rect = tester.getRect(toggle);
       expect(rect.center.dy, greaterThan(852 / 2));
-      // The page's only floating button: the regular one's height, its
-      // trailing edge on the floating buttons' gutter.
-      expect(rect.height, InkFabSize.regular.side);
+      // In the page's own button slot, stacked as every page's buttons are:
+      // the small capsule, its trailing edge on the floating buttons'
+      // gutter, above the home indicator by the slot's margin.
+      expect(rect.height, InkFabSize.small.side);
       expect(rect.right, 393 - 16);
+      expect(rect.bottom, 852 - kFloatingActionButtonMargin);
+      await _unmount(tester);
+    });
+
+    testWidgets('counts only the live events Current lists under its filters', (
+      tester,
+    ) async {
+      // Three events in play: one is not on Current at all, one is blitz.
+      await _pumpEvents(
+        tester,
+        liveIds: const ['gb_live', 'gb_blitz', 'gb_elsewhere'],
+        liveCurrent: [_broadcast('gb_live'), _broadcast('gb_blitz', 'blitz')],
+        filters: defaultFilterPopupState.copyWith(
+          formatsAndStates: {'Standard'},
+        ),
+      );
+
+      expect(
+        find.descendant(of: toggle, matching: find.text('See 1 live')),
+        findsOneWidget,
+      );
+      await _unmount(tester);
+    });
+
+    testWidgets('reads "See live" until the count is known', (tester) async {
+      await _pumpEvents(
+        tester,
+        liveIds: const ['gb_live'],
+        liveCurrentError: true,
+      );
+
+      expect(
+        find.descendant(
+          of: toggle,
+          matching: find.text(LiveFirstCapsule.unknownLabel),
+        ),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('Show live events first'), findsOneWidget);
       await _unmount(tester);
     });
 
@@ -358,13 +400,34 @@ void main() {
     });
 
     for (final narrowed in const [false, true]) {
-      testWidgets('a live event Current does not list says '
-          '${narrowed ? 'the filters keep it out' : 'nothing is live'}', (
+      testWidgets('a live event Current does not list is not offered '
+          '(${narrowed ? 'its filters keep it out' : 'not on Current'})', (
         tester,
       ) async {
         final container = await _pumpEvents(
           tester,
           liveIds: const ['gb_live'],
+          // Current holds it only when the filters are what keep it out.
+          liveCurrent: narrowed ? [_broadcast('gb_live')] : const [],
+          filters: narrowed
+              ? defaultFilterPopupState.copyWith(formatsAndStates: {'Blitz'})
+              : null,
+        );
+
+        // Nothing to lift: no "See 1 live" that a press would answer with
+        // "No live events".
+        expect(find.byType(LiveFirstCapsule), findsNothing);
+        expect(container.read(eventsLiveEventCountProvider), 0);
+        await _unmount(tester);
+      });
+
+      testWidgets('a press while the count is unknown that finds nothing says '
+          '${narrowed ? 'the filters keep it out' : 'nothing is live'}, '
+          'above the button', (tester) async {
+        final container = await _pumpEvents(
+          tester,
+          liveIds: const ['gb_live'],
+          liveCurrentError: true,
           filters: narrowed
               ? defaultFilterPopupState.copyWith(formatsAndStates: {'Blitz'})
               : null,
@@ -379,15 +442,18 @@ void main() {
 
         await tester.tap(toggle);
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
 
         expect(container.read(homeEventsLiveFirstProvider), isFalse);
+        final message = narrowed
+            ? kNoLiveEventsMatchFiltersMessage
+            : kNoLiveEventsRightNowMessage;
+        expect(find.text(message), findsOneWidget);
+        // The page's own Scaffold knows its button: the snack lands above
+        // it, never over the button just pressed.
         expect(
-          find.text(kNoLiveEventsMatchFiltersMessage),
-          narrowed ? findsOneWidget : findsNothing,
-        );
-        expect(
-          find.text(kNoLiveEventsRightNowMessage),
-          narrowed ? findsNothing : findsOneWidget,
+          tester.getRect(find.byType(SnackBar)).bottom,
+          lessThanOrEqualTo(tester.getRect(toggle).top + 0.01),
         );
         await _unmount(tester);
       });
@@ -421,27 +487,97 @@ void main() {
   });
 
   group('home Live first helpers', () {
-    test('counts the events in play, by the strict stream first', () async {
+    test('the Events count is Current\'s events in play under its filters, '
+        'refetched as the live set changes', () async {
+      final live = StreamController<List<String>>();
+      addTearDown(live.close);
+      final repository = _FakeGroupBroadcastRepository(
+        liveCurrent: [
+          _broadcast('a'),
+          _broadcast('b', 'blitz'),
+          _broadcast('c'),
+        ],
+      );
       final container = ProviderContainer(
         overrides: [
-          liveGroupBroadcastIdsProvider.overrideWith(
-            (ref) => Stream.value(const ['a', 'b', 'c']),
-          ),
+          liveGroupBroadcastIdsProvider.overrideWith((ref) => live.stream),
+          groupBroadcastRepositoryProvider.overrideWithValue(repository),
         ],
       );
       addTearDown(container.dispose);
-      final count = container.listen(homeLiveEventCountProvider, (_, __) {});
+      final count = container.listen(eventsLiveEventCountProvider, (_, __) {});
       addTearDown(count.close);
-      // Before the stream answers, the events list's copy counts.
-      container.read(liveBroadcastIdsProvider.notifier).state = const ['m'];
-      expect(container.read(homeLiveEventCountProvider), 1);
-      await container.read(liveGroupBroadcastIdsProvider.future);
-      expect(container.read(homeLiveEventCountProvider), 3);
+      Future<void> settle() async {
+        for (var i = 0; i < 20; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+
+      // Nothing in play is a known 0, not an unknown.
+      live.add(const []);
+      await settle();
+      expect(count.read(), 0);
+
+      // In play, then answered: 'x' is not on Current.
+      live.add(const ['a', 'b', 'x']);
+      await settle();
+      expect(count.read(), 2);
+      expect(repository.currentByIds.last, ['a', 'b', 'x']);
+
+      // The filters narrow it, as Current shows it.
+      container.read(eventAppliedFilterProvider.notifier).state =
+          defaultFilterPopupState.copyWith(formatsAndStates: {'Standard'});
+      await settle();
+      expect(count.read(), 1);
+
+      // A new live event is asked for and counted.
+      live.add(const ['a', 'b', 'c']);
+      await settle();
+      expect(count.read(), 2);
     });
 
-    test('the button is there while something is live or while on', () {
+    test(
+      'the Events count keeps its last answer through a failed refetch',
+      () async {
+        final live = StreamController<List<String>>();
+        addTearDown(live.close);
+        final repository = _FakeGroupBroadcastRepository(
+          liveCurrent: [_broadcast('a')],
+        );
+        final container = ProviderContainer(
+          overrides: [
+            liveGroupBroadcastIdsProvider.overrideWith((ref) => live.stream),
+            groupBroadcastRepositoryProvider.overrideWithValue(repository),
+          ],
+        );
+        addTearDown(container.dispose);
+        final count = container.listen(
+          eventsLiveEventCountProvider,
+          (_, __) {},
+        );
+        addTearDown(count.close);
+        Future<void> settle() async {
+          for (var i = 0; i < 20; i++) {
+            await Future<void>.delayed(Duration.zero);
+          }
+        }
+
+        live.add(const ['a']);
+        await settle();
+        expect(count.read(), 1);
+
+        repository.failByIds = true;
+        live.add(const ['a', 'b']);
+        await settle();
+        expect(count.read(), 1);
+      },
+    );
+
+    test('the button is there while something is live, while the count is '
+        'unknown, or while on', () {
       expect(showsHomeLiveFirst(liveCount: 0, on: false), isFalse);
       expect(showsHomeLiveFirst(liveCount: 2, on: false), isTrue);
+      expect(showsHomeLiveFirst(liveCount: null, on: false), isTrue);
       expect(showsHomeLiveFirst(liveCount: 0, on: true), isTrue);
     });
 
@@ -570,6 +706,8 @@ Future<ProviderContainer> _pumpEvents(
   FilterPopupState? filters,
   Size size = const Size(393, 852),
   double textScale = 1,
+  List<GroupBroadcast>? liveCurrent,
+  bool liveCurrentError = false,
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -590,7 +728,11 @@ Future<ProviderContainer> _pumpEvents(
       // Switching segments reloads the list underneath the stand-in pages.
       appDatabaseProvider.overrideWithValue(_FakeAppDatabase()),
       groupBroadcastRepositoryProvider.overrideWithValue(
-        _FakeGroupBroadcastRepository(),
+        _FakeGroupBroadcastRepository(
+          // By default every event in play is on Current.
+          liveCurrent:
+              liveCurrent ?? [for (final id in liveIds) _broadcast(id)],
+        )..failByIds = liveCurrentError,
       ),
       favoriteEventsProvider.overrideWith(
         () => _FakeFavoriteEventsNotifier(const []),
@@ -613,10 +755,8 @@ Future<ProviderContainer> _pumpEvents(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const Scaffold(
-              resizeToAvoidBottomInset: false,
-              body: GroupEventScreen(pageBuilder: _page),
-            );
+            // The page is its own Scaffold, held bare by its route.
+            return const GroupEventScreen(pageBuilder: _page);
           },
         ),
       ),
@@ -624,7 +764,26 @@ Future<ProviderContainer> _pumpEvents(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
+  // The count lands a moment after the page ("See live" until then) and
+  // the capsule springs to its words.
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.pump(const Duration(milliseconds: 600));
   return container;
+}
+
+/// An event on Current, ongoing by the clock.
+GroupBroadcast _broadcast(String id, [String timeControl = 'standard']) {
+  final now = DateTime.now();
+  return GroupBroadcast(
+    id: id,
+    createdAt: DateTime.utc(2026),
+    name: 'Event $id',
+    search: ['Event $id'],
+    maxAvgElo: 2600,
+    dateStart: now.subtract(const Duration(days: 1)),
+    dateEnd: now.add(const Duration(days: 3)),
+    timeControl: timeControl,
+  );
 }
 
 /// Unmounts inside the fake clock so no snack or spring timer outlives it.
@@ -696,9 +855,32 @@ class _FakeAppDatabase implements AppDatabase {
 }
 
 class _FakeGroupBroadcastRepository extends GroupBroadcastRepository {
-  _FakeGroupBroadcastRepository({this.current = const []});
+  _FakeGroupBroadcastRepository({
+    this.current = const [],
+    this.liveCurrent = const [],
+  });
 
   final List<GroupBroadcast> current;
+
+  /// What Current answers when asked for events by id: the events in play
+  /// it holds.
+  final List<GroupBroadcast> liveCurrent;
+
+  /// Asking by id fails (the count stays unknown, or at its last answer).
+  bool failByIds = false;
+  final List<List<String>> currentByIds = [];
+
+  @override
+  Future<List<GroupBroadcast>> getCurrentGroupBroadcastsByIds(
+    List<String> ids,
+  ) async {
+    currentByIds.add(List.of(ids));
+    if (failByIds) throw StateError('offline');
+    return [
+      for (final broadcast in [...current, ...liveCurrent])
+        if (ids.contains(broadcast.id)) broadcast,
+    ];
+  }
 
   @override
   Future<List<GroupBroadcast>> getCurrentGroupBroadcasts({

@@ -14,7 +14,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
-import 'package:chessever2/widgets/ink_fab.dart' show InkFabSize;
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/list_search_scroll_memory.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -78,12 +78,17 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      final state = ref.read(miniaturePlayersPaginatedProvider);
-      if (!state.isLoading && state.hasMore) {
-        ref.read(miniaturePlayersPaginatedProvider.notifier).loadNextPage();
-      }
+    _loadMoreNearEnd(_scrollController.position);
+  }
+
+  /// The next page, once the reader is near the end. Read on every scroll
+  /// and on every change of the list's own measure: the header folding away
+  /// grows the viewport (and shrinks what is left below) without a scroll.
+  void _loadMoreNearEnd(ScrollMetrics metrics) {
+    if (metrics.extentAfter > 200) return;
+    final state = ref.read(miniaturePlayersPaginatedProvider);
+    if (!state.isLoading && state.hasMore) {
+      ref.read(miniaturePlayersPaginatedProvider.notifier).loadNextPage();
     }
   }
 
@@ -126,24 +131,33 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: CustomScrollView(
-        controller: _scrollController,
-        scrollCacheExtent: kListScrollCacheExtent,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-          _buildContentSliver(state, query, horizontalPadding, held: held),
-          // Clear of the floating search button at the list's end (its
-          // square, and the margin that lifts it over the home indicator);
-          // the button's room gives way on the search's own timeline while
-          // nothing floats there.
-          SearchModeListEnd.sliver(
-            base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
-            buttons: InkFabSize.regular.side + kFloatingActionButtonMargin,
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (notification) {
+          if (notification.depth == 0 &&
+              notification.metrics.axis == Axis.vertical) {
+            _loadMoreNearEnd(notification.metrics);
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          controller: _scrollController,
+          scrollCacheExtent: kListScrollCacheExtent,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
-        ],
+          slivers: [
+            SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+            _buildContentSliver(state, query, horizontalPadding, held: held),
+            // Clear of the floating search button at the list's end (its
+            // square, and the margin that lifts it over the home indicator);
+            // the button's room gives way on the search's own timeline while
+            // nothing floats there.
+            SearchModeListEnd.sliver(
+              base: 24.h + MediaQuery.viewPaddingOf(context).bottom,
+              buttons: InkFabStack.extent(),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -273,8 +287,45 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
       );
     }
 
-    // The read in flight shows as the line over the list's top.
-    final showFooter = !held && (state.isLoading || !state.hasMore);
+    // One footer slot under the rows whatever it holds (room while more
+    // can come, the spinner, the end), as tall as the tallest of them: the
+    // list's end never moves as a page starts or lands, so the bars and the
+    // reader's place hold still at the very point the next page is asked
+    // for. The read in flight shows as the line over the list's top, so a
+    // held list keeps the slot empty.
+    final footer = held
+        ? null
+        : state.isLoading
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 24.w,
+                height: 24.h,
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
+                  strokeWidth: 2,
+                ),
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'Loading more…',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.isLightTheme
+                      ? context.colors.textSecondary
+                      : const Color(0xFF71717A),
+                ),
+              ),
+            ],
+          )
+        : state.hasMore
+        ? null
+        : Text(
+            'No more players',
+            style: AppTypography.textXsRegular.copyWith(
+              color: const Color(0xFF52525B),
+            ),
+          );
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
@@ -286,37 +337,13 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
         delegate: SliverChildBuilderDelegate((context, index) {
           if (index >= state.items.length) {
             return Padding(
+              key: const ValueKey('miniatures_players_list_end'),
               padding: EdgeInsets.symmetric(vertical: 20.h),
-              child: Center(
-                child: state.isLoading
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 24.w,
-                            height: 24.h,
-                            child: CircularProgressIndicator(
-                              color: context.colors.textPrimary,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                          SizedBox(height: 8.h),
-                          Text(
-                            'Loading more…',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.isLightTheme
-                                  ? context.colors.textSecondary
-                                  : const Color(0xFF71717A),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Text(
-                        'No more players',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: const Color(0xFF52525B),
-                        ),
-                      ),
+              child: ConstrainedBox(
+                // The spinner over its line, the tallest the slot holds;
+                // grows past it only for text scaled beyond that.
+                constraints: BoxConstraints(minHeight: 56.h),
+                child: Center(child: footer),
               ),
             );
           }
@@ -328,7 +355,7 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
             player: player,
             rank: index + 1,
           );
-        }, childCount: state.items.length + (showFooter ? 1 : 0)),
+        }, childCount: state.items.length + 1),
       ),
     );
   }

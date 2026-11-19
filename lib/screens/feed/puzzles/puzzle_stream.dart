@@ -20,9 +20,9 @@ final puzzleCurrentIdProvider = StateProvider<String?>((ref) => null);
 /// The Puzzle tab's body: puzzles as posts, one per page, swiped exactly
 /// like the Feed tab's games and pulled down on the first one to refresh.
 ///
-/// [FeedPuzzlePage] already sits on the Feed's page geometry (header line,
-/// player rows, board, status line, action row), so a puzzle here lands
-/// where a game lands in the Feed.
+/// [FeedPuzzlePage] already sits on the Feed's page geometry (player rows,
+/// board, then the status and caption beside the action rail), so a puzzle
+/// here lands where a game lands in the Feed.
 class PuzzleStream extends ConsumerStatefulWidget {
   const PuzzleStream({
     required this.isVisible,

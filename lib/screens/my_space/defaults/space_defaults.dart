@@ -4,6 +4,7 @@ import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
     show smartEventSpaceDraft;
+import 'package:chessever2/screens/group_event/smart_event/smart_event_tiers.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
@@ -250,14 +251,18 @@ SmartEventRequest spaceFormatPreset({
   );
 }
 
-/// Rating levels offered in the Smart Events picker; the same floors the
-/// in-event tier dropdown uses.
+/// Rating levels offered in the Smart Events picker, strongest first; the
+/// same floors the in-event tier dropdown uses ([kSmartEventTiers]).
 final List<SmartEventRequest> kSpaceSmartLevelPresets = [
-  discoveryTierPreset(tier: 'GM', minElo: 2500),
-  discoveryTierPreset(tier: 'IM', minElo: 2400),
-  discoveryTierPreset(tier: 'FM', minElo: 2300),
-  discoveryTierPreset(tier: 'CM', minElo: 2200),
+  for (final tier in kSmartEventTiers)
+    discoveryTierPreset(tier: tier.name, minElo: tier.floor),
 ];
+
+/// The GM level, by name: the seed and the trim both anchor on its key, so
+/// a stronger tier added ahead of it (Super GM) never changes what a new My
+/// Space starts with or what an existing one is matched against.
+final SmartEventRequest kSpaceGmLevelPreset = kSpaceSmartLevelPresets
+    .firstWhere((preset) => preset.tierLabel == 'GM');
 
 /// Time controls offered in the Smart Events picker.
 final List<SmartEventRequest> kSpaceSmartFormatPresets = [
@@ -268,7 +273,7 @@ final List<SmartEventRequest> kSpaceSmartFormatPresets = [
 
 /// The Smart Events every account starts with: GM games and classical games.
 final List<SmartEventRequest> kSpaceDefaultSmartEvents = [
-  kSpaceSmartLevelPresets.first,
+  kSpaceGmLevelPreset,
   kSpaceSmartFormatPresets.first,
 ];
 

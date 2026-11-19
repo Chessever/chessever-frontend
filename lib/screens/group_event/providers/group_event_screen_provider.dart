@@ -234,6 +234,12 @@ class _GroupEventScreenController
   final int _pastLimit = 50;
   bool _pastIsFetching = false;
   bool pastHasMore = true;
+  // A past page that failed is not asked for again before this time (2 s,
+  // doubling up to a minute, per failure in a row): the list asks on every
+  // scroll and size change near its end, so a failing server would
+  // otherwise be asked again at that rate. A page that lands clears it.
+  int _pastFailures = 0;
+  DateTime? _pastRetryAt;
   final Set<String> _handledUnknownLiveEventIds = <String>{};
   bool _silentRefreshInFlight = false;
 
@@ -582,6 +588,8 @@ class _GroupEventScreenController
 
   Future<void> loadMorePast() async {
     if (_pastIsFetching || !pastHasMore) return;
+    final retryAt = _pastRetryAt;
+    if (retryAt != null && DateTime.now().isBefore(retryAt)) return;
     _pastIsFetching = true;
     state = AsyncValue.data(state.valueOrNull ?? []);
     try {
@@ -630,7 +638,15 @@ class _GroupEventScreenController
 
       _pastOffset += broadcasts.length;
       pastHasMore = broadcasts.length == _pastLimit;
+      _pastFailures = 0;
+      _pastRetryAt = null;
     } catch (_) {
+      const backoffSeconds = [2, 4, 8, 16, 32, 60];
+      final step = _pastFailures.clamp(0, backoffSeconds.length - 1);
+      _pastFailures++;
+      _pastRetryAt = DateTime.now().add(
+        Duration(seconds: backoffSeconds[step]),
+      );
     } finally {
       _pastIsFetching = false;
     }

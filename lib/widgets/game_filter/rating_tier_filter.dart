@@ -13,10 +13,16 @@ class RatingTierFilter extends StatelessWidget {
     required this.selectedMinRating,
     required this.onChanged,
     this.unselectedColor,
+    this.tierOptions,
   });
 
   final int? selectedMinRating;
   final ValueChanged<int?> onChanged;
+
+  /// The tiers offered, strongest first; [tiers] when null. An odd count
+  /// leads with a full-width row (the smart event's Super GM over the 2x2
+  /// grid), so no row is left half empty.
+  final List<RatingTier>? tierOptions;
 
   /// An unselected chip's fill; defaults to the recessed surface. Hosts
   /// whose own surface is that recessed tone pass a step off it, or the
@@ -30,10 +36,13 @@ class RatingTierFilter extends StatelessWidget {
     RatingTier(label: 'CM', subtitle: '+2200', minRating: 2200),
   ];
 
-  static int? normalizeMinRating(int? minRating) {
+  static int? normalizeMinRating(
+    int? minRating, {
+    List<RatingTier> among = tiers,
+  }) {
     if (minRating == null) return null;
 
-    for (final tier in tiers) {
+    for (final tier in among) {
       if (minRating >= tier.minRating) return tier.minRating;
     }
 
@@ -55,7 +64,10 @@ class RatingTierFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = normalizeMinRating(selectedMinRating);
+    final tiers = tierOptions ?? RatingTierFilter.tiers;
+    final selected = normalizeMinRating(selectedMinRating, among: tiers);
+    // An odd count leads on a row of its own, then the rest in pairs.
+    final lead = tiers.length.isOdd ? 1 : 0;
 
     // Cap matches the historical 320 width so wide hosts (tablet panels,
     // board sidebars) don't stretch the chips across the whole pane; in the
@@ -66,7 +78,20 @@ class RatingTierFilter extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 320),
         child: Column(
           children: [
-            for (var i = 0; i < tiers.length; i += 2) ...[
+            if (lead == 1)
+              Row(
+                children: [
+                  Expanded(
+                    child: _TierChip(
+                      tier: tiers.first,
+                      isSelected: selected == tiers.first.minRating,
+                      onChanged: onChanged,
+                      unselectedColor: unselectedColor,
+                    ),
+                  ),
+                ],
+              ),
+            for (var i = lead; i < tiers.length; i += 2) ...[
               if (i > 0) SizedBox(height: 8.h),
               Row(
                 children: [
@@ -80,15 +105,14 @@ class RatingTierFilter extends StatelessWidget {
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child:
-                        i + 1 < tiers.length
-                            ? _TierChip(
-                              tier: tiers[i + 1],
-                              isSelected: selected == tiers[i + 1].minRating,
-                              onChanged: onChanged,
-                              unselectedColor: unselectedColor,
-                            )
-                            : const SizedBox.shrink(),
+                    child: i + 1 < tiers.length
+                        ? _TierChip(
+                            tier: tiers[i + 1],
+                            isSelected: selected == tiers[i + 1].minRating,
+                            onChanged: onChanged,
+                            unselectedColor: unselectedColor,
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -123,10 +147,9 @@ class _TierChip extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? kPrimaryColor
-                  : unselectedColor ?? context.colors.surfaceRecessed,
+          color: isSelected
+              ? kPrimaryColor
+              : unselectedColor ?? context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Row(
@@ -149,10 +172,9 @@ class _TierChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.textXsMedium.copyWith(
-                  color:
-                      isSelected
-                          ? kBlackColor.withValues(alpha: 0.7)
-                          : context.colors.textSecondary,
+                  color: isSelected
+                      ? kBlackColor.withValues(alpha: 0.7)
+                      : context.colors.textSecondary,
                 ),
               ),
             ),
