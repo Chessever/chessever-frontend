@@ -1170,6 +1170,7 @@ class GameCardChessboard extends ConsumerWidget {
     this.showCoordinates = true,
     this.gameStatus,
     this.animateEnding = true,
+    this.grounded = true,
   });
 
   final String? fen;
@@ -1178,6 +1179,11 @@ class GameCardChessboard extends ConsumerWidget {
   final Side orientation;
   final bool showCoordinates;
   final GameStatus? gameStatus;
+
+  /// Whether the board carries the cards' drop shadow. False sets it flat on
+  /// its page (the Today stories, where it is the page's subject, not a card
+  /// in a list).
+  final bool grounded;
 
   /// Whether the game-end marks (the loser's king tipping over, the draw
   /// doves) play their one-shot entrance when this board mounts. Pass false
@@ -1261,7 +1267,9 @@ class GameCardChessboard extends ConsumerWidget {
           // light-grey scaffold (Principle 3 — shadows over borders). Dark
           // theme keeps the original soft kBoardLightGrey shadow.
           boxShadow:
-              context.isLightTheme
+              !grounded
+                  ? null
+                  : context.isLightTheme
                   ? [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.06),

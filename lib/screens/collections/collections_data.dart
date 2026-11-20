@@ -652,6 +652,104 @@ class CollectionsRepository {
     ];
   }
 
+  /// The PGNs of [ids] alone, by game id: the Today stories' replays.
+  ///
+  /// With [order], every game's id in the order the browse read listed them
+  /// (the server's own order), only the short stretches of that order that
+  /// hold [ids] are asked for: a book's newest games may sit anywhere in
+  /// it, and reading every page with its moves to find fifteen of them
+  /// would cost megabytes on a phone's data. Any id those stretches miss
+  /// (the collection changed between the two reads), and every id when
+  /// there is no [order], is looked for page by page from the start, a read
+  /// that stops as soon as every id is found.
+  ///
+  /// Gated by the server exactly like [fetchPlayableGames]; ask only for a
+  /// collection whose detail says this viewer may read its games.
+  Future<Map<String, String>> fetchPgnsOf(
+    String slug,
+    Set<String> ids, {
+    List<String>? order,
+  }) async {
+    if (ids.isEmpty) return const {};
+    final fresh = isFreshAccess(slug);
+    final bearer = await _accessToken();
+    final found = <String, String>{};
+    Future<CollectionGamesPage> read(int offset, int limit) =>
+        _api.getCollectionGames(
+          slug,
+          includePgn: true,
+          limit: limit,
+          offset: offset,
+          bearer: bearer,
+          fresh: fresh,
+        );
+    void take(List<CollectionGameCard> items) {
+      for (final card in items) {
+        final pgn = card.pgn;
+        if (pgn != null && ids.contains(card.id)) found[card.id] = pgn;
+      }
+    }
+
+    if (order != null) {
+      final windows = pgnWindows(order, ids);
+      for (var i = 0; i < windows.length; i += _parallelPages) {
+        final pages = await Future.wait([
+          for (final w in windows.skip(i).take(_parallelPages))
+            read(w.offset, w.limit),
+        ]);
+        for (final page in pages) {
+          take(page.items);
+        }
+      }
+      if (found.length == ids.length) return found;
+    }
+    var offset = 0;
+    for (var page = 0; page < _maxPages; page++) {
+      final result = await read(offset, gamesPageSize);
+      take(result.items);
+      offset += result.items.length;
+      if (found.length == ids.length ||
+          result.items.isEmpty ||
+          offset >= result.total) {
+        break;
+      }
+    }
+    return found;
+  }
+
+  /// The stretches of [order] to read for [ids]' PGNs: each id with
+  /// [slack] games either side (the browse read drops a repeated or an
+  /// id-less card, which shifts the ids after it by one), stretches less
+  /// than [join] games apart read as one, none longer than a page.
+  @visibleForTesting
+  static List<({int offset, int limit})> pgnWindows(
+    List<String> order,
+    Set<String> ids, {
+    int slack = 2,
+    int join = 8,
+  }) {
+    final at = [
+      for (var i = 0; i < order.length; i++)
+        if (ids.contains(order[i])) i,
+    ];
+    final windows = <({int offset, int limit})>[];
+    int? start;
+    var end = 0;
+    for (final i in at) {
+      final from = i > slack ? i - slack : 0;
+      final to = i + slack + 1;
+      if (start != null && from - end < join && to - start <= gamesPageSize) {
+        if (to > end) end = to;
+        continue;
+      }
+      if (start != null) windows.add((offset: start, limit: end - start));
+      start = from;
+      end = to;
+    }
+    if (start != null) windows.add((offset: start, limit: end - start));
+    return windows;
+  }
+
   Future<List<CollectionGame>> searchGames(
     String slug,
     CollectionSearchQuery search, {

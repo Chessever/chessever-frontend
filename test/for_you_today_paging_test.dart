@@ -15,6 +15,9 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
+import 'package:chessever2/screens/stories/story_models.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart'
+    show shouldStreamProvider;
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -178,6 +181,36 @@ void main() {
       ].map((failures) => forYouLoadMoreBackoff(failures).inSeconds),
       [2, 4, 8, 16, 32, 60, 60, 60],
     );
+  });
+
+  testWidgets('under the collection stories Today is covered as under a '
+      'page: its streams stop, and come back when the stories are gone', (
+    tester,
+  ) async {
+    final broadcasts = _Pages(pageCount: 1, lastPageSize: 3);
+    final container = _container(broadcasts, _Boards());
+    await _pumpToday(tester, container);
+    bool streaming() => container.read(shouldStreamProvider);
+    expect(streaming(), isTrue);
+
+    // The stories grow out of the row: Today still shows, still streams.
+    container.read(storyViewerOpenProvider.notifier).state = true;
+    await tester.pump();
+    expect(streaming(), isTrue);
+    // They fill the screen: Today is hidden and stops.
+    container.read(storyViewerCoversProvider.notifier).state = true;
+    await tester.pump();
+    expect(streaming(), isFalse);
+    // A drag down shows it for a moment: still stopped, nothing restarts.
+    container.read(storyViewerCoversProvider.notifier).state = false;
+    await tester.pump(const Duration(seconds: 2));
+    expect(streaming(), isFalse);
+    // The stories are gone: back on, as on a page's pop.
+    container.read(storyViewerOpenProvider.notifier).state = false;
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(streaming(), isTrue);
+    await _unmount(tester);
   });
 
   testWidgets('the list ends clear of the filter and Live first', (

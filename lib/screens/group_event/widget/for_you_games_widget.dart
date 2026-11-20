@@ -15,6 +15,9 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/for_you/open_for_you_event.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
+import 'package:chessever2/screens/stories/story_models.dart'
+    show storyViewerCoversProvider, storyViewerOpenProvider;
+import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -250,6 +253,29 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
   }
 
+  /// The collection stories hide Today: they fill the screen, or a page
+  /// opened from them is on top. They are not a page route, so Today stays
+  /// in the tree under them (their row has to be there to land back in);
+  /// it is treated as covered all the same, as [didPushNext] does, and its
+  /// live cards stop streaming, as under the board ([shouldStreamProvider]).
+  void _onStoriesCover() {
+    if (!mounted || _isDisposing) return;
+    _stopTransientWork();
+    final streaming = ref.read(shouldStreamProvider.notifier);
+    if (streaming.state) streaming.state = false;
+  }
+
+  /// The stories are gone: Today is back, as on a page's pop
+  /// ([didPopNext]), with its streams on and its feed caught up.
+  void _onStoriesClosed() {
+    if (!mounted || _isDisposing) return;
+    _publishSurfaceVisibility();
+    ForegroundTaskScheduler.schedule(
+      key: 'for_you_games_route_return_$hashCode',
+      task: () => _refreshRealtimeGamesNow(resetStreams: false),
+    );
+  }
+
   void _publishSurfaceVisibility() {
     if (!mounted || _isDisposing) return;
     final routeIsCurrent = _pageRoute?.isCurrent == true;
@@ -360,6 +386,16 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     ref.listen<bool>(forYouTodayTabActiveProvider, (_, __) {
       _publishSurfaceVisibility();
     });
+    // The collection stories open over Today without a page route (they
+    // grow out of its story row, which has to stay): Today stays in the
+    // tree, its visibility follows them, and once they hide it, it stops
+    // its streams until they are gone.
+    ref.listen<bool>(storyViewerOpenProvider, (_, open) {
+      open ? _publishSurfaceVisibility() : _onStoriesClosed();
+    });
+    ref.listen<bool>(storyViewerCoversProvider, (_, covers) {
+      if (covers) _onStoriesCover();
+    });
     if (!isTodayTabActive || !_isActiveOnScreen) {
       return const SizedBox.shrink();
     }
@@ -461,18 +497,40 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   Widget _buildLoadingLayout(bool useColumns) {
     if (useColumns) return _buildTabletLoadingSkeleton();
+    final gutter = 16.sp;
     return ListView(
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
+      padding: EdgeInsets.symmetric(vertical: 16.sp),
       physics: const NeverScrollableScrollPhysics(),
       children: [
-        const PremiumCollectionCards(),
+        _todayTop(gutter),
         ...List.generate(
           3,
-          (index) => _ForYouEventSkeleton(isFirst: index == 0),
+          (index) =>
+              _inGutter(gutter, _ForYouEventSkeleton(isFirst: index == 0)),
         ),
       ],
     );
   }
+
+  /// The top of Today: the collections' story row, scrolling edge to edge
+  /// from the page's gutter, then the Favorites and Countrymen tiles inside
+  /// it. The list itself has no side padding so the row can run under the
+  /// screen's edges; every other item sits in [_inGutter].
+  Widget _todayTop(double gutter) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TodayStoryRow(gutter: gutter),
+      _inGutter(gutter, const PremiumCollectionCards()),
+    ],
+  );
+
+  /// [child] inside the page's side gutter. Its key stays on [child]: the
+  /// list matches items by index, so an item whose key changes is rebuilt
+  /// either way.
+  Widget _inGutter(double gutter, Widget child) => Padding(
+    padding: EdgeInsets.symmetric(horizontal: gutter),
+    child: child,
+  );
 
   Widget _buildTabletLoadingSkeleton() {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
@@ -480,17 +538,19 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final eventCardAspectRatio = ResponsiveHelper.isLandscape ? 1.8 : 1.4;
 
     return ListView(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
-      ),
+      padding: EdgeInsets.symmetric(vertical: 16.sp),
       physics: const NeverScrollableScrollPhysics(),
       children: [
-        const PremiumCollectionCards(),
+        _todayTop(horizontalPadding),
         // 2-column skeleton rows (2 event pairs)
         ...List.generate(2, (rowIndex) {
           return Padding(
-            padding: EdgeInsets.only(top: rowIndex == 0 ? 0 : 20.sp),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              rowIndex == 0 ? 0 : 20.sp,
+              horizontalPadding,
+              0,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -541,12 +601,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       ListView.builder(
         key: const PageStorageKey<String>('for_you_events_list'),
         controller: widget.scrollController,
-        padding: EdgeInsets.fromLTRB(
-          horizontalPadding,
-          16.sp,
-          horizontalPadding,
-          _listEndPadding(context),
-        ),
+        // No side padding: the story row runs edge to edge; every other
+        // item sits in the gutter ([_inGutter]).
+        padding: EdgeInsets.fromLTRB(0, 16.sp, 0, _listEndPadding(context)),
         itemCount: itemCount,
         scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
         addAutomaticKeepAlives: true,
@@ -555,30 +612,36 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           parent: BouncingScrollPhysics(),
         ),
         itemBuilder: (context, index) {
-          // Premium collection cards at top
+          // The story row and the collection tiles at the top
           if (index == 0) {
-            return const PremiumCollectionCards();
+            return _todayTop(horizontalPadding);
           }
 
           // Loading indicator at bottom
           if (showLoadingMore && index == itemCount - 1) {
-            return _buildLoadingMoreIndicator();
+            return _inGutter(horizontalPadding, _buildLoadingMoreIndicator());
           }
 
           final event = events[index - 1];
           if (showNativeAd && index == 1) {
-            return Column(
-              key: ValueKey('event_${event.id}'),
-              children: [
-                _ForYouEventSection(event: event, isFirst: true),
-                const TodayNativeAd(),
-              ],
+            return _inGutter(
+              horizontalPadding,
+              Column(
+                key: ValueKey('event_${event.id}'),
+                children: [
+                  _ForYouEventSection(event: event, isFirst: true),
+                  const TodayNativeAd(),
+                ],
+              ),
             );
           }
-          return _ForYouEventSection(
-            key: ValueKey('event_${event.id}'),
-            event: event,
-            isFirst: index == 1,
+          return _inGutter(
+            horizontalPadding,
+            _ForYouEventSection(
+              key: ValueKey('event_${event.id}'),
+              event: event,
+              isFirst: index == 1,
+            ),
           );
         },
       ),
@@ -627,12 +690,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       ListView.builder(
         key: const PageStorageKey<String>('for_you_events_tablet_grid'),
         controller: widget.scrollController,
-        padding: EdgeInsets.fromLTRB(
-          horizontalPadding,
-          16.sp,
-          horizontalPadding,
-          _listEndPadding(context),
-        ),
+        // No side padding: the story row runs edge to edge; every other
+        // item sits in the gutter ([_inGutter]).
+        padding: EdgeInsets.fromLTRB(0, 16.sp, 0, _listEndPadding(context)),
         itemCount: itemCount,
         scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
         addAutomaticKeepAlives: true,
@@ -641,24 +701,27 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           parent: BouncingScrollPhysics(),
         ),
         itemBuilder: (context, index) {
-          // Premium collection cards at top
+          // The story row and the collection tiles at the top
           if (index == 0) {
-            return const PremiumCollectionCards();
+            return _todayTop(horizontalPadding);
           }
 
           // Loading indicator at bottom
           if (showLoadingMore && index == itemCount - 1) {
-            return _buildLoadingMoreIndicator();
+            return _inGutter(horizontalPadding, _buildLoadingMoreIndicator());
           }
 
           final rowIndex = index - 1;
           if (showNativeAd && rowIndex == 0) {
-            return Column(
-              key: ValueKey('native_first_event_${events.first.id}'),
-              children: [
-                _ForYouTabletEventColumn(event: events.first),
-                const TodayNativeAd(),
-              ],
+            return _inGutter(
+              horizontalPadding,
+              Column(
+                key: ValueKey('native_first_event_${events.first.id}'),
+                children: [
+                  _ForYouTabletEventColumn(event: events.first),
+                  const TodayNativeAd(),
+                ],
+              ),
             );
           }
           final i = showNativeAd ? 1 + (rowIndex - 1) * 2 : rowIndex * 2;
@@ -666,7 +729,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           final event2 = i + 1 < events.length ? events[i + 1] : null;
 
           return Padding(
-            padding: EdgeInsets.only(top: rowIndex == 0 ? 0 : 20.sp),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              rowIndex == 0 ? 0 : 20.sp,
+              horizontalPadding,
+              0,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -698,12 +766,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   Widget _buildEmptyState() {
     return ListView(
       controller: widget.scrollController,
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
+      padding: EdgeInsets.symmetric(vertical: 16.sp),
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
       children: [
-        const PremiumCollectionCards(),
+        _todayTop(16.sp),
         SizedBox(height: 40.sp),
         Center(
           child: Text(

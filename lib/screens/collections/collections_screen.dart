@@ -527,36 +527,47 @@ class CollectionCard extends ConsumerWidget {
                 SizedBox(width: 4.w),
               ],
             ),
-      menuActions: (menuContext) => [
-        LibraryMenuAction(
-          icon: Icons.open_in_new_rounded,
-          label: 'Open',
-          onSelected: push,
-        ),
-        if (buildCollectionShareUrl(c.slug) != null)
-          LibraryMenuAction(
-            icon: Icons.ios_share_rounded,
-            label: 'Share',
-            onSelected: () => shareCollection(context, c),
-          ),
-        starNotificationsMenuAction(
-          context: menuContext,
-          favorite: collectionFavorite(
-            ref.read(favoriteEventsProvider).valueOrNull ??
-                const <FavoriteEvent>[],
-            c,
-          ),
-          surface: 'collection',
-        ),
-        spaceMenuAction(
-          context: menuContext,
-          ref: ref,
-          draft: collectionSpaceDraft(c),
-        ),
-      ],
+      menuActions: (menuContext) =>
+          collectionMenuActions(context, menuContext, ref, c, onOpen: push),
     );
   }
 }
+
+/// The focus menu a collection lifts into wherever it is held: Open, Share,
+/// its star's notifications and My Space. [onOpen] opens the collection's
+/// page the way the held surface does; [context] is the held surface's own.
+List<LibraryMenuAction> collectionMenuActions(
+  BuildContext context,
+  BuildContext menuContext,
+  WidgetRef ref,
+  Collection c, {
+  required VoidCallback onOpen,
+}) => [
+  LibraryMenuAction(
+    icon: Icons.open_in_new_rounded,
+    label: 'Open',
+    onSelected: onOpen,
+  ),
+  if (buildCollectionShareUrl(c.slug) != null)
+    LibraryMenuAction(
+      icon: Icons.ios_share_rounded,
+      label: 'Share',
+      onSelected: () => shareCollection(context, c),
+    ),
+  starNotificationsMenuAction(
+    context: menuContext,
+    favorite: collectionFavorite(
+      ref.read(favoriteEventsProvider).valueOrNull ?? const <FavoriteEvent>[],
+      c,
+    ),
+    surface: 'collection',
+  ),
+  spaceMenuAction(
+    context: menuContext,
+    ref: ref,
+    draft: collectionSpaceDraft(c),
+  ),
+];
 
 /// A collection's star, the event card's star in the same place: filled
 /// gold while starred, an outline otherwise.
@@ -629,13 +640,39 @@ class _CollectionStar extends ConsumerWidget {
   }
 }
 
-/// A collection's cover, or its pixel object (the trophy for an event, the
-/// stacked boards for a book) when it has none.
-class _Cover extends StatelessWidget {
-  const _Cover({required this.collection, this.fit = BoxFit.cover});
+/// A collection's cover as its cards draw it, for surfaces outside this
+/// file (the Today stories): the cover, or the pixel object when it has
+/// none. [cacheWidth] decodes it at that many pixels wide, for a small
+/// picture that need not hold the whole cover in memory.
+class CollectionCover extends StatelessWidget {
+  const CollectionCover({
+    super.key,
+    required this.collection,
+    this.fit = BoxFit.cover,
+    this.cacheWidth,
+  });
 
   final Collection collection;
   final BoxFit fit;
+  final int? cacheWidth;
+
+  @override
+  Widget build(BuildContext context) =>
+      _Cover(collection: collection, fit: fit, cacheWidth: cacheWidth);
+}
+
+/// A collection's cover, or its pixel object (the trophy for an event, the
+/// stacked boards for a book) when it has none.
+class _Cover extends StatelessWidget {
+  const _Cover({
+    required this.collection,
+    this.fit = BoxFit.cover,
+    this.cacheWidth,
+  });
+
+  final Collection collection;
+  final BoxFit fit;
+  final int? cacheWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -649,6 +686,7 @@ class _Cover extends StatelessWidget {
     return CachedNetworkImage(
       imageUrl: url,
       fit: fit,
+      memCacheWidth: cacheWidth,
       placeholder: (_, __) => plate,
       errorWidget: (_, __, ___) => plate,
     );
