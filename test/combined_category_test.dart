@@ -867,6 +867,64 @@ void main() {
       expect(pairings.toSet(), hasLength(8));
     });
 
+    test('Combined scorecard puts the latest played stage first', () {
+      final card = assembleCombinedScorecardGames(
+        categories: CombinedCategories([
+          _category('A', avgElo: 2700, order: 0),
+          _category('B', avgElo: 2750, order: 1),
+        ]),
+        gamesByTour: {
+          'A': [
+            a.first,
+            _game(
+              'pending',
+              tourId: 'A',
+              roundId: a.last.roundId,
+              status: GameStatus.ongoing,
+              lastMove: null,
+            ),
+          ],
+          'B': [b.first.copyWith(gameStatus: GameStatus.draw)],
+        },
+        roundsByTour: {
+          'A': [
+            _round(a.first.roundId, 'A', 'Semifinal', r1),
+            _round(
+              a.last.roundId,
+              'A',
+              'Unplayed pairing',
+              r1.add(const Duration(days: 2)),
+            ),
+          ],
+          'B': [_round(b.first.roundId, 'B', 'Final', r2)],
+        },
+        complete: true,
+        loading: false,
+      );
+      expect(card.stageLabels.keys, ['B', 'A']);
+      expect(card.games.first.gameId, b.first.gameId);
+    });
+
+    test(
+      'Home scorecard does not show semifinals while finals are loading',
+      () {
+        final partial = assembleCombinedScorecardGames(
+          categories: CombinedCategories([
+            _category('A', avgElo: 2700, order: 0),
+            _category('B', avgElo: 2750, order: 1),
+          ]),
+          gamesByTour: {'A': a},
+          roundsByTour: schedule(['A', 'B']),
+          complete: false,
+          loading: true,
+        );
+        expect(partial.loading, isTrue);
+        expect(partial.games, isNotEmpty);
+        expect(partial.gamesForDisplay(fromHome: true), isEmpty);
+        expect(partial.gamesForDisplay(fromHome: false), partial.games);
+      },
+    );
+
     test('Combined scorecard includes both stages and omits the mirror', () {
       final card = assembleCombinedScorecardGames(
         categories: const CombinedCategories([
