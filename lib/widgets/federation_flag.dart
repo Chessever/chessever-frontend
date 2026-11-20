@@ -66,6 +66,21 @@ class FederationFlag extends StatelessWidget {
     return iso2 != null && iso2.length == 2;
   }
 
+  /// The ISO 3166 alpha-2 code [federation] names (an ISO2 or FIDE code, or
+  /// a country name), or null when it names no country: unknown, FIDE, or a
+  /// UK nation (England, Scotland, Wales have no ISO2 of their own).
+  static String? iso2Of(String? federation) {
+    final raw = (federation ?? '').trim();
+    final normalized = raw.toUpperCase();
+    if (raw.isEmpty || _unknownSentinels.contains(raw.toLowerCase())) {
+      return null;
+    }
+    if (normalized == 'FID' || normalized == 'FIDE') return null;
+    if (_ukSubdivisions.containsKey(normalized)) return null;
+    final iso2 = _resolveIso2(raw, normalized);
+    return iso2 != null && iso2.length == 2 ? iso2 : null;
+  }
+
   // country_picker's CountryService builds ~250 Country objects in its
   // constructor. A flag sits in every game card and standings row, and
   // hasVisibleFlag plus build each looked the country up, so one instance and a

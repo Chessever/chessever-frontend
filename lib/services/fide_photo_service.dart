@@ -151,6 +151,13 @@ class FidePhotoService {
     return getPhotoUrl(fideId, forceRefresh: forceRefresh);
   }
 
+  /// Answers [fideId] with [url] for the session, as a resolved lookup
+  /// would: widget tests and offline previews show a player's photo with no
+  /// edge function to ask.
+  @visibleForTesting
+  static void debugSetPhotoUrl(String fideId, String url) =>
+      _markResolved(fideId, url);
+
   /// Clears all cached photo URLs. Useful when debugging or after updates.
   static void clearCache() {
     _urlCache.clear();

@@ -14,11 +14,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:motor/motor.dart';
 
-/// Chrome that steps out of the way while the reader reads, the way X,
-/// Instagram and every browser do it: scrolling down a list pushes the top
-/// bar up off the screen with the finger, pixel for pixel; scrolling back up
-/// pulls it back the same way. When the finger lets go between the two, the
-/// bar settles the way the reader was heading.
+/// Chrome that steps out of the way while the reader reads: reading down a
+/// list sends the bars away, heading back up brings them back, each time on
+/// one spring ([scrollChromeMotion]). The bars never follow the finger
+/// part-way; the direction of the reader's scroll decides, and the spring
+/// does the moving.
 ///
 /// One controller per screen. A [ScrollChromeRegion] around the screen's
 /// scrolling content feeds it; [CollapsingChrome] (bars) and [SlidingFabs]
@@ -27,18 +27,22 @@ import 'package:motor/motor.dart';
 ///
 /// What moves it, and what never does:
 ///
-/// * the outermost vertical list of the region, by drag, fling and let-go;
-///   never a horizontal scroll, a list nested in another, or a list too
-///   short to need the room ([minRange]);
-/// * a finger moves it only once it has travelled [listTurn] one way, and
-///   turns it round only after [listTurn] back: a thumb resting on the
-///   glass never pumps the bars;
-/// * a let-go settles it the way the finger was heading, a fling the way
-///   the fling goes; it is never left part-way, and once the finger has let
-///   go nothing else in that scroll moves it (the bounce at an end, a page
-///   landing under the fling, the list drifting);
-/// * at either end, a finger past the edge never moves it; a push for more
-///   at the end sends it away on let-go, a pull at the top brings it home;
+/// * the outermost vertical list of the region, by the reader's own scroll:
+///   their drag and the coast after it. Never a horizontal scroll, a list
+///   nested in another, or a list too short to need the room ([minRange]);
+/// * heading up by [listTravel] brings the bars back; heading down by as
+///   much sends them away, once the list is past its top region (the top
+///   bar's height): a thumb wobbling on the glass, short of [listTravel]
+///   either way, never pumps them;
+/// * the top is always home: any scroll of the reader's that finds the list
+///   at its top ([topSlack]), pulled past it, or pulling against it, brings
+///   the bars back, a coast reaching the top included;
+/// * the bounce at either end never moves them: past the end only a finger
+///   pushing for more counts (heading down); the list easing back from past
+///   an end, and anything its coast does after a bounce (a page landing
+///   under it restarts it), are the list's rubber band, not the reader.
+///   Except a flick up out of the end bounce: a coast the reader's finger
+///   sent up, running on up the content, is the reader heading up;
 /// * the app moving the list (a jump, a restore, keeping the reader's place
 ///   as rows arrive) never moves it, unless that scroll ends at the top or
 ///   carries the reader a screen or more; a switch of tab or page, a new
@@ -46,19 +50,18 @@ import 'package:motor/motor.dart';
 /// * a focused text field ([held], or any field in the region), reduced
 ///   motion and a screen reader keep it shown;
 /// * a paged region ([ScrollChromeRegion.paged]) follows the direction of
-///   travel instead, taking none of the drag: it leaves as the reader pages
-///   on and comes back the moment they drag back, even when the page then
-///   springs back to where it was.
+///   travel by whole pages instead: it leaves as the reader pages on and
+///   comes back the moment they drag back, even when the page then springs
+///   back to where it was.
 ///
-/// Why the drag is spent on the bar first: the bar folds out of the layout,
-/// so the list's viewport grows by exactly what the bar gives up. If the list
-/// scrolled as well, its content would travel twice as far as the finger. So
-/// while the bar is moving, each step of the drag goes to the bar and the
-/// list is put back where it was ([ScrollPosition.correctBy]), in the same
-/// frame the bar resizes: the content follows the finger exactly, as under a
+/// Why the spring carries the list: the bar folds out of the layout, so the
+/// list's viewport grows by exactly what the bar gives up, which would push
+/// the content down by as much under the reader. So each step of the spring
+/// puts the list back by what the bar moved ([ScrollPosition.correctBy]), in
+/// the same frame the bar resizes: the content stays where the reader's
+/// finger (or coast) has it while the bars slide over it, as under a
 /// floating header. Done from the scroll notifications rather than physics,
-/// so it holds for every list, whatever physics it brings (bouncing physics
-/// never hands a drag on to its parent).
+/// so it holds for every list, whatever physics it brings.
 class ScrollChromeController extends ChangeNotifier
     implements ValueListenable<double> {
   ScrollChromeController({required TickerProvider vsync})
@@ -75,12 +78,12 @@ class ScrollChromeController extends ChangeNotifier
   /// The value at the last notification, to measure each spring step by.
   double _lastValue = 1;
 
-  /// The list a spring step is carrying the bar over, while it does: a
-  /// fling's or a let-go's. Each step of the spring that moves the top bar
-  /// puts the list back by as much, so the bar slides away over a list that
-  /// keeps flowing under the finger's fling (or holds still after a let-go)
-  /// instead of being yanked by the bar's height. Null for the app's own
-  /// moves (a tab switch, a scroll to the top), where the list may move.
+  /// The list a spring step is carrying the bar over, while it does: the one
+  /// the reader's scroll is on. Each step of the spring that moves the top
+  /// bar puts the list back by as much, so the bar slides over a list that
+  /// keeps flowing under the finger (or its coast) instead of being yanked
+  /// by the bar's height. Null for the app's own moves (a tab switch, a
+  /// scroll to the top), where the list may move.
   ScrollPosition? _carried;
 
   /// Spring steps not yet given back to [_carried], in [value] units.
@@ -126,8 +129,10 @@ class ScrollChromeController extends ChangeNotifier
   /// bar instead (a short first scroll is never undone by the list springing
   /// back). At its end it also follows the bottom bar down, by the room that
   /// bar gives up, instead of bouncing back down after it. Coming back takes
-  /// room, so the list is pushed on; near its top it comes down with the
-  /// bar instead.
+  /// room, so the list is pushed on, the content holding still wherever the
+  /// list is, a few rows from its top included. Only a list at its top
+  /// ([topSlack]) stays there and comes down with the bar, its first row
+  /// under it: there the move is the point.
   ///
   /// A list past either end is in its bounce, which its physics brings
   /// back: it is left alone. Pulled into its range mid-bounce it would
@@ -148,7 +153,7 @@ class ScrollChromeController extends ChangeNotifier
       final minAfter = list.minScrollExtent + anchor * grow;
       by = math.min(by, maxAfter - pixels);
       by = math.max(by, math.min(0.0, minAfter - pixels));
-    } else if (pixels - list.minScrollExtent <= top) {
+    } else if (pixels - list.minScrollExtent <= topSlack) {
       by = 0;
     }
     return by;
@@ -173,11 +178,15 @@ class ScrollChromeController extends ChangeNotifier
   double get minRange =>
       math.max(minScrollRange, _topExtent + _bottomFold + 48);
 
-  /// How far a finger has to travel one way before the bars follow it, and
-  /// how far back before they turn round: past a thumb's wobble, so a reader
-  /// resting on the glass never pumps the bars. Travel past it goes to the
-  /// bars 1:1.
-  static const double listTurn = 16;
+  /// How far the reader's scroll (their drag, and the coast after it) has to
+  /// run one way before the bars go that way: past a thumb's wobble, so a
+  /// reader resting on the glass never pumps them. Counted afresh each time
+  /// the scroll turns round.
+  static const double listTravel = 10;
+
+  /// How close to its top a list counts as at its top, where the bars are
+  /// always home.
+  static const double topSlack = 4;
 
   /// How long a list has to stay too short to scroll before the chrome comes
   /// back for it, so a list that empties for a moment (a skeleton swapped,
@@ -195,14 +204,15 @@ class ScrollChromeController extends ChangeNotifier
     return v;
   }
 
-  /// The top bar's height: the finger travel that takes it all the way out.
+  /// The top bar's height: what the list's viewport gains with it gone, and
+  /// the top region of a list, where reading down leaves the bars shown.
   /// Reported by the [CollapsingChrome] at the top; 0 with no top bar.
   double get extent => _topExtent;
   double _topExtent = 0;
 
   /// The bottom bar's height, reported by the [CollapsingChrome] at the
   /// bottom; 0 with no bottom bar. With no top bar, the bottom bar alone
-  /// follows the list, over this much travel.
+  /// leaves with the list.
   double _bottomExtent = 0;
 
   /// What the bottom bar hands the list's viewport as it folds away: its
@@ -216,7 +226,7 @@ class ScrollChromeController extends ChangeNotifier
   /// spring.
   double _aim = 1;
 
-  /// The travel that takes the chrome all the way out.
+  /// The bars' height: 0 with no bar to move.
   double get _travel => _topExtent > 0 ? _topExtent : _bottomExtent;
 
   /// Off, the chrome stays shown and no scroll moves it (a screen reader is
@@ -407,10 +417,12 @@ class ScrollChromeController extends ChangeNotifier
   }
 
   /// Springs the chrome to [target] over the list [notification] came from,
-  /// carrying that list with it.
+  /// carrying that list with it, unless it is already there or on its way:
+  /// asked frame after frame as the reader scrolls, it never restarts the
+  /// spring.
   void _settleOver(ScrollNotification notification, double target) {
     if (target < 1 && (!_enabled || _holding)) return;
-    if (_aim == target && _motion.isAnimating) return;
+    if (_aim == target && (_motion.isAnimating || value == target)) return;
     _settleTo(target, carry: _positionOf(notification));
   }
 
@@ -437,18 +449,29 @@ class ScrollChromeController extends ChangeNotifier
   /// The list the current scroll is on.
   ScrollPosition? _moving;
 
-  /// Where the current finger is heading, as far as the bars are concerned:
-  /// 1 on (they leave), -1 back (they come), 0 not decided yet. Every
-  /// scroll starts undecided; [listTurn] of travel decides it.
-  int _way = 0;
+  /// The way the reader's scroll is running: 1 down the list, -1 back up, 0
+  /// not yet. Every scroll starts at 0.
+  int _runWay = 0;
 
-  /// While undecided, the finger's travel so far (signed); once decided,
-  /// how far the finger has come back against [_way] from the furthest it
-  /// went.
-  double _against = 0;
+  /// How far the reader's scroll has run [_runWay] since it last turned.
+  double _run = 0;
 
-  /// The chrome's value when the current scroll began.
-  double _startValue = 1;
+  /// The current scroll's coast has been past an end: the rest of it is the
+  /// list's rubber band (or its fling restarted from inside the bounce, by
+  /// a page landing or the bars resizing the list), not the reader heading
+  /// anywhere, unless the reader's finger sent it up ([_fingerWay]).
+  bool _bounced = false;
+
+  /// The way the reader's finger is heading in the current scroll, past an
+  /// end included: 1 down the list, -1 back up, 0 not yet. Set by its first
+  /// move, turned only by [listTravel] of travel the other way, so a wobble
+  /// at the let-go never turns it. Tells a flick up out of the end bounce
+  /// (the reader heading up) from the bounce's own rebound.
+  int _fingerWay = 0;
+
+  /// How far the finger has come back against [_fingerWay] since it last
+  /// went that way.
+  double _fingerBack = 0;
 
   /// How far the app has moved the list in the current scroll no finger
   /// started.
@@ -613,10 +636,41 @@ class ScrollChromeController extends ChangeNotifier
   void _begin(_Mover mover, ScrollPosition? list) {
     _mover = mover;
     _moving = list;
-    _way = 0;
-    _against = 0;
-    _startValue = value;
+    _runWay = 0;
+    _run = 0;
+    _bounced = false;
+    _fingerWay = 0;
+    _fingerBack = 0;
     _appTravel = 0;
+  }
+
+  /// Runs [d] of the finger's own travel (positive down the list) into
+  /// [_fingerWay].
+  void _noteFinger(double d) {
+    if (d.abs() < _noise) return;
+    final way = d > 0 ? 1 : -1;
+    if (_fingerWay == 0 || way == _fingerWay) {
+      _fingerWay = way;
+      _fingerBack = 0;
+      return;
+    }
+    _fingerBack += d.abs();
+    if (_fingerBack >= listTravel) {
+      _fingerWay = way;
+      _fingerBack = 0;
+    }
+  }
+
+  /// Notes who moves the list this step: a finger on it, or the coast it
+  /// left behind. Returns whether the step is the reader's own.
+  bool _byReader(bool finger, ScrollPosition? list) {
+    if (finger) {
+      if (_mover != _Mover.finger) _begin(_Mover.finger, list);
+      return true;
+    }
+    // The finger has let go and the list coasts on: still the reader's.
+    if (_mover == _Mover.finger) _mover = _Mover.fling;
+    return _mover == _Mover.fling;
   }
 
   void _onUpdate(
@@ -625,160 +679,98 @@ class ScrollChromeController extends ChangeNotifier
     ScrollPosition? list,
   ) {
     final delta = notification.scrollDelta ?? 0;
-    if (notification.dragDetails != null) {
-      if (_mover != _Mover.finger) _begin(_Mover.finger, list);
-      _onFinger(notification, m, delta);
+    final finger = notification.dragDetails != null;
+    if (!_byReader(finger, list)) {
+      _appTravel += delta.abs();
       return;
     }
-    switch (_mover) {
-      case _Mover.finger:
-        // The finger has let go and the list runs on without it: the bars'
-        // way is decided here, once, for the rest of this scroll.
-        _mover = _Mover.fling;
-        _onLetGo(notification, m, delta);
-      case _Mover.fling:
-        // Decided: the bounce at an end, a page landing under the fling
-        // and the list's drift never move the bars.
-        break;
-      case _Mover.app:
-      case _Mover.none:
-        _appTravel += delta.abs();
+    if (!m.hasPixels || !m.hasContentDimensions) return;
+    if (finger) _noteFinger(delta);
+    if (_atTop(m)) {
+      // At the top, or pulled past it, the bars are home: a coast arriving
+      // there brings them on its first arrival.
+      _settleOver(notification, 1);
+      return;
     }
+    // A coast's first step can be pure rounding (1e-13 either way): no
+    // travel at all, never a turn.
+    if (delta.abs() < _noise) return;
+    final from = m.pixels - delta;
+    final pastEnd = m.pixels > m.maxScrollExtent || from > m.maxScrollExtent;
+    if (finger) {
+      // Past the end, a push for more is the reader heading on; easing back
+      // in the bounce is the list's rubber band.
+      if (pastEnd && delta < 0) return;
+    } else if (pastEnd || from < m.minScrollExtent) {
+      // A coast past an end is in its bounce.
+      _bounced = true;
+      return;
+    } else if (_bounced && !(delta < 0 && _fingerWay < 0)) {
+      // Back in the content after a bounce: the bounce settling, or its
+      // rebound restarted there (a page landing, the bars resizing the
+      // list). Unless the reader's finger sent the coast up: a flick up
+      // out of the end bounce is the reader heading up.
+      return;
+    }
+    _track(notification, m, delta);
   }
 
-  /// One step of a finger on the list.
-  void _onFinger(
-    ScrollUpdateNotification notification,
-    ScrollMetrics m,
-    double delta,
-  ) {
-    if (delta == 0) return;
-    final top = m.minScrollExtent;
-    // At the top heading up, or pulled past it: the bars are home.
-    if (m.pixels < top || (m.pixels <= top + 0.5 && delta < 0)) {
-      _home();
-      return;
-    }
-    if (!_movable(m)) return;
-    if (m.pixels > m.maxScrollExtent) {
-      // Past the end: the finger never moves the bars here. A push for
-      // more leans on (the bars leave when it lets go); easing back in the
-      // bounce is the list's rubber band, not the reader heading back.
-      if (delta > 0) _steer(delta);
-      return;
-    }
-    final take = _steer(delta);
-    if (take != 0) _take(notification, take);
-  }
-
-  /// A finger pushing past an end the list does not bounce at.
+  /// The list pushed against an end it does not bounce at: by a finger, or
+  /// by its coast.
   void _onOverscroll(
     OverscrollNotification notification,
     ScrollMetrics m,
     ScrollPosition? list,
   ) {
-    if (notification.dragDetails == null) return;
-    if (_mover != _Mover.finger) _begin(_Mover.finger, list);
+    final finger = notification.dragDetails != null;
+    if (!_byReader(finger, list)) return;
     final overscroll = notification.overscroll;
+    if (finger) _noteFinger(overscroll);
     if (overscroll < 0) {
-      _home();
-    } else if (overscroll > 0 && _movable(m)) {
-      // A pull for more at the end: on, but the bars stay where they are
-      // until the finger lets go.
-      _steer(overscroll);
+      // Against the top: home.
+      _settleOver(notification, 1);
+    } else if (overscroll > 0) {
+      // Against the end: a finger pushing for more heads on; a coast
+      // stopping there is its bounce.
+      if (finger) {
+        _track(notification, m, overscroll);
+      } else {
+        _bounced = true;
+      }
     }
   }
 
-  /// The bars are home: at the top, heading up.
-  void _home() {
-    _way = -1;
-    _against = 0;
-    _headFor(1);
+  /// Less travel than this in a step is rounding, not movement.
+  static const double _noise = 1e-6;
+
+  /// Whether [m] is at its top (within [topSlack]) or pulled past it.
+  static bool _atTop(ScrollMetrics m) =>
+      m.pixels <= m.minScrollExtent + topSlack;
+
+  /// Runs [d] of the reader's travel (positive down the list) and, once
+  /// it has run [listTravel] one way, springs the bars that way: back when
+  /// heading up; away when heading down, if the list can take them away and
+  /// is past its top region (the top bar's height and a turn's travel, so
+  /// the list it carries is never put back at its top, where the bars would
+  /// be home again, and a reader turning straight back never finds the
+  /// content sliding under the returning bar).
+  void _track(ScrollNotification notification, ScrollMetrics m, double d) {
+    final way = d > 0 ? 1 : -1;
+    if (way != _runWay) {
+      _runWay = way;
+      _run = 0;
+    }
+    _run += d.abs();
+    if (_run < listTravel) return;
+    if (way < 0) {
+      _settleOver(notification, 1);
+    } else if (_movable(m) &&
+        m.pixels - m.minScrollExtent > _topExtent + 2 * topSlack + listTravel) {
+      _settleOver(notification, 0);
+    }
   }
 
-  /// Runs [delta] of finger travel through the turn ([listTurn]) and returns
-  /// how much of it goes to the bars: positive sends them away, negative
-  /// brings them back, 0 leaves them.
-  double _steer(double delta) {
-    final dir = delta > 0 ? 1 : -1;
-    if (_way == 0) {
-      _against += delta;
-      if (_against.abs() < listTurn) return 0;
-      _way = _against > 0 ? 1 : -1;
-      final beyond = _against.abs() - listTurn;
-      _against = 0;
-      return _way * beyond;
-    }
-    if (dir == _way) {
-      _against = math.max(0.0, _against - delta.abs());
-      return delta;
-    }
-    _against += delta.abs();
-    if (_against < listTurn) return 0;
-    _way = dir;
-    final beyond = _against - listTurn;
-    _against = 0;
-    return _way * beyond;
-  }
-
-  /// Gives [amount] of the finger's travel to the bars (positive away,
-  /// negative back), as far as they can go, and puts the list back by what
-  /// they took.
-  void _take(ScrollNotification notification, double amount) {
-    final top = _topExtent;
-    if (top <= 0) {
-      // Only a bottom bar: it leaves from under the list, which never moves
-      // the content, so it simply follows the finger.
-      _setNow(value - amount / _bottomExtent);
-      return;
-    }
-    final room = amount > 0 ? value * top : (1 - value) * top;
-    final take = math.min(amount.abs(), room);
-    if (take <= 0) return;
-    final step = (amount > 0 ? -take : take) / top;
-    _setNow(value + step);
-    _putListBack(notification, step);
-  }
-
-  /// The finger has let go and the list runs on ([delta] its first step
-  /// without the finger).
-  void _onLetGo(ScrollNotification notification, ScrollMetrics m, double d) {
-    final pastAnEnd =
-        m.pixels < m.minScrollExtent || m.pixels > m.maxScrollExtent;
-    if (!pastAnEnd && d != 0) {
-      // A fling: the bars go its way, the list flowing on under them.
-      if (_movable(m)) _settleOver(notification, d > 0 ? 0 : 1);
-      return;
-    }
-    // The list springing back from past an end is not a fling: the finger's
-    // own way decides, as if it had let go still.
-    _settleByWay(notification, m);
-  }
-
-  /// A let-go with no fling: the bars settle the way the finger was
-  /// heading (away on, home back); a finger that never decided leaves them
-  /// where they were.
-  void _settleByWay(ScrollNotification notification, ScrollMetrics m) {
-    final double target;
-    if (_way > 0) {
-      target = 0;
-    } else if (_way < 0) {
-      target = 1;
-    } else {
-      final v = value;
-      if (_motion.isAnimating || v == 0 || v == 1) return;
-      target = _startValue >= 0.5 ? 1 : 0;
-    }
-    if (target == 0 && !_movable(m)) {
-      // A list that cannot take the bars away never leaves them part-way.
-      if (value > 0 && value < 1) _settleOver(notification, 1);
-      return;
-    }
-    if (value == target && !_motion.isAnimating) return;
-    _settleOver(notification, target);
-  }
-
-  /// A scroll ended: the finger let go without a fling, a fling came to
+  /// A scroll ended: the finger let go without a fling, a coast came to
   /// rest, or the app's own scroll is done.
   void _end(ScrollNotification notification, ScrollMetrics m) {
     final mover = _mover;
@@ -786,7 +778,11 @@ class ScrollChromeController extends ChangeNotifier
     _moving = null;
     switch (mover) {
       case _Mover.finger:
-        _settleByWay(notification, m);
+      case _Mover.fling:
+        // The reader came to rest at the top: home.
+        if (m.hasPixels && m.hasContentDimensions && _atTop(m)) {
+          _settleOver(notification, 1);
+        }
       case _Mover.app:
         // The app's own scroll: home when it ends at the top, or when it
         // has carried the reader a screen or more. Its small moves (keeping
@@ -800,7 +796,6 @@ class ScrollChromeController extends ChangeNotifier
                     _appTravel >= m.viewportDimension))) {
           show();
         }
-      case _Mover.fling:
       case _Mover.none:
         break;
     }
@@ -959,15 +954,6 @@ class ScrollChromeController extends ChangeNotifier
     return 0;
   }
 
-  /// Undoes the list's share of the last finger step: the bars took it
-  /// ([step] of [value]).
-  void _putListBack(ScrollNotification notification, double step) {
-    final list = _positionOf(notification);
-    if (list == null || !list.hasPixels) return;
-    list.correctBy(_holdStill(_topExtent, _anchorOf(list), step));
-    _see(list);
-  }
-
   @override
   void dispose() {
     _disposed = true;
@@ -992,8 +978,8 @@ enum _Mover {
   /// A finger is on the list.
   finger,
 
-  /// The finger has let go and the list runs on: a fling, or the list
-  /// springing back from past an end.
+  /// The finger has let go and the list coasts on: a fling, or the list
+  /// springing back from past an end. Still the reader's scroll.
   fling,
 
   /// The app, with no finger: a jump, a restore, an animated scroll.
@@ -1035,8 +1021,8 @@ class ScrollChromeScope extends InheritedWidget {
 }
 
 /// The scrolling content under a screen's chrome. Every vertical list in
-/// [child] drives the chrome: its drags (the bar takes its share first), its
-/// flings and its let-gos. Horizontal scrolls (a page swipe, a carousel)
+/// [child] drives the chrome by the way the reader scrolls it: their drags
+/// and the coasts after them. Horizontal scrolls (a page swipe, a carousel)
 /// never move it, and nor does a vertical list nested inside another one
 /// (a list inside a card, a page's own scroll inside a pager): only the
 /// outermost vertical list in the region reads as the page.

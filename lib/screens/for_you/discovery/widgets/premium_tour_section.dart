@@ -16,8 +16,8 @@ import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/art_fade.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/flag_pole_scene.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -749,7 +749,8 @@ class _ArchiveVisual extends ConsumerWidget {
   }
 }
 
-/// The viewer's flag, washed back behind the tile.
+/// The viewer's flag: washed back behind the dark tile, flying from a pole
+/// on the light one.
 class _FlagVisual extends StatelessWidget {
   const _FlagVisual({required this.countryCode});
 
@@ -790,6 +791,33 @@ class _FlagVisual extends StatelessWidget {
         ),
       );
     }
+    if (context.isLightTheme) {
+      // Paper: the reader's real flag flying from the light scene's pole,
+      // whole and at full strength, the pole and its flag (finial to the
+      // cloth's resting fly edge, at the flag's own proportions) centred on
+      // the tile as the rail's other pictures are. The mound runs off the
+      // tile's foot.
+      return SizedBox.expand(
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final size = box.biggest;
+            final clothMax = Size(
+              math.min(66.w, size.width * 0.5),
+              math.min(46.w, size.height * 0.48),
+            );
+            return FlagPoleScene(
+              flagCode: flagClothCode(code),
+              layout: (aspect) => FlagPoleLayout.centred(
+                width: size.width,
+                bottom: size.height,
+                height: size.height - 4.w,
+                cloth: FlagPoleLayout.fitCloth(clothMax, aspect),
+              ),
+            );
+          },
+        ),
+      );
+    }
     final flag = FittedBox(
       fit: BoxFit.cover,
       child: CountryFlag.fromCountryCode(
@@ -797,24 +825,8 @@ class _FlagVisual extends StatelessWidget {
         theme: const ImageTheme(width: 200, height: 150),
       ),
     );
-    if (context.isLightTheme) {
-      // Paper: the flag at its true colour, fading through its own alpha out
-      // of the top-right corner as on the Countrymen tile. Dimmed by an
-      // opacity it read on the light tile as a white wash over the flag.
-      return SizedBox.expand(
-        child: ArtFade(shader: _paperFade, child: flag),
-      );
-    }
     return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
   }
-
-  /// Nothing is written over this picture, so the flag keeps most of the
-  /// tile and only leaves it toward the foot and the left.
-  static Shader _paperFade(Rect bounds) => artFadeCorner(
-    bounds,
-    reach: const Size(1.05, 1.35),
-    hold: PlayerCardLightArt.hold,
-  );
 }
 
 /// A synced personal database, up to 100,000 games: the figure is the

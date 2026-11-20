@@ -73,9 +73,13 @@ class MainActivity : FlutterActivity() {
   private var sfxPool: SoundPool? = null
   private var moveSfxId = 0
   private var captureSfxId = 0
+  private var touchExplorationBridge: TouchExplorationBridge? = null
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    touchExplorationBridge?.dispose()
+    touchExplorationBridge =
+      TouchExplorationBridge(this, flutterEngine.dartExecutor.binaryMessenger)
     pushPermissionBridge = PushPermissionBridge(this, flutterEngine.dartExecutor.binaryMessenger)
     mediaPickerChannel = MethodChannel(
       flutterEngine.dartExecutor.binaryMessenger,
@@ -173,6 +177,8 @@ class MainActivity : FlutterActivity() {
   override fun onDestroy() {
     pushPermissionBridge?.dispose()
     pushPermissionBridge = null
+    touchExplorationBridge?.dispose()
+    touchExplorationBridge = null
     stopClockTicker()
     stopNativePolling()
     removePipOverlay()

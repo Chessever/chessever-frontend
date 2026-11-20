@@ -34,6 +34,7 @@ import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/flag_pole_scene.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
@@ -735,18 +736,27 @@ class _CountrymenTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(4.w),
         child: Stack(
           children: [
-            if (hasFlag)
+            if (hasFlag && context.isLightTheme)
+              // Paper: the federation's real flag flying from the light
+              // scene's pole, whole and at full strength above the name.
+              // Only the drawing's mound eases into the plate.
+              Positioned(
+                left: 0,
+                top: 0,
+                width: width,
+                height: flagHeight,
+                child: _CountrymenFlagScene(code: code, width: width),
+              )
+            else if (hasFlag)
               Positioned(
                 left: 0,
                 top: 0,
                 width: width,
                 height: flagHeight,
                 // The flag dissolves into the plate over a long, many-stop
-                // fade so there is no seam where the image stops. Paper
-                // shows it at its true colour: the dark tile's dimming read
-                // on the light plate as a white wash over the flag.
+                // fade so there is no seam where the image stops.
                 child: Opacity(
-                  opacity: context.isLightTheme ? 1 : 0.55,
+                  opacity: 0.55,
                   child: ShaderMask(
                     blendMode: BlendMode.dstIn,
                     shaderCallback: (rect) => const LinearGradient(
@@ -816,6 +826,32 @@ class _CountrymenTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Light: the pinned federation's flag flying from the light scene's pole,
+/// the pole and its flag centred in the tile's picture area: from the
+/// finial's left edge to the cloth's resting fly edge, at the flag's own
+/// proportions.
+class _CountrymenFlagScene extends StatelessWidget {
+  const _CountrymenFlagScene({required this.code, required this.width});
+
+  final String code;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final clothMax = Size(68.w, 46.w);
+    return FlagPoleScene(
+      flagCode: flagClothCode(code),
+      footFade: 18.w,
+      layout: (aspect) => FlagPoleLayout.centred(
+        width: width,
+        bottom: 108.w,
+        height: 104.w,
+        cloth: FlagPoleLayout.fitCloth(clothMax, aspect),
       ),
     );
   }

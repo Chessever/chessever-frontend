@@ -187,6 +187,99 @@ class HubTileFace extends StatelessWidget {
   /// The mark's square, the same on every tile so a pair always matches.
   static double get markSide => 44.sp;
 
+  /// The label's inset from the tile's edges.
+  static double get labelInset => 14.sp;
+
+  /// The title's type, its ink aside.
+  static TextStyle titleType() =>
+      AppTypography.textMdBold.copyWith(fontSize: 16.f, letterSpacing: 0.3);
+
+  /// The caption's type, its ink aside.
+  static TextStyle captionType() =>
+      AppTypography.textXsRegular.copyWith(fontSize: 12.f);
+
+  /// [text] set on one line in [style] at the reader's text size: its width
+  /// and its height rounded up, as the tile measures its label.
+  static Size _line(BuildContext context, String text, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final size = Size(painter.width, painter.height.ceilToDouble());
+    painter.dispose();
+    return size;
+  }
+
+  /// How far from the tile's left edge a tile's label ([title] over
+  /// [caption] and its arrow) reaches, at the reader's text size: artwork
+  /// that stands beside the label keeps to the right of it.
+  static double labelRight(
+    BuildContext context, {
+    required String title,
+    String caption = kHubTileCaption,
+  }) {
+    final arrow = MediaQuery.textScalerOf(
+      context,
+    ).scale((12.f * 0.8).roundToDouble());
+    final captionWidth =
+        _line(context, caption, captionType()).width + 4.w + arrow;
+    return labelInset +
+        math.max(_line(context, title, titleType()).width, captionWidth);
+  }
+
+  /// Where a text-only tile's label ([title] over [caption]) begins, from
+  /// the top of an artwork box [height] tall, at the reader's text size:
+  /// artwork above the label keeps clear of it.
+  static double labelTop(
+    BuildContext context, {
+    required String title,
+    String caption = kHubTileCaption,
+    required double height,
+  }) {
+    final label =
+        _line(context, title, titleType()).height +
+        2.sp +
+        _line(context, caption, captionType()).height;
+    return height - labelInset - label;
+  }
+
+  /// Inter's cap height, as a share of its size (1490 of 2048 units).
+  static const double _capHeight = 1490 / 2048;
+
+  /// Where the top of the title's capitals sits, from the top of an artwork
+  /// box [height] tall, at the reader's text size: artwork composed above
+  /// the label ends a little above it, so the label sits on calm ground.
+  static double labelCapTop(
+    BuildContext context, {
+    required String title,
+    String caption = kHubTileCaption,
+    required double height,
+  }) {
+    // As the title's Text lays it out: over the ambient text style, whose
+    // leading distribution decides where the baseline falls in the line.
+    final style = DefaultTextStyle.of(context).style.merge(titleType());
+    final scaler = MediaQuery.textScalerOf(context);
+    final painter = TextPainter(
+      text: TextSpan(text: title, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final baseline = painter.computeDistanceToActualBaseline(
+      TextBaseline.alphabetic,
+    );
+    painter.dispose();
+    final top = labelTop(
+      context,
+      title: title,
+      caption: caption,
+      height: height,
+    );
+    return top + baseline - scaler.scale(style.fontSize ?? 16) * _capHeight;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLight = context.isLightTheme;
@@ -220,15 +313,12 @@ class HubTileFace extends StatelessWidget {
 
     // Sized on the type scale here, at build, so the tile's words grow with
     // the tile on a tablet exactly as the section titles beside it do.
-    final titleStyle = AppTypography.textMdBold.copyWith(
-      fontSize: 16.f,
+    final titleStyle = titleType().copyWith(
       color: onTile,
-      letterSpacing: 0.3,
       shadows: shadow(0.45, 4, const Offset(0, 1)),
     );
     final captionSize = 12.f;
-    final captionStyle = AppTypography.textXsRegular.copyWith(
-      fontSize: captionSize,
+    final captionStyle = captionType().copyWith(
       color: quiet,
       shadows: shadow(0.4, 3),
     );

@@ -9,8 +9,8 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
-import 'package:chessever2/widgets/art_fade.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/light_media_art.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart'
     show getTitleBadgeColor, titleBadgeFill, titleBadgeInk;
 import 'package:flutter/material.dart';
@@ -24,27 +24,27 @@ const int _maxTwicPlayerCards = 4;
 /// Mirrors `topSearchedPlayers` from the home page but for `GamebasePlayer`.
 final topTwicSearchedPlayersProvider = Provider.autoDispose
     .family<List<GamebasePlayer>, String>((ref, query) {
-  final trimmed = query.trim();
-  if (trimmed.isEmpty) return const [];
+      final trimmed = query.trim();
+      if (trimmed.isEmpty) return const [];
 
-  final searchAsync = ref.watch(libraryCombinedSearchProvider(trimmed));
-  return searchAsync.maybeWhen(
-    data: (result) {
-      if (result.players.isEmpty) return const [];
-      final seen = <String>{};
-      final unique = <GamebasePlayer>[];
-      for (final p in result.players) {
-        final key = p.name.toLowerCase().trim();
-        if (seen.add(key)) {
-          unique.add(p);
-          if (unique.length >= _maxTwicPlayerCards) break;
-        }
-      }
-      return unique;
-    },
-    orElse: () => const [],
-  );
-});
+      final searchAsync = ref.watch(libraryCombinedSearchProvider(trimmed));
+      return searchAsync.maybeWhen(
+        data: (result) {
+          if (result.players.isEmpty) return const [];
+          final seen = <String>{};
+          final unique = <GamebasePlayer>[];
+          for (final p in result.players) {
+            final key = p.name.toLowerCase().trim();
+            if (seen.add(key)) {
+              unique.add(p);
+              if (unique.length >= _maxTwicPlayerCards) break;
+            }
+          }
+          return unique;
+        },
+        orElse: () => const [],
+      );
+    });
 
 /// Player search cards displayed above the TWIC games list.
 /// Mirrors the home-page `PlayerSearchCards` aesthetic but consumes
@@ -87,15 +87,21 @@ class TwicPlayerSearchCards extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Expanded(child: _TwicPlayerCard(player: players[0], isCompact: true)),
+            Expanded(
+              child: _TwicPlayerCard(player: players[0], isCompact: true),
+            ),
             SizedBox(width: 12.sp),
-            Expanded(child: _TwicPlayerCard(player: players[1], isCompact: true)),
+            Expanded(
+              child: _TwicPlayerCard(player: players[1], isCompact: true),
+            ),
           ],
         ),
         SizedBox(height: 12.sp),
         Row(
           children: [
-            Expanded(child: _TwicPlayerCard(player: players[2], isCompact: true)),
+            Expanded(
+              child: _TwicPlayerCard(player: players[2], isCompact: true),
+            ),
             SizedBox(width: 12.sp),
             if (players.length > 3)
               Expanded(
@@ -137,16 +143,26 @@ class _TwicPlayerCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final countryCode = _getIso2CountryCode();
-    // Light: the flag and photo stay at their true colour and fade through
-    // their own alpha into the card's surface (PlayerCardLightArt), as on
-    // the home search cards; dark keeps its veil.
+    // Light: the player's photo at full strength with nothing laid over it
+    // and no flag behind it, as on the home search cards: whole at a
+    // full-width card's right edge, its left edge fading into the card and
+    // the words clear of it; an avatar above the name on a half-width card,
+    // so the name keeps the card's width. Room is made for the photo only
+    // once it is on hand; a player without one gets a plain card.
     final light = context.isLightTheme;
+    final height = (isCompact ? 108.sp : 120.sp) * context.textGrowth;
+    final photoUrl = light
+        ? ref
+              .watch(_twicPlayerPhotoUrlProvider(player.fideId.trim()))
+              .valueOrNull
+        : null;
+    final inset = isCompact ? 12.sp : 14.sp;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _navigateToProfile(context),
       child: Container(
-        height: (isCompact ? 108.sp : 120.sp) * context.textGrowth,
+        height: height,
         decoration: BoxDecoration(
           color: light ? context.colors.surface : null,
           borderRadius: BorderRadius.circular(12.br),
@@ -162,25 +178,39 @@ class _TwicPlayerCard extends ConsumerWidget {
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              if (light)
-                PlayerCardLightArt(
-                  compact: isCompact,
-                  flag: countryCode == null
+              if (light && !isCompact)
+                Positioned.fill(
+                  child: LightPortraitCard(
+                    url: photoUrl,
+                    height: height,
+                    words: (context, photo) => _words(
+                      context,
+                      padding: photo
+                          ? EdgeInsets.fromLTRB(
+                              inset,
+                              inset,
+                              LightCardPortrait.wordsClearance(height),
+                              inset,
+                            )
+                          : EdgeInsets.all(inset),
+                    ),
+                  ),
+                )
+              else if (light)
+                _words(
+                  context,
+                  padding: EdgeInsets.all(inset),
+                  avatar: photoUrl == null
                       ? null
-                      : FittedBox(
-                          fit: BoxFit.cover,
-                          clipBehavior: Clip.hardEdge,
-                          child: FederationFlag(
-                            federation: countryCode,
-                            width: 300,
-                            height: 200,
-                            borderRadius: BorderRadius.zero,
+                      : ConstrainedBox(
+                          constraints: BoxConstraints.loose(
+                            Size.square(LightAvatarPhoto.side(context)),
+                          ),
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: LightAvatarPhoto(url: photoUrl),
                           ),
                         ),
-                  portrait: _PlayerPhotoOverlay(
-                    player: player,
-                    isCompact: isCompact,
-                  ),
                 )
               else ...[
                 if (countryCode != null)
@@ -203,90 +233,118 @@ class _TwicPlayerCard extends ConsumerWidget {
                     ),
                   ),
                 ),
+                _words(context, padding: EdgeInsets.all(inset)),
               ],
-              Padding(
-                padding: EdgeInsets.all(isCompact ? 12.sp : 14.sp),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (player.title != null && player.title!.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 4.sp),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 5.sp,
-                            vertical: 2.sp,
-                          ),
-                          decoration: BoxDecoration(
-                            color: titleBadgeFill(
-                              context,
-                              getTitleBadgeColor(player.title!),
-                            ),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                          child: Text(
-                            player.title!,
-                            style: AppTypography.textXsBold.copyWith(
-                              // Label picked against the (light-deepened)
-                              // fill so it clears AA; dark stays white.
-                              color: titleBadgeInk(
-                                context,
-                                titleBadgeFill(
-                                  context,
-                                  getTitleBadgeColor(player.title!),
-                                ),
-                              ),
-                              fontSize: isCompact ? 9.sp : 10.sp,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    Text(
-                      player.displayName,
-                      style: (isCompact
-                              ? AppTypography.textMdBold
-                              : AppTypography.textLgBold)
-                          .copyWith(
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The card's words, bottom-left: the title badge, the name, the rating
+  /// and federation. A light half-width card's [avatar] stands at the right
+  /// of the badge's row, its foot level with the badge's.
+  Widget _words(
+    BuildContext context, {
+    required EdgeInsets padding,
+    Widget? avatar,
+  }) {
+    final light = context.isLightTheme;
+    final hasTitle = player.title != null && player.title!.isNotEmpty;
+    final badge = hasTitle
+        ? Container(
+            padding: EdgeInsets.symmetric(horizontal: 5.sp, vertical: 2.sp),
+            decoration: BoxDecoration(
+              color: titleBadgeFill(context, getTitleBadgeColor(player.title!)),
+              borderRadius: BorderRadius.circular(4.br),
+            ),
+            child: Text(
+              player.title!,
+              style: AppTypography.textXsBold.copyWith(
+                // Label picked against the (light-deepened)
+                // fill so it clears AA; dark stays white.
+                color: titleBadgeInk(
+                  context,
+                  titleBadgeFill(context, getTitleBadgeColor(player.title!)),
+                ),
+                fontSize: isCompact ? 9.sp : 10.sp,
+                letterSpacing: 0.5,
+              ),
+            ),
+          )
+        : null;
+    return Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (avatar != null)
+            Flexible(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 4.sp),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [?badge, const Spacer(), avatar],
+                ),
+              ),
+            )
+          else if (badge != null)
+            Padding(
+              padding: EdgeInsets.only(bottom: 4.sp),
+              child: badge,
+            ),
+          // Paper: a half-width card's name steps down to a form that fits
+          // ("M. Carlsen"), fading only as a last resort.
+          if (light && isCompact)
+            LightCardName(
+              name: player.displayName,
+              style: AppTypography.textMdBold.copyWith(
+                color: context.colors.textPrimary,
+                letterSpacing: 0.3,
+              ),
+            )
+          else
+            Text(
+              player.displayName,
+              style:
+                  (isCompact
+                          ? AppTypography.textMdBold
+                          : AppTypography.textLgBold)
+                      .copyWith(
                         color: context.colors.textPrimary,
                         letterSpacing: 0.3,
                       ),
-                      maxLines: isCompact ? 1 : 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 2.sp),
-                    Row(
-                      children: [
-                        if (player.fed.trim().isNotEmpty) ...[
-                          FederationFlag(
-                            federation: player.fed,
-                            width: isCompact ? 14.sp : 16.sp,
-                            height: isCompact ? 10.sp : 12.sp,
-                            borderRadius: BorderRadius.circular(2.br),
-                          ),
-                          SizedBox(width: 5.sp),
-                        ],
-                        Expanded(
-                          child: Text(
-                            _buildSubtitle(),
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary
-                                  .withValues(alpha: 0.7),
-                              fontSize: isCompact ? 10.sp : 11.sp,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+              maxLines: isCompact ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          SizedBox(height: 2.sp),
+          Row(
+            children: [
+              if (player.fed.trim().isNotEmpty) ...[
+                FederationFlag(
+                  federation: player.fed,
+                  width: isCompact ? 14.sp : 16.sp,
+                  height: isCompact ? 10.sp : 12.sp,
+                  borderRadius: BorderRadius.circular(2.br),
+                ),
+                SizedBox(width: 5.sp),
+              ],
+              Expanded(
+                child: Text(
+                  _buildSubtitle(),
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+                    fontSize: isCompact ? 10.sp : 11.sp,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -313,8 +371,15 @@ class _TwicPlayerCard extends ConsumerWidget {
     if (fed.isEmpty) return null;
     final lower = fed.toLowerCase();
     // Treat TWIC's "Unknown" / sentinel feds as no flag.
-    if (const {'unknown', 'none', 'unrated', 'n/a', 'na', '?', '-'}
-        .contains(lower)) {
+    if (const {
+      'unknown',
+      'none',
+      'unrated',
+      'n/a',
+      'na',
+      '?',
+      '-',
+    }.contains(lower)) {
       return null;
     }
     // fed can be 2-letter ISO, 3-letter FIDE, or a country name (TWIC uses names).
@@ -360,9 +425,9 @@ class _FlagBackground extends StatelessWidget {
 /// fall through cleanly to placeholder.
 final _twicPlayerPhotoUrlProvider = FutureProvider.family
     .autoDispose<String?, String>((ref, fideId) async {
-  if (fideId.isEmpty) return null;
-  return FidePhotoService.getPhotoUrlOrNull(fideId);
-});
+      if (fideId.isEmpty) return null;
+      return FidePhotoService.getPhotoUrlOrNull(fideId);
+    });
 
 class _PlayerPhotoOverlay extends ConsumerWidget {
   const _PlayerPhotoOverlay({required this.player, this.isCompact = false});
@@ -376,9 +441,6 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
       _twicPlayerPhotoUrlProvider(player.fideId.trim()),
     );
 
-    // Light: one long eased fade, so the photo never ends in a hard edge
-    // where it meets the flag.
-    final light = context.isLightTheme;
     return Positioned(
       right: isCompact ? -15.sp : -20.sp,
       top: isCompact ? -8.sp : -10.sp,
@@ -389,25 +451,23 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
           return AspectRatio(
             aspectRatio: 0.8,
             child: ShaderMask(
-              shaderCallback: (bounds) => light
-                  ? PlayerCardLightArt.portraitFade.createShader(bounds)
-                  : LinearGradient(
-                      begin: Alignment.centerRight,
-                      end: Alignment.centerLeft,
-                      colors: [
-                        Colors.white,
-                        Colors.white.withValues(alpha: 0.85),
-                        Colors.white.withValues(alpha: 0.3),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.25, 0.55, 1.0],
-                    ).createShader(bounds),
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.centerRight,
+                end: Alignment.centerLeft,
+                colors: [
+                  Colors.white,
+                  Colors.white.withValues(alpha: 0.85),
+                  Colors.white.withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.25, 0.55, 1.0],
+              ).createShader(bounds),
               blendMode: BlendMode.dstIn,
               child: CachedNetworkImage(
                 imageUrl: photoUrl,
                 fit: BoxFit.cover,
-                memCacheWidth:
-                    (200 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                memCacheWidth: (200 * MediaQuery.devicePixelRatioOf(context))
+                    .toInt(),
                 placeholder: (_, _) => _buildPlaceholder(context),
                 errorWidget: (_, _, _) => _buildPlaceholder(context),
               ),
@@ -421,9 +481,6 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
   }
 
   Widget _buildPlaceholder(BuildContext context) {
-    // Light: no stand-in. Its translucent grey box lay over the flag as a
-    // wash; without a photo the flag alone carries the card.
-    if (context.isLightTheme) return const AspectRatio(aspectRatio: 0.8);
     return AspectRatio(
       aspectRatio: 0.8,
       child: Container(

@@ -147,8 +147,8 @@ class HomeNavScope extends InheritedWidget {
 ///
 /// It follows the section's scroll chrome ([chrome]): reading on draws it
 /// in to a compact capsule with smaller marks, heading back opens it up
-/// again, on the chrome's own value (the finger, a page at a time in Feed,
-/// its spring). Every mark stays a 44pt target at every size. With no
+/// again, on the chrome's own value (its spring, a list's scroll or Feed's
+/// pages turning it). Every mark stays a 44pt target at every size. With no
 /// chrome (a test, a still section) it stands full.
 ///
 /// Its slot is [HomeNavMetrics.extent] tall at every frame, so the page

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
@@ -91,9 +92,12 @@ void main() {
     // not depend on the physics chain.
     const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
   ]) {
-    testWidgets('the content follows the finger 1:1, and the bar does too '
-        'once the finger has turned '
-        '(${physics?.runtimeType ?? 'default'} physics)', (tester) async {
+    testWidgets('the bars spring away once the finger has run '
+        '${ScrollChromeController.listTravel} down and back once it has run '
+        'as much up, never following it part-way, while the content follows '
+        'the finger exactly (${physics?.runtimeType ?? 'default'} physics)', (
+      tester,
+    ) async {
       late ScrollChromeController chrome;
       await tester.pumpWidget(
         _Page(onController: (c) => chrome = c, physics: physics),
@@ -108,61 +112,78 @@ void main() {
       expect(chrome.value, 1);
 
       final gesture = await tester.startGesture(const Offset(200, 400));
-      // Past the drag slop, then past the turn: the bar starts to follow.
-      await gesture.moveBy(const Offset(0, -20));
-      await tester.pump();
-      while (chrome.value == 1) {
-        await gesture.moveBy(const Offset(0, -2));
-        await tester.pump();
-      }
-      final start = rowTop(tester, 26);
-      final barStart = chrome.value;
+      // Past the drag slop, the other way: whatever of it reaches the list
+      // runs up, and the run down starts afresh after it.
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(chrome.value, 1);
+      var finger = rowTop(tester, 26);
 
-      await gesture.moveBy(const Offset(0, -40));
-      await tester.pump();
-      // The content moved exactly as far as the finger did.
-      expect(rowTop(tester, 26), moreOrLessEquals(start - 40, epsilon: 1));
-      // And the bar gave up that much of its height.
-      expect(chrome.value, moreOrLessEquals(barStart - 0.4, epsilon: 0.02));
-
-      // Far enough to take the bar out entirely, then into the list.
-      for (var i = 0; i < 5; i++) {
-        await gesture.moveBy(const Offset(0, -30));
-        await tester.pump();
-      }
-      expect(chrome.value, 0);
-      // Every pixel after the drag took hold reached the content once.
-      expect(rowTop(tester, 26), moreOrLessEquals(start - 190, epsilon: 1.5));
-
-      // Back up, short of the turn: the list scrolls back, the bar waits.
-      var before = rowTop(tester, 26);
+      // Short of the travel: the content follows, the bars stay.
       await gesture.moveBy(
-        const Offset(0, ScrollChromeController.listTurn - 4),
+        const Offset(0, -(ScrollChromeController.listTravel - 2)),
       );
-      await tester.pump();
-      expect(
-        rowTop(tester, 26),
-        moreOrLessEquals(before + ScrollChromeController.listTurn - 4),
-      );
+      finger -= ScrollChromeController.listTravel - 2;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(rowTop(tester, 26), moreOrLessEquals(finger, epsilon: 0.5));
+      expect(chrome.value, 1);
+
+      // Past it: the bars leave on their spring, with the finger still on
+      // the glass, and the content goes on following the finger exactly,
+      // whatever the bars do over it.
+      final values = <double>[];
+      for (var i = 0; i < 4; i++) {
+        await gesture.moveBy(const Offset(0, -4));
+        finger -= 4;
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(rowTop(tester, 26), moreOrLessEquals(finger, epsilon: 0.5));
+        values.add(chrome.value);
+      }
+      // On the spring, not on the finger: part-way, and (below) going on
+      // to the end with the finger held still.
+      expect(values.last, inExclusiveRange(0, 1));
+      // The finger holds still: the bars finish leaving on their own, and
+      // the content holds still under them.
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(rowTop(tester, 26), moreOrLessEquals(finger, epsilon: 0.5));
+        values.add(chrome.value);
+      }
+      for (var i = 1; i < values.length; i++) {
+        expect(values[i], lessThanOrEqualTo(values[i - 1] + 1e-9));
+      }
       expect(chrome.value, 0);
 
-      // Past the turn: the bar returns with the finger.
-      before = rowTop(tester, 26);
-      await gesture.moveBy(const Offset(0, 34));
-      await tester.pump();
-      expect(rowTop(tester, 26), moreOrLessEquals(before + 34, epsilon: 1));
-      expect(chrome.value, moreOrLessEquals(0.3, epsilon: 0.02));
+      // Back up, short of the travel: the list scrolls back, the bars wait.
+      await gesture.moveBy(
+        const Offset(0, ScrollChromeController.listTravel - 2),
+      );
+      finger += ScrollChromeController.listTravel - 2;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(rowTop(tester, 26), moreOrLessEquals(finger, epsilon: 0.5));
+      expect(chrome.value, 0);
 
-      // Hold still before letting go, so the release is not a fling.
+      // Past it: home on the spring, the content still under the finger.
+      await gesture.moveBy(const Offset(0, 4));
+      finger += 4;
+      values.clear();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(rowTop(tester, 26), moreOrLessEquals(finger, epsilon: 0.5));
+        values.add(chrome.value);
+      }
+      expect(values.any((v) => v > 0 && v < 1), isTrue, reason: '$values');
+      for (var i = 1; i < values.length; i++) {
+        expect(values[i], greaterThanOrEqualTo(values[i - 1] - 1e-9));
+      }
+      expect(chrome.value, 1);
+
+      // Held still, so the let-go is no fling: nothing moves.
       await tester.pump(const Duration(milliseconds: 400));
-      final atRelease = rowTop(tester, 26);
       await gesture.up();
       await tester.pumpAndSettle();
-      // Let go heading back up: it settles shown, the way the reader was
-      // heading (not the nearer side), on the motor spring, and the list
-      // holds still under it (the spring carries it).
       expect(chrome.value, 1);
-      expect(rowTop(tester, 26), moreOrLessEquals(atRelease, epsilon: 1));
+      expect(rowTop(tester, 26), moreOrLessEquals(finger, epsilon: 0.5));
     });
   }
 
@@ -194,19 +215,17 @@ void main() {
     expect(tester.getTopLeft(fab).dy, rest);
   });
 
-  testWidgets('a fling springs the bar away; the list never jumps back', (
-    tester,
-  ) async {
+  testWidgets('a fling from the top springs the bar away as its coast '
+      'leaves the top region; the list never jumps back', (tester) async {
     late ScrollChromeController chrome;
     await tester.pumpWidget(_Page(onController: (c) => chrome = c));
     final list = tester
         .state<ScrollableState>(find.byType(Scrollable))
         .position;
-    // A short, fast flick: the finger lets go with the bar still part-way,
-    // so the spring (not the finger) finishes taking it away.
+    // A short, fast flick: the finger lets go still in the top region, so
+    // the coast (not the finger) takes the bar away.
     await tester.fling(find.byType(ListView), const Offset(0, -50), 2500);
-    expect(chrome.value, greaterThan(0));
-    expect(chrome.value, lessThan(1));
+    expect(chrome.value, 1);
     // Where the list's first pixel sits on screen: the viewport's top (it
     // moves as the bar folds) less the scroll offset. Sampled frame by frame
     // while the spring takes the bar: the content only ever travels up, and
@@ -215,13 +234,16 @@ void main() {
     double contentTop() =>
         tester.getTopLeft(find.byType(ListView)).dy - list.pixels;
     var last = contentTop();
+    final values = <double>[];
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 16));
       final now = contentTop();
       expect(now, lessThanOrEqualTo(last + 0.5));
       expect(last - now, lessThan(60));
       last = now;
+      values.add(chrome.value);
     }
+    expect(values.any((v) => v > 0 && v < 1), isTrue, reason: '$values');
     await tester.pumpAndSettle();
     expect(chrome.value, 0);
   });
@@ -329,18 +351,19 @@ void main() {
     list.jumpTo(1000);
     await tester.pumpAndSettle();
 
+    // Reading on: the bars spring away under the finger.
     final gesture = await tester.startGesture(const Offset(200, 400));
     await gesture.moveBy(const Offset(0, -20));
-    await tester.pump();
-    while (chrome.value > 0.6) {
-      await gesture.moveBy(const Offset(0, -4));
-      await tester.pump();
-    }
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 16));
     expect(chrome.value, inExclusiveRange(0, 1));
     final value = chrome.value;
     final before = rowTop(tester, 26);
 
-    // A row grows in under the bar's title, then goes again.
+    // A row grows in under the bar's title, then goes again (a frame with
+    // no time passing: the spring holds where it is).
     barHeight.value = 140;
     await tester.pump();
     expect(chrome.value, value);
@@ -349,12 +372,14 @@ void main() {
     await tester.pump();
     expect(rowTop(tester, 26), closeTo(before, 0.5));
 
-    // The finger still drives the bar and the list 1:1 after it.
+    // The finger still drives the list 1:1 after it, the spring carrying
+    // it on.
     await gesture.moveBy(const Offset(0, -10));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
     expect(rowTop(tester, 26), closeTo(before - 10, 0.5));
     await gesture.up();
     await tester.pumpAndSettle();
+    expect(chrome.value, 0);
   });
 
   testWidgets('a top bar that changes height while shown moves the content '
@@ -372,6 +397,7 @@ void main() {
     expect(rowTop(tester, 3), closeTo(before + 40, 0.5));
   });
 
+  group('direction', directionTests);
   group('stability', stabilityTests);
   group('paged', pagedTests);
   group('dock', dockTests);
@@ -621,6 +647,440 @@ Future<List<double>> _record(
   return values;
 }
 
+/// A quick flick: [steps] moves of [dy], [dtMs] apart, then the let-go.
+Future<void> _flick(
+  WidgetTester tester,
+  double dy, {
+  int steps = 4,
+  int dtMs = 8,
+}) async {
+  var t = Duration.zero;
+  final gesture = await tester.startGesture(const Offset(200, 400));
+  for (var i = 0; i < steps; i++) {
+    t += Duration(milliseconds: dtMs);
+    await gesture.moveBy(Offset(0, dy), timeStamp: t);
+  }
+  await gesture.up(timeStamp: t + Duration(milliseconds: dtMs));
+}
+
+void directionTests() {
+  final platforms = TargetPlatformVariant(const {
+    TargetPlatform.iOS,
+    TargetPlatform.android,
+  });
+
+  double rowTop(WidgetTester tester, int i) =>
+      tester.getTopLeft(find.byKey(ValueKey('row-$i'))).dy;
+
+  // The device report: flicking back up to the top, the bars stayed away
+  // until a second, deliberate pull at the top. On iOS a coast's first
+  // step is rounding (+5e-14), which the let-go read as a fling down.
+  testWidgets('quick flicks up from deep in the list bring the bars back, '
+      'and they are shown when the coast reaches the top', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    list.jumpTo(1500);
+    await tester.pumpAndSettle();
+    chrome.hide(animate: false);
+    await tester.pump();
+
+    final values = <double>[];
+    double? onArrival;
+    for (var flicks = 0; flicks < 20 && list.pixels > 0; flicks++) {
+      await _flick(tester, 10, steps: 3);
+      for (var f = 0; f < 200; f++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        values.add(chrome.value);
+        if (list.pixels <= 0 && onArrival == null) onArrival = chrome.value;
+        if (!list.isScrollingNotifier.value) break;
+      }
+    }
+    expect(list.pixels, moreOrLessEquals(0, epsilon: 0.5));
+    // Heading up never sends them away; on the top's first arrival they
+    // are home, with no pull.
+    for (var i = 1; i < values.length; i++) {
+      expect(values[i], greaterThanOrEqualTo(values[i - 1] - 1e-9));
+    }
+    expect(onArrival, 1);
+    await tester.pumpAndSettle();
+    expect(chrome.value, 1);
+  }, variant: platforms);
+
+  testWidgets('one quick flick up, shorter than the travel, brings the bars '
+      'back on its coast', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    list.jumpTo(3000);
+    await tester.pumpAndSettle();
+    chrome.hide(animate: false);
+    await tester.pump();
+    final from = list.pixels;
+    // 32 of finger: past the slop by less than the travel.
+    await _flick(tester, 8);
+    final values = await _record(tester, chrome, frames: 30);
+    expect(list.pixels, lessThan(from - 100));
+    for (var i = 1; i < values.length; i++) {
+      expect(values[i], greaterThanOrEqualTo(values[i - 1] - 1e-9));
+    }
+    expect(values.last, 1);
+    await tester.pumpAndSettle();
+    expect(chrome.value, 1);
+  }, variant: platforms);
+
+  testWidgets('at the top a single small pull brings hidden bars back, '
+      'with the finger still down', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    chrome.hide(animate: false);
+    await tester.pump();
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    await gesture.moveBy(const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 4));
+    final values = await _record(tester, chrome, frames: 30);
+    for (var i = 1; i < values.length; i++) {
+      expect(values[i], greaterThanOrEqualTo(values[i - 1] - 1e-9));
+    }
+    expect(values.last, 1);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(chrome.value, 1);
+  }, variant: platforms);
+
+  testWidgets('a short scroll from the top leaves the bars; reading on past '
+      'the top bar\'s height sends them away', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump(const Duration(milliseconds: 16));
+    // Inside the top region: the bars are home.
+    for (var i = 0; i < 20 && list.pixels < 90; i++) {
+      await gesture.moveBy(const Offset(0, -10));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(chrome.value, 1);
+    }
+    expect(list.pixels, greaterThanOrEqualTo(90));
+    // Past it: away, and the list is never put back at its top, where
+    // they would be home again.
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(0, -10));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final values = await _record(tester, chrome, frames: 30);
+    expect(values.last, 0);
+    for (var i = 1; i < values.length; i++) {
+      expect(values[i], lessThanOrEqualTo(values[i - 1] + 1e-9));
+    }
+    expect(list.pixels, greaterThan(ScrollChromeController.topSlack));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(chrome.value, 0);
+  }, variant: platforms);
+
+  // Review repro: the bars read away just past the top region leave the
+  // list 8-30 from its top (the hide carries it back by the bar's height).
+  // Read on a little, then head back up: the bars came back with the list
+  // left where it was, so the content jumped the top bar's height (100)
+  // under the still finger. Only a list at its top stays there.
+  for (final at in [53.0, 83.0, 118.0]) {
+    testWidgets('heading up from $at with the bars away holds the content '
+        'under the finger while they come back', (tester) async {
+      late ScrollChromeController chrome;
+      await tester.pumpWidget(
+        _Shell(onController: (c) => chrome = c, body: _longList()),
+      );
+      final list = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position;
+      // Read down slowly from the top until the bars leave.
+      var gesture = await tester.startGesture(const Offset(200, 400));
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump(const Duration(milliseconds: 16));
+      for (var i = 0; i < 30 && chrome.value == 1; i++) {
+        await gesture.moveBy(const Offset(0, -10));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await _record(tester, chrome, frames: 30);
+      expect(chrome.value, 0);
+      expect(list.pixels, lessThan(ScrollChromeController.topSlack + 40));
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(chrome.value, 0);
+      // Read on to [at].
+      list.jumpTo(at);
+      await tester.pumpAndSettle();
+      expect(chrome.value, 0);
+
+      // Up 12 past the slop, then held: the bars come home on their
+      // spring, the content never moving but with the finger.
+      gesture = await tester.startGesture(const Offset(200, 400));
+      double row() => rowTop(tester, 8);
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+      var finger = row();
+      for (var i = 0; i < 3; i++) {
+        await gesture.moveBy(const Offset(0, 4));
+        finger += 4;
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(row(), moreOrLessEquals(finger, epsilon: 0.75));
+      }
+      final values = <double>[];
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(row(), moreOrLessEquals(finger, epsilon: 0.75), reason: '$i');
+        values.add(chrome.value);
+      }
+      expect(values.any((v) => v > 0 && v < 1), isTrue, reason: '$values');
+      expect(chrome.value, 1);
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(chrome.value, 1);
+      expect(row(), moreOrLessEquals(finger, epsilon: 0.75));
+    }, variant: platforms);
+  }
+
+  testWidgets('hidden bars brought back at the top leave the list at its '
+      'top, its first row under the bar', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    list.jumpTo(2);
+    await tester.pumpAndSettle();
+    chrome.hide(animate: false);
+    await tester.pump();
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    await gesture.moveBy(const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 4));
+    await _record(tester, chrome, frames: 30);
+    expect(chrome.value, 1);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(list.pixels, moreOrLessEquals(0, epsilon: 0.5));
+    expect(
+      rowTop(tester, 0),
+      moreOrLessEquals(
+        tester.getBottomLeft(find.byKey(const ValueKey('top-bar'))).dy,
+        epsilon: 0.5,
+      ),
+    );
+  }, variant: platforms);
+
+  testWidgets('a thumb wobbling short of the travel never pumps the bars', (
+    tester,
+  ) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    list.jumpTo(1500);
+    await tester.pumpAndSettle();
+    for (final hidden in [false, true]) {
+      if (hidden) chrome.hide(animate: false);
+      await tester.pump();
+      final gesture = await tester.startGesture(const Offset(200, 400));
+      // Past the slop the way the bars already are (Android hands the
+      // slop to the list), then the wobble, turning round every step.
+      final settled = hidden ? -1.0 : 1.0;
+      await gesture.moveBy(Offset(0, 20 * settled));
+      final values = <double>[];
+      for (var i = 0; i < 16; i++) {
+        final step = ScrollChromeController.listTravel - 2;
+        await gesture.moveBy(Offset(0, (i.isEven ? -step : step) * settled));
+        await tester.pump(const Duration(milliseconds: 16));
+        values.add(chrome.value);
+      }
+      values.addAll(await _record(tester, chrome, frames: 20));
+      expect(
+        values.every((v) => v == (hidden ? 0 : 1)),
+        isTrue,
+        reason: '$values',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+  }, variant: platforms);
+
+  testWidgets('a coast bouncing at either end never turns the bars', (
+    tester,
+  ) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(
+        onController: (c) => chrome = c,
+        body: _longList(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+        ),
+      ),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    // Into the end with the bars away: the bounce back up is the list's.
+    list.jumpTo(list.maxScrollExtent - 400);
+    await tester.pumpAndSettle();
+    chrome.hide(animate: false);
+    await tester.pump();
+    await tester.fling(find.byType(ListView), const Offset(0, -200), 4000);
+    var values = await _record(tester, chrome, frames: 120);
+    expect(list.pixels, moreOrLessEquals(list.maxScrollExtent, epsilon: 0.5));
+    expect(values.every((v) => v == 0), isTrue, reason: '$values');
+
+    // Into the top with the bars shown: the bounce back down is the list's.
+    list.jumpTo(300);
+    await tester.pumpAndSettle();
+    chrome.show(animate: false);
+    await tester.pump();
+    await tester.fling(find.byType(ListView), const Offset(0, 200), 4000);
+    values = await _record(tester, chrome, frames: 120);
+    expect(list.pixels, moreOrLessEquals(0, epsilon: 0.5));
+    expect(values.every((v) => v == 1), isTrue, reason: '$values');
+  });
+
+  // Review repro B1: a flick up that starts inside the end bounce coasted
+  // hundreds of points back up the content with the bars left away: the
+  // coast's first step, past the end, wrote the whole coast off as the
+  // bounce.
+  for (final (swipe, dtMs) in [(25.0, 4), (40.0, 8)]) {
+    testWidgets('a flick up out of the end bounce (4 x $swipe, ${dtMs}ms '
+        'apart) brings the bars back as its coast heads up the content', (
+      tester,
+    ) async {
+      late ScrollChromeController chrome;
+      await tester.pumpWidget(
+        _Shell(
+          onController: (c) => chrome = c,
+          body: _longList(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+          ),
+        ),
+      );
+      final list = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position;
+      list.jumpTo(list.maxScrollExtent - 400);
+      await tester.pumpAndSettle();
+      // A hard fling down: the bars spring away, and the list runs deep
+      // into its end bounce while they still do.
+      await tester.fling(find.byType(ListView), const Offset(0, -200), 6000);
+      for (var i = 0; i < 60 && list.pixels < list.maxScrollExtent + 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(list.pixels, greaterThan(list.maxScrollExtent + 30));
+      expect(chrome.value, inExclusiveRange(0, 1));
+      // The flick up, inside the bounce, frames running between its moves.
+      var t = Duration.zero;
+      final gesture = await tester.startGesture(const Offset(200, 400));
+      for (var i = 0; i < 4; i++) {
+        t += Duration(milliseconds: dtMs);
+        await gesture.moveBy(Offset(0, swipe), timeStamp: t);
+        await tester.pump(Duration(milliseconds: dtMs));
+      }
+      await gesture.up(timeStamp: t + Duration(milliseconds: dtMs));
+      var inside = 0.0;
+      int? entered;
+      int? turned;
+      int? home;
+      var last = chrome.value;
+      for (var i = 0; i < 90; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final depth = list.maxScrollExtent - list.pixels;
+        inside = math.max(inside, depth);
+        if (depth > ScrollChromeController.listTravel) entered ??= i;
+        if (chrome.value > last) turned ??= i;
+        if (chrome.value == 1 && home == null) {
+          home = i;
+          // Home while the coast still runs up the content.
+          expect(list.isScrollingNotifier.value, isTrue);
+        }
+        last = chrome.value;
+      }
+      // The coast ran far up the content: the reader heading up. The bars
+      // turned for home as it entered, not when it stopped.
+      expect(inside, greaterThan(300));
+      expect(entered, isNotNull);
+      expect(turned, isNotNull);
+      expect(turned! - entered!, lessThanOrEqualTo(3));
+      expect(home, isNotNull);
+      await tester.pumpAndSettle();
+      expect(chrome.value, 1);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+  }
+
+  testWidgets('a finger easing back inside the end bounce and letting go '
+      'leaves the bars away', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(
+        onController: (c) => chrome = c,
+        body: _longList(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+        ),
+      ),
+    );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    list.jumpTo(list.maxScrollExtent);
+    await tester.pumpAndSettle();
+    chrome.hide(animate: false);
+    await tester.pump();
+    // Pushed past the end, then eased most of the way back, slowly, and
+    // let go still inside the bounce.
+    var t = Duration.zero;
+    final gesture = await tester.startGesture(const Offset(200, 500));
+    for (var i = 0; i < 8; i++) {
+      t += const Duration(milliseconds: 16);
+      await gesture.moveBy(const Offset(0, -30), timeStamp: t);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final values = <double>[];
+    for (var i = 0; i < 10; i++) {
+      t += const Duration(milliseconds: 16);
+      await gesture.moveBy(const Offset(0, 6), timeStamp: t);
+      await tester.pump(const Duration(milliseconds: 16));
+      values.add(chrome.value);
+    }
+    expect(list.pixels, greaterThan(list.maxScrollExtent));
+    await gesture.up(timeStamp: t + const Duration(milliseconds: 16));
+    values.addAll(await _record(tester, chrome, frames: 60));
+    expect(values.every((v) => v == 0), isTrue, reason: '$values');
+    expect(list.pixels, moreOrLessEquals(list.maxScrollExtent, epsilon: 0.5));
+  }, variant: platforms);
+}
+
 void stabilityTests() {
   testWidgets('a horizontal rail inside the list never moves the bars', (
     tester,
@@ -862,6 +1322,11 @@ void stabilityTests() {
     await tester.pumpWidget(
       _Shell(onController: (c) => chrome = c, body: _longList()),
     );
+    final list = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    list.jumpTo(1000);
+    await tester.pumpAndSettle();
     final window =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
     Finder chromeOf(String key) => find.ancestor(
@@ -871,15 +1336,13 @@ void stabilityTests() {
     final fab = find.byType(SearchInkFab);
     final fabRest = tester.getTopLeft(fab).dy;
     final gesture = await tester.startGesture(const Offset(200, 400));
-    // Past the slop, then past the turn.
+    // Past the slop, then past the travel: the spring takes them.
     await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
-    await gesture.moveBy(const Offset(0, -ScrollChromeController.listTurn));
-    await tester.pump();
+    await gesture.moveBy(const Offset(0, -ScrollChromeController.listTravel));
     var lastFab = fabRest;
     for (var i = 0; i < 6; i++) {
-      await gesture.moveBy(const Offset(0, -12));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
       final v = chrome.value;
       expect(v, inExclusiveRange(0, 1));
       // Both bars show the same share of their height.
@@ -898,12 +1361,8 @@ void stabilityTests() {
     await tester.pump(const Duration(milliseconds: 400));
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(chrome.value, anyOf(0.0, 1.0));
-    if (chrome.value == 0) {
-      expect(tester.getTopLeft(fab).dy, greaterThanOrEqualTo(window));
-    } else {
-      expect(tester.getTopLeft(fab).dy, fabRest);
-    }
+    expect(chrome.value, 0);
+    expect(tester.getTopLeft(fab).dy, greaterThanOrEqualTo(window));
   });
 
   // Android reports reduced motion whenever the animator scale is 0 (many

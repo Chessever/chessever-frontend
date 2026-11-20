@@ -11,8 +11,8 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
-import 'package:chessever2/widgets/art_fade.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/light_media_art.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart'
     show EnhancedSearchResult;
 import 'package:chessever2/widgets/player_initials_avatar.dart'
@@ -201,23 +201,31 @@ class _PlayerSearchCard extends ConsumerWidget {
           if (context.mounted) _navigateToProfile(context);
         },
       ),
-      child: _buildCard(context),
+      child: _buildCard(context, ref),
     );
   }
 
-  Widget _buildCard(BuildContext context) {
+  Widget _buildCard(BuildContext context, WidgetRef ref) {
     final countryCode = _getIso2CountryCode();
-    // Light: the flag and photo stay at their true colour and fade through
-    // their own alpha into the card's surface (PlayerCardLightArt). The
-    // surface-coloured veil dark lays over them read on paper as a white
-    // wash bleaching both from the left.
+    // Light: the player's photo at full strength with nothing laid over it
+    // and no flag behind it. A full-width card shows it whole at its right
+    // edge, its left edge fading into the card, and the words keep clear of
+    // it; a half-width card shows it as an avatar above the name, so the
+    // name keeps the card's whole width. Room is made for the photo only
+    // once it is on hand: a player without one gets a plain card, and no
+    // card's words move when its photo turns out to be missing.
     final light = context.isLightTheme;
+    final height = (isCompact ? 108.sp : 120.sp) * context.textGrowth;
+    final photoUrl = light
+        ? ref.watch(_searchPlayerPhotoUrlProvider(_photoKey)).valueOrNull
+        : null;
+    final inset = isCompact ? 12.sp : 14.sp;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _navigateToProfile(context),
       child: Container(
-        height: (isCompact ? 108.sp : 120.sp) * context.textGrowth,
+        height: height,
         decoration: BoxDecoration(
           color: light ? context.colors.surface : null,
           borderRadius: BorderRadius.circular(12.br),
@@ -235,16 +243,39 @@ class _PlayerSearchCard extends ConsumerWidget {
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              if (light)
-                PlayerCardLightArt(
-                  compact: isCompact,
-                  flag: countryCode == null
-                      ? null
-                      : _FlagFill(countryCode: countryCode),
-                  portrait: _PlayerPhotoOverlay(
-                    player: player,
-                    isCompact: isCompact,
+              if (light && !isCompact)
+                Positioned.fill(
+                  child: LightPortraitCard(
+                    url: photoUrl,
+                    height: height,
+                    words: (context, photo) => _words(
+                      context,
+                      padding: photo
+                          ? EdgeInsets.fromLTRB(
+                              inset,
+                              inset,
+                              LightCardPortrait.wordsClearance(height),
+                              inset,
+                            )
+                          : EdgeInsets.all(inset),
+                    ),
                   ),
+                )
+              else if (light)
+                _words(
+                  context,
+                  padding: EdgeInsets.all(inset),
+                  avatar: photoUrl == null
+                      ? null
+                      : ConstrainedBox(
+                          constraints: BoxConstraints.loose(
+                            Size.square(LightAvatarPhoto.side(context)),
+                          ),
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: LightAvatarPhoto(url: photoUrl),
+                          ),
+                        ),
                 )
               else ...[
                 // Background: Country flag (full bleed, subtle)
@@ -272,105 +303,138 @@ class _PlayerSearchCard extends ConsumerWidget {
                     ),
                   ),
                 ),
-              ],
 
-              // Foreground content
-              Padding(
-                padding: EdgeInsets.all(isCompact ? 12.sp : 14.sp),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Title badge (GM, IM, etc)
-                    if (player.title != null && player.title!.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 4.sp),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 5.sp,
-                            vertical: 2.sp,
-                          ),
-                          decoration: BoxDecoration(
-                            color: titleBadgeFill(
-                              context,
-                              getTitleBadgeColor(player.title!),
-                            ),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                          child: Text(
-                            player.title!,
-                            style: AppTypography.textXsBold.copyWith(
-                              // Label picked against the (light-deepened)
-                              // fill so it clears AA; dark stays white.
-                              color: titleBadgeInk(
-                                context,
-                                titleBadgeFill(
-                                  context,
-                                  getTitleBadgeColor(player.title!),
-                                ),
-                              ),
-                              fontSize: isCompact ? 9.sp : 10.sp,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    // Player name
-                    Text(
-                      _formatPlayerName(player.name),
-                      style:
-                          (isCompact
-                                  ? AppTypography.textMdBold
-                                  : AppTypography.textLgBold)
-                              .copyWith(
-                                color: context.colors.textPrimary,
-                                letterSpacing: 0.3,
-                              ),
-                      maxLines: isCompact ? 1 : 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 2.sp),
-                    // Subtitle: Rating + Country
-                    Row(
-                      children: [
-                        // Small flag icon
-                        if (countryCode != null) ...[
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(2.br),
-                            child: CountryFlag.fromCountryCode(
-                              countryCode,
-                              theme: ImageTheme(
-                                width: isCompact ? 14.sp : 16.sp,
-                                height: isCompact ? 10.sp : 12.sp,
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 5.sp),
-                        ],
-                        Expanded(
-                          child: Text(
-                            _buildSubtitle(),
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.7,
-                              ),
-                              fontSize: isCompact ? 10.sp : 11.sp,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+                // Foreground content
+                _words(context, padding: EdgeInsets.all(inset)),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+
+  /// The card's words, bottom-left: the title badge, the name, the rating
+  /// and federation. A light half-width card's [avatar] stands at the right
+  /// of the badge's row, its foot level with the badge's.
+  Widget _words(
+    BuildContext context, {
+    required EdgeInsets padding,
+    Widget? avatar,
+  }) {
+    final countryCode = _getIso2CountryCode();
+    final light = context.isLightTheme;
+    final hasTitle = player.title != null && player.title!.isNotEmpty;
+    final badge = hasTitle
+        ? Container(
+            padding: EdgeInsets.symmetric(horizontal: 5.sp, vertical: 2.sp),
+            decoration: BoxDecoration(
+              color: titleBadgeFill(context, getTitleBadgeColor(player.title!)),
+              borderRadius: BorderRadius.circular(4.br),
+            ),
+            child: Text(
+              player.title!,
+              style: AppTypography.textXsBold.copyWith(
+                // Label picked against the (light-deepened)
+                // fill so it clears AA; dark stays white.
+                color: titleBadgeInk(
+                  context,
+                  titleBadgeFill(context, getTitleBadgeColor(player.title!)),
+                ),
+                fontSize: isCompact ? 9.sp : 10.sp,
+                letterSpacing: 0.5,
+              ),
+            ),
+          )
+        : null;
+    return Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Title badge (GM, IM, etc), and a half-width card's avatar
+          if (avatar != null)
+            Flexible(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 4.sp),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [?badge, const Spacer(), avatar],
+                ),
+              ),
+            )
+          else if (badge != null)
+            Padding(
+              padding: EdgeInsets.only(bottom: 4.sp),
+              child: badge,
+            ),
+          // Player name. Paper: a half-width card's name steps down to a
+          // form that fits ("M. Carlsen"), fading only as a last resort.
+          if (light && isCompact)
+            LightCardName(
+              name: _formatPlayerName(player.name),
+              style: AppTypography.textMdBold.copyWith(
+                color: context.colors.textPrimary,
+                letterSpacing: 0.3,
+              ),
+            )
+          else
+            Text(
+              _formatPlayerName(player.name),
+              style:
+                  (isCompact
+                          ? AppTypography.textMdBold
+                          : AppTypography.textLgBold)
+                      .copyWith(
+                        color: context.colors.textPrimary,
+                        letterSpacing: 0.3,
+                      ),
+              maxLines: isCompact ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          SizedBox(height: 2.sp),
+          // Subtitle: Rating + Country
+          Row(
+            children: [
+              // Small flag icon
+              if (countryCode != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2.br),
+                  child: CountryFlag.fromCountryCode(
+                    countryCode,
+                    theme: ImageTheme(
+                      width: isCompact ? 14.sp : 16.sp,
+                      height: isCompact ? 10.sp : 12.sp,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 5.sp),
+              ],
+              Expanded(
+                child: Text(
+                  _buildSubtitle(),
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+                    fontSize: isCompact ? 10.sp : 11.sp,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  ({int? fideId, String playerName, String? memorialSourceIdentity})
+  get _photoKey => (
+    fideId: player.fideId,
+    playerName: player.name,
+    memorialSourceIdentity: player.memorialSourceIdentity,
+  );
 
   String _buildSubtitle() {
     final parts = <String>[];
@@ -429,26 +493,6 @@ class _FlagBackground extends StatelessWidget {
   }
 }
 
-/// Light theme: the flag at its true colour, covering the card; the card's
-/// light art fades it.
-class _FlagFill extends StatelessWidget {
-  const _FlagFill({required this.countryCode});
-
-  final String countryCode;
-
-  @override
-  Widget build(BuildContext context) {
-    return FittedBox(
-      fit: BoxFit.cover,
-      clipBehavior: Clip.hardEdge,
-      child: CountryFlag.fromCountryCode(
-        countryCode,
-        theme: ImageTheme(width: 300, height: 200),
-      ),
-    );
-  }
-}
-
 /// Provider to cache player photo URLs
 final _searchPlayerPhotoUrlProvider = FutureProvider.family
     .autoDispose<
@@ -465,7 +509,7 @@ final _searchPlayerPhotoUrlProvider = FutureProvider.family
           memorialUrl;
     });
 
-/// Player photo overlay positioned on the right side of the card
+/// Dark: the player photo overlay positioned on the right side of the card
 class _PlayerPhotoOverlay extends ConsumerWidget {
   const _PlayerPhotoOverlay({required this.player, this.isCompact = false});
 
@@ -482,9 +526,6 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
       )),
     );
 
-    // Light: one long eased fade, so the photo never ends in a hard edge
-    // where it meets the flag.
-    final light = context.isLightTheme;
     return Positioned(
       right: isCompact ? -15.sp : -20.sp,
       top: isCompact ? -8.sp : -10.sp,
@@ -495,19 +536,17 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
           return AspectRatio(
             aspectRatio: 0.8,
             child: ShaderMask(
-              shaderCallback: (bounds) => light
-                  ? PlayerCardLightArt.portraitFade.createShader(bounds)
-                  : LinearGradient(
-                      begin: Alignment.centerRight,
-                      end: Alignment.centerLeft,
-                      colors: [
-                        Colors.white,
-                        Colors.white.withValues(alpha: 0.85),
-                        Colors.white.withValues(alpha: 0.3),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.25, 0.55, 1.0],
-                    ).createShader(bounds),
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.centerRight,
+                end: Alignment.centerLeft,
+                colors: [
+                  Colors.white,
+                  Colors.white.withValues(alpha: 0.85),
+                  Colors.white.withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.25, 0.55, 1.0],
+              ).createShader(bounds),
               blendMode: BlendMode.dstIn,
               child: CachedNetworkImage(
                 imageUrl: photoUrl,
@@ -527,9 +566,6 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
   }
 
   Widget _buildPlaceholder(BuildContext context) {
-    // Light: no stand-in. Its translucent grey box lay over the flag as a
-    // wash; without a photo the flag alone carries the card.
-    if (context.isLightTheme) return const AspectRatio(aspectRatio: 0.8);
     return AspectRatio(
       aspectRatio: 0.8,
       child: Container(
