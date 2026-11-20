@@ -6,16 +6,26 @@ import 'package:flutter/material.dart';
 
 /// Local 768px artwork with no network dependency or animated loading swap.
 /// Study scenes keep their scale and fade their own pixels clear of the label.
+///
+/// Each picture comes in two drawings: [asset], made for the dark media
+/// tile, and [lightAsset], made for the light paper tile (its own pale
+/// ground, its subject in deep tones). Light mode never shows the dark
+/// drawing, so nothing has to be washed out to sit on paper.
 class HubIllustration extends StatelessWidget {
   const HubIllustration({
     super.key,
     required this.asset,
+    required this.lightAsset,
     this.alignment = Alignment.topCenter,
     this.framed = false,
     this.shift = 0,
   });
 
+  /// The drawing for the dark tile.
   final String asset;
+
+  /// The drawing for the light tile.
+  final String lightAsset;
   final Alignment alignment;
 
   /// Fits a wide study scene above the text rather than enlarging it to cover.
@@ -23,12 +33,6 @@ class HubIllustration extends StatelessWidget {
 
   /// How far right a framed scene's picture sits of the card's edge.
   final double shift;
-
-  /// The study scenes' own quiet field. The dark tile is this tone already,
-  /// so a scene narrower than its card ends unseen there. Paper is not: the
-  /// field is carried on to the card's far edge, or the wash would stop
-  /// partway across and read as a picture cut short.
-  static const _field = Color(0xFF0E0E10);
 
   /// Luma key: the field (about 0x0E) turns transparent, while the board's
   /// darkest squares (0x17 and up) and the subjects stay opaque.
@@ -39,128 +43,168 @@ class HubIllustration extends StatelessWidget {
     5.315, 17.88, 1.805, 0, -382.5,
   ]);
 
+  /// Fades a study scene's left edge out, so a full-row card never shows
+  /// where the source's pixels begin.
+  static Shader _leftFade(Rect bounds) => const LinearGradient(
+    colors: [
+      Colors.transparent,
+      Color(0x08ffffff),
+      Color(0x24ffffff),
+      Color(0x51ffffff),
+      Color(0x88ffffff),
+      Color(0xbaffffff),
+      Color(0xe1ffffff),
+      Color(0xf8ffffff),
+      Colors.white,
+      Colors.white,
+    ],
+    stops: [0, .05, .1, .15, .2, .25, .3, .35, .4, 1],
+  ).createShader(bounds);
+
+  /// Fades a study scene out toward the label under it.
+  static Shader _bottomFade(Rect bounds) => const LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Colors.white, Colors.white, Colors.transparent],
+    stops: [0, 0.6, 1],
+  ).createShader(bounds);
+
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: IgnorePointer(
-      child: Opacity(
-        opacity: context.isLightTheme ? .32 : 1,
-        child: framed
-            ? LayoutBuilder(
-                builder: (context, constraints) {
-                  // Both study sources are 3:1. Only their quiet left field
-                  // can extend beyond a compact card; the subjects keep the
-                  // closer crop and top-right position in either card format.
-                  final height = 100.sp.clamp(0.0, constraints.maxHeight);
-                  final width = height * 3;
-                  final onPaper = context.isLightTheme;
-                  // The board floor is carried to the card's far edge in
-                  // both themes, so a wide card (iPhone Duo, tablets) never
-                  // shows the picture's board stopping partway across.
-                  final span = math.max(width, constraints.maxWidth);
-                  return ClipRect(
-                    child: OverflowBox(
-                      alignment: Alignment.topRight,
-                      minWidth: span,
-                      maxWidth: span,
-                      minHeight: height,
-                      maxHeight: height,
-                      child: ShaderMask(
-                        blendMode: BlendMode.dstIn,
-                        shaderCallback: (bounds) => const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white,
-                            Colors.white,
-                            Colors.transparent,
-                          ],
-                          stops: [0, 0.6, 1],
-                        ).createShader(bounds),
-                        child: Stack(
-                          children: [
-                            // Under the same fade to the label as the
-                            // picture, so the two are one wash.
-                            if (onPaper)
-                              const Positioned.fill(
-                                child: ColoredBox(color: _field),
-                              ),
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: _BoardFloorPainter(
-                                  pictureLeft: span + shift - width,
-                                  pictureHeight: height,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 0,
-                              right: -shift,
-                              width: width,
-                              height: height,
-                              child: ShaderMask(
-                                blendMode: BlendMode.dstIn,
-                                // A full-row card exposes the source's left edge.
-                                // Fade those pixels before the subjects begin so
-                                // neither theme shows a rectangular image seam.
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        Colors.transparent,
-                                        Color(0x08ffffff),
-                                        Color(0x24ffffff),
-                                        Color(0x51ffffff),
-                                        Color(0x88ffffff),
-                                        Color(0xbaffffff),
-                                        Color(0xe1ffffff),
-                                        Color(0xf8ffffff),
-                                        Colors.white,
-                                        Colors.white,
-                                      ],
-                                      stops: [
-                                        0,
-                                        .05,
-                                        .1,
-                                        .15,
-                                        .2,
-                                        .25,
-                                        .3,
-                                        .35,
-                                        .4,
-                                        1,
-                                      ],
-                                    ).createShader(bounds),
-                                // The picture's flat field drops out, so the
-                                // painted floor below shows exactly where the
-                                // picture's own board fades away.
-                                child: ColorFiltered(
-                                  colorFilter: _fieldKey,
-                                  child: Image.asset(
-                                    asset,
-                                    width: width,
-                                    height: height,
-                                    fit: BoxFit.contain,
-                                    cacheWidth: 768,
-                                    filterQuality: FilterQuality.medium,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              )
-            : Image.asset(
-                asset,
-                fit: BoxFit.cover,
-                alignment: alignment,
-                cacheWidth: 768,
-                filterQuality: FilterQuality.medium,
-              ),
-      ),
+      child: context.isLightTheme ? _paper(context) : _media(context),
     ),
+  );
+
+  /// The light drawing, at full strength. Its ground is the paper tile's own
+  /// tone, so the picture needs no veil, no key and no painted floor: a
+  /// study scene simply fades its edges into the tile, and the rest is the
+  /// tile itself.
+  Widget _paper(BuildContext context) {
+    if (!framed) {
+      return Image.asset(
+        lightAsset,
+        fit: BoxFit.cover,
+        alignment: alignment,
+        cacheWidth: 768,
+        filterQuality: FilterQuality.medium,
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The same 3:1 frame, height and top-right seat as the dark scene,
+        // so the subject sits in one place in both themes.
+        final height = 100.sp.clamp(0.0, constraints.maxHeight);
+        final width = height * 3;
+        return ClipRect(
+          child: Stack(
+            children: [
+              Positioned(
+                top: 0,
+                right: -shift,
+                width: width,
+                height: height,
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: _bottomFade,
+                  child: ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: _leftFade,
+                    child: Image.asset(
+                      lightAsset,
+                      width: width,
+                      height: height,
+                      fit: BoxFit.contain,
+                      cacheWidth: 768,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// The dark drawing on the media tile, composed exactly as it always was
+  /// (the full-strength [Opacity] included).
+  Widget _media(BuildContext context) => Opacity(
+    opacity: 1,
+    child: framed
+        ? LayoutBuilder(
+            builder: (context, constraints) {
+              // Both study sources are 3:1. Only their quiet left field
+              // can extend beyond a compact card; the subjects keep the
+              // closer crop and top-right position in either card format.
+              final height = 100.sp.clamp(0.0, constraints.maxHeight);
+              final width = height * 3;
+              // The board floor is carried to the card's far edge, so a
+              // wide card (iPhone Duo, tablets) never shows the picture's
+              // board stopping partway across.
+              final span = math.max(width, constraints.maxWidth);
+              return ClipRect(
+                child: OverflowBox(
+                  alignment: Alignment.topRight,
+                  minWidth: span,
+                  maxWidth: span,
+                  minHeight: height,
+                  maxHeight: height,
+                  child: ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: _bottomFade,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _BoardFloorPainter(
+                              pictureLeft: span + shift - width,
+                              pictureHeight: height,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 0,
+                          right: -shift,
+                          width: width,
+                          height: height,
+                          child: ShaderMask(
+                            blendMode: BlendMode.dstIn,
+                            // A full-row card exposes the source's left
+                            // edge. Fade those pixels before the subjects
+                            // begin so it shows no rectangular image seam.
+                            shaderCallback: _leftFade,
+                            // The picture's flat field drops out, so the
+                            // painted floor below shows exactly where the
+                            // picture's own board fades away.
+                            child: ColorFiltered(
+                              colorFilter: _fieldKey,
+                              child: Image.asset(
+                                asset,
+                                width: width,
+                                height: height,
+                                fit: BoxFit.contain,
+                                cacheWidth: 768,
+                                filterQuality: FilterQuality.medium,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          )
+        : Image.asset(
+            asset,
+            fit: BoxFit.cover,
+            alignment: alignment,
+            cacheWidth: 768,
+            filterQuality: FilterQuality.medium,
+          ),
   );
 }
 

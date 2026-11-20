@@ -9,6 +9,7 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
+import 'package:chessever2/widgets/art_fade.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart'
     show getTitleBadgeColor, titleBadgeFill, titleBadgeInk;
@@ -136,6 +137,10 @@ class _TwicPlayerCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final countryCode = _getIso2CountryCode();
+    // Light: the flag and photo stay at their true colour and fade through
+    // their own alpha into the card's surface (PlayerCardLightArt), as on
+    // the home search cards; dark keeps its veil.
+    final light = context.isLightTheme;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -143,9 +148,12 @@ class _TwicPlayerCard extends ConsumerWidget {
       child: Container(
         height: (isCompact ? 108.sp : 120.sp) * context.textGrowth,
         decoration: BoxDecoration(
+          color: light ? context.colors.surface : null,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color: context.colors.divider,
+            color: light
+                ? context.colors.textPrimary.withValues(alpha: 0.08)
+                : context.colors.divider,
             width: 1,
           ),
         ),
@@ -154,26 +162,48 @@ class _TwicPlayerCard extends ConsumerWidget {
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              if (countryCode != null)
-                _FlagBackground(countryCode: countryCode),
-              _PlayerPhotoOverlay(player: player, isCompact: isCompact),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerRight,
-                      end: Alignment.centerLeft,
-                      colors: [
-                        Colors.transparent,
-                        context.colors.surface.withValues(alpha: 0.5),
-                        context.colors.surface.withValues(alpha: 0.85),
-                        context.colors.surface.withValues(alpha: 0.95),
-                      ],
-                      stops: const [0.0, 0.25, 0.55, 1.0],
+              if (light)
+                PlayerCardLightArt(
+                  compact: isCompact,
+                  flag: countryCode == null
+                      ? null
+                      : FittedBox(
+                          fit: BoxFit.cover,
+                          clipBehavior: Clip.hardEdge,
+                          child: FederationFlag(
+                            federation: countryCode,
+                            width: 300,
+                            height: 200,
+                            borderRadius: BorderRadius.zero,
+                          ),
+                        ),
+                  portrait: _PlayerPhotoOverlay(
+                    player: player,
+                    isCompact: isCompact,
+                  ),
+                )
+              else ...[
+                if (countryCode != null)
+                  _FlagBackground(countryCode: countryCode),
+                _PlayerPhotoOverlay(player: player, isCompact: isCompact),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                        colors: [
+                          Colors.transparent,
+                          context.colors.surface.withValues(alpha: 0.5),
+                          context.colors.surface.withValues(alpha: 0.85),
+                          context.colors.surface.withValues(alpha: 0.95),
+                        ],
+                        stops: const [0.0, 0.25, 0.55, 1.0],
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
               Padding(
                 padding: EdgeInsets.all(isCompact ? 12.sp : 14.sp),
                 child: Column(
@@ -346,6 +376,9 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
       _twicPlayerPhotoUrlProvider(player.fideId.trim()),
     );
 
+    // Light: one long eased fade, so the photo never ends in a hard edge
+    // where it meets the flag.
+    final light = context.isLightTheme;
     return Positioned(
       right: isCompact ? -15.sp : -20.sp,
       top: isCompact ? -8.sp : -10.sp,
@@ -356,17 +389,19 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
           return AspectRatio(
             aspectRatio: 0.8,
             child: ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-                colors: [
-                  Colors.white,
-                  Colors.white.withValues(alpha: 0.85),
-                  Colors.white.withValues(alpha: 0.3),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.25, 0.55, 1.0],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => light
+                  ? PlayerCardLightArt.portraitFade.createShader(bounds)
+                  : LinearGradient(
+                      begin: Alignment.centerRight,
+                      end: Alignment.centerLeft,
+                      colors: [
+                        Colors.white,
+                        Colors.white.withValues(alpha: 0.85),
+                        Colors.white.withValues(alpha: 0.3),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.25, 0.55, 1.0],
+                    ).createShader(bounds),
               blendMode: BlendMode.dstIn,
               child: CachedNetworkImage(
                 imageUrl: photoUrl,
@@ -386,6 +421,9 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
   }
 
   Widget _buildPlaceholder(BuildContext context) {
+    // Light: no stand-in. Its translucent grey box lay over the flag as a
+    // wash; without a photo the flag alone carries the card.
+    if (context.isLightTheme) return const AspectRatio(aspectRatio: 0.8);
     return AspectRatio(
       aspectRatio: 0.8,
       child: Container(

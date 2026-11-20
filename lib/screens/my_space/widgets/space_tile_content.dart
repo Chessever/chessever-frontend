@@ -742,9 +742,11 @@ class _CountrymenTile extends StatelessWidget {
                 width: width,
                 height: flagHeight,
                 // The flag dissolves into the plate over a long, many-stop
-                // fade so there is no seam where the image stops.
+                // fade so there is no seam where the image stops. Paper
+                // shows it at its true colour: the dark tile's dimming read
+                // on the light plate as a white wash over the flag.
                 child: Opacity(
-                  opacity: 0.55,
+                  opacity: context.isLightTheme ? 1 : 0.55,
                   child: ShaderMask(
                     blendMode: BlendMode.dstIn,
                     shaderCallback: (rect) => const LinearGradient(

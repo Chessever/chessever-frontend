@@ -133,6 +133,24 @@ void main() {
     expect(prefs.getString(forYouLastTabPrefsKey), isNull);
   });
 
+  testWidgets('Home tapped again away from Today slides back to Today', (
+    tester,
+  ) async {
+    await _pump(tester, _app(initialTab: ForYouTab.discovery));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ForYouScreen)),
+    );
+
+    container
+        .read(bottomNavBarReTapRequestProvider.notifier)
+        .request(BottomNavBarItem.forYou);
+    await tester.pumpAndSettle();
+
+    expect(_selectedTab(tester), ForYouTab.today);
+    expect(_selectedSegment(tester), ForYouTab.today.index);
+    expect(find.text('page:today'), findsOneWidget);
+  });
+
   testWidgets('Home wears no avatar and no search field: Search and Profile '
       'have tabs of their own', (tester) async {
     await _pump(tester, _app());

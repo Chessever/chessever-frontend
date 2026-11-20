@@ -1,12 +1,29 @@
+import 'dart:async';
+
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show Collection;
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionCard;
+import 'package:chessever2/screens/feed/news/news_models.dart' show FeedNews;
+import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
+import 'package:chessever2/screens/for_you/discovery/news_screen.dart'
+    show NewsArticleCard, newsGridMetrics;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoveryAction;
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
     show SmartEventRequest;
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
+import 'package:chessever2/screens/search/search_feeds.dart';
+import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/screens/search/search_page_landing.dart'
     show searchOpeningSmartEvents;
 import 'package:chessever2/screens/search/search_page_sections.dart';
+import 'package:chessever2/screens/search/search_section_matches.dart';
+import 'package:chessever2/screens/search/sections/search_section_pages.dart'
+    show SearchSectionId;
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -71,6 +88,7 @@ class SearchPageSnapshot {
     required this.openings,
     this.remoteLoading = false,
     this.remoteMessage,
+    this.failure,
   });
 
   final String query;
@@ -82,6 +100,9 @@ class SearchPageSnapshot {
 
   /// Why players and events are missing, when the openings stand alone.
   final String? remoteMessage;
+
+  /// The search's own failure, said when nothing else was found.
+  final String? failure;
 }
 
 /// The results of the (debounced) [query] on the Search tab's page.
@@ -114,17 +135,6 @@ class SearchPageResultsLoader extends HookConsumerWidget {
 
     Widget show(SearchPageSnapshot snapshot) {
       onResultsBuild?.call();
-      if (snapshot.result.isEmpty &&
-          snapshot.openings.isEmpty &&
-          !snapshot.remoteLoading &&
-          snapshot.remoteMessage == null) {
-        // Nothing matched: the app's one empty-search line, on the page's
-        // gutter where the first result would have been.
-        return SearchNoMatches(
-          key: const ValueKey('search_no_matches'),
-          query: snapshot.query,
-        );
-      }
       return SearchPageResults(snapshot: snapshot, picks: picks);
     }
 
@@ -142,12 +152,10 @@ class SearchPageResultsLoader extends HookConsumerWidget {
       loading: () {
         final previous = last.value;
         if (previous != null) return show(previous);
-        // While players and events are on their way only the openings that
-        // name the query show: a lookalike line shown first would vanish
-        // the moment a player landed.
-        if (!openings.any(searchOpeningIsStrong)) {
-          return const SearchPageSpinner();
-        }
+        // While players and events are on their way, what is already here
+        // shows (only the openings that name the query: a lookalike line
+        // shown first would vanish the moment a player landed); with
+        // nothing yet, one quiet spinner.
         return show(
           SearchPageSnapshot(
             query: query,
@@ -157,30 +165,36 @@ class SearchPageResultsLoader extends HookConsumerWidget {
           ),
         );
       },
-      error: (error, _) {
-        if (openings.isEmpty) {
-          return _SearchFailed(message: userFacingError(error));
-        }
-        return show(
-          SearchPageSnapshot(
-            query: query,
-            result: EnhancedSearchResult.empty(),
-            openings: openings,
-            remoteMessage: 'Events and players unavailable',
-          ),
-        );
-      },
+      error: (error, _) => show(
+        SearchPageSnapshot(
+          query: query,
+          result: EnhancedSearchResult.empty(),
+          openings: openings,
+          remoteMessage: 'Events and players unavailable',
+          failure: userFacingError(error),
+        ),
+      ),
     );
   }
 }
 
-/// One search's results, each kind under its own heading, in the cards the
-/// app draws them in everywhere else: players first (the player cards for
-/// the strongest matches, then Rankings rows), then the openings as their
-/// smart events ([searchResultOpenings]: one row beside players or events,
-/// the rest a Show all away), then the events as the Events list draws
-/// them.
-class SearchPageResults extends StatelessWidget {
+/// One search's results, each of the landing's sections that holds a match
+/// under its own heading, in the card the landing (and the app everywhere
+/// else) draws it in, with that card's own tap and long-press:
+///
+/// * Players: the player cards for the strongest matches, then Rankings
+///   rows (Top players is the head of the same ranking).
+/// * Live now, Coming up and Events: the events the search found, and the
+///   landing's own live and upcoming events that the words name, sorted as
+///   the landing sorts them ([searchEventGroups]).
+/// * Openings: as their smart events ([searchResultOpenings]: one row
+///   beside players or events, the rest a Show all away).
+/// * Smart events: the built-in ones the words name (a level, a time
+///   control).
+/// * News: the stories the landing has read that the words name.
+/// * Collections: the catalog's own search, last, as it lands a moment
+///   later and so moves nothing above it.
+class SearchPageResults extends ConsumerWidget {
   const SearchPageResults({
     super.key,
     required this.snapshot,
@@ -191,21 +205,66 @@ class SearchPageResults extends StatelessWidget {
   final SearchPicks picks;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final query = snapshot.query;
     final players = topSearchedPlayers(snapshot.result, limit: 1 << 20);
     final cards = players.take(searchResultPlayerCards).toList();
     final rows = players.skip(searchResultPlayerCards).toList();
-    final events = [
-      for (final result in snapshot.result.tournamentResults)
-        if (result.tournament.id.trim().isNotEmpty) result.tournament,
-    ];
-    final besideOthers = players.isNotEmpty || events.isNotEmpty;
+    final liveKey = ref.watch(searchLiveIdsKeyProvider);
+    final events = searchEventGroups(
+      query,
+      found: [
+        for (final result in snapshot.result.tournamentResults)
+          result.tournament,
+      ],
+      liveNow: ref.watch(searchLiveNowProvider).events,
+      comingUp: ref.watch(searchComingUpFeedProvider).items,
+      liveIds: liveKey.isEmpty ? const <String>[] : liveKey.split('\n'),
+    );
+    final besideOthers = players.isNotEmpty || !events.isEmpty;
     final openings = searchResultOpenings(
       snapshot.openings,
       othersFound: besideOthers,
       othersPending: snapshot.remoteLoading,
     );
+    final smartEvents = searchSmartEventMatches(query);
+    final news = searchNewsMatches(
+      query,
+      ref.watch(searchNewsFeedProvider).items,
+    );
+    final collectionsRead = ref.watch(searchCollectionResultsProvider(query));
+    final collections = collectionsRead.valueOrNull ?? const <Collection>[];
+    final nothingYet =
+        players.isEmpty &&
+        events.isEmpty &&
+        openings.isEmpty &&
+        smartEvents.isEmpty &&
+        news.isEmpty &&
+        collections.isEmpty;
+    if (nothingYet) {
+      if (snapshot.remoteLoading || collectionsRead.isLoading) {
+        return const SearchPageSpinner();
+      }
+      final failure = snapshot.failure;
+      if (failure != null) return _SearchFailed(message: failure);
+      // Nothing matched: the app's one empty-search line, on the page's
+      // gutter where the first result would have been.
+      return SearchNoMatches(
+        key: const ValueKey('search_no_matches'),
+        query: query,
+      );
+    }
     final openPlayer = picks.player;
+    SearchSection eventSection(String title, List<GroupEventCardModel> list) =>
+        SearchSection(
+          title: title,
+          count: list.length,
+          body: SearchEventCards(
+            events: list,
+            keyPrefix: 'search-event',
+            onOpen: picks.event,
+          ),
+        );
     final list = CustomScrollView(
       key: const ValueKey('search_results'),
       // The Search tab's controller: a re-tap of the tab takes it to its top.
@@ -242,6 +301,8 @@ class SearchPageResults extends StatelessWidget {
               ],
             ),
           ),
+        if (events.live.isNotEmpty)
+          eventSection(SearchSectionId.liveNow.title, events.live),
         if (openings.isNotEmpty)
           SearchOpeningResults(
             openings: openings,
@@ -250,20 +311,55 @@ class SearchPageResults extends StatelessWidget {
                 : searchOpeningRows,
             onOpening: picks.opening,
           ),
-        if (events.isNotEmpty)
+        if (smartEvents.isNotEmpty)
           SearchSection(
-            title: 'Events',
-            count: events.length,
-            body: SearchEventCards(
-              events: events,
-              keyPrefix: 'search-event',
-              onOpen: picks.event,
+            title: SearchSectionId.smartEvents.title,
+            count: smartEvents.length,
+            body: SliverToBoxAdapter(
+              child: SearchSmartEventGrid(
+                requests: smartEvents,
+                leadFullWidth: true,
+                keyFor: (index) => ValueKey(
+                  'search-result-smart-${smartEvents[index].tierLabel}',
+                ),
+                onTap: picks.smartEvent == null
+                    ? null
+                    : (index) =>
+                          () => picks.smartEvent!(smartEvents[index]),
+              ),
             ),
           ),
+        if (events.upcoming.isNotEmpty)
+          eventSection(SearchSectionId.comingUp.title, events.upcoming),
+        if (events.other.isNotEmpty) eventSection('Events', events.other),
         if (players.isEmpty && events.isEmpty && snapshot.remoteLoading)
           const SliverToBoxAdapter(child: SearchPageSpinner(top: 0)),
         if (players.isEmpty && events.isEmpty && snapshot.remoteMessage != null)
           SliverToBoxAdapter(child: _PageNote(text: snapshot.remoteMessage!)),
+        if (news.isNotEmpty) _NewsResults(stories: news, onOpened: picks.news),
+        if (collections.isNotEmpty)
+          SearchSection(
+            title: SearchSectionId.collections.title,
+            count: collections.length,
+            body: SliverList.builder(
+              itemCount: collections.length,
+              itemBuilder: (context, index) {
+                final collection = collections[index];
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: index == collections.length - 1 ? 0 : searchCardGap,
+                  ),
+                  child: CollectionCard(
+                    key: ValueKey('search-result-collection-${collection.id}'),
+                    collection: collection,
+                    onOpened: picks.collection == null
+                        ? null
+                        : () => picks.collection!(collection),
+                  ),
+                );
+              },
+            ),
+          ),
         // Clear of the floating dock the page scrolls under.
         SliverToBoxAdapter(
           child: SizedBox(height: 24.h + MediaQuery.paddingOf(context).bottom),
@@ -274,6 +370,95 @@ class SearchPageResults extends StatelessWidget {
     return KeyedSubtree(
       key: ValueKey<String>('search_results_${snapshot.query}'),
       child: list,
+    );
+  }
+}
+
+/// The News stories' hero scope on the Search tab's results: a story's cover
+/// flies to the reader and back from here, never from the landing's cards.
+final Object _searchResultNewsHeroes = Object();
+
+/// The stories a search found, in the News page's own card and grid, as the
+/// landing's News section sets them down the page. A tap opens the reader
+/// on it, paging through these stories; [onOpened] hears of the open.
+class _NewsResults extends StatelessWidget {
+  const _NewsResults({required this.stories, this.onOpened});
+
+  final List<FeedNews> stories;
+  final ValueChanged<FeedNews>? onOpened;
+
+  Future<void> _open(BuildContext context, int index) async {
+    FocusScope.of(context).unfocus();
+    onOpened?.call(stories[index]);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      await NewsReaderPager.open(
+        context,
+        articles: List.of(stories),
+        initialIndex: index,
+        heroScope: _searchResultNewsHeroes,
+      );
+    } catch (error) {
+      debugPrint('[Search] news open failed: $error');
+      if (messenger != null) {
+        showAppSnackOn(
+          messenger,
+          "Couldn't open news. Try again.",
+          tone: AppSnackTone.danger,
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SearchSection(
+      title: SearchSectionId.news.title,
+      count: stories.length,
+      body: SliverLayoutBuilder(
+        builder: (context, constraints) {
+          final scaler = MediaQuery.textScalerOf(context);
+          final grid = newsGridMetrics(constraints.crossAxisExtent, scaler);
+          final columns = grid.columns;
+          final rowCount = (stories.length + columns - 1) ~/ columns;
+          return SliverList.builder(
+            itemCount: rowCount,
+            itemBuilder: (context, row) => Padding(
+              padding: EdgeInsets.only(top: row == 0 ? 0 : searchCardGap),
+              child: SizedBox(
+                height: grid.height,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var c = 0; c < columns; c++) ...[
+                      if (c > 0) SizedBox(width: searchCardGap),
+                      Expanded(
+                        child: row * columns + c < stories.length
+                            ? NewsArticleCard(
+                                key: ValueKey(
+                                  'search-result-news-'
+                                  '${stories[row * columns + c].key}',
+                                ),
+                                news: stories[row * columns + c],
+                                compact: grid.compact,
+                                heroTag: (
+                                  _searchResultNewsHeroes,
+                                  stories[row * columns + c].key,
+                                ),
+                                onTap: () => unawaited(
+                                  _open(context, row * columns + c),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

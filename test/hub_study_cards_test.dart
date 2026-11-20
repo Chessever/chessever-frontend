@@ -31,6 +31,8 @@ void main() {
     for (final asset in [
       'assets/pngs/hub_my_prep_icon.webp',
       'assets/pngs/hub_library_icon.webp',
+      'assets/pngs/hub_my_prep_icon_light.webp',
+      'assets/pngs/hub_library_icon_light.webp',
     ]) {
       expect(manifest.listAssets(), contains(asset));
       expect((await rootBundle.load(asset)).lengthInBytes, greaterThan(0));
@@ -53,11 +55,12 @@ void main() {
             final caption = prep
                 ? 'Your games and opponents'
                 : 'Your databases';
-            // Bounds measured from the actual generated bitmaps, including
+            // Bounds measured from the actual generated bitmaps (the dark
+            // and the light drawing seat their subject alike), including
             // all pieces, branch endpoints and the Library database outline.
             final subject = prep
-                ? const Rect.fromLTRB(.645, .078, .936, .656)
-                : const Rect.fromLTRB(.694, .109, .826, .574);
+                ? const Rect.fromLTRB(.643, .078, .936, .660)
+                : const Rect.fromLTRB(.694, .105, .827, .582);
             await tester.pumpWidget(
               MaterialApp(
                 theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
@@ -92,6 +95,14 @@ void main() {
               ),
             );
             final image = tester.widget<Image>(find.byType(Image));
+            // Each theme shows its own drawing: never the dark one on paper.
+            expect(
+              ((image.image as ResizeImage).imageProvider as AssetImage)
+                  .assetName,
+              light
+                  ? HubSceneBackdrop.lightAsset(scene)
+                  : HubSceneBackdrop.darkAsset(scene),
+            );
             await tester.runAsync(
               () => precacheImage(
                 image.image,
@@ -116,23 +127,21 @@ void main() {
             final picture = tester.getRect(find.byType(Image));
             expect(picture.height, closeTo(100.sp, .01));
             // The scene is narrower than a full-row card. The dark tile is
-            // the scene's own tone, so it ends unseen; on paper its field is
-            // carried to the card's left edge, or the wash would stop short
-            // and read as a picture cut off.
-            final field = find.descendant(
+            // the scene's own tone and its board floor is painted on to the
+            // card's edge; the light drawing's ground is the paper tile's
+            // own tone, so it needs no field, no key and no painted floor.
+            Finder inArt(Type type) => find.descendant(
               of: find.byType(HubSceneBackdrop),
-              matching: find.byType(ColoredBox),
+              matching: find.byType(type),
             );
-            if (light) {
-              final wash = tester.getRect(field);
-              // Edge to edge inside the tile's one-pixel border.
-              expect(wash.left, lessThanOrEqualTo(tile.left + 1));
-              expect(wash.right, greaterThanOrEqualTo(tile.right - 1));
-              expect(wash.top, closeTo(picture.top, .01));
-              expect(wash.height, closeTo(picture.height, .01));
-            } else {
-              expect(field, findsNothing);
-            }
+            expect(inArt(ColoredBox), findsNothing);
+            expect(inArt(ColorFiltered), light ? findsNothing : findsOneWidget);
+            expect(
+              tester
+                  .widgetList<CustomPaint>(inArt(CustomPaint))
+                  .where((paint) => paint.painter != null),
+              light ? isEmpty : hasLength(1),
+            );
             final paintedSubject = Rect.fromLTRB(
               picture.left + subject.left * picture.width,
               picture.top + subject.top * picture.height,

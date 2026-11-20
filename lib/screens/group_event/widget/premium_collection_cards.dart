@@ -14,6 +14,7 @@ import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/art_fade.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 
 import 'package:chessever2/widgets/hub_tile.dart';
@@ -118,16 +119,31 @@ class _PremiumCollectionCard extends ConsumerWidget {
   }
 
   Widget _buildTile(BuildContext context, WidgetRef ref) {
+    // Full background: the player grid for Favorites, the flag for
+    // Countrymen.
+    final artwork =
+        type == PremiumGamesType.favorites
+            ? const _FavoritePlayersGridBackground()
+            : _FlagFullBackground(ref: ref);
+    // Paper: the photos and the flag at their true colour, fading through
+    // their own alpha out of the tile's top-right corner before they reach
+    // the label. The tile's paper veil over them read as a white wash.
+    final light = context.isLightTheme;
     return HubTileFace(
       title: title,
-      // Full background: the player grid for Favorites, the flag for
-      // Countrymen.
-      artwork:
-          type == PremiumGamesType.favorites
-              ? const _FavoritePlayersGridBackground()
-              : _FlagFullBackground(ref: ref),
+      ramp: !light,
+      artwork: light ? ArtFade(shader: _paperFade, child: artwork) : artwork,
     );
   }
+
+  /// The compact player search card's flag fade: the label sits
+  /// bottom-left on both, and the picture is gone before the title's last
+  /// letters ("Countrymen" runs two thirds across the tile).
+  static Shader _paperFade(Rect bounds) => artFadeCorner(
+    bounds,
+    reach: PlayerCardLightArt.compactFlagReach,
+    hold: PlayerCardLightArt.compactFlagHold,
+  );
 
   void _handleTap(BuildContext context, WidgetRef ref) {
     HapticFeedbackService.cardTap();
@@ -614,21 +630,19 @@ class _FlagFullBackground extends StatelessWidget {
     final countryAsync = ref.watch(countryDropdownProvider);
 
     return countryAsync.when(
-      data:
-          (country) => SizedBox.expand(
-            child: Opacity(
-              // A touch more flag on paper, where it reads as a pastel wash
-              // rather than a dim print.
-              opacity: context.isLightTheme ? 0.3 : 0.25,
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: CountryFlag.fromCountryCode(
-                  country.countryCode,
-                  theme: ImageTheme(width: 200, height: 150),
-                ),
-              ),
-            ),
+      data: (country) {
+        final flag = FittedBox(
+          fit: BoxFit.cover,
+          child: CountryFlag.fromCountryCode(
+            country.countryCode,
+            theme: ImageTheme(width: 200, height: 150),
           ),
+        );
+        // Paper: the flag at its true colour; the tile's corner fade (not
+        // an opacity, which bleached it to a pastel) keeps it off the label.
+        if (context.isLightTheme) return SizedBox.expand(child: flag);
+        return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
+      },
       loading: () => _FlagPlaceholder(),
       error: (_, __) => _FlagPlaceholder(),
     );

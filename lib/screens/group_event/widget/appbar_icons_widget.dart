@@ -14,12 +14,16 @@ class AppBarIcons extends StatelessWidget {
   /// splash that would draw a box around it on press.
   final bool boxed;
 
+  /// Bare only: see [AppBarIconSurface.glyphShift].
+  final double glyphShift;
+
   const AppBarIcons({
     super.key,
     required this.image,
     required this.onTap,
     this.padding,
     this.boxed = true,
+    this.glyphShift = 0,
   });
 
   @override
@@ -27,6 +31,7 @@ class AppBarIcons extends StatelessWidget {
     final surface = AppBarIconSurface(
       padding: padding,
       boxed: boxed,
+      glyphShift: glyphShift,
       // The bundled glyphs (three-dots etc.) ship with a white fill so
       // they read on the dark `surface`. In light theme that becomes
       // white-on-white and the button disappears, so we recolour to
@@ -56,6 +61,7 @@ class AppBarIconSurface extends StatelessWidget {
     required this.child,
     this.padding,
     this.boxed = true,
+    this.glyphShift = 0,
   });
 
   final Widget child;
@@ -65,19 +71,31 @@ class AppBarIconSurface extends StatelessWidget {
   /// centres it in a square of at least [minTapTarget].
   final bool boxed;
 
+  /// Bare only: how far the glyph is drawn toward the end edge (negative:
+  /// toward the start) inside a tap target that does not move. Lets a glyph
+  /// sit close to a neighbour while both targets stay whole, side by side.
+  final double glyphShift;
+
   /// The smallest side of a bare control's tap target.
   static const double minTapTarget = 44;
+
+  /// The glyph's box (the tile, when boxed).
+  static double get glyphWidth => 32.w;
+  static double get glyphHeight => 32.h;
+
+  /// A bare control's tap target, across.
+  static double get bareWidth => math.max(minTapTarget, glyphWidth);
 
   /// How far a bare control's tap target reaches past each side of the tile
   /// it replaces. A row that gives this back from its gaps keeps every glyph
   /// exactly where it was.
-  static double get bareReach => (math.max(minTapTarget, 32.w) - 32.w) / 2;
+  static double get bareReach => (bareWidth - glyphWidth) / 2;
 
   @override
   Widget build(BuildContext context) {
     final glyph = Container(
-      height: 32.h,
-      width: 32.w,
+      height: glyphHeight,
+      width: glyphWidth,
       padding: padding ?? EdgeInsets.all(6.sp),
       decoration: boxed
           ? BoxDecoration(
@@ -88,10 +106,18 @@ class AppBarIconSurface extends StatelessWidget {
       child: child,
     );
     if (boxed) return glyph;
+    final rtl = Directionality.maybeOf(context) == TextDirection.rtl;
     return SizedBox(
-      width: math.max(minTapTarget, 32.w),
-      height: math.max(minTapTarget, 32.h),
-      child: Center(child: glyph),
+      width: bareWidth,
+      height: math.max(minTapTarget, glyphHeight),
+      child: Center(
+        child: glyphShift == 0
+            ? glyph
+            : Transform.translate(
+                offset: Offset(rtl ? -glyphShift : glyphShift, 0),
+                child: glyph,
+              ),
+      ),
     );
   }
 }

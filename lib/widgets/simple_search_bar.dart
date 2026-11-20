@@ -28,6 +28,9 @@ class SimpleSearchBar extends StatefulWidget {
     this.rotatingHints,
     this.rotationInterval = const Duration(seconds: 2),
     this.actions,
+    this.showClear = true,
+    this.onSubmitted,
+    this.textInputAction,
   });
 
   final TextEditingController controller;
@@ -59,6 +62,14 @@ class SimpleSearchBar extends StatefulWidget {
   /// height, and takes a 44pt tap in a home top bar. They give way to the
   /// text while the field has focus, the way the bar's avatar does.
   final List<Widget>? actions;
+
+  /// The clear button inside the field. Off where the host clears the
+  /// field itself (the Search tab's Cancel, beside the field).
+  final bool showClear;
+
+  /// The keyboard's action key, and what it does with the text.
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction? textInputAction;
 
   @override
   State<SimpleSearchBar> createState() => _SimpleSearchBarState();
@@ -265,6 +276,8 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
               focusNode: widget.focusNode,
               autofocus: widget.autofocus,
               onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
+              textInputAction: widget.textInputAction,
               style: AppTypography.textMdRegular,
               decoration: InputDecoration(
                 hintText: rotatingHint == null ? widget.hintText : null,
@@ -279,40 +292,44 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
           // Clear/reset suffix icon — visible while the field has focus OR
           // contains text. Scoped to a ListenableBuilder so toggling it
           // doesn't rebuild the TextField and cause IME / focus churn.
-          ListenableBuilder(
-            listenable: Listenable.merge([widget.controller, widget.focusNode]),
-            builder: (context, _) {
-              final visible =
-                  widget.focusNode.hasFocus ||
-                  widget.controller.text.isNotEmpty;
-              // Grows out of the field edge on the same spring as the morph
-              // instead of appearing in a single frame. Width and scale come
-              // off one value so the button fills its slot exactly and is
-              // never clipped mid-travel.
-              return SqueezeSlot(
-                open: visible,
-                motion: SearchMotion.accent,
-                // A 44pt reach in the home top bar without growing the row.
-                child: HomeTopBarTapTarget(
-                  child: GestureDetector(
-                    onTap: widget.onCloseTap,
-                    child: Container(
-                      padding: EdgeInsets.all(4.sp),
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.close,
-                        size: 16.ic,
-                        color: context.colors.textPrimary,
+          if (widget.showClear)
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                widget.controller,
+                widget.focusNode,
+              ]),
+              builder: (context, _) {
+                final visible =
+                    widget.focusNode.hasFocus ||
+                    widget.controller.text.isNotEmpty;
+                // Grows out of the field edge on the same spring as the morph
+                // instead of appearing in a single frame. Width and scale come
+                // off one value so the button fills its slot exactly and is
+                // never clipped mid-travel.
+                return SqueezeSlot(
+                  open: visible,
+                  motion: SearchMotion.accent,
+                  // A 44pt reach in the home top bar without growing the row.
+                  child: HomeTopBarTapTarget(
+                    child: GestureDetector(
+                      onTap: widget.onCloseTap,
+                      child: Container(
+                        padding: EdgeInsets.all(4.sp),
+                        decoration: BoxDecoration(
+                          color: context.colors.surfaceRecessed,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 16.ic,
+                          color: context.colors.textPrimary,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
 
           if (actions.isNotEmpty) _buildActions(actions),
 

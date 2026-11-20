@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -236,12 +238,14 @@ Future<SearchModeController> _pump(
   bool headerBack = true,
   bool filters = false,
   TargetPlatform? platform,
+  bool nested = false,
+  ValueListenable<bool>? shellAway,
 }) async {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final search = SearchModeController();
-  Widget page(BuildContext context) => MediaQuery(
+  Widget host(BuildContext context) => MediaQuery(
     data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
     child: _Page(
       search: search,
@@ -252,6 +256,34 @@ Future<SearchModeController> _pump(
       filters: filters,
     ),
   );
+  // In a tab's own navigator inside the app's (a shell's): what the page's
+  // route says about being in front stops at it.
+  final WidgetBuilder section = nested
+      ? (context) => Navigator(
+          onGenerateRoute: (_) => MaterialPageRoute<void>(builder: host),
+        )
+      : host;
+  // A section of the home shell: a tap on nothing puts the keyboard away,
+  // and while another section is in view this one is kept, out of sight,
+  // its tickers off and its focus excluded (home_screen.dart).
+  final WidgetBuilder page = shellAway == null
+      ? section
+      : (context) => GestureDetector(
+          onTap: FocusScope.of(context).unfocus,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: shellAway,
+            builder: (context, away, _) => Offstage(
+              offstage: away,
+              child: TickerMode(
+                enabled: !away,
+                child: ExcludeFocus(
+                  excluding: away,
+                  child: Builder(builder: section),
+                ),
+              ),
+            ),
+          ),
+        );
   await tester.pumpWidget(
     MaterialApp(
       theme: platform == null
@@ -1261,9 +1293,12 @@ void main() {
       HomeTopBarMetrics.fieldTextStyle.fontSize,
     );
 
-    // The keyboard put away: the field rests, on the spring it lifted on.
+    // The keyboard put away over a query: the field rests, on the spring
+    // it lifted on (with nothing typed the search would close with it).
+    await tester.enterText(find.byType(EditableText), 'carl');
     search.focusNode.unfocus();
     await _frames(tester, 40);
+    expect(search.isSearching, isTrue);
     final resting = tester.widget<SearchFieldFill>(
       find.byType(SearchFieldFill),
     );
@@ -1364,4 +1399,398 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     expect(chrome.held, isFalse);
   });
+
+  testWidgets('a slow first frame never eats the morph: the glass sets off '
+      'from where it rests, both ways', (tester) async {
+    final search = await _pump(tester);
+    await tester.tap(find.byKey(_fabKey));
+    // The frame that builds the search header and its field, taking long.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    // Still on the button: the spring starts after that frame, not under it,
+    // so it does not leap through the time it took.
+    expect(search.timeline.value, lessThan(0.01));
+    expect(
+      search.debugGlassRect,
+      rectMoreOrLessEquals(tester.getRect(_fabGlass), epsilon: 0.5),
+    );
+    var previous = search.debugGlassRect!.center;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect((search.debugGlassRect!.center - previous).distance, lessThan(60));
+    await _frames(tester);
+    expect(search.timeline.value, 1);
+
+    // And back: the costly frame of the close (the page clearing its query)
+    // keeps the glass on the field.
+    final field = tester.getRect(find.byType(SearchFieldFill));
+    await tester.tap(find.byKey(_closeKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(search.timeline.value, greaterThan(0.99));
+    expect(search.debugGlassRect, rectMoreOrLessEquals(field, epsilon: 0.5));
+    previous = search.debugGlassRect!.center;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect((search.debugGlassRect!.center - previous).distance, lessThan(60));
+    await _frames(tester);
+    expect(search.timeline.value, 0);
+    expect(_discOpacity(tester), 1);
+    await _done(tester, search);
+  });
+
+  group('the keyboard put away', () {
+    testWidgets('with nothing typed, the search closes with it: the glass '
+        'flies back from the field into the button', (tester) async {
+      Future<void> putAway(SearchModeController search, String how) async {
+        await _openFully(tester, search);
+        final field = tester.getRect(find.byType(SearchFieldFill));
+        switch (how) {
+          // Done (or Search) on the keyboard.
+          case 'done':
+            await tester.testTextInput.receiveAction(TextInputAction.done);
+          // A list that dismisses the keyboard on drag, a page putting it
+          // away, iOS closing the input.
+          case 'unfocus':
+            FocusManager.instance.primaryFocus!.unfocus();
+        }
+        await tester.pump();
+        expect(search.focusNode.hasFocus, isFalse, reason: how);
+        // It sets off at once, from the field as drawn.
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(search.isSearching, isFalse, reason: how);
+        final drawn = await _flightBack(tester, search);
+        expect(drawn.first, rectMoreOrLessEquals(field, epsilon: 0.5));
+        // A real flight, the chevron's own (about 20 frames), never a snap.
+        expect(drawn.length, greaterThan(15), reason: how);
+        // It lands on the button, drawn the frame after.
+        expect(
+          drawn.last,
+          rectMoreOrLessEquals(tester.getRect(_fabGlass), epsilon: 0.01),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(_discOpacity(tester), 1);
+        expect(find.byType(SearchModeHeader), findsNothing);
+        expect(tester.getSize(_slot).height, 100);
+      }
+
+      late ScrollChromeController chrome;
+      final search = await _pump(tester, onChrome: (c) => chrome = c);
+      await putAway(search, 'done');
+      expect(chrome.held, isFalse);
+      await putAway(search, 'unfocus');
+      expect(tester.takeException(), isNull);
+      await _done(tester, search);
+    });
+
+    testWidgets('the empty field\'s clear button closes it too', (
+      tester,
+    ) async {
+      final search = await _pump(tester);
+      await _openFully(tester, search);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(SimpleSearchBar),
+          matching: find.byIcon(Icons.close),
+        ),
+      );
+      await tester.pump();
+      expect(search.isSearching, isFalse);
+      final drawn = await _flightBack(tester, search);
+      expect(drawn.length, greaterThan(15));
+      expect(find.byType(SearchModeHeader), findsNothing);
+      await _done(tester, search);
+    });
+
+    testWidgets('with words typed, only the keyboard goes: the results stay', (
+      tester,
+    ) async {
+      final queries = <String>[];
+      final search = await _pump(tester, onQuery: queries.add);
+      await _openFully(tester, search);
+      await tester.enterText(find.byType(EditableText), 'carl');
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(queries, ['carl']);
+      final painted = search.debugGlassPaintCount;
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await _frames(tester);
+      expect(search.focusNode.hasFocus, isFalse);
+      expect(search.isSearching, isTrue);
+      expect(search.query, 'carl');
+      expect(queries, ['carl']);
+      // Nothing flew, nothing moved.
+      expect(search.debugGlassPaintCount, painted);
+      expect(search.timeline.value, 1);
+      expect(find.byType(SearchModeHeader), findsOneWidget);
+      expect(find.text('carl'), findsOneWidget);
+      expect(_discOpacity(tester), 0);
+      await _done(tester, search);
+    });
+
+    testWidgets('Android back that only hides the keyboard closes it; with '
+        'words, the field keeps them and its cursor', (tester) async {
+      final search = await _pump(tester, platform: TargetPlatform.android);
+      await _openFully(tester, search);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await _frames(tester, 20);
+      expect(search.isSearching, isTrue);
+
+      // The keyboard goes down; the field keeps its focus (Android).
+      tester.view.resetViewInsets();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(search.isSearching, isFalse);
+      final drawn = await _flightBack(tester, search);
+      expect(drawn.length, greaterThan(15));
+      expect(search.focusNode.hasFocus, isFalse);
+      expect(find.byType(SearchModeHeader), findsNothing);
+
+      await _openFully(tester, search);
+      await tester.enterText(find.byType(EditableText), 'carl');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await _frames(tester, 20);
+      tester.view.resetViewInsets();
+      await _frames(tester);
+      expect(search.isSearching, isTrue);
+      expect(search.focusNode.hasFocus, isTrue);
+      expect(search.query, 'carl');
+      expect(search.debugFlightActive, isFalse);
+      await _done(tester, search);
+    });
+
+    testWidgets('a route, a sheet or a dialog taking the focus never closes '
+        'it', (tester) async {
+      final search = await _pump(tester);
+      await _openFully(tester, search);
+      final page = tester.element(find.byType(SearchModeHeader));
+
+      /// Shows something over the page, then takes it away again: the search
+      /// is open throughout.
+      Future<void> over(String what, VoidCallback show, Finder shown) async {
+        show();
+        await tester.pumpAndSettle();
+        expect(shown, findsOneWidget, reason: what);
+        expect(search.focusNode.hasFocus, isFalse, reason: what);
+        expect(search.isSearching, isTrue, reason: what);
+        Navigator.of(tester.element(shown)).pop();
+        await tester.pumpAndSettle();
+        expect(shown, findsNothing, reason: what);
+        expect(search.isSearching, isTrue, reason: what);
+        expect(search.debugFlightActive, isFalse, reason: what);
+        expect(find.byType(SearchModeHeader), findsOneWidget, reason: what);
+      }
+
+      // A game opened from the results.
+      await over(
+        'a game',
+        () => Navigator.of(page).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Center(child: Text('Game'))),
+          ),
+        ),
+        find.text('Game'),
+      );
+      // Back from it, the field has its cursor again.
+      expect(search.focusNode.hasFocus, isTrue);
+
+      // The filter popup.
+      await over(
+        'a dialog',
+        () => showDialog<void>(
+          context: page,
+          builder: (_) => const Dialog(child: Text('Filters')),
+        ),
+        find.text('Filters'),
+      );
+      // A sheet.
+      await over(
+        'a sheet',
+        () => showModalBottomSheet<void>(
+          context: page,
+          builder: (_) => const SizedBox(height: 200, child: Text('Sheet')),
+        ),
+        find.text('Sheet'),
+      );
+      // The page putting the keyboard away on its way to a player.
+      await over('a page putting the keyboard away first', () {
+        FocusManager.instance.primaryFocus?.unfocus();
+        Navigator.of(page).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Center(child: Text('Player'))),
+          ),
+        );
+      }, find.text('Player'));
+      expect(tester.takeException(), isNull);
+      await _done(tester, search);
+    });
+
+    testWidgets('a dialog over a tab\'s own navigator does not close it', (
+      tester,
+    ) async {
+      // The page's route is still the one in front of its navigator; the
+      // dialog is on the app's, above it.
+      final search = await _pump(tester, nested: true);
+      await _openFully(tester, search);
+      final page = tester.element(find.byType(SearchModeHeader));
+      FocusManager.instance.primaryFocus?.unfocus();
+      unawaited(
+        showDialog<void>(
+          context: page,
+          builder: (_) => const Dialog(child: Text('Filters')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(ModalRoute.isCurrentOf(page), isTrue);
+      expect(search.isSearching, isTrue);
+      Navigator.of(tester.element(find.text('Filters'))).pop();
+      await tester.pumpAndSettle();
+      expect(search.isSearching, isTrue);
+      expect(find.byType(SearchModeHeader), findsOneWidget);
+      await _done(tester, search);
+    });
+
+    testWidgets('never while the glass is still flying in', (tester) async {
+      final search = await _pump(tester);
+      await tester.tap(find.byKey(_fabKey));
+      await _frames(tester, 4);
+      expect(search.debugFlightActive, isTrue);
+      expect(search.focusNode.hasFocus, isTrue);
+      search.focusNode.unfocus();
+      await _frames(tester);
+      expect(search.isSearching, isTrue);
+      expect(search.timeline.value, 1);
+      expect(search.debugFlightActive, isFalse);
+      expect(find.byType(SearchModeHeader), findsOneWidget);
+      await _done(tester, search);
+    });
+
+    testWidgets('a finger still on the page holds it until it lifts', (
+      tester,
+    ) async {
+      final search = await _pump(tester);
+      await _openFully(tester, search);
+      // A drag on the list that puts the keyboard away.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('row 6')),
+      );
+      await gesture.moveBy(const Offset(0, -30));
+      FocusManager.instance.primaryFocus?.unfocus();
+      await _frames(tester, 20);
+      expect(search.isSearching, isTrue);
+      await gesture.moveBy(const Offset(0, -30));
+      await _frames(tester, 5);
+      expect(search.isSearching, isTrue);
+      expect(search.debugFlightActive, isFalse);
+
+      await gesture.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(search.isSearching, isFalse);
+      final drawn = await _flightBack(tester, search);
+      expect(drawn.length, greaterThan(15));
+      expect(find.byType(SearchModeHeader), findsNothing);
+      await _done(tester, search);
+    });
+
+    testWidgets('the app leaving the screen never closes it', (tester) async {
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+      final search = await _pump(tester);
+      await _openFully(tester, search);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await _frames(tester, 20);
+
+      // The keyboard goes with the app (in either order).
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.view.resetViewInsets();
+      await _frames(tester, 20);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _frames(tester);
+      expect(search.isSearching, isTrue);
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await _frames(tester, 20);
+      tester.view.resetViewInsets();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await _frames(tester, 20);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _frames(tester);
+      expect(search.isSearching, isTrue);
+      expect(search.focusNode.hasFocus, isTrue);
+      expect(find.byType(SearchModeHeader), findsOneWidget);
+      await _done(tester, search);
+    });
+
+    testWidgets('in a shell section: a tap on nothing closes it with the '
+        'flight; leaving the section closes it at once, nothing left to '
+        'play on the way back', (tester) async {
+      final away = ValueNotifier<bool>(false);
+      addTearDown(away.dispose);
+      final search = await _pump(tester, shellAway: away);
+      await _openFully(tester, search);
+      // A row with nothing to do on a tap: the shell puts the keyboard away.
+      await tester.tap(find.text('row 8'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(search.isSearching, isFalse);
+      final drawn = await _flightBack(tester, search);
+      expect(drawn.length, greaterThan(15));
+      expect(find.byType(SearchModeHeader), findsNothing);
+
+      // The dock to another section: the keyboard goes, and this section is
+      // kept out of sight with its tickers off.
+      await _openFully(tester, search);
+      final painted = search.debugGlassPaintCount;
+      FocusManager.instance.primaryFocus?.unfocus();
+      away.value = true;
+      await _frames(tester, 5);
+      expect(search.isSearching, isFalse);
+      expect(search.debugFlightActive, isFalse);
+      expect(search.timeline.value, 0);
+
+      // Back to it: the page as it was before the search, nothing flying.
+      away.value = false;
+      await tester.pump();
+      expect(search.debugFlightActive, isFalse);
+      expect(find.byType(SearchModeHeader), findsNothing);
+      expect(_discOpacity(tester), 1);
+      await _frames(tester, 30);
+      expect(search.debugGlassPaintCount, painted);
+      expect(tester.takeException(), isNull);
+      await _done(tester, search);
+    });
+  });
+}
+
+/// Taps the search button and lets the glass land in the field, the cursor
+/// in it.
+Future<void> _openFully(
+  WidgetTester tester,
+  SearchModeController search,
+) async {
+  await tester.tap(find.byKey(_fabKey));
+  await _frames(tester);
+  expect(search.isSearching, isTrue);
+  expect(search.debugFlightActive, isFalse);
+  expect(search.focusNode.hasFocus, isTrue);
+}
+
+/// Frames until a closing search's glass has landed in the button: the
+/// glass as drawn in each of them.
+Future<List<Rect>> _flightBack(
+  WidgetTester tester,
+  SearchModeController search,
+) async {
+  final drawn = <Rect>[];
+  for (var i = 0; i < 90; i++) {
+    final painted = search.debugGlassPaintCount;
+    await tester.pump(const Duration(milliseconds: 16));
+    if (search.debugGlassPaintCount > painted) {
+      drawn.add(search.debugGlassRect!);
+    }
+    if (!search.debugFlightActive && drawn.isNotEmpty) return drawn;
+  }
+  fail('the glass never landed');
 }

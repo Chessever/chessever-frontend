@@ -10,8 +10,6 @@ import 'package:chessever2/screens/feed/news/news_models.dart' show FeedNews;
 import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart'
     show NewsArticleCard, newsCardExtent, newsGridMetrics;
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
     show SmartEventRequest;
@@ -22,7 +20,6 @@ import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/screens/search/search_landing_section.dart';
 import 'package:chessever2/screens/search/search_page_sections.dart';
 import 'package:chessever2/screens/search/sections/search_section_pages.dart';
-import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -30,7 +27,6 @@ import 'package:chessever2/widgets/event_card/smart_event_card.dart'
     show SmartEventCard;
 import 'package:chessever2/widgets/event_card/smart_event_request_card.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
-import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -39,17 +35,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// and a long-press offers exactly what it offers there (My Space for
 /// events, smart events and collections).
 ///
-/// In order: the recent searches, the events in play, the top of the world
-/// ranking, the main openings and the built-in smart events (both as smart
-/// events), the strongest events coming up, the collections, the news.
-/// Every section but the recent searches is a row of its cards read on as
-/// the reader scrolls it ([SearchLandingSection]): its title opens the
-/// section's own page, See more opens it in place. A section with nothing
-/// to list is simply not there; nothing explains itself in prose.
+/// In order: the events in play, the top of the world ranking, the main
+/// openings and the built-in smart events (both as smart events), the
+/// strongest events coming up, the collections, the news. Every section is
+/// a row of its cards read on as the reader scrolls it
+/// ([SearchLandingSection]): its title opens the section's own page, See
+/// more opens it in place. A section with nothing to list is simply not
+/// there; nothing explains itself in prose. The recent searches are not
+/// here: they stand in for the landing while the field has the cursor
+/// (`SearchRecentsView`), as X shows them.
 ///
-/// Each section listens to its own source, so a live event starting does not
-/// rebuild the recent searches. The sources are kept warm by the tab
-/// (`SearchTabScreen`), so clearing a search brings this back at once.
+/// Each section listens to its own source, so a live event starting rebuilds
+/// only Live now. The sources are kept warm by the tab (`SearchTabScreen`),
+/// so clearing a search brings this back at once.
 class SearchPageLanding extends StatelessWidget {
   const SearchPageLanding({super.key, required this.picks});
 
@@ -63,14 +61,13 @@ class SearchPageLanding extends StatelessWidget {
       primary: true,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       slivers: [
-        _RecentSection(picks: picks),
         _LiveNowSection(picks: picks),
         _TopPlayersSection(picks: picks),
         _OpeningsSection(picks: picks),
-        const _SmartEventsSection(),
+        _SmartEventsSection(picks: picks),
         _ComingUpSection(picks: picks),
-        const _CollectionsSection(),
-        const _NewsSection(),
+        _CollectionsSection(picks: picks),
+        _NewsSection(picks: picks),
         // The last card ends clear of the floating dock the page scrolls
         // under, whose height arrives as the bottom inset.
         SliverToBoxAdapter(
@@ -82,167 +79,6 @@ class SearchPageLanding extends StatelessWidget {
 }
 
 const Widget _none = SliverToBoxAdapter(child: SizedBox.shrink());
-
-/// Opens a recent search the way its result opens.
-Future<void> openSearchRecent(
-  RecentSearchEntry entry,
-  SearchPicks picks,
-) async {
-  switch (entry.kind) {
-    case RecentSearchKind.tournament:
-      final tournament = entry.toTournament();
-      if (tournament != null) picks.event(tournament);
-    case RecentSearchKind.player:
-      final player = await resolveRecentSearchPlayer(entry);
-      if (player != null) picks.player?.call(player);
-    case RecentSearchKind.opening:
-      final opening = entry.toOpeningSelection();
-      if (opening != null) picks.opening?.call(opening);
-  }
-}
-
-/// The recent searches, each in its own kind's card: an event card (its
-/// status read again now), the player's card, the opening's smart event.
-/// A swipe removes one. Edit, as My Space's Edit, holds the cards still and
-/// puts a remove button after each, with Clear all and Done in the heading.
-class _RecentSection extends ConsumerStatefulWidget {
-  const _RecentSection({required this.picks});
-
-  final SearchPicks picks;
-
-  @override
-  ConsumerState<_RecentSection> createState() => _RecentSectionState();
-}
-
-class _RecentSectionState extends ConsumerState<_RecentSection> {
-  /// Removed and not yet gone from the stored list: a removed card must
-  /// leave the tree in the same frame.
-  final _gone = <String>{};
-  bool _editing = false;
-
-  void _setEditing(bool editing) {
-    if (_editing == editing) return;
-    HapticFeedbackService.selection();
-    setState(() => _editing = editing);
-  }
-
-  void _remove(RecentSearchEntry entry, int left) {
-    setState(() {
-      _gone.add(entry.identity);
-      // The last one gone ends Edit: the section is gone with it.
-      if (left <= 1) _editing = false;
-    });
-    unawaited(ref.read(recentSearchesProvider.notifier).remove(entry));
-  }
-
-  void _clear() {
-    setState(() {
-      _gone.clear();
-      _editing = false;
-    });
-    unawaited(ref.read(recentSearchesProvider.notifier).clear());
-  }
-
-  Widget _card(RecentSearchEntry entry, List<String> liveIds) {
-    void open() => unawaited(openSearchRecent(entry, widget.picks));
-    switch (entry.kind) {
-      case RecentSearchKind.tournament:
-        final saved = entry.toTournament();
-        if (saved == null) return const SizedBox.shrink();
-        return EventCard(
-          tourEventCardModel: searchRecentEvent(saved, liveIds),
-          forceCompactLayout: true,
-          heroTagSuffix: 'search-recent-${saved.id}',
-          favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
-          onTap: open,
-        );
-      case RecentSearchKind.player:
-        final player = entry.toPlayer();
-        if (player == null) return const SizedBox.shrink();
-        return PlayerSearchCards(
-          players: [player],
-          animateIn: false,
-          bottomPadding: 0,
-          onOpen: (_) => open(),
-        );
-      case RecentSearchKind.opening:
-        final selection = entry.toOpeningSelection();
-        if (selection == null) return const SizedBox.shrink();
-        return SmartEventRequestCard(
-          request: SmartEventRequest.forOpeningSelection(selection),
-          onTap: widget.picks.opening == null ? null : open,
-          showFilters: false,
-        );
-    }
-  }
-
-  Widget _actions() {
-    if (!_editing) {
-      return DiscoveryAction(
-        key: const ValueKey('search-recent-edit'),
-        label: 'Edit',
-        semanticsLabel: 'Edit recent searches',
-        onTap: () => _setEditing(true),
-      );
-    }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        DiscoveryAction(
-          key: const ValueKey('search-recent-clear'),
-          label: 'Clear all',
-          semanticsLabel: 'Clear all recent searches',
-          onTap: _clear,
-        ),
-        SizedBox(width: 16.w),
-        DiscoveryAction(
-          key: const ValueKey('search-recent-done'),
-          label: 'Done',
-          semanticsLabel: 'Done editing recent searches',
-          onTap: () => _setEditing(false),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final stored =
-        ref.watch(recentSearchesProvider).valueOrNull ??
-        const <RecentSearchEntry>[];
-    _gone.retainWhere((id) => stored.any((e) => e.identity == id));
-    final entries = [
-      for (final entry in stored)
-        if (!_gone.contains(entry.identity)) entry,
-    ].take(searchLandingRecentLimit).toList(growable: false);
-    if (entries.isEmpty) return _none;
-    final key = ref.watch(searchLiveIdsKeyProvider);
-    final liveIds = key.isEmpty ? const <String>[] : key.split('\n');
-    return SearchSection(
-      title: 'Recent searches',
-      trailing: _actions(),
-      body: SliverList.builder(
-        itemCount: entries.length,
-        itemBuilder: (context, index) {
-          final entry = entries[index];
-          return Padding(
-            key: ValueKey('search-recent-${entry.identity}'),
-            padding: EdgeInsets.only(
-              bottom: index == entries.length - 1 ? 0 : searchCardGap,
-            ),
-            child: SearchRecentItem(
-              identity: entry.identity,
-              title: entry.title,
-              editing: _editing,
-              onRemove: () => _remove(entry, entries.length),
-              child: _card(entry, liveIds),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
 
 /// The landing's event sections (Live now, Coming up) as the Events list
 /// draws its events: compact cards on a phone, the image cards of its grid
@@ -516,7 +352,9 @@ class _OpeningsSection extends ConsumerWidget {
 /// time control), as My Space shows a saved one: star it to hear about its
 /// games (here a star also keeps it in My Space), long-press for the same.
 class _SmartEventsSection extends StatelessWidget {
-  const _SmartEventsSection();
+  const _SmartEventsSection({required this.picks});
+
+  final SearchPicks picks;
 
   @override
   Widget build(BuildContext context) {
@@ -524,6 +362,10 @@ class _SmartEventsSection extends StatelessWidget {
     final requests = searchSmartEventRequests;
     Key keyOf(SmartEventRequest request) =>
         ValueKey('search-smart-${request.tierLabel}');
+    // The tab remembers the pick, then opens it as the card would.
+    final open = picks.smartEvent;
+    VoidCallback? tap(SmartEventRequest request) =>
+        open == null ? null : () => open(request);
     return SearchLandingSection<SmartEventRequest>(
       id: section.slug,
       title: section.title,
@@ -532,7 +374,11 @@ class _SmartEventsSection extends StatelessWidget {
       sizing: _smartEventSizing,
       card: (context, request, index, inRow) => KeyedSubtree(
         key: keyOf(request),
-        child: SmartEventRequestCard(request: request, showFilters: false),
+        child: SmartEventRequestCard(
+          request: request,
+          onTap: tap(request),
+          showFilters: false,
+        ),
       ),
       columns: searchSmartEventColumns,
       row: (context, items, start, columns, width) => searchSmartEventRow(
@@ -540,6 +386,7 @@ class _SmartEventsSection extends StatelessWidget {
         start,
         columns,
         keyFor: (index) => keyOf(items[index]),
+        onTap: open == null ? null : (index) => tap(items[index]),
       ),
     );
   }
@@ -571,26 +418,74 @@ class _ComingUpSection extends ConsumerWidget {
   }
 }
 
-/// The tallest collection card: a two-line title, a two-line byline, its
-/// tally and a two-line note. Laid out, never painted. Real glyphs, not
-/// blanks, which the card would trim away.
+/// The room the Collections row holds before its first page lands: the
+/// usual book card, a two-line title over a one-line byline and a tally
+/// that takes two lines beside the star. Laid out, never painted. Real
+/// glyphs, not blanks, which the card would trim away.
 final Collection _collectionGhost = Collection(
   id: 'search-ghost',
   slug: 'search-ghost',
   kind: CollectionKind.book,
   title: 'Ag\nAg',
-  author: 'Ag\nAg',
+  author: 'Ag',
   gameCount: 1000,
   eventCount: 10,
   viewCount: 1000,
   starCount: 100,
 );
 
+/// [collection] as its card lays it out, without its cover: the same
+/// words and counts, so the same height (the cover's room is fixed), and
+/// no picture asked of the network for a card that is never painted.
+Collection _collectionLayoutTwin(Collection collection) => Collection(
+  id: collection.id,
+  slug: collection.slug,
+  kind: collection.kind,
+  title: collection.title,
+  subtitle: collection.subtitle,
+  author: collection.author,
+  annotator: collection.annotator,
+  location: collection.location,
+  dateStart: collection.dateStart,
+  dateEnd: collection.dateEnd,
+  publishedYear: collection.publishedYear,
+  gameCount: collection.gameCount,
+  viewCount: collection.viewCount,
+  starCount: collection.starCount,
+  access: collection.access,
+  eventCount: collection.eventCount,
+  bookCount: collection.bookCount,
+  events: collection.events,
+  matchedGameCount: collection.matchedGameCount,
+);
+
+/// The Collections row's height: its tallest card, each card it holds laid
+/// out at a card's width and never painted, so every card fills its slot
+/// with no empty room around its words (a card's height follows its title,
+/// byline and tally; a worst case of every line would leave the usual card
+/// floating in a box half again its height). Before the first page, the
+/// usual card's room ([_collectionGhost]).
+Widget _collectionsRowGhost(List<Collection> items) {
+  if (items.isEmpty) return CollectionCard(collection: _collectionGhost);
+  return Stack(
+    children: [
+      for (final collection in items)
+        CollectionCard(
+          key: ValueKey('search-collection-ghost-${collection.id}'),
+          collection: _collectionLayoutTwin(collection),
+        ),
+    ],
+  );
+}
+
 /// Collections: the published books as the Collections page lists them, in
 /// its card with its own long-press (Open, Share, notifications, My Space),
-/// read a page at a time. Its page is Collections.
+/// read a page at a time. Its page is Collections. Every open (a tap, the
+/// menu's Open, the lifted copy) is remembered as a recent search.
 class _CollectionsSection extends ConsumerWidget {
-  const _CollectionsSection();
+  const _CollectionsSection({required this.picks});
+
+  final SearchPicks picks;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -599,9 +494,11 @@ class _CollectionsSection extends ConsumerWidget {
     final feed = shown.feed;
     final notifier = ref.read(searchCollectionsFeedProvider.notifier);
     final section = SearchSectionId.collections;
+    final opened = picks.collection;
     Widget card(Collection collection) => CollectionCard(
       key: ValueKey('search-collection-${collection.id}'),
       collection: collection,
+      onOpened: opened == null ? null : () => opened(collection),
     );
     return SearchLandingSection<Collection>(
       id: section.slug,
@@ -615,7 +512,7 @@ class _CollectionsSection extends ConsumerWidget {
       onRetry: notifier.retry,
       onOpen: () => openSearchSectionPage(context, section),
       sizing: SearchCarouselSizing.ghost(
-        (_) => CollectionCard(collection: _collectionGhost, note: 'Ag\nAg'),
+        (_) => _collectionsRowGhost(feed.items),
         tabletMinWidth: 340,
       ),
       card: (context, collection, index, inRow) => card(collection),
@@ -645,13 +542,17 @@ final Object _searchNewsHeroes = Object();
 /// page at a time; a tap opens the reader as the News page does, paging on
 /// through the same stories. Its page is News.
 class _NewsSection extends ConsumerWidget {
-  const _NewsSection();
+  const _NewsSection({required this.picks});
 
-  static Future<void> _open(BuildContext context, int index) async {
+  final SearchPicks picks;
+
+  Future<void> _open(BuildContext context, int index) async {
     FocusScope.of(context).unfocus();
     final container = ProviderScope.containerOf(context, listen: false);
     final feed = container.read(searchNewsFeedProvider);
     if (index >= feed.items.length) return;
+    // The tab remembers the story; the reader opens as the News page's.
+    picks.news?.call(feed.items[index]);
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await NewsReaderPager.open(

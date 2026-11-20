@@ -215,6 +215,12 @@ class ForYouScreen extends HookConsumerWidget {
     ) {
       if (next.item != BottomNavBarItem.forYou) return;
       if (previous != null && previous.sequence == next.sequence) return;
+      // Home tapped again away from Today slides back to Today (the default
+      // page, PM 2026-11-20); on Today it goes to the top.
+      if (selectedIndex != ForYouTab.today.index) {
+        selectTab(ForYouTab.today);
+        return;
+      }
       scrollToTop(controllerForIndex(selectedIndex));
     });
 

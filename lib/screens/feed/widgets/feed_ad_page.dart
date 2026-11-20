@@ -61,6 +61,11 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
   /// most often served, so a landing ad moves little.
   static const double _placeholderRatio = 250 / 300;
 
+  /// Between the disclosure line and the ad, and between the ad and Remove
+  /// Ads.
+  static const double _lineGap = 10;
+  static const double _buttonGap = 16;
+
   @override
   void dispose() {
     _drop();
@@ -189,50 +194,61 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
           FeedLayout.sidePadding,
           6,
         ),
-        child: Column(
-          children: [
-            const AdDisclosureLine(),
-            const SizedBox(height: 10),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  _request(constraints);
-                  final width = math.min(constraints.maxWidth, _maxWidth);
-                  final Widget slot;
-                  if (ad != null && size != null) {
-                    slot = SizedBox(
-                      width: math.min(size.width.toDouble(), width),
-                      height: math.min(
-                        size.height.toDouble(),
-                        constraints.maxHeight,
-                      ),
-                      child: AdWidget(key: ObjectKey(ad), ad: ad),
-                    );
-                  } else {
-                    slot = ExcludeSemantics(
-                      child: Container(
-                        key: const ValueKey('feed_ad_placeholder'),
-                        width: width,
-                        height: math.min(
-                          constraints.maxHeight,
-                          width * _placeholderRatio,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.colors.skeleton,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    );
-                  }
-                  return Center(child: slot);
-                },
+        // The line, the ad and Remove Ads travel as one group, centred on
+        // the page: the words sit right above and below the ad, never at the
+        // page's far edges (Berkay, 2026-11-20).
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // The line and the button take their share first; the ad gets
+            // the rest of the page's height.
+            final lineHeight =
+                (MediaQuery.textScalerOf(context).scale(12) * 1.5)
+                    .ceilToDouble();
+            final reserve = lineHeight + _lineGap + _buttonGap + 44;
+            final room = BoxConstraints(
+              maxWidth: constraints.maxWidth,
+              maxHeight: math.max(0.0, constraints.maxHeight - reserve),
+            );
+            _request(room);
+            final width = math.min(room.maxWidth, _maxWidth);
+            final Widget slot;
+            if (ad != null && size != null) {
+              slot = SizedBox(
+                width: math.min(size.width.toDouble(), width),
+                height: math.min(size.height.toDouble(), room.maxHeight),
+                child: AdWidget(key: ObjectKey(ad), ad: ad),
+              );
+            } else {
+              slot = ExcludeSemantics(
+                child: Container(
+                  key: const ValueKey('feed_ad_placeholder'),
+                  width: width,
+                  height: math.min(room.maxHeight, width * _placeholderRatio),
+                  decoration: BoxDecoration(
+                    color: context.colors.skeleton,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              );
+            }
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: lineHeight,
+                    child: const Center(child: AdDisclosureLine()),
+                  ),
+                  const SizedBox(height: _lineGap),
+                  slot,
+                  // Clear of the ad, so a tap meant for one never lands on
+                  // the other.
+                  const SizedBox(height: _buttonGap),
+                  RemoveAdsButton(returnTo: widget.returnTo),
+                ],
               ),
-            ),
-            // Clear of the ad, so a tap meant for one never lands on the
-            // other.
-            const SizedBox(height: 16),
-            RemoveAdsButton(returnTo: widget.returnTo),
-          ],
+            );
+          },
         ),
       ),
     );

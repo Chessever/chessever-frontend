@@ -424,8 +424,8 @@ void main() {
 
       expect(toggle, findsOneWidget);
       expect(tester.getRect(filter), rest);
-      // Stacked as every page's buttons are (the event screen's): the small
-      // disc a step above the regular filter, rims on one trailing edge.
+      // Stacked as every page's buttons are (the event screen's): a disc the
+      // filter's size a step above it, rims on one trailing edge.
       expect(
         rest.top - tester.getRect(toggle).bottom,
         moreOrLessEquals(InkFabStack.step, epsilon: 0.01),
@@ -435,7 +435,7 @@ void main() {
       expect(capsule.right, moreOrLessEquals(disc.right, epsilon: 0.01));
       expect(
         capsule.height,
-        moreOrLessEquals(InkFabSize.small.disc, epsilon: 0.01),
+        moreOrLessEquals(InkFabSize.regular.disc, epsilon: 0.01),
       );
       expect(
         disc.height,

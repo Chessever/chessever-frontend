@@ -32,6 +32,12 @@ const Color kHubTileOnMedia = Color(0xFFFFFFFF);
 Color hubTileOnTile(BuildContext context) =>
     context.isLightTheme ? context.colors.textPrimary : kHubTileOnMedia;
 
+/// Tile artwork that brings its own light drawing (a pale ground, its subject
+/// in deep tones, the label's corner kept clear), so on the light tile it is
+/// shown as drawn: no paper veil is laid over it. Artwork without its own
+/// light drawing (a photo mosaic, a flag) keeps the veil.
+abstract interface class HubPaperArtwork {}
+
 /// Side gutter of the hub pages (My Space, Discovery): the design's 16 on
 /// phones, and on tablets the For You header's own inset (its search field
 /// and segments sit at 32.sp), so tiles, titles and cards start on the
@@ -151,8 +157,9 @@ class HubTileRow extends StatelessWidget {
 }
 
 /// The tile itself: base ink, artwork, the readability ramp and the label.
-/// Light: a paper card on the page, its artwork washed into paper at the
-/// label. Dark: the media tile.
+/// Light: a paper card on the page; artwork with its own light drawing
+/// ([HubPaperArtwork]) is shown as drawn, any other is washed into paper at
+/// the label. Dark: the media tile.
 class HubTileFace extends StatelessWidget {
   const HubTileFace({
     super.key,
@@ -183,6 +190,9 @@ class HubTileFace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLight = context.isLightTheme;
+    // Light artwork drawn for paper already keeps the label's corner clear
+    // on a ground of the tile's own tone, so it is shown as drawn.
+    final paperArt = isLight && artwork is HubPaperArtwork;
     final onTile = hubTileOnTile(context);
     // On paper the tile sits a half step above the page, not on the cards'
     // bright white: a full-white slab (and a ramp fading into it) glares
@@ -308,31 +318,43 @@ class HubTileFace extends StatelessWidget {
               Positioned.fill(child: artwork!),
               // One ramp in both themes: it grades the tile's own artwork
               // down to its own ink, and never touches the page behind it.
+              // Paper artwork gets no veil across it, only a faint breath
+              // of the tile's own tone in the label's corner.
               if (ramp)
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        // Paper: the veil fades into the tile's own
-                        // page-toned paper, never bright white, so the
-                        // words get a calm backing without a white glow.
-                        colors: isLight
-                            ? [
+                      gradient: paperArt
+                          ? LinearGradient(
+                              begin: Alignment.bottomLeft,
+                              end: Alignment.topRight,
+                              colors: [
+                                base.withValues(alpha: 0.5),
                                 base.withValues(alpha: 0),
-                                base.withValues(alpha: 0.74),
-                                base.withValues(alpha: 0.92),
-                              ]
-                            : [
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.6),
-                                Colors.black.withValues(alpha: 0.95),
                               ],
-                        stops: isLight
-                            ? const [0.2, 0.6, 1.0]
-                            : const [0.0, 0.5, 1.0],
-                      ),
+                              stops: const [0.0, 0.45],
+                            )
+                          : LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              // Paper: the veil fades into the tile's own
+                              // page-toned paper, never bright white, so the
+                              // words get a calm backing without a white glow.
+                              colors: isLight
+                                  ? [
+                                      base.withValues(alpha: 0),
+                                      base.withValues(alpha: 0.74),
+                                      base.withValues(alpha: 0.92),
+                                    ]
+                                  : [
+                                      Colors.transparent,
+                                      Colors.black.withValues(alpha: 0.6),
+                                      Colors.black.withValues(alpha: 0.95),
+                                    ],
+                              stops: isLight
+                                  ? const [0.2, 0.6, 1.0]
+                                  : const [0.0, 0.5, 1.0],
+                            ),
                     ),
                   ),
                 ),

@@ -11,6 +11,7 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/chessboard/board_hero.dart';
 import 'package:chessever2/screens/chessboard/board_page_route.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -28,6 +29,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:dartchess/dartchess.dart' show Side;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -567,6 +569,26 @@ class _GameCardWrapperProvider {
   }) async {
     if (orderedGames.isEmpty || !context.mounted) return;
     final tappedGame = orderedGames[gameIndex.clamp(0, orderedGames.length - 1)];
+    // The tapped card's board flies into the board screen's when the screen
+    // opens on what the card shows, the same way up. A finished game opens
+    // on its first move, and a saved analysis or a set opening move puts
+    // another position on the board, so those opens fly nothing (and leave
+    // the card alone). Claimed before the first await: the ticket rides this
+    // tap's chain.
+    final opensElsewhere =
+        tappedGame.gameStatus.isFinished ||
+        savedAnalysisData != null ||
+        (initialMoveIndexByGameId?.containsKey(tappedGame.gameId) ?? false);
+    final boardHero =
+        opensElsewhere
+            ? null
+            : BoardHeroTicket.claim(
+              gameId: tappedGame.gameId,
+              boardOrientation:
+                  _ref.read(activeBoardFlippedProvider)
+                      ? Side.black
+                      : Side.white,
+            );
     // Some cards read this auto-disposed controller only on tap. Hold it
     // through the asynchronous gate before using its navigation state.
     final admissionLifetime = _ref.keepAlive();
@@ -630,6 +652,7 @@ class _GameCardWrapperProvider {
       builder: (_) {
         final board = _ExpandingChessBoardScreen(
           swipeCoachingVisit: swipeCoachingVisit,
+          boardHero: boardHero,
           initialGames: launch.immediateGames,
           initialIndex: launch.immediateIndex,
           expandedNavigation: launch.expanded,
@@ -664,13 +687,16 @@ class _GameCardWrapperProvider {
       gameId: tappedGame.gameId,
     );
     try {
-      returnedIndex = await Navigator.push<int>(context, boardRoute);
+      final popped = Navigator.push<int>(context, boardRoute);
+      boardHero?.followTransition(boardRoute);
+      returnedIndex = await popped;
       boardGamesAtPop = List<GamesTourModel>.of(launch.currentGames);
       // `Navigator.push` completes when the pop starts. Wait for the route's
       // exit animation and disposal so outgoing dropdown/board callbacks cannot
       // overwrite the caller context after it is restored below.
       await boardRoute.completed;
     } finally {
+      boardHero?.settle();
       // Board navigation is stack-scoped. A nested board (for example one
       // opened from a score card) must not leak its list, page, source, or
       // streaming state into the route revealed underneath it.
@@ -726,6 +752,7 @@ class _GameCardWrapperProvider {
 class _ExpandingChessBoardScreen extends StatefulWidget {
   const _ExpandingChessBoardScreen({
     this.swipeCoachingVisit,
+    this.boardHero,
     required this.initialGames,
     required this.initialIndex,
     required this.expandedNavigation,
@@ -741,6 +768,9 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
   });
 
   final SwipeCoachingVisit? swipeCoachingVisit;
+
+  /// The tapped card's ticket when its board flies into this one.
+  final BoardHeroTicket? boardHero;
   final List<GamesTourModel> initialGames;
   final int initialIndex;
   final Future<({List<GamesTourModel> games, int index})> expandedNavigation;
@@ -803,6 +833,9 @@ class _ExpandingChessBoardScreenState
   late final String? _openedGameId;
   String? _visibleGameId;
 
+  /// The page the card's board lands on: the opened game's first page.
+  late final int? _boardHeroPage;
+
   @override
   void initState() {
     super.initState();
@@ -813,12 +846,19 @@ class _ExpandingChessBoardScreenState
             : widget.initialIndex.clamp(0, widget.initialGames.length - 1);
     _openedGameId = _games.isEmpty ? null : _games[_index].gameId;
     _visibleGameId = _openedGameId;
+    final boardHero = widget.boardHero;
+    _boardHeroPage =
+        boardHero != null && boardHero.gameId == _openedGameId ? _index : null;
     unawaited(_applyExpandedNavigation());
   }
 
   Future<void> _applyExpandedNavigation() async {
     try {
       final resolved = await widget.expandedNavigation;
+      // A new list can move the opened game to another page, which remounts
+      // the board a card's board is flying into. Install it once landed.
+      final landed = _boardHeroPage == null ? null : widget.boardHero?.settled;
+      if (landed != null) await landed;
       if (!mounted || resolved.games.isEmpty) return;
 
       var nextIndex = resolved.index.clamp(0, resolved.games.length - 1);
@@ -885,7 +925,7 @@ class _ExpandingChessBoardScreenState
 
   @override
   Widget build(BuildContext context) {
-    return ChessBoardScreenNew(
+    final screen = ChessBoardScreenNew(
       swipeCoachingVisit: widget.swipeCoachingVisit,
       games: _games,
       currentIndex: _index,
@@ -904,5 +944,9 @@ class _ExpandingChessBoardScreenState
       initialMoveIndexByGameId: widget.initialMoveIndexByGameId,
       onVisibleGameChanged: (gameId) => _visibleGameId = gameId,
     );
+    final boardHero = widget.boardHero;
+    final page = _boardHeroPage;
+    if (boardHero == null || page == null) return screen;
+    return BoardHeroScope(ticket: boardHero, pageIndex: page, child: screen);
   }
 }

@@ -15,9 +15,9 @@ import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-// What the Search tab lists before anything is typed, under the recent
-// searches: the events in play, the strongest players, the main openings,
-// the built-in smart events and the events coming up. Each is drawn in the
+// What the Search tab lists before anything is typed: the events in play,
+// the strongest players, the main openings, the built-in smart events and
+// the events coming up. Each is drawn in the
 // card the app already draws it in elsewhere and opens exactly what the
 // same search result opens. A section with nothing in it is not shown.
 
@@ -32,9 +32,6 @@ const int searchLandingPlayerCount = 4;
 
 /// At most this many events under Coming up.
 const int searchLandingUpcomingLimit = 5;
-
-/// At most this many recent searches lead the landing.
-const int searchLandingRecentLimit = 4;
 
 /// The openings the landing offers, each the first result its search gives.
 ///
@@ -438,7 +435,7 @@ List<GroupEventCardModel> searchUpcomingEvents(
   });
 }
 
-/// A recent event as it stands now: the snapshot recorded with the search,
+/// A recent event as it stands now: the snapshot recorded when it was opened,
 /// its status read again from today's live set and its dates
 /// ([GroupEventCardModel.withLiveIds]), so a search saved while the event
 /// was live never reads LIVE after it ends.

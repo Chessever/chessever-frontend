@@ -36,8 +36,9 @@ enum LiveFirstMode {
 /// shown as the tooltip ("Show the 11 live games first"; on, "Live games
 /// shown first", with how to get the usual order back).
 ///
-/// The small disc above a page's main button by default; regular where it
-/// is the page's only button. It answers touches over at least 44pt.
+/// The same full-size disc as the page's main button (the search, or
+/// Today's filter) it floats above (PM, 2026-11-20). It answers touches over
+/// at least 44pt.
 class LiveFirstCapsule extends StatelessWidget {
   const LiveFirstCapsule({
     super.key,
@@ -45,7 +46,7 @@ class LiveFirstCapsule extends StatelessWidget {
     required this.onTap,
     this.liveCount,
     this.subject = 'games',
-    this.size = InkFabSize.small,
+    this.size = InkFabSize.regular,
     this.mode = LiveFirstMode.reorder,
   });
 
@@ -62,8 +63,8 @@ class LiveFirstCapsule extends StatelessWidget {
   /// What comes first, plural: "games" or "events". Only read aloud.
   final String subject;
 
-  /// Which floating button it is: small above a page's main button, regular
-  /// when it is the page's only one.
+  /// Which floating button it is: regular (the default), the size of the
+  /// page's main button.
   final InkFabSize size;
 
   /// What on does to the list: reorder it (the default) or hide what is not

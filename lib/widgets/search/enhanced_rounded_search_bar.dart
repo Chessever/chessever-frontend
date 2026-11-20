@@ -39,7 +39,17 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.fieldActions,
     this.leading,
     this.dropdown = true,
+    this.showClear = true,
+    this.onSubmitted,
+    this.textInputAction,
   });
+
+  /// The clear button inside the field ([SimpleSearchBar.showClear]).
+  final bool showClear;
+
+  /// The keyboard's action key and what it does ([SimpleSearchBar]).
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction? textInputAction;
 
   /// Off, the field shows no drop-down under it: the page around it shows
   /// the results itself (the Search tab, whose whole page is the results).
@@ -334,6 +344,9 @@ class _EnhancedRoundedSearchBarState
           onOpenFilter: widget.onFilterTap,
           filterBadgeCount: widget.filterBadgeCount,
           actions: widget.fieldActions,
+          showClear: widget.showClear,
+          onSubmitted: widget.onSubmitted,
+          textInputAction: widget.textInputAction,
         ),
         builder:
             (context, child) => HomeSearchFieldSurface(

@@ -16,6 +16,7 @@ import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/art_fade.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -789,19 +790,31 @@ class _FlagVisual extends StatelessWidget {
         ),
       );
     }
-    return SizedBox.expand(
-      child: Opacity(
-        opacity: 0.25,
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: CountryFlag.fromCountryCode(
-            code,
-            theme: const ImageTheme(width: 200, height: 150),
-          ),
-        ),
+    final flag = FittedBox(
+      fit: BoxFit.cover,
+      child: CountryFlag.fromCountryCode(
+        code,
+        theme: const ImageTheme(width: 200, height: 150),
       ),
     );
+    if (context.isLightTheme) {
+      // Paper: the flag at its true colour, fading through its own alpha out
+      // of the top-right corner as on the Countrymen tile. Dimmed by an
+      // opacity it read on the light tile as a white wash over the flag.
+      return SizedBox.expand(
+        child: ArtFade(shader: _paperFade, child: flag),
+      );
+    }
+    return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
   }
+
+  /// Nothing is written over this picture, so the flag keeps most of the
+  /// tile and only leaves it toward the foot and the left.
+  static Shader _paperFade(Rect bounds) => artFadeCorner(
+    bounds,
+    reach: const Size(1.05, 1.35),
+    hold: PlayerCardLightArt.hold,
+  );
 }
 
 /// A synced personal database, up to 100,000 games: the figure is the

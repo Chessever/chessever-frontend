@@ -9,6 +9,12 @@ part of 'search_mode.dart';
 /// - system back (it closes the search before the page);
 /// - focus: requested at the tap, so the keyboard rises with the morph;
 ///   dropped as the search closes, so it falls with it;
+/// - the keyboard put away with nothing typed (Done, a drag, a tap on the
+///   empty field's clear button, Android back that only hides it): the
+///   search closes with it, the same morph as the chevron's. With words in
+///   the field only the keyboard goes; the results stay. A route, sheet or
+///   dialog taking the focus, the app leaving the screen, a finger still on
+///   the page or the glass still flying in never close it;
 /// - [chrome]: shown on open and close, held while the field has focus;
 /// - the query: [onChanged] on every keystroke, [onQuery] once it settles
 ///   for [debounce] (an empty query at once), and on close it is cleared in
@@ -137,8 +143,19 @@ class SearchModeHost extends StatefulWidget {
   State<SearchModeHost> createState() => _SearchModeHostState();
 }
 
+/// How the keyboard went away while the search was open.
+enum _Dismissal {
+  /// The field lost focus (Done, a drag that dismisses it, the page
+  /// putting it away).
+  blurred,
+
+  /// The keyboard went down under a field that kept its focus (Android
+  /// back, which only hides it).
+  hidden,
+}
+
 class _SearchModeHostState extends State<SearchModeHost>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final BoundedSingleMotionController _motion =
       BoundedSingleMotionController(
         motion: SearchModeMotion.morph,
@@ -221,16 +238,46 @@ class _SearchModeHostState extends State<SearchModeHost>
   /// The field still shows a closed search's words, fading out with it.
   bool _leftover = false;
 
+  /// The spring is started after the frame the morph begins in ([_fly]).
+  bool _kickoffQueued = false;
+
+  /// The field held focus at its last focus change.
+  bool _fieldFocused = false;
+
+  /// The view the page is drawn in, and the keyboard's inset over it in
+  /// physical pixels: read from the view itself, under whatever MediaQuery
+  /// the page (or a shell around it) reshapes.
+  FlutterView? _view;
+  double _keyboardInset = 0;
+
+  /// Fingers down on the page.
+  final Set<int> _pointers = <int>{};
+
+  /// The keyboard went away while the search was open: the search closes
+  /// after it once it is safe to tell ([_settleDismissal]).
+  _Dismissal? _dismissal;
+  bool _dismissCheckQueued = false;
+
+  /// Since the field last lost focus: its magnifier's tint glides back to
+  /// rest over [SearchMotion.accent] from then.
+  final Stopwatch _sinceBlur = Stopwatch();
+
   @override
   void initState() {
     super.initState();
     _motion.addListener(_onTick);
+    WidgetsBinding.instance.addObserver(this);
     _attach(widget.controller);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final view = View.maybeOf(context);
+    if (view != _view) {
+      _view = view;
+      _keyboardInset = view?.viewInsets.bottom ?? 0;
+    }
     _reduceMotion = MediaQuery.disableAnimationsOf(context);
     if (_reduceMotion && _flight.active) {
       // Reduced motion turned on mid-flight: land, after this build.
@@ -257,6 +304,7 @@ class _SearchModeHostState extends State<SearchModeHost>
   @override
   void dispose() {
     _debounce?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _detach(widget.controller);
     _buttons.clear();
     _flightButton = null;
@@ -276,6 +324,7 @@ class _SearchModeHostState extends State<SearchModeHost>
     controller._timeline.parent = _motion;
     controller.focusNode.addListener(_onFocus);
     controller.text.addListener(_onText);
+    _fieldFocused = controller.focusNode.hasFocus;
     _syncHold();
     _lastText = controller.text.text;
     _lastDispatched = '';
@@ -294,6 +343,7 @@ class _SearchModeHostState extends State<SearchModeHost>
         : kAlwaysDismissedAnimation;
     controller.focusNode.removeListener(_onFocus);
     controller.text.removeListener(_onText);
+    _dismissal = null;
     _dropLeftover(controller);
     // Its field no longer speaks for this page's chrome.
     _releaseHold();
@@ -387,6 +437,7 @@ class _SearchModeHostState extends State<SearchModeHost>
     if (!mounted) return;
     final controller = widget.controller;
     if (controller.isSearching) return;
+    _dismissal = null;
     // Turned round in the first instant of a close: the words still fading
     // out go now, a new search starts empty.
     _dropLeftover();
@@ -405,15 +456,14 @@ class _SearchModeHostState extends State<SearchModeHost>
       }
     });
     // A close still flying turns round from where it is.
-    final button = _flight.active || !fromButton
-        ? null
-        : _pickButton(tapped: tapped);
-    final fly = !_reduceMotion && (_flight.active || button != null);
+    final resting = !_flight.active;
+    final button = resting && fromButton ? _pickButton(tapped: tapped) : null;
+    final fly = _canFly && (!resting || button != null);
     if (fly) {
-      if (!_flight.active) _flightButton = button;
+      if (resting) _flightButton = button;
       _flight.start(fieldIcon: _flight._brand);
       _fabHidden = true;
-      _motion.animateTo(1);
+      _fly(fromRest: resting);
     } else {
       _snapTo(1);
     }
@@ -421,10 +471,13 @@ class _SearchModeHostState extends State<SearchModeHost>
     setState(() {});
   }
 
-  void _close() {
+  /// [fieldIcon] is the tint the field's magnifier is drawn in as the glass
+  /// leaves it; by default the focused or the resting one, as the field is.
+  void _close({Color? fieldIcon}) {
     if (!mounted) return;
     final controller = widget.controller;
     if (!controller.isSearching) return;
+    _dismissal = null;
     final typing = controller.focusNode.hasFocus;
     controller.focusNode.unfocus();
     // Closed first, so a page reading [onQuery]'s '' can tell a close (its
@@ -432,23 +485,70 @@ class _SearchModeHostState extends State<SearchModeHost>
     controller._setSearching(false);
     _clearQuery();
     widget.chrome?.show();
-    final button = _flight.active ? null : _pickButton();
+    final resting = !_flight.active;
+    final button = resting ? _pickButton() : null;
     final fly =
-        !_reduceMotion &&
-        (_flight.active || (button != null && _box(_fieldFrame) != null));
+        _canFly && (!resting || (button != null && _box(_fieldFrame) != null));
     if (fly) {
-      if (!_flight.active) _flightButton = button;
+      if (resting) _flightButton = button;
       // The magnifier leaves the field in the tint the field had.
       _flight.start(
-        fieldIcon: typing ? _flight._brand : _flight._iconSecondary,
+        fieldIcon:
+            fieldIcon ?? (typing ? _flight._brand : _flight._iconSecondary),
       );
       _fabHidden = true;
-      _motion.animateTo(0);
+      _fly(fromRest: resting);
     } else {
       _snapTo(0);
     }
     widget.onClose?.call();
     setState(() {});
+  }
+
+  /// The glass may fly: motion is on, and the page's tickers run. A page
+  /// kept alive out of sight (a shell's other section, its tickers off)
+  /// changes at once: a flight there would wait, frozen, and play out the
+  /// moment the reader came back to it.
+  bool get _canFly =>
+      !_reduceMotion && TickerMode.getValuesNotifier(context).value.enabled;
+
+  /// Sends the glass toward the search's state ([SearchModeController
+  /// .isSearching]: 1 open, 0 closed).
+  ///
+  /// From rest the spring starts once this frame is drawn. The frame the
+  /// morph begins in is the costly one (the search header and its field are
+  /// built, the page rebuilds for its query), and a spring started with it
+  /// would spend that time unseen and leap on its first visible frame. The
+  /// glass is drawn on its mark through that frame, exactly as the button
+  /// (or the field) it lifts off, and moves from the next. Already in
+  /// flight, the spring turns round at once, keeping its speed.
+  void _fly({required bool fromRest}) {
+    if (!fromRest) {
+      // A start still waiting reads the target when it runs.
+      if (!_kickoffQueued) {
+        _motion.animateTo(widget.controller.isSearching ? 1 : 0);
+      }
+      return;
+    }
+    // Drawn this frame where the timeline rests (the button, or the field).
+    _flight.tick(_motion.value);
+    if (_kickoffQueued) return;
+    _kickoffQueued = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) {
+        _kickoffQueued = false;
+        if (!mounted || !_flight.active) return;
+        final target = widget.controller.isSearching ? 1.0 : 0.0;
+        if (_motion.value == target) {
+          // Turned round before it set off: already on its mark.
+          _flight.tick(target);
+          _land();
+          SchedulerBinding.instance.ensureVisualUpdate();
+          return;
+        }
+        _motion.animateTo(target);
+      })
+      ..ensureVisualUpdate();
   }
 
   /// Puts the timeline at [target] with no flight.
@@ -521,9 +621,143 @@ class _SearchModeHostState extends State<SearchModeHost>
     });
   }
 
-  // The query.
+  // The keyboard put away.
 
-  void _onFocus() => _syncHold();
+  void _onFocus() {
+    _syncHold();
+    final focused = widget.controller.focusNode.hasFocus;
+    if (focused == _fieldFocused) return;
+    _fieldFocused = focused;
+    if (focused) {
+      // Back in the field: whatever took the keyboard gave it back.
+      _dismissal = null;
+    } else if (widget.controller.isSearching) {
+      _sinceBlur
+        ..reset()
+        ..start();
+      _queueDismissal(_Dismissal.blurred);
+    }
+  }
+
+  @override
+  void didChangeMetrics() {
+    final was = _keyboardInset;
+    final inset = _view?.viewInsets.bottom ?? 0;
+    _keyboardInset = inset;
+    if (inset > 0) {
+      // The keyboard is (back) up: it was not put away.
+      if (_dismissal == _Dismissal.hidden) _dismissal = null;
+      return;
+    }
+    // Gone from under a field that kept its focus.
+    final controller = widget.controller;
+    if (was > 0 &&
+        _resumed &&
+        controller.isSearching &&
+        controller.focusNode.hasFocus) {
+      _queueDismissal(_Dismissal.hidden);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The keyboard (or the focus, on desktop) goes with the app: not the
+    // reader putting it away.
+    if (state != AppLifecycleState.resumed) _dismissal = null;
+  }
+
+  /// The app is on screen and in front (or has not said otherwise yet).
+  static bool get _resumed {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == null || state == AppLifecycleState.resumed;
+  }
+
+  void _onPointerDown(PointerDownEvent event) => _pointers.add(event.pointer);
+
+  void _onPointerUp(PointerEvent event) {
+    // The last finger off the page: what its gesture does (a tap opening a
+    // game) runs first, then the keyboard's going is weighed.
+    if (_pointers.remove(event.pointer) && _pointers.isEmpty) {
+      _scheduleDismissalCheck();
+    }
+  }
+
+  void _queueDismissal(_Dismissal kind) {
+    _dismissal = kind;
+    _scheduleDismissalCheck();
+  }
+
+  /// Weighs the keyboard's going once it is safe to tell what it was: after
+  /// the next frame and the focus changes it brings (a route pushed by the
+  /// same tap takes the focus as it is built), and only with no finger on
+  /// the page (a drag that put the keyboard away closes the search once it
+  /// lets go, never under the finger).
+  void _scheduleDismissalCheck() {
+    if (_dismissal == null || _dismissCheckQueued || _pointers.isNotEmpty) {
+      return;
+    }
+    _dismissCheckQueued = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) {
+        // Queued behind the focus changes this frame's build made (a route
+        // taking the focus as it is first built), which apply in a
+        // microtask too.
+        scheduleMicrotask(() {
+          _dismissCheckQueued = false;
+          _settleDismissal();
+        });
+      })
+      ..ensureVisualUpdate();
+  }
+
+  /// The keyboard went away with nothing typed while this page is in front,
+  /// the reader's own doing: the search closes, the glass flying back into
+  /// the search button as the chevron sends it.
+  void _settleDismissal() {
+    final kind = _dismissal;
+    if (kind == null || !mounted || _pointers.isNotEmpty) return;
+    _dismissal = null;
+    final controller = widget.controller;
+    // Closed meanwhile, or the glass still flying in from the tap.
+    if (!controller.isSearching || _flight.active) return;
+    // Words in the field: only the keyboard goes, the results stay.
+    if (controller.text.text.trim().isNotEmpty) return;
+    if (!_resumed || !(ModalRoute.isCurrentOf(context) ?? true)) return;
+    final node = controller.focusNode;
+    switch (kind) {
+      case _Dismissal.blurred:
+        // The focus went up to the page (Done, a drag, the page putting the
+        // keyboard away), not into a route, sheet or dialog over it (on
+        // this navigator or one above it) or another field.
+        if (node.hasFocus || !_focusWentUp(node)) return;
+        _close(fieldIcon: _blurredTint());
+      case _Dismissal.hidden:
+        if (!node.hasFocus || _keyboardInset > 0) return;
+        _close();
+    }
+  }
+
+  /// The primary focus is one of [node]'s ancestors (its scope, the page's,
+  /// the navigator's): where an unfocus sends it.
+  static bool _focusWentUp(FocusNode node) {
+    final primary = FocusManager.instance.primaryFocus;
+    return primary == null || node.ancestors.contains(primary);
+  }
+
+  /// The field's magnifier as drawn now: it has been gliding from the
+  /// focused tint back to rest on [SearchMotion.accent] since the field let
+  /// go of its focus, so the glass leaves it in exactly that tint.
+  Color _blurredTint() {
+    final seconds =
+        _sinceBlur.elapsedMicroseconds / Duration.microsecondsPerSecond;
+    final lift = SearchMotion.accent
+        .createSimulation(start: 1, end: 0)
+        .x(seconds)
+        .clamp(0.0, 1.0);
+    return Color.lerp(_flight._iconSecondary, _flight._brand, lift)!;
+  }
+
+  // The query.
 
   /// Holds [SearchModeHost.chrome] while the field has focus, and lets go of
   /// any chrome it held that is no longer the page's or no longer typed in.
@@ -600,11 +834,13 @@ class _SearchModeHostState extends State<SearchModeHost>
   }
 
   /// The field's clear button: empties the field, or with nothing in it,
-  /// puts the keyboard away.
+  /// puts the keyboard away and the search with it (as Done would).
   void _clearField() {
     final controller = widget.controller;
     if (controller.text.text.isNotEmpty) {
       controller.text.clear();
+    } else if (controller.isSearching) {
+      _close();
     } else {
       controller.focusNode.unfocus();
     }
@@ -627,7 +863,14 @@ class _SearchModeHostState extends State<SearchModeHost>
         child: Stack(
           fit: StackFit.passthrough,
           children: [
-            widget.child,
+            // Only counts the fingers on the page; hit testing is the
+            // page's own.
+            Listener(
+              onPointerDown: _onPointerDown,
+              onPointerUp: _onPointerUp,
+              onPointerCancel: _onPointerUp,
+              child: widget.child,
+            ),
             // A route that cannot pop has no edge swipe on iOS: the swipe
             // the reader reaches for closes the search instead, as back
             // does on Android.

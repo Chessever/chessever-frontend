@@ -209,11 +209,12 @@ class CountrymenGamesToolbar extends ConsumerWidget {
   /// What the search matches, cycled once after "Search" in its field.
   static const List<String> searchHints = ['player', 'opening', 'ECO code'];
 
-  /// The full row's width: three 44pt targets.
-  static const double width = 3 * SearchModeFilterButton.target;
+  /// The full row's width: two 44pt targets (the board view and Filters;
+  /// Classical only lives in the filter popup since 2026-11-20).
+  static const double width = 2 * SearchModeFilterButton.target;
 
-  /// The search header's row: Classical and Filters, held still through the
-  /// morph where the page's header has them ([SearchModeShared]).
+  /// The search header's row: Filters, held still through the morph where
+  /// the page's header has it ([SearchModeShared]).
   static const Widget inSearch = SearchModeShared(
     id: CountrymenGamesToolbar,
     child: CountrymenGamesToolbar(withBoardView: false),
@@ -224,31 +225,10 @@ class CountrymenGamesToolbar extends ConsumerWidget {
     final filter = ref.watch(
       countrymenCombinedGamesProvider.select((state) => state.filter),
     );
-    final classicalOnly = filter.timeControl == GameTimeControlFilter.classical;
 
     final shared = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ClassicalToggleButton(
-          pressed: classicalOnly,
-          onTap: () {
-            HapticFeedbackService.toggle();
-            final current = ref.read(countrymenCombinedGamesProvider).filter;
-            final isClassical =
-                current.timeControl == GameTimeControlFilter.classical;
-            unawaited(
-              ref
-                  .read(countrymenCombinedGamesProvider.notifier)
-                  .applyFilter(
-                    current.copyWith(
-                      timeControl: isClassical
-                          ? GameTimeControlFilter.all
-                          : GameTimeControlFilter.classical,
-                    ),
-                  ),
-            );
-          },
-        ),
         SearchModeFilterButton(
           count: filter.activeFilterCount,
           onTap: () => showCountrymenGameFilterDialog(context, ref),
@@ -289,7 +269,7 @@ class CountrymenGamesFabs extends ConsumerWidget {
   /// it from the list's context: inside the button slot the Scaffold has
   /// already taken the inset away.
   static double reach(BuildContext context) =>
-      InkFabStack.reach(context, smallAbove: 1);
+      InkFabStack.reach(context, regularAbove: 1);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -3,6 +3,7 @@ import 'package:chessever2/providers/game_video_sources_provider.dart';
 import 'video/game_analysis_sources.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_game_menu_host.dart';
 import 'package:chessever2/screens/chessboard/board_edge_guard.dart';
+import 'package:chessever2/screens/chessboard/board_hero.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/widgets/paywall/game_report_access.dart';
 import 'package:chessever2/config/feature_flags.dart';
@@ -9105,13 +9106,19 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
             ),
           ),
         // Chess board
-        _AnalysisBoard(
-          size: boardSize,
-          chessBoardState: state,
-          isFlipped: state.isBoardFlipped,
-          isActivePage: index == currentPageIndex,
-          index: index,
-          game: state.game,
+        BoardHeroDestination(
+          gameId: game.gameId,
+          pageIndex: index,
+          placement: () => state.analysisState.position.board.fen,
+          flipped: state.isBoardFlipped,
+          child: _AnalysisBoard(
+            size: boardSize,
+            chessBoardState: state,
+            isFlipped: state.isBoardFlipped,
+            isActivePage: index == currentPageIndex,
+            index: index,
+            game: state.game,
+          ),
         ),
       ],
     );
@@ -9352,14 +9359,22 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
                   ),
                 Stack(
                   children: [
-                    // Analysis mode is always active, always use analysis board
-                    _AnalysisBoard(
-                      size: boardSize,
-                      chessBoardState: widget.state,
-                      isFlipped: widget.state.isBoardFlipped,
-                      isActivePage: widget.index == widget.currentPageIndex,
-                      index: widget.index,
-                      game: widget.state.game,
+                    // Analysis mode is always active, always use analysis board.
+                    // A card's board opening this game lands on it.
+                    BoardHeroDestination(
+                      gameId: widget.game.gameId,
+                      pageIndex: widget.index,
+                      placement: () =>
+                          widget.state.analysisState.position.board.fen,
+                      flipped: widget.state.isBoardFlipped,
+                      child: _AnalysisBoard(
+                        size: boardSize,
+                        chessBoardState: widget.state,
+                        isFlipped: widget.state.isBoardFlipped,
+                        isActivePage: widget.index == widget.currentPageIndex,
+                        index: widget.index,
+                        game: widget.state.game,
+                      ),
                     ),
                     // DISABLED: Move annotation overlay (requires move impact analysis)
                     // // Add move annotation overlay - only show if impact is not normal and not exploring a variant

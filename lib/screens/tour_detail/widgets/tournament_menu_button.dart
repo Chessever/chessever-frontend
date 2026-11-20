@@ -58,12 +58,33 @@ class TournamentMenuButton extends ConsumerWidget {
     super.key,
     required this.tourData,
     this.boxed = true,
+    this.glyphShift = 0,
   });
 
   final TourDetailViewModel tourData;
 
   /// False draws the bare glyph on a 44pt target, no tile behind it.
   final bool boxed;
+
+  /// Bare only: the ⋮ drawn this far toward the end edge (negative: toward
+  /// the start) inside its unmoved target ([AppBarIconSurface.glyphShift]).
+  final double glyphShift;
+
+  /// The ⋮ asset's inset inside its glyph box.
+  static EdgeInsets get _glyphPadding =>
+      EdgeInsets.symmetric(horizontal: 2.sp, vertical: 1.sp);
+
+  /// Half the width of the ⋮'s dots as drawn, about the glyph's centre: the
+  /// 24-unit asset is fitted into its padded glyph box, and its dots are 3
+  /// units wide (10.5 to 13.5).
+  static double get dotsHalfWidth {
+    final padding = _glyphPadding;
+    final drawn = math.min(
+      AppBarIconSurface.glyphWidth - padding.horizontal,
+      AppBarIconSurface.glyphHeight - padding.vertical,
+    );
+    return drawn * 1.5 / 24;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -104,10 +125,11 @@ class TournamentMenuButton extends ConsumerWidget {
       excludeSemantics: true,
       onTap: open,
       child: AppBarIcons(
-        padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 1.sp),
+        padding: _glyphPadding,
         image: SvgAsset.threeDots,
         onTap: open,
         boxed: boxed,
+        glyphShift: glyphShift,
       ),
     );
   }

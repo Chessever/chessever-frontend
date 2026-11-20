@@ -148,6 +148,14 @@ void main() {
     expect(find.text(AdDisclosureLine.text), findsOneWidget);
     expect(find.text(RemoveAdsButton.label), findsOneWidget);
     expect(find.byKey(const ValueKey('feed_ad_placeholder')), findsOneWidget);
+    // The line and Remove Ads hug the ad, never the page's far edges.
+    final slot = tester.getRect(
+      find.byKey(const ValueKey('feed_ad_placeholder')),
+    );
+    final line = tester.getRect(find.text(AdDisclosureLine.text));
+    final remove = tester.getRect(find.byType(RemoveAdsButton));
+    expect(slot.top - line.bottom, inInclusiveRange(0, 24));
+    expect(remove.top - slot.bottom, inInclusiveRange(0, 24));
     // An ad page is never the place Feed brings the viewer back to.
     expect(container.read(feedCurrentEntryKeyProvider), posts[1]);
 

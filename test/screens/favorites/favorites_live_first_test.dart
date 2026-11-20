@@ -43,7 +43,6 @@ import '../../support/fake_live_game_ids.dart';
 
 const _liveFirstOff = 'Show live games first';
 const _classicalOff = 'Show classical games only';
-const _classicalOn = 'Showing classical games only';
 const _boardView = 'Change board view';
 const _search = 'Search games';
 const _searchFavorites = 'Search favorites';
@@ -95,17 +94,17 @@ void main() {
         PageTitle.style(tester.element(_titleText())).fontWeight,
       );
 
-      // Board view, Classical and Filters, in that order, on back's line.
+      // Board view and Filters, in that order, on back's line. Classical
+      // only lives in the filter popup (2026-11-20).
       final board = tester.getRect(find.byTooltip(_boardView));
-      final classical = tester.getRect(find.byTooltip(_classicalOff));
       final filters = tester.getRect(find.byKey(_filterKey));
-      for (final rect in [board, classical, filters]) {
+      for (final rect in [board, filters]) {
         expect(rect.center.dy, closeTo(back.center.dy, 1));
         expect(rect.width, greaterThanOrEqualTo(44));
       }
       expect(title.right, lessThanOrEqualTo(board.left));
-      expect(board.right, lessThanOrEqualTo(classical.left));
-      expect(classical.right, lessThanOrEqualTo(filters.left));
+      expect(board.right, lessThanOrEqualTo(filters.left));
+      expect(find.byTooltip(_classicalOff), findsNothing);
       // The same board-view mark as Countrymen.
       expect(
         find.descendant(
@@ -197,15 +196,12 @@ void main() {
       expect(title(), rectMoreOrLessEquals(titleOnGames, epsilon: 0.01));
     });
 
-    testWidgets('the search opens in place: the chevron, Classical and '
-        'Filters stay put, the field takes the title\'s place over the same '
+    testWidgets('the search opens in place: the chevron and Filters stay '
+        'put, the field takes the title\'s place over the same '
         'Games list, and back closes it', (tester) async {
       final harness = await _pumpScreen(tester);
       final back = tester.getRect(_back);
-      final toolbar = [
-        tester.getRect(find.byTooltip(_classicalOff)),
-        tester.getRect(find.byKey(_filterKey)),
-      ];
+      final toolbar = [tester.getRect(find.byKey(_filterKey))];
       final list = tester.element(find.byType(FavoritesGamesTab));
 
       await _openSearch(tester);
@@ -222,10 +218,7 @@ void main() {
       // The chevron and the toolbar did not move.
       final close = tester.getRect(find.byTooltip(_closeSearch));
       expect(close, rectMoreOrLessEquals(back, epsilon: 0.5));
-      final searchToolbar = [
-        tester.getRect(_inSearch(find.byTooltip(_classicalOff))),
-        tester.getRect(_inSearch(find.byKey(_filterKey))),
-      ];
+      final searchToolbar = [tester.getRect(_inSearch(find.byKey(_filterKey)))];
       // The board view gives way to the field with the title.
       expect(_inSearch(find.byTooltip(_boardView)), findsNothing);
       for (var i = 0; i < toolbar.length; i++) {
@@ -272,81 +265,6 @@ void main() {
       expect(
         harness.container.read(favoritesCombinedGamesProvider).searchQuery,
         isEmpty,
-      );
-    });
-
-    testWidgets('Classical turns the server filter to classical and back, '
-        'from the title row as from the search', (tester) async {
-      final harness = await _pumpScreen(tester);
-
-      await tester.tap(find.byTooltip(_classicalOff));
-      await tester.pump();
-
-      expect(
-        harness.notifier.applied.last.timeControl,
-        GameTimeControlFilter.classical,
-      );
-      expect(
-        harness.container
-            .read(favoritesCombinedGamesProvider)
-            .filter
-            .timeControl,
-        GameTimeControlFilter.classical,
-      );
-      expect(find.byTooltip(_classicalOn), findsOneWidget);
-      expect(_toggledState(tester, _classicalOn), isTrue);
-      // It is a real filter, so the Filters count shows it.
-      expect(
-        find.descendant(of: find.byKey(_filterKey), matching: find.text('1')),
-        findsOneWidget,
-      );
-
-      await _openSearch(tester);
-      await tester.tap(_inSearch(find.byTooltip(_classicalOn)));
-      await tester.pump();
-
-      expect(
-        harness.notifier.applied.last.timeControl,
-        GameTimeControlFilter.all,
-      );
-      expect(_inSearch(find.byTooltip(_classicalOff)), findsOneWidget);
-      expect(
-        find.descendant(
-          of: _inSearch(find.byKey(_filterKey)),
-          matching: find.text('1'),
-        ),
-        findsNothing,
-      );
-    });
-
-    testWidgets('Classical stays applied once the search closes, counted on '
-        'the title row\'s Filters', (tester) async {
-      final harness = await _pumpScreen(tester);
-      Finder filtersCount(String count) => find.descendant(
-        of: find.byKey(_filterKey).hitTestable(),
-        matching: find.text(count),
-      );
-      expect(filtersCount('1'), findsNothing);
-
-      await _openSearch(tester);
-      await tester.tap(_inSearch(find.byTooltip(_classicalOff)));
-      await tester.pump();
-      await tester.tap(find.byTooltip(_closeSearch));
-      await _settle(tester);
-
-      // Only the query goes with the search; the filter keeps its sign.
-      expect(
-        harness.container
-            .read(favoritesCombinedGamesProvider)
-            .filter
-            .timeControl,
-        GameTimeControlFilter.classical,
-      );
-      expect(filtersCount('1'), findsOneWidget);
-      // One count, on the Filters glyph: the search button carries none.
-      expect(
-        find.descendant(of: find.byTooltip(_search), matching: find.text('1')),
-        findsNothing,
       );
     });
 
@@ -434,7 +352,6 @@ void main() {
       expect(tester.takeException(), isNull);
       for (final target in [
         find.byTooltip(_closeSearch),
-        _inSearch(find.byTooltip(_classicalOff)),
         _inSearch(find.byKey(_filterKey)),
       ]) {
         final rect = tester.getRect(target);

@@ -344,7 +344,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       0.0,
       MediaQuery.paddingOf(context).bottom - viewInset,
     );
-    return 16.sp + InkFabStack.reach(context, smallAbove: 1) + barShare;
+    return 16.sp + InkFabStack.reach(context, regularAbove: 1) + barShare;
   }
 
   @override

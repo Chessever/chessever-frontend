@@ -72,7 +72,9 @@ class SearchModeController extends ChangeNotifier {
   final TextEditingController text;
 
   /// The search field's focus. The host requests it as the search opens
-  /// (the keyboard rises with the morph) and drops it as it closes.
+  /// (the keyboard rises with the morph) and drops it as it closes. Let go
+  /// of with nothing typed (the keyboard put away), it closes the search;
+  /// taken by a route, a sheet or a dialog, it does not.
   final FocusNode focusNode;
 
   /// The search is open (or opening). Flips at the tap; the morph follows

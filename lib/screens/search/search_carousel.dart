@@ -8,6 +8,7 @@ import 'package:chessever2/screens/search/search_page_sections.dart'
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -98,7 +99,8 @@ class SearchCarouselSizing {
 /// others, which opens the section's own page ([onSeeMore]). [pending]
 /// slots hold the room of cards already on their way (Live now's lookups).
 ///
-/// A fling comes to rest with a card on the gutter. The row is horizontal,
+/// A swipe comes to rest one card on, its leading edge on the gutter, a
+/// fling perhaps several ([SearchCarouselPhysics]). The row is horizontal,
 /// so it never moves the bars ([ScrollChromeRegion] reads only vertical
 /// lists), and it keeps its place while the tab lives (its
 /// [PageStorageKey]).
@@ -146,8 +148,12 @@ class _SearchCarouselState extends State<SearchCarousel> {
   late final ScrollController _controller = ScrollController()
     ..addListener(_nearEnd);
 
+  /// Where the row's cards come to rest: one card's room, where the
+  /// reader's finger took the row, the card a settle is on its way to.
+  final SearchCarouselSnap _snap = SearchCarouselSnap();
+
   /// One card and the gap after it.
-  double _slot = 0;
+  double get _slot => _snap.slot;
 
   /// The row's room before its first card and after its last.
   double _ends = 0;
@@ -256,23 +262,27 @@ class _SearchCarouselState extends State<SearchCarousel> {
           tabletMinWidth: widget.sizing.tabletMinWidth,
           phoneColumns: widget.sizing.phoneColumns,
         );
-        _slot = width + gap;
+        _snap.slot = width + gap;
         final end = math.max(0.0, gutter - gap);
         _ends = gutter + end;
-        final list = ListView.builder(
-          key: PageStorageKey<String>('search-carousel-${widget.section}'),
-          controller: _controller,
-          scrollDirection: Axis.horizontal,
-          // A card's own shadow and lift stay whole above and below the row.
-          clipBehavior: Clip.none,
-          physics: SearchCarouselPhysics(() => _slot),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsetsDirectional.only(start: gutter, end: end),
-          itemExtent: _slot,
-          itemCount: widget.itemCount + widget.pending + _tailSlots,
-          itemBuilder: (context, index) => Padding(
-            padding: EdgeInsetsDirectional.only(end: gap),
-            child: _slotAt(context, index),
+        final list = NotificationListener<ScrollNotification>(
+          onNotification: _snap.track,
+          child: ListView.builder(
+            key: PageStorageKey<String>('search-carousel-${widget.section}'),
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            // A card's own shadow and lift stay whole above and below the
+            // row.
+            clipBehavior: Clip.none,
+            physics: SearchCarouselPhysics(_snap),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsetsDirectional.only(start: gutter, end: end),
+            itemExtent: _slot,
+            itemCount: widget.itemCount + widget.pending + _tailSlots,
+            itemBuilder: (context, index) => Padding(
+              padding: EdgeInsetsDirectional.only(end: gap),
+              child: _slotAt(context, index),
+            ),
           ),
         );
         final fixed = widget.sizing.extent;
@@ -312,56 +322,217 @@ class _SearchCarouselState extends State<SearchCarousel> {
   }
 }
 
-/// A row's fling comes to rest with a card on the gutter: where the fling
-/// would have stopped, moved to the nearest card's edge, and at least one
-/// card on the way it went. Past either end the platform's own physics
-/// bring it back.
-class SearchCarouselPhysics extends ScrollPhysics {
-  const SearchCarouselPhysics(this._readSlot, {super.parent});
+/// How far a fling carries, in seconds of its speed: a tenth, the distance
+/// UIKit's fast deceleration (0.99 a millisecond) throws a page. A release
+/// moves the cards nearest that distance, at least one: on a phone a swipe
+/// under about 4,800 points a second moves one card, and only a hard fling
+/// moves two or three.
+const double _flingReach = 0.1;
 
-  // Scrollable can keep its existing physics when the card width changes.
-  final double Function() _readSlot;
+/// The least speed (points a second) a release needs to move on a card;
+/// slower, the row rests on the nearer card. One speed on every platform.
+const double _flingSpeed = 100;
+
+/// How far (in cards) a row may sit off a card's edge and still be on it:
+/// a settle parks within a fraction of a pixel.
+const double _onCard = 0.02;
+
+/// The card a row comes to rest on, released at [page] (its offset in
+/// cards) at [velocity] (points a second, positive onward), the reader's
+/// finger having taken it at [grabbed] (in cards) while it rested on, or
+/// was settling onto, card [from] (the card nearest [grabbed] when not
+/// given). Both null when unknown.
+///
+/// Slower than a fling: the nearer card. Otherwise on the way it went, from
+/// [from] or from the last card the drag carried past the gutter, by the
+/// cards nearest the distance its speed carries ([_flingReach]), at least
+/// one. Flicked against the drag (dragged back, flicked on), it moves on
+/// from where it is.
+int _restCard({
+  required double page,
+  required double velocity,
+  required double slot,
+  double? grabbed,
+  int? from,
+}) {
+  if (velocity.abs() < _flingSpeed || slot <= 0) return page.round();
+  final cards = math.max(1, (velocity.abs() * _flingReach / slot).round());
+  final origin = from ?? grabbed?.round();
+  if (velocity > 0) {
+    final passed = (page + _onCard).floor();
+    final start = origin != null && grabbed != null && page >= grabbed
+        ? math.max(passed, origin)
+        : passed;
+    return start + cards;
+  }
+  final passed = (page - _onCard).ceil();
+  final start = origin != null && grabbed != null && page <= grabbed
+      ? math.min(passed, origin)
+      : passed;
+  return start - cards;
+}
+
+/// Where a row's cards come to rest, kept from frame to frame for its
+/// [SearchCarouselPhysics]: one card's room, where the reader's finger took
+/// the row, and the card a settle has set out for.
+class SearchCarouselSnap {
+  /// One card and the gap after it.
+  double slot = 0;
+
+  /// The row's offset, in cards, when the reader's finger took it.
+  double? _grabbed;
+
+  /// The card the reader's swipe moves on from: the one the row rested on,
+  /// or the one a settle the finger stopped was arriving at.
+  int? _from;
+
+  /// The card a settle is on its way to. A settle starts again whenever the
+  /// row's length changes under it (a page of cards landing): it keeps this
+  /// card rather than deciding afresh from where it has got to, which would
+  /// carry it a card further than it set out for.
+  int? _promised;
+
+  /// The card a settle the reader's finger stopped was arriving at.
+  int? _arriving;
+
+  /// The reader's finger took the row at [pixels]: the swipe that follows
+  /// moves on from the card there, or from the card a settle the finger
+  /// stopped was arriving at (a quick second swipe moves one card on from
+  /// the first one's, never back to the card the row was leaving).
+  void grabbed(double pixels) {
+    final page = slot > 0 ? pixels / slot : null;
+    _grabbed = page;
+    _from = _arriving ?? page?.round();
+    _arriving = null;
+    _promised = null;
+  }
+
+  /// The row stopped: at rest (nothing promised any more), or held by a
+  /// finger mid-settle, which remembers the card it was arriving at. The
+  /// next settle decides afresh.
+  void rested() {
+    _arriving = _promised;
+    _promised = null;
+    _grabbed = null;
+    _from = null;
+  }
+
+  /// Follows the row's own scrolling (never a card's): a drag starting, a
+  /// scroll ending.
+  bool track(ScrollNotification notification) {
+    if (notification.depth != 0) return false;
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      grabbed(notification.metrics.pixels);
+    } else if (notification is ScrollEndNotification) {
+      rested();
+    }
+    return false;
+  }
+
+  /// The card the row settles on, kept for the rest of the settle.
+  int _settleCard(ScrollMetrics position, double velocity) {
+    final promised = _promised;
+    if (promised != null) return promised;
+    final card = _restCard(
+      page: position.pixels / slot,
+      velocity: velocity,
+      slot: slot,
+      grabbed: _grabbed,
+      from: _from,
+    );
+    // From the first card to the one the row's end shows whole.
+    final first = (position.minScrollExtent / slot + 1e-6).floor();
+    final last = (position.maxScrollExtent / slot - 1e-6).ceil();
+    return _promised = card.clamp(first, math.max(first, last));
+  }
+}
+
+/// A row comes to rest with a card's leading edge on the gutter (at its end,
+/// with its last slot whole on the screen): a swipe one card on, a fling
+/// perhaps several ([_restCard]), on the page spring
+/// ([PageSpring.motion]), never swinging past the card. The same on every
+/// platform: the same fling speed, and no speed carried from one swipe into
+/// the next (iOS's own physics would add a still-moving row's speed to the
+/// next fling, a card or two further each time). Past either end it springs
+/// back to the end card.
+class SearchCarouselPhysics extends ScrollPhysics {
+  const SearchCarouselPhysics(this.snap, {super.parent});
+
+  /// The row's resting state, kept current by the row: the physics are
+  /// kept by the row's scroll position across rebuilds, so a new card width
+  /// reaches them here.
+  final SearchCarouselSnap snap;
 
   /// The current width of one card and the gap after it.
-  double get slot => _readSlot();
+  double get slot => snap.slot;
 
   @override
   SearchCarouselPhysics applyTo(ScrollPhysics? ancestor) =>
-      SearchCarouselPhysics(_readSlot, parent: buildParent(ancestor));
+      SearchCarouselPhysics(snap, parent: buildParent(ancestor));
+
+  @override
+  double get minFlingVelocity => _flingSpeed;
+
+  @override
+  double carriedMomentum(double existingVelocity) => 0;
 
   @override
   Simulation? createBallisticSimulation(
     ScrollMetrics position,
     double velocity,
   ) {
-    final slot = this.slot;
-    if (slot <= 0 || position.outOfRange) {
-      return super.createBallisticSimulation(position, velocity);
-    }
+    final slot = snap.slot;
+    if (slot <= 0) return super.createBallisticSimulation(position, velocity);
     final tolerance = toleranceFor(position);
     final pixels = position.pixels;
-    // Where a free fling would come to rest (the iOS deceleration).
-    final rest = FrictionSimulation(0.135, pixels, velocity).finalX;
-    var target = (rest / slot).roundToDouble() * slot;
-    if (velocity > tolerance.velocity) {
-      target = math.max(target, (pixels / slot).floorToDouble() * slot + slot);
-    } else if (velocity < -tolerance.velocity) {
-      target = math.min(target, (pixels / slot).ceilToDouble() * slot - slot);
-    }
-    target = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+    final card = snap._settleCard(
+      position,
+      velocity.clamp(-maxFlingVelocity, maxFlingVelocity),
+    );
+    final target = (card * slot).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
     if ((target - pixels).abs() < tolerance.distance &&
         velocity.abs() < tolerance.velocity) {
+      snap._promised = null;
       return null;
     }
-    return ScrollSpringSimulation(
-      spring,
+    // Heading for the card, never faster than the spring can stop in before
+    // it: the card lands on the gutter instead of swinging past and back.
+    final distance = target - pixels;
+    final stop = _settleFrequency * distance.abs();
+    final start = velocity * distance > 0
+        ? velocity.clamp(-stop, stop)
+        : velocity;
+    return SpringSimulation(
+      _settleSpring,
       pixels,
       target,
-      velocity,
+      start,
       tolerance: tolerance,
+      snapToEnd: true,
     );
   }
 }
+
+/// The page spring's natural frequency ([PageSpring.motion]), radians a
+/// second.
+final double _settleFrequency = () {
+  final spring = PageSpring.motion.description;
+  return math.sqrt(spring.stiffness / spring.mass);
+}();
+
+/// The page spring, critically damped to the bit: stiffness and damping
+/// from one frequency, so the simulation takes its critical solution, not
+/// an over- or underdamped one with two all-but-equal roots, whose rounding
+/// moves a row a hair the instant a settle starts.
+final SpringDescription _settleSpring = SpringDescription(
+  mass: 1,
+  stiffness: _settleFrequency * _settleFrequency,
+  damping: 2 * _settleFrequency,
+);
 
 /// The room of a card still on its way: nothing drawn but, on the first,
 /// one quiet spinner in its middle.

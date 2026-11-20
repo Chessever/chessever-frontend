@@ -452,15 +452,15 @@ void main() {
 
       final picker = tester.getRect(find.byType(CountryDropdown));
       final board = tester.getRect(_boardView);
-      final classical = tester.getRect(_classical);
       final filters = tester.getRect(_filters);
-      for (final rect in [picker, board, classical, filters]) {
+      for (final rect in [picker, board, filters]) {
         expect(rect.center.dy, closeTo(back.center.dy, 1));
       }
       expect(back.right, lessThanOrEqualTo(picker.left));
       expect(picker.right, lessThanOrEqualTo(board.left));
-      expect(board.right, lessThanOrEqualTo(classical.left));
-      expect(classical.right, lessThanOrEqualTo(filters.left));
+      expect(board.right, lessThanOrEqualTo(filters.left));
+      // Classical only lives in the filter popup (2026-11-20).
+      expect(_classical, findsNothing);
       expect(filters.right, lessThanOrEqualTo(393));
       // The same board-view mark as Favorites.
       expect(
@@ -500,12 +500,11 @@ void main() {
       expect(find.byType(SegmentedSwitcher), findsOneWidget);
     });
 
-    testWidgets('the search opens in place: the chevron, Classical and '
-        'Filters stay put, the field takes the country\'s place over the same '
+    testWidgets('the search opens in place: the chevron and Filters stay '
+        'put, the field takes the country\'s place over the same '
         'Games list, and back closes it', (tester) async {
       await _pumpScreen(tester);
       final back = tester.getRect(_back);
-      final classical = tester.getRect(_classical);
       final filters = tester.getRect(_filters);
       final list = tester.element(find.byType(CountrymenGamesTab));
 
@@ -520,14 +519,10 @@ void main() {
       expect(_searchFab.hitTestable(), findsNothing);
       // The same Games list, never rebuilt from scratch.
       expect(tester.element(find.byType(CountrymenGamesTab)), same(list));
-      // The chevron, Classical and Filters did not move; the board view gave
-      // way to the field.
+      // The chevron and Filters did not move; the board view gave way to
+      // the field.
       final close = tester.getRect(_closeSearch);
       expect(close, rectMoreOrLessEquals(back, epsilon: 0.5));
-      expect(
-        tester.getRect(_inSearch(_classical)),
-        rectMoreOrLessEquals(classical, epsilon: 0.5),
-      );
       expect(
         tester.getRect(_inSearch(_filters)),
         rectMoreOrLessEquals(filters, epsilon: 0.5),
@@ -536,7 +531,7 @@ void main() {
       final fieldRect = tester.getRect(field);
       expect(fieldRect.center.dy, closeTo(close.center.dy, 1));
       expect(close.right, lessThanOrEqualTo(fieldRect.left));
-      expect(fieldRect.right, lessThanOrEqualTo(classical.left));
+      expect(fieldRect.right, lessThanOrEqualTo(filters.left));
 
       await tester.enterText(field, 'Carlsen');
       await tester.pump(const Duration(milliseconds: 450));
@@ -569,52 +564,6 @@ void main() {
       expect(_searchHeader, findsNothing);
       expect(find.byType(CountryDropdown).hitTestable(), findsOneWidget);
       expect(_games.clears, 1);
-    });
-
-    testWidgets('Classical toggles the server-side time-control filter, from '
-        'the app bar as from the search', (tester) async {
-      await _pumpScreen(tester);
-
-      await tester.tap(_classical);
-      await tester.pump();
-      expect(_games.applied.last.timeControl, GameTimeControlFilter.classical);
-      expect(tester.widget<ClassicalToggleButton>(_classical).pressed, isTrue);
-      // The time control is an active filter, so the Filters glyph counts it.
-      expect(tester.widget<SearchModeFilterButton>(_filters).count, 1);
-
-      await _openSearch(tester);
-      await tester.tap(_inSearch(_classical));
-      await tester.pump();
-      expect(_games.applied.last.timeControl, GameTimeControlFilter.all);
-      expect(
-        tester.widget<ClassicalToggleButton>(_inSearch(_classical)).pressed,
-        isFalse,
-      );
-      expect(_games.applied, hasLength(2));
-    });
-
-    testWidgets('Classical stays applied once the search closes, counted on '
-        'the app bar\'s Filters', (tester) async {
-      await _pumpScreen(tester);
-
-      await _openSearch(tester);
-      await tester.tap(_inSearch(_classical));
-      await tester.pump();
-      await tester.tap(_closeSearch);
-      await _settle(tester);
-
-      // Only the query goes with the search; the filter keeps its sign.
-      expect(
-        _container.read(countrymenCombinedGamesProvider).filter.timeControl,
-        GameTimeControlFilter.classical,
-      );
-      expect(tester.widget<SearchModeFilterButton>(_filters).count, 1);
-      expect(
-        find.descendant(of: _filters, matching: find.text('1')),
-        findsOneWidget,
-      );
-      // One count, on the Filters glyph: the search button carries none.
-      expect(tester.widget<SearchInkFab>(_searchFab).badgeCount, 0);
     });
 
     testWidgets('Filters opens the games filter, in the app bar as in the '
@@ -746,7 +695,7 @@ void main() {
         'its own search', (tester) async {
       await _pumpScreen(tester, mode: CountrymenScreenMode.events);
 
-      for (final control in [_liveFirst, _classical, _filters, _boardView]) {
+      for (final control in [_liveFirst, _filters, _boardView]) {
         expect(control, findsNothing);
       }
       expect(_searchFab, findsOneWidget);
@@ -809,7 +758,6 @@ void main() {
       expect(tester.takeException(), isNull);
       for (final target in [
         _closeSearch,
-        _inSearch(_classical),
         _inSearch(_filters),
       ]) {
         final rect = tester.getRect(target);
@@ -1102,7 +1050,6 @@ void main() {
         rectMoreOrLessEquals(back, epsilon: 0.5),
       );
       // Nothing of the Games toolbar beside the field.
-      expect(_inSearch(_classical), findsNothing);
       expect(_inSearch(_filters), findsNothing);
 
       await tester.enterText(_searchField, 'Norway Chess');
@@ -1189,17 +1136,13 @@ void main() {
       );
       expectTappable([
         BoardViewToggleButton.label,
-        'Show classical games only',
         'Filters',
         _pinGermany,
         'Search games',
       ]);
 
       await _openSearch(tester);
-      expectTappable([
-        'Show classical games only',
-        'Filters',
-      ], within: _searchHeader);
+      expectTappable(['Filters'], within: _searchHeader);
       // An IconButton's tooltip is its accessible name.
       expect(
         tester

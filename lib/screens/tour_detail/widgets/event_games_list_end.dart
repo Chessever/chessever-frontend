@@ -30,7 +30,7 @@ class EventGamesListEnd extends StatelessWidget {
   /// context: inside the button slot the Scaffold has already taken the
   /// inset away.
   static double buttonsReach(BuildContext context) =>
-      InkFabStack.reach(context, smallAbove: 1);
+      InkFabStack.reach(context, regularAbove: 1);
 
   /// Where a Standings or Players table ends: clear of the floating buttons
   /// over it (the search and, on Standings, Botvinnik above it, counted on

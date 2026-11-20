@@ -192,11 +192,12 @@ class FavoritesGamesToolbar extends ConsumerWidget {
   /// What the search matches, cycled once after "Search" in its field.
   static const List<String> searchHints = ['player', 'opening', 'ECO code'];
 
-  /// The full row's width: three 44pt targets.
-  static const double width = 3 * SearchModeFilterButton.target;
+  /// The full row's width: two 44pt targets (the board view and Filters;
+  /// Classical only lives in the filter popup since 2026-11-20).
+  static const double width = 2 * SearchModeFilterButton.target;
 
-  /// The search header's row: Classical and Filters, held still through the
-  /// morph where the page's header has them ([SearchModeShared]).
+  /// The search header's row: Filters, held still through the morph where
+  /// the page's header has it ([SearchModeShared]).
   static const Widget inSearch = SearchModeShared(
     id: FavoritesGamesToolbar,
     child: FavoritesGamesToolbar(withBoardView: false),
@@ -207,7 +208,6 @@ class FavoritesGamesToolbar extends ConsumerWidget {
     final filter = ref.watch(
       favoritesCombinedGamesProvider.select((state) => state.filter),
     );
-    final classicalOnly = filter.timeControl == GameTimeControlFilter.classical;
     // The page's header stays mounted (paused) under an open search: only
     // the row in reach carries the Filters' test id, so it is found once.
     final searching = SearchModeScope.maybeOf(context)?.isSearching ?? false;
@@ -216,25 +216,6 @@ class FavoritesGamesToolbar extends ConsumerWidget {
     final shared = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ClassicalToggleButton(
-          pressed: classicalOnly,
-          onTap: () {
-            HapticFeedbackService.toggle();
-            final current = ref.read(favoritesCombinedGamesProvider).filter;
-            unawaited(
-              ref
-                  .read(favoritesCombinedGamesProvider.notifier)
-                  .applyFilter(
-                    current.copyWith(
-                      timeControl:
-                          current.timeControl == GameTimeControlFilter.classical
-                          ? GameTimeControlFilter.all
-                          : GameTimeControlFilter.classical,
-                    ),
-                  ),
-            );
-          },
-        ),
         SearchModeFilterButton(
           key: inReach ? e2eKey(E2eIds.favoritesGamesFilterButton) : null,
           count: filter.activeFilterCount,
@@ -290,7 +271,7 @@ class FavoritesGamesFabs extends ConsumerWidget {
   /// it from the list's context: inside the button slot the Scaffold has
   /// already taken the inset away.
   static double reach(BuildContext context) =>
-      InkFabStack.reach(context, smallAbove: 1);
+      InkFabStack.reach(context, regularAbove: 1);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

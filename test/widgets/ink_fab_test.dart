@@ -110,7 +110,8 @@ void main() {
       await tester.pumpWidget(page(live: 3));
       await tester.pumpAndSettle();
       final corner = tester.getTopRight(search);
-      expect(tester.getSize(capsule), Size.square(InkFabSize.small.side));
+      // Live first is the search's size (PM, 2026-11-20).
+      expect(tester.getSize(capsule), Size.square(InkFabSize.regular.side));
       expect(tester.getTopRight(capsule).dx, closeTo(corner.dx, 0.01));
 
       final liveRect = tester.getRect(capsule);

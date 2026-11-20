@@ -29,6 +29,8 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/screens/my_space/widgets/space_avatar.dart'
+    show SpacePlayerAvatar;
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
@@ -65,6 +67,8 @@ import 'package:chessever2/screens/search/sections/search_smart_events_page.dart
 import 'package:chessever2/screens/search/search_page_landing.dart';
 import 'package:chessever2/screens/search/search_page_results.dart';
 import 'package:chessever2/screens/search/search_page_sections.dart';
+import 'package:chessever2/screens/search/search_recents_store.dart';
+import 'package:chessever2/screens/search/search_recents_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -114,21 +118,31 @@ void main() {
     await fonts.load();
   });
 
-  testWidgets('the Search tab opens with the cursor in its field', (
-    tester,
-  ) async {
-    final app = await _pump(tester);
+  testWidgets('the Search tab opens with its field at rest: no cursor, no '
+      'keyboard, no Cancel, the landing to read', (tester) async {
+    final app = await _pump(tester, live: [_liveEvent]);
     final field = find.byKey(const ValueKey('search_tab_field'));
     expect(field, findsOneWidget);
-    expect(
-      tester
-          .widget<EditableText>(
-            find.descendant(of: field, matching: find.byType(EditableText)),
-          )
-          .focusNode
-          .hasFocus,
-      isTrue,
-    );
+    expect(_fieldHasFocus(tester), isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(find.byKey(const ValueKey('search_tab_cancel')), findsNothing);
+    expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
+
+    // Arriving again (the tab re-selected) leaves the field alone too.
+    app.read(selectedBottomNavBarItemProvider.notifier).state =
+        BottomNavBarItem.forYou;
+    await tester.pump();
+    app.read(selectedBottomNavBarItemProvider.notifier).state =
+        BottomNavBarItem.search;
+    await tester.pump();
+    await tester.pump();
+    expect(_fieldHasFocus(tester), isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    // The field takes the cursor only when tapped.
+    await tester.tap(field);
+    await tester.pump();
+    expect(_fieldHasFocus(tester), isTrue);
     await app.dispose();
   });
 
@@ -169,7 +183,8 @@ void main() {
     expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
     _expectNoPlaceholderCopy();
     // The page is the only results surface: no panel drops over it.
-    expect(find.byType(SearchOverlay), findsOneWidget);
+    expect(find.byType(SearchOverlay), findsNothing);
+    expect(find.byType(SearchTabPage), findsOneWidget);
 
     await _type(tester, const ValueKey('search_tab_field'), 'carlsen');
     expect(
@@ -179,7 +194,7 @@ void main() {
     // The results replace the landing.
     expect(find.byKey(const ValueKey('search_landing')), findsNothing);
     expect(find.text('Live now'), findsNothing);
-    expect(find.byType(SearchOverlay), findsOneWidget);
+    expect(find.byType(SearchOverlay), findsNothing);
 
     // Keyboard down: the same page, the same results.
     FocusManager.instance.primaryFocus?.unfocus();
@@ -253,21 +268,21 @@ void main() {
       'away with the page after', (tester) async {
     final app = await _pump(tester, chrome: true);
     final chrome = app.chrome!;
-    // The tab puts the cursor in the field on arrival.
-    expect(chrome.held, isTrue);
-
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
+    // Arriving leaves the field at rest: the bar is free to step away.
     expect(chrome.held, isFalse);
 
     await tester.tap(find.byKey(const ValueKey('search_tab_field')));
     await tester.pump();
     expect(chrome.held, isTrue);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(chrome.held, isFalse);
     await app.dispose();
   });
 
   testWidgets('a re-tap of the tab takes the page back to its top on a '
-      'spring, brings the bar back and puts the cursor in the field', (
+      'spring and brings the bar back, leaving the field at rest', (
     tester,
   ) async {
     final app = await _pump(
@@ -312,14 +327,331 @@ void main() {
     }
     expect(position.pixels, moreOrLessEquals(0, epsilon: 0.01));
     expect(chrome.value, 1);
-    final field = tester.widget<EditableText>(
-      find.descendant(
-        of: find.byKey(const ValueKey('search_tab_field')),
-        matching: find.byType(EditableText),
-      ),
-    );
-    expect(field.focusNode.hasFocus, isTrue);
+    // No cursor and no keyboard: a re-tap is not a tap on the field.
+    expect(_fieldHasFocus(tester), isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
     await app.dispose();
+  });
+
+  group('the field and its recent searches, as X has them', () {
+    Finder field() => find.byKey(const ValueKey('search_tab_field'));
+    Finder cancel() => find.byKey(const ValueKey('search_tab_cancel'));
+    String fieldText(WidgetTester tester) => tester
+        .widget<EditableText>(
+          find.descendant(of: field(), matching: find.byType(EditableText)),
+        )
+        .controller
+        .text;
+
+    testWidgets('Cancel stands outside the field while it has the cursor or '
+        'text, the field narrowing for it on a spring; no clear button in '
+        'the field', (tester) async {
+      final app = await _pump(tester, live: [_liveEvent]);
+      final bar = find.byType(EnhancedRoundedSearchBar);
+      final rest = tester.getSize(bar).width;
+      expect(cancel(), findsNothing);
+
+      await tester.tap(field());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      final midway = tester.getSize(bar).width;
+      // On its way, not there in one frame.
+      expect(midway, lessThan(rest - 1));
+      await _frames(tester);
+      final narrowed = tester.getSize(bar).width;
+      expect(midway, greaterThan(narrowed + 1));
+      expect(cancel(), findsOneWidget);
+      expect(
+        find.descendant(of: cancel(), matching: find.text('Cancel')),
+        findsOneWidget,
+      );
+      // At the row's end, on the gutter, beside the field: never in it.
+      final button = tester.getRect(cancel());
+      expect(
+        button.left,
+        greaterThanOrEqualTo(tester.getRect(bar).right - 0.5),
+      );
+      expect(
+        button.right,
+        closeTo(393 - HomeTopBarMetrics.horizontalPadding, 0.5),
+      );
+      expect(button.height, greaterThanOrEqualTo(44));
+      expect(button.width, greaterThanOrEqualTo(44));
+      // The magnifier stays in the field; no clear button beside it.
+      expect(
+        find.descendant(of: bar, matching: find.byIcon(Icons.close)),
+        findsNothing,
+      );
+
+      // With text and no cursor, Cancel stays.
+      await tester.enterText(field(), 'carlsen');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await _frames(tester);
+      expect(cancel(), findsOneWidget);
+      await app.dispose();
+    });
+
+    testWidgets('Cancel clears the query, drops the keyboard and brings the '
+        'landing back; the field widens again', (tester) async {
+      final app = await _pump(tester, live: [_liveEvent]);
+      final bar = find.byType(EnhancedRoundedSearchBar);
+      final rest = tester.getSize(bar).width;
+      await _type(tester, const ValueKey('search_tab_field'), 'carlsen');
+      expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      await tester.tap(cancel());
+      await tester.pump();
+      expect(fieldText(tester), isEmpty);
+      expect(_fieldHasFocus(tester), isFalse);
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(app.read(searchQueryProvider), isEmpty);
+      expect(app.read(debouncedSearchQueryProvider), isEmpty);
+      expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
+      expect(find.text('Live now'), findsOneWidget);
+      await _frames(tester);
+      expect(cancel(), findsNothing);
+      expect(tester.getSize(bar).width, closeTo(rest, 0.01));
+      // Typed and cancelled is not a search the reader made.
+      expect(app.read(searchRecentsProvider).queries, isEmpty);
+      await app.dispose();
+    });
+
+    testWidgets('under reduced motion Cancel and the field land at once', (
+      tester,
+    ) async {
+      final app = await _pump(tester, reduceMotion: true);
+      final bar = find.byType(EnhancedRoundedSearchBar);
+      await tester.tap(field());
+      await tester.pump();
+      expect(cancel(), findsOneWidget);
+      final open = tester.getSize(bar).width;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.getSize(bar).width, open);
+      await app.dispose();
+    });
+
+    testWidgets('Recent: a row of the things last opened (a face, or the '
+        'plate its card leads with, and a short name), then the queries; '
+        'every name on one line', (tester) async {
+      final najdorf = searchOpeningSuggestions('Najdorf', limit: 1).single;
+      final picks = [
+        SearchRecentPick.player(_topPlayers[1]),
+        SearchRecentPick.event(_event),
+        SearchRecentPick.opening(najdorf.selection),
+        SearchRecentPick.smartEvent(kSuperGmSmartPreset),
+        SearchRecentPick.collection(_collection),
+        SearchRecentPick.news(_story),
+      ];
+      final app = await _pump(
+        tester,
+        recentPicks: picks,
+        recentQueries: ['nakamura', 'najdorf'],
+      );
+      await tester.tap(field());
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Recent'), findsOneWidget);
+
+      final tiles = find.byType(SearchRecentTile);
+      expect(
+        tester
+            .widgetList<SearchRecentTile>(tiles)
+            .map((tile) => tile.pick.identity),
+        picks.map((pick) => pick.identity),
+      );
+      Finder tile(SearchRecentPick pick) =>
+          find.byKey(ValueKey('search-recent-pick-${pick.identity}'));
+      // Each from its card's own pieces.
+      expect(
+        find.descendant(
+          of: tile(picks[0]),
+          matching: find.byType(SpacePlayerAvatar),
+        ),
+        findsOneWidget,
+      );
+      for (final pick in [picks[2], picks[3]]) {
+        expect(
+          find.descendant(
+            of: tile(pick),
+            matching: find.byType(SmartEventPlate),
+          ),
+          findsOneWidget,
+          reason: pick.name,
+        );
+      }
+      // Short names: a surname, a level.
+      expect(
+        find.descendant(of: tile(picks[0]), matching: find.text('Nakamura')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: tile(picks[3]), matching: find.text('Super GM')),
+        findsOneWidget,
+      );
+      // Pictures one height, names on one line.
+      final tops = {
+        for (final pick in picks.take(4))
+          tester
+              .getTopLeft(
+                find
+                    .descendant(of: tile(pick), matching: find.byType(Text))
+                    .last,
+              )
+              .dy
+              .toStringAsFixed(1),
+      };
+      expect(tops, hasLength(1));
+
+      // The queries, newest first, under the row.
+      final nakamura = tester.getTopLeft(find.text('nakamura')).dy;
+      expect(nakamura, lessThan(tester.getTopLeft(find.text('najdorf')).dy));
+      expect(nakamura, greaterThan(tester.getRect(tile(picks[0])).bottom));
+      await app.dispose();
+    });
+
+    testWidgets('a recent thing opens as its card does, and moves to the '
+        'front', (tester) async {
+      final event = SearchRecentPick.event(_event);
+      final player = SearchRecentPick.player(_topPlayers[0]);
+      final observer = _PushObserver();
+      final app = await _pump(
+        tester,
+        recentPicks: [player, event],
+        observer: observer,
+      );
+      await tester.tap(field());
+      await tester.pump();
+      await tester.tap(
+        find.byKey(ValueKey('search-recent-pick-${event.identity}')),
+      );
+      await tester.pump();
+      await tester.binding.delayed(Duration.zero);
+      final navigation =
+          app.read(tournamentNavigationProvider) as _RecordingNavigation;
+      expect(navigation.opened.single.$1, _event.id);
+      expect(_fieldHasFocus(tester), isFalse);
+      expect(app.read(searchRecentsProvider).picks.map((p) => p.identity), [
+        event.identity,
+        player.identity,
+      ]);
+      await app.dispose();
+    });
+
+    testWidgets('a recent query\'s row searches it again; its arrow puts it '
+        'back in the field, the keyboard still up', (tester) async {
+      final app = await _pump(tester, recentQueries: ['carlsen', 'nakamura']);
+      await tester.tap(field());
+      await tester.pump();
+      await tester.tap(find.text('nakamura'));
+      await tester.pump();
+      expect(fieldText(tester), 'nakamura');
+      expect(_fieldHasFocus(tester), isFalse);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('search_results')),
+          matching: find.textContaining('Nakamura'),
+        ),
+        findsWidgets,
+      );
+      expect(app.read(searchRecentsProvider).queries, ['nakamura', 'carlsen']);
+
+      // Back to Recent, then the arrow of "carlsen".
+      await tester.tap(cancel());
+      await tester.pump();
+      await tester.tap(field());
+      await tester.pump();
+      expect(find.text('Recent'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('search-recent-fill-carlsen')),
+      );
+      await tester.pump();
+      expect(fieldText(tester), 'carlsen');
+      expect(_fieldHasFocus(tester), isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('search_results')),
+          matching: find.textContaining('Carlsen'),
+        ),
+        findsWidgets,
+      );
+      await app.dispose();
+    });
+
+    testWidgets('a query is kept once committed: searched with the '
+        'keyboard\'s key, or typed and then a result opened', (tester) async {
+      final app = await _pump(tester, observer: _PushObserver());
+      await _type(tester, const ValueKey('search_tab_field'), 'carlsen');
+      expect(app.read(searchRecentsProvider).queries, isEmpty);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      expect(app.read(searchRecentsProvider).queries, ['carlsen']);
+
+      await _type(tester, const ValueKey('search_tab_field'), 'nakamura');
+      await tester.tap(find.textContaining('Nakamura').first);
+      await tester.pump();
+      await tester.binding.delayed(Duration.zero);
+      final recents = app.read(searchRecentsProvider);
+      expect(recents.queries, ['nakamura', 'carlsen']);
+      expect(recents.picks.first.kind, SearchRecentKind.player);
+      expect(recents.picks.first.name, 'Nakamura, Hikaru');
+      await app.dispose();
+    });
+
+    testWidgets('the cross clears every recent search, with an Undo; with '
+        'none left the landing is back', (tester) async {
+      final app = await _pump(
+        tester,
+        recents: [RecentSearchEntry.tournament(_event)],
+        recentQueries: ['nakamura'],
+        live: [_liveEvent],
+      );
+      await tester.tap(field());
+      await tester.pump();
+      final clear = find.byKey(const ValueKey('search-recent-clear-all'));
+      expect(tester.getSize(clear).height, greaterThanOrEqualTo(44));
+      await tester.tap(clear);
+      await tester.pump();
+      expect(app.read(searchRecentsProvider).isEmpty, isTrue);
+      expect(find.text('Recent'), findsNothing);
+      expect(find.text('Live now'), findsOneWidget);
+      // The cursor stays: the reader was about to type.
+      expect(_fieldHasFocus(tester), isTrue);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Recent searches cleared'), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      final back = app.read(searchRecentsProvider);
+      expect(back.picks.single.name, _event.title);
+      expect(back.queries, ['nakamura']);
+      await app.dispose();
+    });
+
+    testWidgets('kept on the device: a new session shows the same Recent', (
+      tester,
+    ) async {
+      final storage = _MemorySearchRecents();
+      var app = await _pump(tester, recentsStorage: storage);
+      await _type(tester, const ValueKey('search_tab_field'), 'carlsen');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      await tester.binding.delayed(Duration.zero);
+      expect(storage.stored, contains('carlsen'));
+      await app.dispose();
+
+      app = await _pump(tester, recentsStorage: storage);
+      await tester.tap(field());
+      await tester.pump();
+      await tester.binding.delayed(Duration.zero);
+      await tester.pump();
+      expect(find.text('Recent'), findsOneWidget);
+      expect(find.text('carlsen'), findsOneWidget);
+      await app.dispose();
+    });
   });
 
   group('the landing (nothing typed)', () {
@@ -328,6 +660,7 @@ void main() {
       final app = await _pump(
         tester,
         size: const Size(393, 3600),
+        // Recent searches wait for the field's cursor: never on the landing.
         recents: [RecentSearchEntry.tournament(_event)],
         live: [_liveEvent, _secondLiveEvent],
         players: () async => _topPlayers,
@@ -340,8 +673,9 @@ void main() {
       final landing = find.byKey(const ValueKey('search_landing'));
       expect(landing, findsOneWidget);
 
+      expect(find.text('Recent searches'), findsNothing);
+      expect(find.text('Recent'), findsNothing);
       final headings = [
-        'Recent searches',
         'Live now',
         'Top players',
         'Openings',
@@ -365,9 +699,8 @@ void main() {
         );
       }
 
-      // Recent and live events, and the events coming up: event cards.
+      // Live events, and the events coming up: event cards.
       for (final key in [
-        'search-recent-${RecentSearchEntry.tournament(_event).identity}',
         'search-live-${_liveEvent.id}',
         'search-live-${_secondLiveEvent.id}',
         'search-upcoming-${_upcomingEvent.id}',
@@ -502,210 +835,31 @@ void main() {
       await app.dispose();
     });
 
-    testWidgets('recent searches come first, each in its kind\'s card; Edit '
-        'holds Clear all', (tester) async {
-      final najdorf = searchOpeningSuggestions('Najdorf', limit: 1).single;
+    testWidgets('recent searches are never on the landing; they stand in '
+        'for it while the field has the cursor', (tester) async {
       final app = await _pump(
         tester,
-        size: const Size(393, 2000),
-        recents: [
-          RecentSearchEntry.tournament(_event),
-          RecentSearchEntry.player(_topPlayers[1]),
-          RecentSearchEntry.openingSelection(najdorf.selection),
-        ],
+        recents: [RecentSearchEntry.tournament(_event)],
         live: [_liveEvent],
       );
-      final recent = find.text('Recent searches');
-      expect(recent, findsOneWidget);
+      expect(find.text('Recent'), findsNothing);
+      expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('search_tab_field')));
+      await tester.pump();
+      expect(find.text('Recent'), findsOneWidget);
+      // The landing waits under it, kept where it was.
+      expect(find.byKey(const ValueKey('search_landing')), findsNothing);
       expect(
-        tester.getTopLeft(recent).dy,
-        lessThan(tester.getTopLeft(find.text('Live now')).dy),
-      );
-      Finder slot(RecentSearchEntry entry) =>
-          find.byKey(ValueKey('search-recent-${entry.identity}'));
-      expect(
-        find.descendant(
-          of: slot(RecentSearchEntry.tournament(_event)),
-          matching: find.byType(EventCard),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: slot(RecentSearchEntry.player(_topPlayers[1])),
-          matching: find.byType(PlayerSearchCards),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: slot(RecentSearchEntry.openingSelection(najdorf.selection)),
-          matching: find.byType(SmartEventRequestCard),
-        ),
+        find.byKey(const ValueKey('search_landing'), skipOffstage: false),
         findsOneWidget,
       );
 
-      // Out of Edit, the heading offers Edit alone; the cards are whole.
-      expect(find.text('Clear all'), findsNothing);
-      expect(find.byType(SearchRecentRemoveButton), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('search-recent-edit')));
-      await tester.pump();
-      expect(find.byType(SearchRecentRemoveButton), findsNWidgets(3));
-      await tester.tap(find.byKey(const ValueKey('search-recent-clear')));
-      await tester.pump();
-      expect(find.text('Recent searches'), findsNothing);
-      expect(app.read(recentSearchesProvider).valueOrNull, isEmpty);
-      await app.dispose();
-    });
-
-    testWidgets('at most four recent searches', (tester) async {
-      final app = await _pump(
-        tester,
-        size: const Size(393, 2400),
-        recents: [
-          for (var i = 0; i < 6; i++)
-            RecentSearchEntry.tournament(_eventNamed('r$i', 'Recent $i')),
-        ],
-      );
-      for (var i = 0; i < 6; i++) {
-        expect(
-          find.text('Recent $i'),
-          i < searchLandingRecentLimit ? findsOneWidget : findsNothing,
-          reason: 'Recent $i',
-        );
-      }
-      await app.dispose();
-    });
-
-    testWidgets('a swipe removes one recent search; Edit puts a remove '
-        'button after each card, which a screen reader reads by name', (
-      tester,
-    ) async {
-      final semantics = tester.ensureSemantics();
-      final first = RecentSearchEntry.tournament(_event);
-      final second = RecentSearchEntry.player(_topPlayers[1]);
-      final third = RecentSearchEntry.tournament(_secondLiveEvent);
-      final app = await _pump(
-        tester,
-        size: const Size(393, 1600),
-        recents: [first, second, third],
-      );
-      Finder slot(RecentSearchEntry entry) =>
-          find.byKey(ValueKey('search-recent-${entry.identity}'));
-      await tester.drag(slot(first), const Offset(-500, 0));
-      await tester.pumpAndSettle();
-      expect(find.text(_event.title), findsNothing);
-      expect(
-        app.read(recentSearchesProvider).valueOrNull!.map((e) => e.identity),
-        [second.identity, third.identity],
-      );
-
-      // Edit: the cards hold still, each followed by its remove button, on
-      // its centre line, inside the gutter. The button's room opens on
-      // Edit's spring: the card narrows over frames, never in one.
-      final cardWidth = tester.getSize(slot(second)).width;
-      final remove = find.byKey(
-        ValueKey('search-recent-remove-${second.identity}'),
-      );
-      final card = find.descendant(
-        of: slot(second),
-        matching: find.byType(PlayerSearchCards),
-      );
-      final whole = tester.getSize(card).width;
-      final room = math.max(44.0, 44.w) + 4.w;
-      await tester.tap(find.byKey(const ValueKey('search-recent-edit')));
-      await tester.pump();
-      expect(tester.getSize(slot(second)).width, cardWidth);
-      expect(tester.getSize(card).width, closeTo(whole, 0.5));
-      await tester.pump(const Duration(milliseconds: 60));
-      final midway = tester.getSize(card).width;
-      expect(midway, lessThan(whole - 1));
-      expect(midway, greaterThan(whole - room + 1));
-      await tester.pumpAndSettle();
-      expect(tester.getSize(slot(second)).width, cardWidth);
-      expect(tester.getSize(card).width, closeTo(whole - room, 0.5));
-      expect(
-        tester.getCenter(remove).dy,
-        closeTo(tester.getCenter(card).dy, 0.5),
-      );
-      expect(
-        tester.getRect(remove).right,
-        closeTo(393 - HomeTopBarMetrics.horizontalPadding, 0.5),
-      );
-      expect(tester.getSize(remove).height, greaterThanOrEqualTo(44));
-      // A tap on a card in Edit opens nothing; a swipe removes nothing.
-      final before = app.read(recentSearchesProvider).valueOrNull!;
-      await tester.tap(card, warnIfMissed: false);
-      await tester.drag(
-        slot(third),
-        const Offset(-500, 0),
-        warnIfMissed: false,
-      );
-      await tester.pumpAndSettle();
-      expect(app.read(recentSearchesProvider).valueOrNull, before);
-
-      // The button is a real control, named for its entry.
-      expect(
-        tester.getSemantics(remove),
-        matchesSemantics(
-          label: 'Remove ${second.title} from recent searches',
-          isButton: true,
-          hasTapAction: true,
-        ),
-      );
-      final rowHeight = tester.getSize(slot(second)).height;
-      tester.semantics.tap(
-        find.semantics.byLabel('Remove ${second.title} from recent searches'),
-      );
-      // Its row closes up on the spring, then the entry goes: the card
-      // under it rises rather than jumps.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 60));
-      final closing = tester.getSize(slot(second)).height;
-      expect(closing, lessThan(rowHeight - 1));
-      expect(closing, greaterThan(1));
-      await tester.pumpAndSettle();
-      expect(slot(second), findsNothing);
-      expect(
-        app.read(recentSearchesProvider).valueOrNull!.map((e) => e.identity),
-        [third.identity],
-      );
-
-      // The last one gone ends Edit with the section.
-      await tester.tap(
-        find.byKey(ValueKey('search-recent-remove-${third.identity}')),
-      );
-      await tester.pumpAndSettle();
-      expect(app.read(recentSearchesProvider).valueOrNull, isEmpty);
-      expect(find.text('Recent searches'), findsNothing);
-      await app.dispose();
-      semantics.dispose();
-    });
-
-    testWidgets('Done ends Edit: the cards open again', (tester) async {
-      final entry = RecentSearchEntry.tournament(_event);
-      final app = await _pump(tester, recents: [entry]);
-      await tester.tap(find.byKey(const ValueKey('search-recent-edit')));
-      await tester.pump();
-      expect(find.byType(SearchRecentRemoveButton), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('search-recent-done')));
-      // The buttons leave on Edit's spring.
-      await tester.pumpAndSettle();
-      expect(find.byType(SearchRecentRemoveButton), findsNothing);
-      expect(find.byKey(const ValueKey('search-recent-edit')), findsOneWidget);
-
+      // The keyboard down with nothing typed: the landing again.
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(ValueKey('search-recent-${entry.identity}')),
-          matching: find.byType(EventCard),
-        ),
-      );
-      await tester.pump();
-      final navigation =
-          app.read(tournamentNavigationProvider) as _RecordingNavigation;
-      expect(navigation.opened.single.$1, _event.id);
+      expect(find.text('Recent'), findsNothing);
+      expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
       await app.dispose();
     });
 
@@ -975,14 +1129,22 @@ void main() {
             observer: _PushObserver(),
           );
           expect(app.read(recentSearchesProvider).valueOrNull, isEmpty);
+          expect(app.read(searchRecentsProvider).isEmpty, isTrue);
           await tester.tap(row());
           await tester.pump();
           // The pushed page is never built: only the record is flushed.
           await tester.binding.delayed(Duration.zero);
 
+          // The Events page's field shares this history...
           final recents = app.read(recentSearchesProvider).valueOrNull!;
           expect(recents, hasLength(1));
           check(recents.single);
+          // ...and the tab keeps its own: the pick, and no query (nothing
+          // was typed).
+          final own = app.read(searchRecentsProvider);
+          expect(own.picks, hasLength(1));
+          check(own.picks.single.entry!);
+          expect(own.queries, isEmpty);
           await app.dispose();
         });
       }
@@ -1119,7 +1281,6 @@ void main() {
         final field = tester.getRect(find.byType(EnhancedRoundedSearchBar));
         expect(field.left, closeTo(HomeTopBarMetrics.horizontalPadding, 0.01));
         for (final heading in [
-          'Recent searches',
           'Live now',
           'Top players',
           'Openings',
@@ -1257,7 +1418,19 @@ void main() {
           live: [_liveEvent],
           players: () async => _topPlayers,
         );
-        for (final text in ['Recent searches', 'Live now', 'Top players']) {
+        for (final text in ['Live now', 'Top players']) {
+          final ink = tester.widget<Text>(find.text(text)).style!.color!;
+          expect(
+            _contrast(ink, colors.background),
+            greaterThanOrEqualTo(4.5),
+            reason: '"$text" on the $name page',
+          );
+        }
+        // The field's Cancel and the recent searches' words, on the same
+        // page.
+        await tester.tap(find.byKey(const ValueKey('search_tab_field')));
+        await _frames(tester);
+        for (final text in ['Cancel', 'Recent', _event.title]) {
           final ink = tester.widget<Text>(find.text(text)).style!.color!;
           expect(
             _contrast(ink, colors.background),
@@ -1271,6 +1444,173 @@ void main() {
   });
 
   group('the results (typing)', () {
+    testWidgets('every landing section answers a search: events in play and '
+        'coming up from the landing\'s own lists, under their own headings', (
+      tester,
+    ) async {
+      final app = await _pump(
+        tester,
+        size: const Size(393, 2400),
+        live: [_liveEvent, _secondLiveEvent],
+        upcoming: [_upcomingEvent, _secondUpcomingEvent],
+      );
+      await _type(tester, const ValueKey('search_tab_field'), 'tata');
+      final results = find.byKey(const ValueKey('search_results'));
+      expect(results, findsOneWidget);
+      final live = find.byKey(ValueKey('search-event-${_liveEvent.id}'));
+      final upcoming = find.byKey(
+        ValueKey('search-event-${_secondUpcomingEvent.id}'),
+      );
+      expect(
+        find.descendant(of: live, matching: find.byType(EventCard)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: upcoming, matching: find.byType(EventCard)),
+        findsOneWidget,
+      );
+      // Only what the words name.
+      expect(
+        find.byKey(ValueKey('search-event-${_secondLiveEvent.id}')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(ValueKey('search-event-${_upcomingEvent.id}')),
+        findsNothing,
+      );
+      final liveHeading = find.descendant(
+        of: results,
+        matching: find.text('Live now'),
+      );
+      final upcomingHeading = find.descendant(
+        of: results,
+        matching: find.text('Coming up'),
+      );
+      expect(liveHeading, findsOneWidget);
+      expect(upcomingHeading, findsOneWidget);
+      expect(
+        tester.getTopLeft(liveHeading).dy,
+        lessThan(tester.getTopLeft(live).dy),
+      );
+      expect(
+        tester.getTopLeft(live).dy,
+        lessThan(tester.getTopLeft(upcomingHeading).dy),
+      );
+      await tester.tap(live);
+      await tester.pump();
+      final navigation =
+          app.read(tournamentNavigationProvider) as _RecordingNavigation;
+      expect(navigation.opened.single.$1, _liveEvent.id);
+      // Typed, then a result opened: the query is kept with the pick.
+      await tester.binding.delayed(Duration.zero);
+      expect(app.read(searchRecentsProvider).queries, ['tata']);
+      await app.dispose();
+    });
+
+    testWidgets('a level or a time control finds the built-in smart events, '
+        'each opening itself without Filters', (tester) async {
+      final observer = _PushObserver();
+      final app = await _pump(tester, observer: observer);
+      await _type(tester, const ValueKey('search_tab_field'), 'grandmaster');
+      for (final tier in ['Super GM', 'GM']) {
+        expect(
+          find.byKey(ValueKey('search-result-smart-$tier')),
+          findsOneWidget,
+          reason: tier,
+        );
+      }
+
+      await _type(tester, const ValueKey('search_tab_field'), 'blitz');
+      final results = find.byKey(const ValueKey('search_results'));
+      expect(
+        find.descendant(of: results, matching: find.text('Smart events')),
+        findsOneWidget,
+      );
+      final card = find.byKey(const ValueKey('search-result-smart-Blitz'));
+      expect(
+        find.descendant(of: card, matching: find.byType(SmartEventCard)),
+        findsOneWidget,
+      );
+      await tester.tap(card);
+      await tester.pump();
+      final screen = observer.lastPage(tester);
+      expect(screen, isA<SmartEventScreen>());
+      expect((screen as SmartEventScreen).showFilters, isFalse);
+      await tester.binding.delayed(Duration.zero);
+      final recents = app.read(searchRecentsProvider);
+      expect(recents.picks.single.kind, SearchRecentKind.smartEvent);
+      expect(recents.queries, ['blitz']);
+      await app.dispose();
+    });
+
+    testWidgets('a collection opened from the landing\'s Collections row is '
+        'remembered, as one opened from the results is', (tester) async {
+      final app = await _pump(
+        tester,
+        size: const Size(393, 3600),
+        collections: [_collection, _secondCollection],
+      );
+      final card = tester.widget<CollectionCard>(
+        find.byKey(ValueKey('search-collection-${_collection.id}')),
+      );
+      // Every open of the card (a tap, the menu's Open, the lifted copy)
+      // reports through onOpened; the push itself is the card's own.
+      expect(card.onOpened, isNotNull);
+      card.onOpened!();
+      await tester.binding.delayed(Duration.zero);
+      final recents = app.read(searchRecentsProvider);
+      expect(recents.picks.single.kind, SearchRecentKind.collection);
+      expect(recents.picks.single.id, _collection.slug);
+      // Nothing was typed: no query is kept with it.
+      expect(recents.queries, isEmpty);
+      await app.dispose();
+    });
+
+    testWidgets('collections come from the catalog\'s own search, news from '
+        'the stories the landing read, each in its own card', (tester) async {
+      final app = await _pump(
+        tester,
+        size: const Size(393, 2400),
+        collections: [_collection, _secondCollection],
+        news: [_story, _secondStory],
+      );
+      await _type(tester, const ValueKey('search_tab_field'), 'memorable');
+      final results = find.byKey(const ValueKey('search_results'));
+      expect(
+        find.descendant(of: results, matching: find.text('Collections')),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget(
+          find.byKey(ValueKey('search-result-collection-${_collection.id}')),
+        ),
+        isA<CollectionCard>(),
+      );
+      expect(
+        find.byKey(
+          ValueKey('search-result-collection-${_secondCollection.id}'),
+        ),
+        findsNothing,
+      );
+
+      await _type(tester, const ValueKey('search_tab_field'), 'gukesh');
+      expect(
+        find.descendant(of: results, matching: find.text('News')),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget(
+          find.byKey(ValueKey('search-result-news-${_secondStory.key}')),
+        ),
+        isA<NewsArticleCard>(),
+      );
+      expect(
+        find.byKey(ValueKey('search-result-news-${_story.key}')),
+        findsNothing,
+      );
+      await app.dispose();
+    });
+
     testWidgets('players as player cards then Rankings rows, openings as '
         'smart events, events as event cards, in that order', (tester) async {
       final app = await _pump(tester, size: const Size(393, 4000));
@@ -1491,9 +1831,10 @@ void main() {
       ranking: ranking,
     );
 
-    testWidgets('every title but Recent searches is a button: its words and '
-        'a chevron, 44pt tall, heard as a heading that opens its page; no '
-        'See all is left', (tester) async {
+    testWidgets('every title is a button: its words and a chevron, 44pt '
+        'tall, heard as a heading that opens its page; no See all is left', (
+      tester,
+    ) async {
       final semantics = tester.ensureSemantics();
       final app = await _pump(
         tester,
@@ -1542,9 +1883,6 @@ void main() {
           closeTo(HomeTopBarMetrics.horizontalPadding, 0.01),
         );
       }
-      // Recent searches is a heading, not a way anywhere.
-      expect(find.text('Recent searches'), findsOneWidget);
-      expect(find.byKey(const ValueKey('search-recent-open')), findsNothing);
       expect(find.textContaining('See all', findRichText: true), findsNothing);
       semantics.dispose();
       await app.dispose();
@@ -2589,6 +2927,8 @@ Future<_App> _pump(
   ThemeData? theme,
   Size size = const Size(393, 852),
   List<RecentSearchEntry> recents = const [],
+  List<SearchRecentPick> recentPicks = const [],
+  List<String> recentQueries = const [],
   List<GroupEventCardModel> live = const [],
   List<Override>? liveSource,
   Future<List<SearchPlayer>> Function()? players,
@@ -2606,6 +2946,7 @@ Future<_App> _pump(
   _Ranking? ranking,
   bool reduceMotion = false,
   EdgeInsets padding = EdgeInsets.zero,
+  _MemorySearchRecents? recentsStorage,
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -2670,6 +3011,13 @@ Future<_App> _pump(
           (ref) => BottomNavBarItem.search,
         ),
         recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
+        searchRecentsStorageProvider.overrideWithValue(
+          recentsStorage ?? _MemorySearchRecents(),
+        ),
+        // The catalog's own search, over the collections the landing lists.
+        collectionsRepositoryProvider.overrideWithValue(
+          _SearchedCollections(collections),
+        ),
         currentUserProvider.overrideWithValue(
           AppUser(
             id: 'u1',
@@ -2725,13 +3073,32 @@ Future<_App> _pump(
   final container = ProviderScope.containerOf(
     tester.element(find.byType(Scaffold).first),
   );
-  for (final entry in recents.reversed) {
-    await container.read(recentSearchesProvider.notifier).record(entry);
+  // The tab's own history, newest first as given.
+  final history = container.read(searchRecentsProvider.notifier);
+  for (final pick in [
+    ...recents.map(SearchRecentPick.fromEntry),
+    ...recentPicks,
+  ].reversed) {
+    await history.recordPick(pick);
+  }
+  for (final query in recentQueries.reversed) {
+    await history.recordQuery(query);
   }
   await tester.pump();
   await tester.pump();
   return _App(tester, container, page, chromeController);
 }
+
+/// Whether the Search tab's field has the cursor.
+bool _fieldHasFocus(WidgetTester tester) => tester
+    .widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const ValueKey('search_tab_field')),
+        matching: find.byType(EditableText),
+      ),
+    )
+    .focusNode
+    .hasFocus;
 
 /// Types into the search field, then waits out every debounce on the path
 /// (the bar's 300ms, the Events tab's 300ms, the dropdown's 400ms).
@@ -2761,6 +3128,50 @@ class _MemoryRecentSearches implements RecentSearchStorage {
 
   @override
   Future<void> write(String value) async {}
+}
+
+/// The Search tab's history on a pretend device: [stored] is what a write
+/// left there.
+class _MemorySearchRecents implements SearchRecentsStorage {
+  String? stored;
+
+  @override
+  Future<String?> read() async => stored;
+
+  @override
+  Future<void> write(String value) async => stored = value;
+}
+
+/// The collections catalog's search over [items]: a book whose title or
+/// author holds the words.
+class _SearchedCollections implements CollectionsRepository {
+  _SearchedCollections(this.items);
+
+  final List<Collection> items;
+  final queries = <String>[];
+
+  @override
+  Future<CollectionsPage> searchBooks(
+    CollectionSearchQuery query,
+    int offset,
+  ) async {
+    queries.add(query.text);
+    final words = query.text.toLowerCase();
+    final found = [
+      for (final item in items)
+        if ('${item.title} ${item.author ?? ''}'.toLowerCase().contains(words))
+          item,
+    ];
+    return CollectionsPage(
+      items: found,
+      total: found.length,
+      limit: 40,
+      offset: offset,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _FreeSubscription extends SubscriptionNotifier {
@@ -2862,18 +3273,6 @@ final _event = GroupEventCardModel(
   title: 'Sinquefield Cup 2026',
   dates: 'Aug 20, 2026',
   maxAvgElo: 2750,
-  timeUntilStart: '',
-  tourEventCategory: TourEventCategory.completed,
-  timeControl: 'Classical',
-  startDate: DateTime.utc(2026, 8, 20),
-  endDate: DateTime.utc(2026, 8, 30),
-);
-
-GroupEventCardModel _eventNamed(String id, String title) => GroupEventCardModel(
-  id: id,
-  title: title,
-  dates: 'Aug 20, 2026',
-  maxAvgElo: 2600,
   timeUntilStart: '',
   tourEventCategory: TourEventCategory.completed,
   timeControl: 'Classical',

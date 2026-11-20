@@ -517,10 +517,9 @@ void main() {
         for (final tab in ForYouTab.values) {
           final text = tester.widget<Text>(find.text(tab.label));
           final ink = text.style!.color!;
-          expect(
-            ink,
-            tab == ForYouTab.today ? colors.textPrimary : colors.textSecondary,
-          );
+          // Every title stays bright; the underline alone marks the page
+          // (PM, 2026-11-20).
+          expect(ink, colors.textPrimary);
           expect(
             _contrast(ink, colors.background),
             greaterThanOrEqualTo(4.5),

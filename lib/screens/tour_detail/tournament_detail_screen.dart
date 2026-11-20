@@ -6,7 +6,6 @@ import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
-import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
@@ -40,7 +39,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_games_quick_actions.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_placeholder.dart';
-import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -776,10 +774,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     List<TournamentDetailScreenMode> modes,
     ValueChanged<int> onChanged,
   ) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
+    // The header and the tabs read as one column: the strip starts at the
+    // chevron's point and ends at the ⋮'s outer edge, which mirrors it, and
+    // its middle tab sits under the category chip (EventHeaderMetrics).
+    final horizontalPadding = EventHeaderMetrics.backInk;
     final options = modes.map((m) => _mappedName[m]!).toList();
     final selectedIndex = modes.indexOf(selectedTourMode);
     final safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
@@ -900,27 +898,10 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
       );
     }
 
-    // The back sits where the search header's chevron does: nothing moves
-    // as a search opens or closes over this header.
-    final horizontalPadding = SearchHeaderMetrics.leadingInset;
-
-    return Padding(
-      // The bare ⋮ (Trello #1420) has a 44pt target that reaches past its old
-      // tile; the end inset gives that back so the glyph stays put.
-      padding: EdgeInsetsDirectional.only(
-        start: horizontalPadding,
-        end: math.max(0, horizontalPadding - AppBarIconSurface.bareReach),
-      ),
-      child: Row(
-        children: [
-          const PageBackButton(),
-          Expanded(
-            child: Center(child: CategoryDropdown(constrainWidth: false)),
-          ),
-          TournamentMenuButton(tourData: data, boxed: false),
-        ],
-      ),
-    );
+    // The Games header's row without the board view: the back, the chip
+    // and the ⋮ exactly where Games puts them, so switching tabs moves
+    // nothing.
+    return EventHeaderRow(middle: const CategoryDropdown(), tourData: data);
   }
 }
 
@@ -952,24 +933,9 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
               style: PageTitle.style(context),
             ),
           );
-    return Padding(
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: SearchHeaderMetrics.leadingInset,
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          minHeight: SearchHeaderMetrics.rowHeight,
-        ),
-        child: Row(
-          children: [
-            const PageBackButton(),
-            Expanded(child: Center(child: words)),
-            // As wide as the back, so the words centre on the screen.
-            const SizedBox(width: SearchHeaderMetrics.backTarget),
-          ],
-        ),
-      ),
-    );
+    // The loaded header's row: the back in place, the words centred on the
+    // screen, kept clear of the back on both sides.
+    return EventHeaderRow(middle: words, reserveControls: false);
   }
 }
 

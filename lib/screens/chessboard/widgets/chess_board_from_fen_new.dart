@@ -4,6 +4,7 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/chessboard/board_hero.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -617,6 +618,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
           Widget layout({
             required bool allowStockfish,
             bool animateEnding = true,
+            BoardHeroSlot? heroSlot,
           }) => _ChessBoardLayout(
             gamesTourModel: gamesTourModel,
             lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
@@ -631,25 +633,41 @@ class ChessBoardFromFENNew extends ConsumerWidget {
             scoreCardViewSource: scoreCardViewSource,
             scoreCardGamesContext: scoreCardGamesContext,
             playerProfileDataSource: playerProfileDataSource,
+            heroSlot: heroSlot,
           );
 
-          return GestureDetector(
-            onTap: () {
-              HapticFeedbackService.cardTap();
-              onChanged();
-            },
-            onLongPress:
-                () => _showContextMenu(
-                  cardContext,
-                  ref,
-                  // The lifted copy is a static StaticChessboard + rows, never
-                  // an engine client: the list card already owns the eval.
-                  // Its game-end marks start at rest so it matches the card.
-                  preview:
-                      (_) =>
-                          layout(allowStockfish: false, animateEnding: false),
+          return BoardHeroCard(
+            builder:
+                (_, heroSlot) => GestureDetector(
+                  onTap: () {
+                    HapticFeedbackService.cardTap();
+                    _openWithBoardHero(
+                      ref,
+                      heroSlot,
+                      gamesTourModel,
+                      fixedBottomSide ?? Side.white,
+                      onChanged,
+                    );
+                  },
+                  onLongPress:
+                      () => _showContextMenu(
+                        cardContext,
+                        ref,
+                        // The lifted copy is a static StaticChessboard + rows,
+                        // never an engine client: the list card already owns
+                        // the eval. Its game-end marks start at rest so it
+                        // matches the card. It carries no board hero.
+                        preview:
+                            (_) => layout(
+                              allowStockfish: false,
+                              animateEnding: false,
+                            ),
+                      ),
+                  child: layout(
+                    allowStockfish: allowStockfishFallback,
+                    heroSlot: heroSlot,
+                  ),
                 ),
-            child: layout(allowStockfish: allowStockfishFallback),
           );
         },
       ),
@@ -747,6 +765,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     required Side bottomSide,
     required bool allowStockfish,
     bool animateEnding = true,
+    BoardHeroSlot? heroSlot,
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -774,6 +793,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
           orientation: bottomSide,
           allowStockfishFallback: allowStockfish,
           animateEnding: animateEnding,
+          heroSlot: heroSlot,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -804,7 +824,11 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
       required double boardSize,
       double? width,
     }) {
-      Widget column({required bool allowStockfish, bool animateEnding = true}) {
+      Widget column({
+        required bool allowStockfish,
+        bool animateEnding = true,
+        BoardHeroSlot? heroSlot,
+      }) {
         final content = _cardColumn(
           boardSize: boardSize,
           sideBarWidth: sideBarWidth,
@@ -813,23 +837,38 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
           bottomSide: bottomSide,
           allowStockfish: allowStockfish,
           animateEnding: animateEnding,
+          heroSlot: heroSlot,
         );
         return width == null ? content : SizedBox(width: width, child: content);
       }
 
-      return GestureDetector(
-        onTap: () {
-          HapticFeedbackService.cardTap();
-          onChanged();
-        },
-        onLongPress:
-            () => _showContextMenu(
-              cardContext,
-              ref,
-              preview:
-                  (_) => column(allowStockfish: false, animateEnding: false),
+      return BoardHeroCard(
+        builder:
+            (_, heroSlot) => GestureDetector(
+              onTap: () {
+                HapticFeedbackService.cardTap();
+                _openWithBoardHero(
+                  ref,
+                  heroSlot,
+                  gamesTourModel,
+                  bottomSide,
+                  onChanged,
+                );
+              },
+              // The lifted copy carries no board hero.
+              onLongPress:
+                  () => _showContextMenu(
+                    cardContext,
+                    ref,
+                    preview:
+                        (_) =>
+                            column(allowStockfish: false, animateEnding: false),
+                  ),
+              child: column(
+                allowStockfish: allowStockfishFallback,
+                heroSlot: heroSlot,
+              ),
             ),
-        child: column(allowStockfish: allowStockfishFallback),
       );
     }
 
@@ -863,6 +902,25 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Opens a card's game ([onChanged]) with a ticket for the board the card
+/// shows, so that board can fly into the board screen's (see
+/// [BoardHeroSource]). The position is the one the card's board draws.
+void _openWithBoardHero(
+  WidgetRef ref,
+  BoardHeroSlot slot,
+  GamesTourModel game,
+  Side orientation,
+  VoidCallback onChanged,
+) {
+  final ticket = slot.issue(
+    gameId: game.gameId,
+    fen: ref.read(_resolvedFenProvider(_ResolvedFenKey.fromGame(game))),
+    orientation: orientation,
+    lastMove: _uciToMove(game.lastMove ?? ''),
+  );
+  openWithBoardHero(ticket, onChanged);
 }
 
 Move? _uciToMove(String uci) {
@@ -911,6 +969,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.scoreCardViewSource,
     required this.scoreCardGamesContext,
     required this.playerProfileDataSource,
+    this.heroSlot,
   });
 
   final GamesTourModel gamesTourModel;
@@ -928,6 +987,9 @@ class _ChessBoardLayout extends ConsumerWidget {
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
   final PlayerProfileDataSource playerProfileDataSource;
+
+  /// See [_ChessBoardWithEvaluation.heroSlot].
+  final BoardHeroSlot? heroSlot;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -959,6 +1021,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           orientation: bottomSide,
           allowStockfishFallback: allowStockfishFallback,
           animateEnding: animateEnding,
+          heroSlot: heroSlot,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -1029,6 +1092,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     this.showCoordinates = true,
     this.allowStockfishFallback = true,
     this.animateEnding = true,
+    this.heroSlot,
   });
 
   final GamesTourModel gamesTourModel;
@@ -1044,6 +1108,11 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   /// See [GameCardChessboard.animateEnding].
   final bool animateEnding;
 
+  /// The card's link to its board's flight into the board screen. Only the
+  /// board the card shows in its list has one; the copy its long press
+  /// lifts does not. The board square alone flies, not the eval bar.
+  final BoardHeroSlot? heroSlot;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Get effective game status for ended games
@@ -1054,17 +1123,20 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
       _resolvedFenProvider(_ResolvedFenKey.fromGame(gamesTourModel)),
     );
 
-    if (!showEvalBar) {
-      return GameCardChessboard(
-        fen: resolvedFen,
-        lastMove: lastMove,
-        boardSize: boardSize,
-        showCoordinates: showCoordinates,
-        gameStatus: gameStatus,
-        orientation: orientation,
-        animateEnding: animateEnding,
-      );
-    }
+    final slot = heroSlot;
+    final Widget board = GameCardChessboard(
+      fen: resolvedFen,
+      lastMove: lastMove,
+      boardSize: boardSize,
+      showCoordinates: showCoordinates,
+      gameStatus: gameStatus,
+      orientation: orientation,
+      animateEnding: animateEnding,
+    );
+    final boardCell =
+        slot == null ? board : BoardHeroSource(slot: slot, child: board);
+
+    if (!showEvalBar) return boardCell;
 
     return Row(
       children: [
@@ -1080,15 +1152,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
                   ? recordedEvalAt(pgn: gamesTourModel.pgn, fen: resolvedFen)
                   : null,
         ),
-        GameCardChessboard(
-          fen: resolvedFen,
-          lastMove: lastMove,
-          boardSize: boardSize,
-          showCoordinates: showCoordinates,
-          gameStatus: gameStatus,
-          orientation: orientation,
-          animateEnding: animateEnding,
-        ),
+        boardCell,
       ],
     );
   }

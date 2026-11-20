@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show Collection;
+import 'package:chessever2/screens/feed/news/news_models.dart' show FeedNews;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoverySectionHeader;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -12,9 +14,7 @@ import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/my_space/widgets/space_edit_fade.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -31,7 +31,6 @@ import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/material.dart';
-import 'package:motor/motor.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // The Search tab's page is built only from cards the app already draws
@@ -58,13 +57,27 @@ double get searchSectionGap => 20.sp;
 
 /// What a pick from the page does: each remembers the pick as a recent
 /// search, then opens it, as a result of the same search does.
+///
+/// [event], [player], [opening] and [smartEvent] open what they are given.
+/// A collection and a story open themselves (their cards push their own
+/// pages); [collection] and [news] only hear that they were opened.
 @immutable
 class SearchPicks {
-  const SearchPicks({required this.event, this.player, this.opening});
+  const SearchPicks({
+    required this.event,
+    this.player,
+    this.opening,
+    this.smartEvent,
+    this.collection,
+    this.news,
+  });
 
   final ValueChanged<GroupEventCardModel> event;
   final ValueChanged<SearchPlayer>? player;
   final ValueChanged<OpeningSearchSelection>? opening;
+  final ValueChanged<SmartEventRequest>? smartEvent;
+  final ValueChanged<Collection>? collection;
+  final ValueChanged<FeedNews>? news;
 }
 
 /// One section of the page: the hub pages' heading on the gutter
@@ -631,198 +644,5 @@ Future<void> toggleSearchPlayerFavorite(
         tone: AppSnackTone.danger,
       );
     }
-  }
-}
-
-/// One recent search, its card untouched.
-///
-/// Out of Edit a finger can swipe it away (behind it, as it goes, the one
-/// word for what is happening). In the section's Edit the card holds still,
-/// takes no tap and no swipe, and a remove button stands after it, the way
-/// the Events page's recent rows end in theirs: a real control, which a
-/// screen reader reads by the entry's name.
-///
-/// Every change of room rides Edit's own spring ([kSpaceEditFadeMotion], as
-/// My Space's Edit), never one frame: the button's slot opens and closes
-/// with Edit, so the card narrows and widens with it, and a removed entry
-/// (swiped, or its button) closes its row up before it goes, so the cards
-/// under it rise rather than jump. Under reduced motion each change is
-/// immediate. The tree is the same in and out of Edit, so the card keeps
-/// its state (its photo, its menu's lookup).
-class SearchRecentItem extends StatefulWidget {
-  const SearchRecentItem({
-    super.key,
-    required this.identity,
-    required this.title,
-    required this.editing,
-    required this.onRemove,
-    required this.child,
-  });
-
-  /// The recent entry's identity: the swipe's and the button's key.
-  final String identity;
-
-  /// The entry's name, for the remove button's spoken label.
-  final String title;
-  final bool editing;
-
-  /// Called once the entry's row has closed up (at once under reduced
-  /// motion): the entry leaves the list in that frame.
-  final VoidCallback onRemove;
-  final Widget child;
-
-  @override
-  State<SearchRecentItem> createState() => _SearchRecentItemState();
-}
-
-class _SearchRecentItemState extends State<SearchRecentItem> {
-  /// Removed: the row closes up on the spring, then the entry goes.
-  bool _closing = false;
-  bool _removed = false;
-
-  void _remove() {
-    if (_closing || _removed) return;
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _removed = true;
-      widget.onRemove();
-      return;
-    }
-    setState(() => _closing = true);
-  }
-
-  void _closed(AnimationStatus status) {
-    if (!_closing || _removed || status.isAnimating) return;
-    _removed = true;
-    widget.onRemove();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reduce = MediaQuery.disableAnimationsOf(context);
-    final editing = widget.editing && !_closing;
-    final row = Row(
-      children: [
-        Expanded(
-          child: Dismissible(
-            key: ValueKey('search-recent-swipe-${widget.identity}'),
-            direction: widget.editing || _closing
-                ? DismissDirection.none
-                : DismissDirection.endToStart,
-            // The row's close-up is the spring around it (motor), not
-            // Dismissible's own curved tween: once the card has slid away,
-            // its room closes on [kSpaceEditFadeMotion] and only then does
-            // the entry leave the list.
-            resizeDuration: null,
-            onDismissed: (_) => _remove(),
-            background: Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: EdgeInsets.only(right: 4.w),
-                child: Text(
-                  'Remove',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.danger,
-                  ),
-                ),
-              ),
-            ),
-            child: IgnorePointer(ignoring: widget.editing, child: widget.child),
-          ),
-        ),
-        // The remove button's slot, opening with Edit: its width springs,
-        // and the card beside it narrows by exactly as much.
-        SingleMotionBuilder(
-          motion: kSpaceEditFadeMotion,
-          value: widget.editing ? 1.0 : 0.0,
-          active: !reduce,
-          child: SearchRecentRemoveButton(
-            key: ValueKey('search-recent-remove-${widget.identity}'),
-            title: widget.title,
-            onRemove: _remove,
-          ),
-          builder: (context, value, button) {
-            // A spring only approaches its end: land exactly on it.
-            final open = value < 0.01
-                ? 0.0
-                : value > 0.99
-                ? 1.0
-                : value;
-            if (open == 0 && !widget.editing) return const SizedBox.shrink();
-            return IgnorePointer(
-              ignoring: !editing,
-              child: ExcludeSemantics(
-                excluding: !editing,
-                child: ClipRect(
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    widthFactor: open,
-                    child: Opacity(opacity: open, child: button),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-    if (reduce) return row;
-    // One tree whether closing or not, so the row (the swiped card's
-    // Dismissible above all) is never remounted mid-close. Whole, it is not
-    // clipped: the card's own shadow stays.
-    return SingleMotionBuilder(
-      motion: kSpaceEditFadeMotion,
-      value: _closing ? 0.0 : 1.0,
-      onAnimationStatusChanged: _closed,
-      child: row,
-      builder: (context, value, child) {
-        final open = _closing ? value.clamp(0.0, 1.0) : 1.0;
-        return ClipRect(
-          clipBehavior: open < 1 ? Clip.hardEdge : Clip.none,
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: open,
-            child: Opacity(opacity: open, child: child),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// A recent search's remove button: the bare cross, quiet ink, a 44 target
-/// centred on the card it follows.
-class SearchRecentRemoveButton extends StatelessWidget {
-  const SearchRecentRemoveButton({
-    super.key,
-    required this.title,
-    required this.onRemove,
-  });
-
-  final String title;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final target = math.max(44.0, 44.w);
-    return Semantics(
-      container: true,
-      button: true,
-      label: 'Remove $title from recent searches',
-      onTap: onRemove,
-      excludeSemantics: true,
-      child: Padding(
-        padding: EdgeInsets.only(left: 4.w),
-        child: SizedBox.square(
-          dimension: target,
-          child: IconButton(
-            onPressed: onRemove,
-            padding: EdgeInsets.zero,
-            iconSize: 18.ic,
-            color: context.colors.textSecondary,
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ),
-      ),
-    );
   }
 }

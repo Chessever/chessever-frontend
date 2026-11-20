@@ -16,7 +16,7 @@ library;
 
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show lerpDouble;
+import 'dart:ui' show FlutterView, lerpDouble;
 
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -26,6 +26,7 @@ import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/home_top_bar.dart'
     show HomeSearchFieldSurface;
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/search_motion.dart' show SearchMotion;
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
