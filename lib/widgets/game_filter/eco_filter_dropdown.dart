@@ -4,6 +4,7 @@ import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Shared opening hierarchy used by the filter and collection catalog.
@@ -35,38 +36,35 @@ Map<String, List<EcoBrowseNode>> buildEcoBrowseTree(
   for (final entry in grouped.entries) {
     final nodesById = <String, EcoBrowseNode>{};
     final parentById = <String, OpeningSearchSuggestion?>{};
-    final uniqueSuggestions = <OpeningSearchSuggestion>[];
+    final unique = <_BrowseFacts>[];
     final seenIds = <String>{};
     for (final suggestion in entry.value) {
-      if (seenIds.add(suggestion.id)) uniqueSuggestions.add(suggestion);
+      if (seenIds.add(suggestion.id)) unique.add(_BrowseFacts(suggestion));
     }
+    // Only a family can be a parent; the order among them is kept, so ties
+    // still go to the first one met.
+    final families = [
+      for (final facts in unique)
+        if (facts.isFamily) facts,
+    ];
 
-    for (final suggestion in uniqueSuggestions) {
-      OpeningSearchSuggestion? nearestParent;
-      for (final candidate in uniqueSuggestions) {
-        if (!candidate.isFamily || candidate.id == suggestion.id) continue;
-        final parentCodes = candidate.filter.exactEcoCodes;
-        final childCodes = suggestion.filter.exactEcoCodes;
-        if (parentCodes.length <= childCodes.length ||
-            !childCodes.every(parentCodes.contains)) {
+    for (final child in unique) {
+      final suggestion = child.suggestion;
+      _BrowseFacts? nearestParent;
+      for (final candidate in families) {
+        if (candidate.suggestion.id == suggestion.id) continue;
+        if (candidate.codeCount <= child.codeCount ||
+            !child.codes.every(candidate.codeSet.contains)) {
           continue;
         }
-        final moveCompatible =
-            candidate.movePath.isEmpty ||
-            suggestion.movePath.isEmpty ||
-            EcoOpenings.isMovePrefix(candidate.movePath, suggestion.movePath);
-        if (suggestion.isFamily && !moveCompatible) continue;
+        if (child.isFamily && !_moveCompatible(candidate, child)) continue;
         if (nearestParent == null ||
-            _compareParentCandidates(
-                  candidate,
-                  nearestParent,
-                  child: suggestion,
-                ) <
+            _compareParentCandidates(candidate, nearestParent, child: child) <
                 0) {
           nearestParent = candidate;
         }
       }
-      parentById[suggestion.id] = nearestParent;
+      parentById[suggestion.id] = nearestParent?.suggestion;
     }
 
     List<String> ancestorsFor(OpeningSearchSuggestion suggestion) {
@@ -80,47 +78,84 @@ Map<String, List<EcoBrowseNode>> buildEcoBrowseTree(
       return ancestors;
     }
 
-    for (final suggestion in uniqueSuggestions) {
-      final ancestors = ancestorsFor(suggestion);
-      nodesById[suggestion.id] = EcoBrowseNode(
-        suggestion: suggestion,
+    final factsById = <String, _BrowseFacts>{
+      for (final facts in unique) facts.suggestion.id: facts,
+    };
+    for (final facts in unique) {
+      final ancestors = ancestorsFor(facts.suggestion);
+      nodesById[facts.suggestion.id] = EcoBrowseNode(
+        suggestion: facts.suggestion,
         depth: ancestors.length,
         ancestorIds: ancestors,
       );
     }
 
     final roots = <EcoBrowseNode>[];
-    for (final suggestion in uniqueSuggestions) {
-      final node = nodesById[suggestion.id]!;
-      final parent = parentById[suggestion.id];
+    for (final facts in unique) {
+      final node = nodesById[facts.suggestion.id]!;
+      final parent = parentById[facts.suggestion.id];
       if (parent == null) {
         roots.add(node);
       } else {
         nodesById[parent.id]?.children.add(node);
       }
     }
-    _sortBrowseNodes(roots);
+    _sortBrowseNodes(roots, factsById);
     result[entry.key] = roots;
   }
   return result;
 }
 
-int _compareParentCandidates(
-  OpeningSearchSuggestion left,
-  OpeningSearchSuggestion right, {
-  required OpeningSearchSuggestion child,
-}) {
-  bool moveCompatible(OpeningSearchSuggestion candidate) =>
-      candidate.movePath.isEmpty ||
-      child.movePath.isEmpty ||
-      EcoOpenings.isMovePrefix(candidate.movePath, child.movePath);
+/// What the tree's rules read of one suggestion, looked up once: every
+/// [GameEcoFilter] getter behind them scans the ECO families again, and the
+/// parent search and the sort ask them thousands of times.
+class _BrowseFacts {
+  _BrowseFacts(this.suggestion)
+    : isFamily = suggestion.isFamily,
+      codes = suggestion.filter.exactEcoCodes,
+      start = _rangeNumber(suggestion, start: true),
+      end = _rangeNumber(suggestion, start: false),
+      title = suggestion.fullTitle.toLowerCase() {
+    codeSet = codes.toSet();
+  }
 
-  final leftCompatible = moveCompatible(left);
-  final rightCompatible = moveCompatible(right);
+  final OpeningSearchSuggestion suggestion;
+  final bool isFamily;
+  final List<String> codes;
+  late final Set<String> codeSet;
+  final int start;
+  final int end;
+  final String title;
+
+  int get codeCount => codes.length;
+  List<String> get movePath => suggestion.movePath;
+
+  static int _rangeNumber(
+    OpeningSearchSuggestion suggestion, {
+    required bool start,
+  }) {
+    final family = EcoOpenings.getFamily(suggestion.filter.code);
+    final code =
+        (start ? family?.rangeStart : family?.rangeEnd) ??
+        suggestion.filter.code!;
+    return int.parse(code.substring(1));
+  }
+}
+
+bool _moveCompatible(_BrowseFacts candidate, _BrowseFacts child) =>
+    candidate.movePath.isEmpty ||
+    child.movePath.isEmpty ||
+    EcoOpenings.isMovePrefix(candidate.movePath, child.movePath);
+
+int _compareParentCandidates(
+  _BrowseFacts left,
+  _BrowseFacts right, {
+  required _BrowseFacts child,
+}) {
+  final leftCompatible = _moveCompatible(left, child);
+  final rightCompatible = _moveCompatible(right, child);
   if (leftCompatible != rightCompatible) return leftCompatible ? -1 : 1;
-  final scopeSize = left.filter.exactEcoCodes.length.compareTo(
-    right.filter.exactEcoCodes.length,
-  );
+  final scopeSize = left.codeCount.compareTo(right.codeCount);
   final moveDepth = right.movePath.length.compareTo(left.movePath.length);
   if (child.isFamily) {
     if (scopeSize != 0) return scopeSize;
@@ -132,48 +167,74 @@ int _compareParentCandidates(
   return _compareBrowseSuggestions(left, right);
 }
 
-void _sortBrowseNodes(List<EcoBrowseNode> nodes) {
+void _sortBrowseNodes(
+  List<EcoBrowseNode> nodes,
+  Map<String, _BrowseFacts> factsById,
+) {
   nodes.sort(
-    (left, right) =>
-        _compareBrowseSuggestions(left.suggestion, right.suggestion),
+    (left, right) => _compareBrowseSuggestions(
+      factsById[left.suggestion.id]!,
+      factsById[right.suggestion.id]!,
+    ),
   );
   for (final node in nodes) {
-    _sortBrowseNodes(node.children);
+    _sortBrowseNodes(node.children, factsById);
   }
 }
 
-int _compareBrowseSuggestions(
-  OpeningSearchSuggestion left,
-  OpeningSearchSuggestion right,
-) {
-  int startOf(OpeningSearchSuggestion suggestion) {
-    final family = EcoOpenings.getFamily(suggestion.filter.code);
-    final code = family?.rangeStart ?? suggestion.filter.code!;
-    return int.parse(code.substring(1));
-  }
-
-  int endOf(OpeningSearchSuggestion suggestion) {
-    final family = EcoOpenings.getFamily(suggestion.filter.code);
-    final code = family?.rangeEnd ?? suggestion.filter.code!;
-    return int.parse(code.substring(1));
-  }
-
-  final start = startOf(left).compareTo(startOf(right));
+int _compareBrowseSuggestions(_BrowseFacts left, _BrowseFacts right) {
+  final start = left.start.compareTo(right.start);
   if (start != 0) return start;
   if (left.isFamily != right.isFamily) return left.isFamily ? -1 : 1;
   if (left.isFamily && right.isFamily) {
-    final widerFirst = right.filter.exactEcoCodes.length.compareTo(
-      left.filter.exactEcoCodes.length,
-    );
+    final widerFirst = right.codeCount.compareTo(left.codeCount);
     if (widerFirst != 0) return widerFirst;
   }
-  final end = endOf(left).compareTo(endOf(right));
+  final end = left.end.compareTo(right.end);
   if (end != 0) return end;
-  final name = left.fullTitle.toLowerCase().compareTo(
-    right.fullTitle.toLowerCase(),
-  );
+  final name = left.title.compareTo(right.title);
   if (name != 0) return name;
-  return left.id.compareTo(right.id);
+  return left.suggestion.id.compareTo(right.suggestion.id);
+}
+
+/// The Opening dropdown's browse tree, one per app session for each
+/// variant ([exactCodesOnly] leaves the families out). The catalog it is
+/// built from never changes, so no popup pays for it twice; the first
+/// popup to need it either finds it warmed ([warmEcoFilterBrowseTree]) or
+/// builds it there and then.
+Map<String, List<EcoBrowseNode>> ecoFilterBrowseTree({
+  bool exactCodesOnly = false,
+}) => _ecoFilterTrees[exactCodesOnly] ??= _ecoFilterTree(exactCodesOnly);
+
+final Map<bool, Map<String, List<EcoBrowseNode>>> _ecoFilterTrees = {};
+final Map<bool, Future<void>> _ecoFilterTreeWarmups = {};
+
+Map<String, List<EcoBrowseNode>> _ecoFilterTree(bool exactCodesOnly) {
+  final suggestions = browseOpeningSuggestions();
+  return buildEcoBrowseTree(
+    exactCodesOnly
+        ? suggestions.where((s) => !s.isFamily).toList(growable: false)
+        : suggestions,
+  );
+}
+
+/// Builds [ecoFilterBrowseTree] on a background isolate, once per session,
+/// so expanding Opening never stalls a frame. A no-op once it is built or
+/// building; on the web (no isolates) the tree is built when first opened.
+Future<void> warmEcoFilterBrowseTree({bool exactCodesOnly = false}) {
+  if (kIsWeb || _ecoFilterTrees.containsKey(exactCodesOnly)) {
+    return Future.value();
+  }
+  return _ecoFilterTreeWarmups[exactCodesOnly] ??=
+      compute(
+        _ecoFilterTree,
+        exactCodesOnly,
+        debugLabel: 'ECO browse tree',
+      ).then<void>(
+        (tree) => _ecoFilterTrees.putIfAbsent(exactCodesOnly, () => tree),
+        // A failed warm-up only means the first expand builds the tree itself.
+        onError: (Object _) => _ecoFilterTreeWarmups.remove(exactCodesOnly),
+      );
 }
 
 /// Searchable opening filter with parent families, exact ECO choices, and
@@ -210,7 +271,16 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     skipTraversal: true,
   );
   final ScrollController _scrollController = ScrollController();
-  late final Map<String, List<EcoBrowseNode>> _browseRoots;
+
+  /// Read only once the list is open: the closed dropdown (how every popup
+  /// opens) never pays for the tree.
+  Map<String, List<EcoBrowseNode>> get _browseRoots =>
+      ecoFilterBrowseTree(exactCodesOnly: widget.exactCodesOnly);
+
+  /// Whether the options list is built: while open and while it closes. A
+  /// closed list is zero high, so building it only cost the popup's first
+  /// frame.
+  bool get _listBuilt => _isExpanded || !_animationController.isDismissed;
   final Set<String> _expandedCategories = <String>{};
   final Set<String> _expandedBrowseNodes = <String>{};
 
@@ -226,14 +296,19 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   @override
   void initState() {
     super.initState();
-    _browseRoots = buildEcoBrowseTree(
-      _supportedSuggestions(browseOpeningSuggestions()),
-    );
-    _resetBrowseDisclosure(widget.value);
+    // The browse disclosure is set when the list opens
+    // ([_toggleExpanded]); until then nothing reads it.
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 250),
       vsync: this,
-    );
+    )..addStatusListener(_onListStatus);
+    // Build the browse tree off the UI isolate once the popup is on screen,
+    // so the first expand finds it ready.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        warmEcoFilterBrowseTree(exactCodesOnly: widget.exactCodesOnly);
+      }
+    });
     _expandAnimation = CurvedAnimation(
       parent: _animationController,
       curve: Curves.easeOutCubic,
@@ -246,9 +321,15 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   @override
   void didUpdateWidget(covariant EcoFilterDropdown oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value && !_isExpanded) {
+    // A closed list resets its disclosure when it next opens.
+    if (oldWidget.value != widget.value && !_isExpanded && _listBuilt) {
       _resetBrowseDisclosure(widget.value);
     }
+  }
+
+  void _onListStatus(AnimationStatus status) {
+    // Closed all the way: drop the list.
+    if (status == AnimationStatus.dismissed && mounted) setState(() {});
   }
 
   @override
@@ -495,7 +576,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildSearchField(),
-                  Flexible(child: _buildOptionsList()),
+                  if (_listBuilt) Flexible(child: _buildOptionsList()),
                 ],
               ),
             ),

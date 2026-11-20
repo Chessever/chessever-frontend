@@ -15,8 +15,8 @@ import 'package:flutter/physics.dart';
 
 // The Search tab's rows: each section's cards side by side, the next one
 // peeking past the edge, read on a page at a time as the reader nears the
-// end, ending in a card that opens the section's own page. The same cards,
-// opened in place or on that page, stand in rows down the page
+// end, ending in a card that opens the section's own page. On that page,
+// where it is the Search tab's own, the cards stand in rows down the page
 // ([SearchPagedRows]). Neither draws a card of its own: the cards are the
 // app's, these only lay them out and say what is still coming.
 
@@ -741,12 +741,11 @@ class _RetryWords extends StatelessWidget {
 }
 
 /// One section's cards down the page, [columns] to a row, read on a page at
-/// a time as the reader nears the last row: the section opened in place on
-/// the landing, and the section's own page.
+/// a time as the reader nears the last row: the section's own page.
 ///
 /// After the last row: a row's worth of room with one quiet spinner while
-/// the next page (or [pending] cards) is on its way, a quiet retry line
-/// when a page failed, then [end] (Show less, where the section folds back).
+/// the next page (or [pending] cards) is on its way, or a quiet retry line
+/// when a page failed.
 class SearchPagedRows<T> extends StatefulWidget {
   const SearchPagedRows({
     super.key,
@@ -760,7 +759,6 @@ class SearchPagedRows<T> extends StatefulWidget {
     this.failed = false,
     this.onLoadMore,
     this.onRetry,
-    this.end,
   });
 
   /// Names the rows' own slots: `search-<section>-rows-pending`,
@@ -786,7 +784,6 @@ class SearchPagedRows<T> extends StatefulWidget {
   final bool failed;
   final VoidCallback? onLoadMore;
   final VoidCallback? onRetry;
-  final Widget? end;
 
   @override
   State<SearchPagedRows<T>> createState() => _SearchPagedRowsState<T>();
@@ -844,7 +841,6 @@ class _SearchPagedRowsState<T> extends State<SearchPagedRows<T>> {
               child: Center(child: SearchQuietSpinner()),
             ),
           ),
-        ?widget.end,
       ],
     );
   }
@@ -872,36 +868,6 @@ class _SearchPagedRowsState<T> extends State<SearchPagedRows<T>> {
       },
     );
   }
-}
-
-/// [items] from [start] as one row of [columns] equal cards, [cardBuilder]
-/// drawing each (with its index in [items]); a short last row keeps its
-/// empty slots, so its cards stand where the rows above do. With [extent]
-/// every card of the row stands that tall (a grid of image cards).
-Widget searchCardRow<T>(
-  List<T> items,
-  int start,
-  int columns, {
-  required Widget Function(T item, int index) cardBuilder,
-  double? extent,
-}) {
-  final gap = searchCardGap;
-  final row = Row(
-    crossAxisAlignment: extent == null
-        ? CrossAxisAlignment.start
-        : CrossAxisAlignment.stretch,
-    children: [
-      for (var c = 0; c < columns; c++) ...[
-        if (c > 0) SizedBox(width: gap),
-        Expanded(
-          child: start + c < items.length
-              ? cardBuilder(items[start + c], start + c)
-              : const SizedBox.shrink(),
-        ),
-      ],
-    ],
-  );
-  return extent == null ? row : SizedBox(height: extent, child: row);
 }
 
 /// A page that did not come, at the end of a section's rows: the words and

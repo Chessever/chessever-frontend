@@ -56,10 +56,10 @@ import 'package:chessever2/screens/for_you/discovery/news_screen.dart'
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart'
     show homeEventsLiveFirstProvider;
 import 'package:chessever2/screens/search/search_carousel.dart'
-    show SearchCarouselPhysics;
+    show SearchCarousel, SearchCarouselPhysics, SearchSeeMoreCard;
 import 'package:chessever2/screens/search/search_feeds.dart';
 import 'package:chessever2/screens/search/search_landing_section.dart'
-    show SearchLandingSection;
+    show SearchLandingSection, SearchSectionHeading;
 import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/screens/search/sections/search_openings_page.dart';
 import 'package:chessever2/screens/search/sections/search_section_pages.dart';
@@ -1805,7 +1805,7 @@ void main() {
       await app.dispose();
     });
   });
-  group('the sections: a row each, its own page, opened in place', () {
+  group('the sections: a row each, and its own page', () {
     /// Every section the landing shows, as the fixtures hold them.
     Future<_App> pumpAll(
       WidgetTester tester, {
@@ -1995,158 +1995,9 @@ void main() {
       await app.dispose();
     });
 
-    testWidgets('See more opens a section in place, its cards down the page, '
-        'growing on a spring with every card drawn; Show less folds it back '
-        'on the spring', (tester) async {
-      final app = await pumpAll(tester, size: const Size(393, 2400));
-      final first = find.byKey(const ValueKey('search-top-players-0'));
-      final second = find.byKey(const ValueKey('search-top-players-2'));
-      final below = find.text('Openings');
-      // Folded: a row, the second card beside the first.
-      expect(tester.getTopLeft(second).dy, tester.getTopLeft(first).dy);
-      final folded = tester.getTopLeft(below).dy;
-
-      await tester.tap(_toggle('top-players-expand'));
-      await tester.pump();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-      final growing = tester.getTopLeft(below).dy;
-      // Growing, the cards are there whole: nothing waits on an entrance.
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('search_landing')),
-          matching: find.byWidgetPredicate(
-            (w) => w is Opacity && w.opacity == 0,
-          ),
-        ),
-        findsNothing,
-      );
-      await _frames(tester);
-      final open = tester.getTopLeft(below).dy;
-      expect(growing, greaterThan(folded));
-      expect(growing, lessThan(open));
-      // Down the page: the second card under the first, on the same
-      // gutter; Show less at the end and in the head.
-      expect(
-        tester.getTopLeft(second).dy,
-        greaterThan(tester.getBottomLeft(first).dy),
-      );
-      expect(tester.getTopLeft(second).dx, tester.getTopLeft(first).dx);
-      expect(
-        find.byKey(const ValueKey('search-top-players-expand')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey('search-top-players-fold')),
-        findsOneWidget,
-      );
-      final collapse = find.byKey(
-        const ValueKey('search-top-players-collapse'),
-      );
-      expect(collapse, findsOneWidget);
-      expect(
-        find.descendant(of: collapse, matching: find.text('Show less')),
-        findsOneWidget,
-      );
-      expect(app.read(searchExpandedSectionsProvider), {'top-players'});
-
-      await tester.tap(_toggle('top-players-collapse'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-      final folding = tester.getTopLeft(below).dy;
-      expect(folding, lessThan(open));
-      expect(folding, greaterThan(folded));
-      await _frames(tester);
-      expect(tester.getTopLeft(below).dy, closeTo(folded, 0.5));
-      expect(tester.getTopLeft(second).dy, tester.getTopLeft(first).dy);
-      expect(
-        find.byKey(const ValueKey('search-top-players-expand')),
-        findsOneWidget,
-      );
-      expect(app.read(searchExpandedSectionsProvider), isEmpty);
-      await app.dispose();
-    });
-
-    testWidgets('under reduced motion a section opens and folds at once', (
-      tester,
-    ) async {
-      final app = await pumpAll(
-        tester,
-        size: const Size(393, 2400),
-        reduceMotion: true,
-      );
-      final first = find.byKey(const ValueKey('search-top-players-0'));
-      final second = find.byKey(const ValueKey('search-top-players-2'));
-      await tester.tap(_toggle('top-players-expand'));
-      await tester.pump();
-      expect(
-        tester.getTopLeft(second).dy,
-        greaterThan(tester.getBottomLeft(first).dy),
-      );
-      await tester.tap(_toggle('top-players-collapse'));
-      await tester.pump();
-      expect(tester.getTopLeft(second).dy, tester.getTopLeft(first).dy);
-      await app.dispose();
-    });
-
-    testWidgets('Show less far down an opened section springs the page back '
-        'to its head, then folds there', (tester) async {
-      final ranking = _Ranking(
-        pages: [
-          for (var p = 0; p < 4; p++)
-            _rankedPage(searchLandingPlayerCount + p * searchPlayersPageSize),
-        ],
-      );
-      final app = await _pump(
-        tester,
-        players: () async => _topPlayers,
-        ranking: ranking,
-      );
-      await tester.tap(_toggle('top-players-expand'));
-      await tester.pump();
-      await tester.pump();
-      await _frames(tester);
-      final page = _landingPosition(tester);
-      for (var i = 0; i < 8; i++) {
-        page.jumpTo(page.maxScrollExtent);
-        await _frames(tester, 10);
-      }
-      expect(app.read(searchTopPlayersFeedProvider).hasMore, isFalse);
-      final collapse = find.byKey(
-        const ValueKey('search-top-players-collapse'),
-      );
-      await tester.ensureVisible(collapse);
-      await tester.pump();
-      final from = page.pixels;
-      final head = find.byKey(const ValueKey('search-top-players-open'));
-      final top = tester.getTopLeft(
-        find.byKey(const ValueKey('search_landing')),
-      );
-      // Far down: the head is screens above.
-      expect(from, greaterThan(2000));
-
-      await tester.tap(_toggle('top-players-collapse'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
-      // On the way back, never there in one frame.
-      expect(page.pixels, lessThan(from));
-      expect(page.pixels, greaterThan(from / 2));
-      expect(app.read(searchExpandedSectionsProvider), {'top-players'});
-      await _frames(tester, 120);
-      // At the head, the section folded under it.
-      expect(page.pixels, closeTo(0, 0.5));
-      expect(tester.getTopLeft(head).dy, greaterThanOrEqualTo(top.dy));
-      expect(app.read(searchExpandedSectionsProvider), isEmpty);
-      expect(
-        find.byKey(const ValueKey('search-top-players-expand')),
-        findsOneWidget,
-      );
-      await app.dispose();
-    });
-
     testWidgets('Top players never draws a player alone while more of the '
         'ranking is coming; once it is spent, a last player alone stands '
-        'clear of See more', (tester) async {
+        'whole in its row, clear of the next section', (tester) async {
       final named = _rankedPage(searchLandingPlayerCount);
       final ranking = _Ranking(
         pages: [
@@ -2197,12 +2048,16 @@ void main() {
       await tester.pump();
       final lone = find.byKey(const ValueKey('search-top-players-18'));
       expect(lone, findsOneWidget);
+      // The row stands as tall as the lone card: drawn whole inside it,
+      // never over the next section's heading.
       expect(
         tester.getRect(lone).bottom,
-        lessThanOrEqualTo(
-          tester
-              .getRect(find.byKey(const ValueKey('search-top-players-expand')))
-              .top,
+        lessThanOrEqualTo(tester.getRect(_row('top-players')).bottom + 0.01),
+      );
+      expect(
+        tester.getRect(lone).bottom,
+        lessThan(
+          tester.getRect(find.byKey(const ValueKey('search-smart-open'))).top,
         ),
       );
       expect(tester.takeException(), isNull);
@@ -2223,39 +2078,6 @@ void main() {
         greaterThan(before),
       );
       expect(physics.slot, greaterThan(before));
-      await app.dispose();
-    });
-
-    testWidgets('a section left open while a search was typed and cleared is '
-        'still open, and folds back on the spring', (tester) async {
-      final app = await pumpAll(tester, size: const Size(393, 2400));
-      final below = find.text('Openings');
-      final folded = tester.getTopLeft(below).dy;
-      await tester.tap(_toggle('top-players-expand'));
-      await tester.pump();
-      await tester.pump();
-      await _frames(tester);
-      final open = tester.getTopLeft(below).dy;
-
-      await _type(tester, const ValueKey('search_tab_field'), 'nakamura');
-      expect(find.byKey(const ValueKey('search_landing')), findsNothing);
-      await _type(tester, const ValueKey('search_tab_field'), '');
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.pump();
-      expect(tester.getTopLeft(below).dy, closeTo(open, 0.5));
-
-      await tester.tap(_toggle('top-players-collapse'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-      final folding = tester.getTopLeft(below).dy;
-      expect(folding, lessThan(open));
-      expect(folding, greaterThan(folded));
-      await _frames(tester);
-      expect(tester.getTopLeft(below).dy, closeTo(folded, 0.5));
-      expect(
-        find.byKey(const ValueKey('search-top-players-expand')),
-        findsOneWidget,
-      );
       await app.dispose();
     });
 
@@ -2338,76 +2160,6 @@ void main() {
       await app.dispose();
     });
 
-    testWidgets('opened in place, a section reads on down the page as the '
-        'reader nears its end, a quiet line to try again when a page fails', (
-      tester,
-    ) async {
-      final ranking = _Ranking(
-        pages: [
-          _rankedPage(searchLandingPlayerCount),
-          _rankedPage(searchLandingPlayerCount + searchPlayersPageSize),
-        ],
-      );
-      final app = await _pump(
-        tester,
-        players: () async => _topPlayers,
-        ranking: ranking,
-        reduceMotion: true,
-      );
-      // The row asked for one page on its own (its end was near).
-      expect(ranking.offsets, [searchLandingPlayerCount]);
-      await tester.tap(_toggle('top-players-expand'));
-      await _frames(tester, 10);
-      final page = tester
-          .state<ScrollableState>(
-            find
-                .descendant(
-                  of: find.byKey(const ValueKey('search_landing')),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
-          )
-          .position;
-      ranking.fail = true;
-      final asked = ranking.offsets.length;
-      page.jumpTo(page.maxScrollExtent);
-      await _frames(tester, 10);
-      expect(ranking.offsets, hasLength(asked + 1));
-      final line = find.byKey(const ValueKey('search-top-players-rows-retry'));
-      expect(line, findsOneWidget);
-      expect(tester.getSize(line).height, greaterThanOrEqualTo(44));
-      expect(find.text("Couldn't load more"), findsOneWidget);
-
-      await tester.tap(line);
-      await _frames(tester, 10);
-      // The page that failed, asked for again from where it was.
-      expect(ranking.offsets, hasLength(asked + 2));
-      expect(ranking.offsets.last, ranking.offsets[asked]);
-      expect(line, findsNothing);
-      page.jumpTo(page.maxScrollExtent);
-      await _frames(tester, 10);
-      // Every page in, each player once; the source spent, nothing turns.
-      final feed = app.read(searchTopPlayersFeedProvider);
-      expect(feed.hasMore, isFalse);
-      expect(
-        feed.items.length,
-        greaterThan(searchLandingPlayerCount + searchPlayersPageSize),
-      );
-      expect(
-        feed.items.map((p) => p.fideId).toSet(),
-        hasLength(feed.items.length),
-      );
-      expect(
-        find.byKey(const ValueKey('search-top-players-rows-pending')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey('search-top-players-collapse')),
-        findsOneWidget,
-      );
-      await app.dispose();
-    });
-
     testWidgets('text at 1.3x on a 375pt phone: event, player and smart '
         'event cards lay out whole in their rows', (tester) async {
       tester.platformDispatcher.textScaleFactorTestValue = 1.3;
@@ -2434,6 +2186,52 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('search-smart-see-more')));
       expect(observer.lastPage(tester), isA<SearchSmartEventsPage>());
+      await app.dispose();
+    });
+
+    testWidgets('nothing stands under a row: no See more or Show less '
+        'toggle, the next section\'s heading one section gap below', (
+      tester,
+    ) async {
+      final app = await pumpAll(tester);
+      // A row read to its end shows its See more card: the only See more
+      // on the landing is that card, at the end of a row.
+      final row = _rowPosition(tester, 'smart');
+      row.jumpTo(row.maxScrollExtent);
+      await tester.pump();
+      final cards = find.descendant(
+        of: find.byType(SearchSeeMoreCard),
+        matching: find.text('See more'),
+      );
+      expect(cards, findsWidgets);
+      expect(find.text('See more').evaluate().length, cards.evaluate().length);
+      expect(find.text('Show less'), findsNothing);
+      expect(find.byIcon(Icons.expand_more_rounded), findsNothing);
+      expect(find.byIcon(Icons.expand_less_rounded), findsNothing);
+      const sections = SearchSectionId.values;
+      for (final section in sections) {
+        expect(_row(section.slug), findsOneWidget, reason: section.title);
+        for (final end in ['expand', 'collapse', 'fold']) {
+          expect(
+            find.byKey(ValueKey('search-${section.slug}-$end')),
+            findsNothing,
+          );
+        }
+      }
+      // Each row is followed by the section gap, then straight by the next
+      // section's heading.
+      for (var i = 0; i + 1 < sections.length; i++) {
+        final heading = find.ancestor(
+          of: find.byKey(ValueKey('search-${sections[i + 1].slug}-open')),
+          matching: find.byType(SearchSectionHeading),
+        );
+        expect(
+          tester.getRect(heading).top -
+              tester.getRect(_row(sections[i].slug)).bottom,
+          closeTo(searchSectionGap, 0.01),
+          reason: '${sections[i].title} to ${sections[i + 1].title}',
+        );
+      }
       await app.dispose();
     });
 
@@ -2515,34 +2313,25 @@ void main() {
       ),
     ];
     for (final (slug, card, labels) in menus) {
-      for (final inPlace in [false, true]) {
-        testWidgets('$slug ${inPlace ? 'opened in place' : 'in its row'}: '
-            'a long-press is the card\'s own menu', (tester) async {
-          final observer = _PushObserver();
-          final app = await pumpAll(
-            tester,
-            reduceMotion: true,
-            observer: observer,
-          );
-          if (inPlace) {
-            await tester.tap(_toggle('$slug-expand'));
-            await tester.pump();
-            expect(
-              find.byKey(ValueKey('search-$slug-collapse')),
-              findsOneWidget,
-            );
-          }
-          expect(card(), findsOneWidget);
-          await tester.longPress(card());
-          await _frames(tester);
-          expect(_menuLabels(tester), labels);
-          // (The News page's card has no menu: held and let go, it opens
-          // the story, as it does there.)
-          // Nothing the Search tab adds of its own.
-          expect(find.text('Remove from recent searches'), findsNothing);
-          await app.dispose();
-        });
-      }
+      testWidgets('$slug in its row: a long-press is the card\'s own menu', (
+        tester,
+      ) async {
+        final observer = _PushObserver();
+        final app = await pumpAll(
+          tester,
+          reduceMotion: true,
+          observer: observer,
+        );
+        expect(card(), findsOneWidget);
+        await tester.longPress(card());
+        await _frames(tester);
+        expect(_menuLabels(tester), labels);
+        // (The News page's card has no menu: held and let go, it opens
+        // the story, as it does there.)
+        // Nothing the Search tab adds of its own.
+        expect(find.text('Remove from recent searches'), findsNothing);
+        await app.dispose();
+      });
     }
 
     testWidgets('a story opens the reader on it, paging on through the same '
@@ -2656,38 +2445,24 @@ void main() {
       await app.dispose();
     });
 
-    testWidgets('the landing, and a section opened in place, end clear of '
-        'the floating dock\'s inset', (tester) async {
+    testWidgets('the landing ends clear of the floating dock\'s inset', (
+      tester,
+    ) async {
       const inset = 90.0;
       final app = await pumpAll(
         tester,
         size: const Size(393, 852),
         padding: const EdgeInsets.only(bottom: inset),
-        reduceMotion: true,
       );
-      final page = tester
-          .state<ScrollableState>(
-            find
-                .descendant(
-                  of: find.byKey(const ValueKey('search_landing')),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
-          )
-          .position;
+      final page = _landingPosition(tester);
       page.jumpTo(page.maxScrollExtent);
       await tester.pump();
-      final last = find.byKey(const ValueKey('search-news-expand'));
+      // The last section's row, its story whole above the dock.
+      final last = _row('news');
       expect(last, findsOneWidget);
       expect(tester.getRect(last).bottom, lessThanOrEqualTo(852 - inset));
-
-      await tester.tap(_toggle('news-expand'));
-      await tester.pump();
-      page.jumpTo(page.maxScrollExtent);
-      await tester.pump();
-      final end = find.byKey(const ValueKey('search-news-collapse'));
-      expect(end, findsOneWidget);
-      expect(tester.getRect(end).bottom, lessThanOrEqualTo(852 - inset));
+      final story = find.byKey(ValueKey('search-news-${_story.key}'));
+      expect(tester.getRect(story).bottom, lessThanOrEqualTo(852 - inset));
       await app.dispose();
     });
 
@@ -3762,9 +3537,7 @@ class _PagedCollections implements CollectionsRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// The words of a section's See more or Show less ([key] after `search-`),
-/// where the control takes its taps.
-Finder _toggle(String key) => find.descendant(
-  of: find.byKey(ValueKey('search-$key')),
-  matching: find.byType(Text),
+/// [section]'s row on the landing ([SearchCarousel]).
+Finder _row(String section) => find.byWidgetPredicate(
+  (widget) => widget is SearchCarousel && widget.section == section,
 );

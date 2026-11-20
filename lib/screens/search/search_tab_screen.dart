@@ -86,14 +86,13 @@ class SearchTabScreen extends HookConsumerWidget {
     ref.listen(searchLandingOpeningsProvider, (_, __) {});
     ref.listen(searchUpcomingProvider, (_, __) {});
     // The sections' pages read on from those heads, and the two read from
-    // their first page; with the sections opened in place, they last as
-    // long as the tab, so a row read far on is still there after a search.
+    // their first page; they last as long as the tab, so a row read far on
+    // is still there after a search.
     ref.listen(searchTopPlayersFeedProvider, (_, __) {});
     ref.listen(searchOpeningsFeedProvider, (_, __) {});
     ref.listen(searchComingUpFeedProvider, (_, __) {});
     ref.listen(searchCollectionsFeedProvider, (_, __) {});
     ref.listen(searchNewsFeedProvider, (_, __) {});
-    ref.listen(searchExpandedSectionsProvider, (_, __) {});
 
     // Coming up is one read, read again while the tab lives: when one of
     // its events starts (it has moved to Live now; the read's spare events

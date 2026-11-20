@@ -8,6 +8,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 Future<BookGamesFilter?> showBookGamesFilterDialog({
@@ -86,17 +87,10 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
   }
 
   Widget _buildDialogCard(BuildContext context, double dialogWidth) {
-    return Container(
+    return PopupGlass(
       width: dialogWidth,
       constraints: BoxConstraints(maxHeight: 560.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -242,7 +236,8 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: context.colors.textPrimary,
-                  backgroundColor: context.colors.surface,
+                  // Text on the glass, as it was on the opaque panel.
+                  backgroundColor: Colors.transparent,
                   side: BorderSide.none,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8.br),

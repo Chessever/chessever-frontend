@@ -7,6 +7,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// Filter + sort dialog for the Miniatures Players tab: title chips (GM / IM /
@@ -56,17 +57,10 @@ class _MiniaturePlayersFilterDialogState
   @override
   Widget build(BuildContext context) {
     final dialogWidth = 320.w;
-    return Container(
+    return PopupGlass(
       width: dialogWidth,
       constraints: BoxConstraints(maxHeight: 480.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -234,7 +228,8 @@ class _MiniaturePlayersFilterDialogState
               child: Container(
                 height: 40.h * context.textGrowth,
                 decoration: BoxDecoration(
-                  color: context.colors.surface,
+                  // Text on the glass, as it was on the opaque panel.
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(4.br),
                 ),
                 alignment: Alignment.center,

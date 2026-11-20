@@ -9,6 +9,7 @@ import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// Filter model for Gamebase library search.
@@ -252,17 +253,10 @@ class _LibraryGamebaseFilterDialogState
   }
 
   Widget _buildDialogCard(BuildContext context, double dialogWidth) {
-    return Container(
+    return PopupGlass(
       width: dialogWidth,
       constraints: BoxConstraints(maxHeight: 560.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -520,14 +514,15 @@ class _LibraryGamebaseFilterDialogState
       padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 16.h),
       child: Row(
         children: [
-          // Reset button — CSS: bg #1A1A1C, radius 4px
+          // Reset button: radius 4px, no fill of its own
           Expanded(
             child: GestureDetector(
               onTap: _resetFilters,
               child: Container(
                 height: 40.h * context.textGrowth,
                 decoration: BoxDecoration(
-                  color: context.colors.surface,
+                  // Text on the glass, as it was on the opaque panel.
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(4.br),
                 ),
                 alignment: Alignment.center,

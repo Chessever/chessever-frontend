@@ -6,6 +6,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -65,12 +66,10 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
     // Ink that sits on the solid danger fill: paper on light, black on dark.
     final onDanger = context.isLightTheme ? colors.surface : colors.textInverse;
 
-    return Container(
+    return PopupGlass(
       constraints: BoxConstraints(maxWidth: 340.w),
-      decoration: BoxDecoration(
-        color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(24),
-      ),
+      borderRadius: BorderRadius.circular(24),
+      tone: colors.surfaceElevated,
       padding: EdgeInsets.all(24.sp),
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -6,6 +6,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -60,17 +61,10 @@ class _PremiumGamesFilterDialogState
     final horizontalPadding = 20.w;
     final verticalPadding = 16.h;
 
-    return Container(
+    return PopupGlass(
       width: dialogWidth,
       constraints: BoxConstraints(maxHeight: 520.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -163,7 +157,8 @@ class _PremiumGamesFilterDialogState
                         onPressed: _resetFilters,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: context.colors.textPrimary,
-                          backgroundColor: context.colors.surface,
+                          // Text on the glass, as it was on the opaque panel.
+                          backgroundColor: Colors.transparent,
                           side: BorderSide.none,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8.br),

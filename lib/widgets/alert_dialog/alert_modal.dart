@@ -1,12 +1,17 @@
-import 'dart:ui';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
-/// Shows a smooth alert modal with Motor-powered spring animations.
-/// Features blur backdrop and scale+fade entrance animation.
+/// Shows a centred popup over a tinted scrim, on a Motor spring.
+///
+/// The page under it is only dimmed: the scrim fades in, and the popup
+/// scales up on its spring. Nothing blurs the whole screen (re-blurring a
+/// live page on every frame of the open is what made popups stutter); the
+/// frost is the popup panel's own ([PopupGlass]), over the panel's area
+/// only. The popup is on screen at full strength from its first frame.
 Future<T?> showAlertModal<T>({
   required BuildContext context,
   required Widget child,
@@ -15,7 +20,6 @@ Future<T?> showAlertModal<T>({
   Color? backgroundColor,
   bool barrierDismissible = true,
   Color? barrierColor,
-  bool useBlur = true,
 }) {
   final resolvedBarrier = barrierColor ?? context.colors.scrim;
   return showGeneralDialog<T>(
@@ -31,7 +35,6 @@ Future<T?> showAlertModal<T>({
         backgroundColor: backgroundColor,
         barrierDismissible: barrierDismissible,
         barrierColor: resolvedBarrier,
-        useBlur: useBlur,
         child: child,
       );
     },
@@ -46,7 +49,6 @@ class _SmoothAlertWrapper<T> extends StatefulWidget {
     this.backgroundColor,
     required this.barrierDismissible,
     required this.barrierColor,
-    required this.useBlur,
   });
 
   final Widget child;
@@ -55,7 +57,6 @@ class _SmoothAlertWrapper<T> extends StatefulWidget {
   final Color? backgroundColor;
   final bool barrierDismissible;
   final Color barrierColor;
-  final bool useBlur;
 
   @override
   State<_SmoothAlertWrapper<T>> createState() => _SmoothAlertWrapperState<T>();
@@ -78,14 +79,23 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
 
   @override
   Widget build(BuildContext context) {
+    final scrimStrength = PopupGlassStyle.of(context).scrim;
+    // Built once; the spring only moves the scale and the scrim around it.
+    final popup = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 560),
+      child: GestureDetector(
+        onTap: () {}, // Absorb tap
+        child: widget.child,
+      ),
+    );
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
       value: _animationProgress,
-      builder: (context, value, child) {
+      child: popup,
+      builder: (context, value, popup) {
         final progress = MediaQuery.disableAnimationsOf(context) ? 1.0 : value;
         final scale = 0.85 + (0.15 * progress);
         final opacity = progress.clamp(0.0, 1.0);
-        final blurAmount = widget.useBlur ? 8 * progress : 0.0;
 
         return Material(
           color: Colors.transparent,
@@ -95,28 +105,18 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
                 : null,
             child: Stack(
               children: [
-                // Backdrop with blur
+                // The scrim: a plain tint that fades in. No backdrop blur.
                 Positioned.fill(
-                  child: widget.useBlur
-                      ? BackdropFilter(
-                          filter: ImageFilter.blur(
-                            sigmaX: blurAmount,
-                            sigmaY: blurAmount,
-                          ),
-                          child: Container(
-                            color: widget.barrierColor.withValues(
-                              alpha: opacity * 0.7,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          color: widget.barrierColor.withValues(
-                            alpha: opacity * 0.7,
-                          ),
-                        ),
+                  child: ColoredBox(
+                    color: widget.barrierColor.withValues(
+                      alpha: opacity * scrimStrength,
+                    ),
+                  ),
                 ),
                 // Dialog content. Centered in the space above the keyboard so
                 // a dialog with a text field never slides its actions under it.
+                // Never faded: live controls stay visible even if motion is
+                // paused, and glass under an opacity would lose its frost.
                 Padding(
                   padding: EdgeInsets.only(
                     bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -127,20 +127,7 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
                         horizontal: widget.horizontalPadding.w,
                         vertical: widget.verticalPadding.h,
                       ),
-                      child: Opacity(
-                        // Live controls stay visible even if motion is paused.
-                        opacity: 1,
-                        child: Transform.scale(
-                          scale: scale,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 560),
-                            child: GestureDetector(
-                              onTap: () {}, // Absorb tap
-                              child: widget.child,
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: Transform.scale(scale: scale, child: popup),
                     ),
                   ),
                 ),
@@ -166,17 +153,10 @@ Future<bool?> showSmoothConfirmDialog({
 }) {
   return showAlertModal<bool>(
     context: context,
-    child: Container(
+    child: PopupGlass(
       width: double.infinity,
       padding: EdgeInsets.all(24.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

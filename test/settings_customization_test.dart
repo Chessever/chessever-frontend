@@ -17,6 +17,7 @@ import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
+import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
@@ -492,5 +493,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SettingsPage), findsNothing);
     expect(find.text('Open settings'), findsOneWidget);
+  });
+
+  testWidgets('Collection stories sits in Customization beside Start screen, '
+      'and its choice is kept on the device', (tester) async {
+    final container = await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+    );
+    final start = tester.getRect(find.byType(StartScreenSettingsBody));
+    final stories = tester.getRect(find.text('Collection stories'));
+    expect(stories.top, greaterThan(start.bottom));
+    expect(find.text('When new'), findsOneWidget);
+    await _tap(tester, find.text('Collection stories'));
+    expect(find.text("When there's something new"), findsOneWidget);
+    // The sheet's row, the last laid out.
+    await tester.tap(find.text('Off').last);
+    await tester.pumpAndSettle();
+    expect(container.read(storyRowPrefsProvider).mode, StoryRowMode.off);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_story_row')),
+        matching: find.text('Off'),
+      ),
+      findsOneWidget,
+    );
+    final saved = SharedPreferencesService.instance.prefsOrNull!.getString(
+      AppStoryRowPrefsStore.localKey,
+    );
+    expect(saved, contains('"m":"off"'));
+    // The next launch reads it before its first frame.
+    expect(
+      StoryRowPrefs.decodeLocal(const AppStoryRowPrefsStore().readLocal()).mode,
+      StoryRowMode.off,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

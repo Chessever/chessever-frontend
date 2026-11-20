@@ -1171,6 +1171,7 @@ class GameCardChessboard extends ConsumerWidget {
     this.gameStatus,
     this.animateEnding = true,
     this.grounded = true,
+    this.shapes = const {},
   });
 
   final String? fen;
@@ -1179,6 +1180,11 @@ class GameCardChessboard extends ConsumerWidget {
   final Side orientation;
   final bool showCoordinates;
   final GameStatus? gameStatus;
+
+  /// Arrows and marked squares drawn over the pieces, with the board's own
+  /// shape painters (the collection stories pass a move's `[%cal]` and
+  /// `[%csl]` here, in the analysis board's colours).
+  final Set<Shape> shapes;
 
   /// Whether the board carries the cards' drop shadow. False sets it flat on
   /// its page (the Today stories, where it is the page's subject, not a card
@@ -1304,6 +1310,7 @@ class GameCardChessboard extends ConsumerWidget {
             orientation: orientation,
             fen: displayFen,
             lastMove: lastMove,
+            shapes: shapes,
           ),
         ),
       ),

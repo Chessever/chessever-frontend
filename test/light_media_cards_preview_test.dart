@@ -171,9 +171,15 @@ void main() {
     }
     for (final player in _all) {
       final file = File('$_photoDir/${player.file}.png');
-      if (!file.existsSync()) continue;
-      final codec = await ui.instantiateImageCodec(file.readAsBytesSync());
-      final image = (await codec.getNextFrame()).image;
+      final ui.Image image;
+      if (file.existsSync()) {
+        final codec = await ui.instantiateImageCodec(file.readAsBytesSync());
+        image = (await codec.getNextFrame()).image;
+      } else {
+        // No fixture on this machine (a fresh checkout, CI): a drawn
+        // stand-in, so a card never asks the network for its photo.
+        image = _standInPhoto(player.fideId.hashCode);
+      }
       _photos[player.fideUrl] = image;
       _photos[player.searchUrl] = image.clone();
       FidePhotoService.debugSetPhotoUrl(player.fideId, player.fideUrl);
@@ -490,6 +496,25 @@ Future<void> _settle(WidgetTester tester) async {
     );
     await tester.pump();
   }
+}
+
+/// A square stand-in for a player's photo: a tone picked from [seed] with a
+/// lighter disc where a face would be.
+ui.Image _standInPhoto(int seed) {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  const side = 256.0;
+  final hue = (seed * 47 % 360).toDouble();
+  canvas.drawRect(
+    const Rect.fromLTWH(0, 0, side, side),
+    Paint()..color = HSLColor.fromAHSL(1, hue, 0.25, 0.35).toColor(),
+  );
+  canvas.drawCircle(
+    const Offset(side / 2, side * 0.42),
+    side * 0.22,
+    Paint()..color = HSLColor.fromAHSL(1, hue, 0.2, 0.7).toColor(),
+  );
+  return recorder.endRecording().toImageSync(side.toInt(), side.toInt());
 }
 
 /// Puts every photo in the image cache under each key a card can ask for it

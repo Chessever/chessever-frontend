@@ -73,20 +73,16 @@ class _SmoothDialogWrapperState extends ConsumerState<SmoothDialogWrapper> {
       ref.read(keyboardTotalHeightProvider.notifier).update(currentInsets);
     }
 
+    // Scale only, never an Opacity: the popup is readable from its first
+    // frame, and a glass panel ([PopupGlass]) under an opacity layer would
+    // lose its backdrop and drop its frost for the whole fade.
     return SingleMotionBuilder(
       motion: const CupertinoMotion.smooth(),
       value: _targetValue,
+      child: _buildDialogContent(context),
       builder: (context, value, child) {
         final scale = 0.95 + (0.05 * value);
-        final opacity = value.clamp(0.0, 1.0).toDouble();
-
-        return Opacity(
-          opacity: opacity,
-          child: Transform.scale(
-            scale: scale,
-            child: _buildDialogContent(context),
-          ),
-        );
+        return Transform.scale(scale: scale, child: child);
       },
     );
   }

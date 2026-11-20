@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// What the add sheet hands back: a display name and the accounts the
@@ -81,11 +82,8 @@ class PrepDialogSurface extends StatelessWidget {
         maxWidth: ResponsiveHelper.isTablet ? 440 : double.infinity,
         maxHeight: MediaQuery.sizeOf(context).height * 0.86,
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(24.br),
-        ),
+      child: PopupGlass(
+        borderRadius: BorderRadius.circular(24.br),
         child: child,
       ),
     );

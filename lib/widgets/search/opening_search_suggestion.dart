@@ -228,7 +228,18 @@ int _compareSuggestionsParentFirst(
 /// Complete parent-aware vertical browser used before a filter query is typed.
 /// It intentionally lists selectable scopes, not 1,813 duplicate destinations:
 /// every explicit/derived family plus all 500 exact ECO codes.
-List<OpeningSearchSuggestion> browseOpeningSuggestions() {
+///
+/// The bundled catalog never changes while the app runs, so the list is
+/// built once per isolate (it costs a noticeable slice of a frame) and the
+/// same unmodifiable list is handed to every caller after that.
+List<OpeningSearchSuggestion> browseOpeningSuggestions() =>
+    _browseOpeningSuggestions ??= List.unmodifiable(
+      _buildBrowseOpeningSuggestions(),
+    );
+
+List<OpeningSearchSuggestion>? _browseOpeningSuggestions;
+
+List<OpeningSearchSuggestion> _buildBrowseOpeningSuggestions() {
   final candidates = <_OpeningCandidate>[
     for (final family in EcoOpenings.families)
       _OpeningCandidate.forFamily(family, score: 0),

@@ -5,6 +5,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// Row displaying performance statistics: Performance rating, Score, and Rating diff.
@@ -130,17 +131,10 @@ class PerformanceStatsRow extends StatelessWidget {
           final bodyStyle = AppTypography.textSmRegular.copyWith(
             color: colors.textPrimary.withValues(alpha: 0.7),
           );
-          return Container(
+          return PopupGlass(
             width: double.infinity,
             padding: EdgeInsets.all(24.sp),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(16.br),
-              border: Border.all(
-                color: colors.textPrimary.withValues(alpha: 0.1),
-                width: 1,
-              ),
-            ),
+            borderRadius: BorderRadius.circular(16.br),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

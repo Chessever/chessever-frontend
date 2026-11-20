@@ -13,6 +13,7 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -72,16 +73,9 @@ Future<void> _launchMiniatureGame({
   showAlertModal<void>(
     context: context,
     barrierDismissible: false,
-    child: Container(
+    child: PopupGlass(
       padding: EdgeInsets.all(20.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: CircularProgressIndicator(color: context.colors.textPrimary),
     ),
   );

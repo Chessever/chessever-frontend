@@ -11,9 +11,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// ends in a See all story instead.
 const int kStoryCap = 15;
 
-/// How long one game story runs. Every game story fills its bar in the same
-/// time, so the bar is honest: the replay is fitted to it, never the bar to
-/// the replay.
+/// How long a game story without annotations runs. Every such story fills
+/// its bar in the same time, so the bar is honest: the replay is fitted to
+/// it, never the bar to the replay. An annotated game runs its own
+/// schedule's length instead ([StoryReplay.scheduledDuration]).
 const Duration kStoryGameDuration = Duration(seconds: 8);
 
 /// How long the See all story runs before the viewer moves on.
@@ -48,6 +49,7 @@ class StoryBatch {
     required this.games,
     required this.ordered,
     required this.total,
+    this.gameCount,
   });
 
   /// At most [kStoryCap] games, in the collection page's own order.
@@ -61,6 +63,12 @@ class StoryBatch {
   /// How many games the collection holds ("See all 87 games").
   final int total;
 
+  /// The collection's game count (as its catalog row counts them) when
+  /// these stories were read; null when unknown. A catalog read since may
+  /// count more: those games are not among these stories yet, and the seen
+  /// record must not count them as seen.
+  final int? gameCount;
+
   /// Whether the stories end in a See all story.
   bool get seeAll => total > games.length;
 
@@ -70,9 +78,13 @@ class StoryBatch {
   /// Whether story [index] is the See all story.
   bool isSeeAll(int index) => seeAll && index == games.length;
 
-  /// How long story [index] runs.
-  Duration durationOf(int index) =>
-      isSeeAll(index) ? kStorySeeAllDuration : kStoryGameDuration;
+  /// How long story [index] runs: an annotated game its schedule, any
+  /// other game the standard run.
+  Duration durationOf(int index) {
+    if (isSeeAll(index)) return kStorySeeAllDuration;
+    if (index < 0 || index >= games.length) return kStoryGameDuration;
+    return games[index].replay.scheduledDuration ?? kStoryGameDuration;
+  }
 }
 
 /// Whether the stories viewer is on screen. The viewer is not a page route,
@@ -86,21 +98,20 @@ final storyViewerOpenProvider = StateProvider<bool>((ref) => false);
 /// viewer is gone ([storyViewerOpenProvider] turning false).
 final storyViewerCoversProvider = StateProvider<bool>((ref) => false);
 
-/// What a collection's stories are as of now: a collection that gets new
-/// games (or new content) reads as unseen again.
-String storySignature(Collection collection) =>
-    '${collection.gameCount}:${collection.contentVersion ?? ''}';
-
-/// The row's order: collections with stories the reader has not seen first,
-/// then the seen ones, each group in the catalog's own order.
+/// The row's order: what arrived while the row was put away ([fresh], by
+/// slug) first, then collections with stories the reader has not seen, then
+/// the seen ones, each group in the catalog's own order.
 List<Collection> orderStoryCollections(
   List<Collection> collections,
-  bool Function(Collection collection) seen,
-) => [
+  bool Function(Collection collection) seen, {
+  Set<String> fresh = const {},
+}) => [
   for (final c in collections)
-    if (!seen(c)) c,
+    if (fresh.contains(c.slug)) c,
   for (final c in collections)
-    if (seen(c)) c,
+    if (!fresh.contains(c.slug) && !seen(c)) c,
+  for (final c in collections)
+    if (!fresh.contains(c.slug) && seen(c)) c,
 ];
 
 /// The viewer header's second line: who wrote it, or where and when it was
@@ -123,6 +134,26 @@ String? storyByline(Collection c) {
 /// [index] inside a batch of [count] stories (0 when it holds none).
 int clampStoryIndex(int index, int count) =>
     count <= 0 ? 0 : index.clamp(0, count - 1);
+
+/// The See all story's id where the viewer remembers a place by story
+/// ([storyIdAt]). Never a game's id.
+const String kStorySeeAllId = '\u0000see_all';
+
+/// Which story [index] of [batch] is: its game's id, [kStorySeeAllId], or
+/// null when the batch has no such story.
+String? storyIdAt(StoryBatch batch, int index) {
+  if (batch.isSeeAll(index)) return kStorySeeAllId;
+  if (index < 0 || index >= batch.games.length) return null;
+  return batch.games[index].id;
+}
+
+/// Where story [id] ([storyIdAt]) is in [batch] now; null when it is not
+/// there any more. A re-read can put new games before it.
+int? storyIndexOf(StoryBatch batch, String id) {
+  if (id == kStorySeeAllId) return batch.seeAll ? batch.games.length : null;
+  final index = batch.games.indexWhere((g) => g.id == id);
+  return index < 0 ? null : index;
+}
 
 /// The collections the Today row shows: every published collection that
 /// holds a game, in the catalog's order. Held for a while after the row
@@ -247,6 +278,7 @@ final storyBatchProvider = FutureProvider.autoDispose
           games: [for (final g in shown) buildStoryGame(g, pgn: pgns[g.id])],
           ordered: List.unmodifiable([for (final g in ordered) g.game]),
           total: ordered.length,
+          gameCount: detail.gameCount,
         );
       } catch (_) {
         // A failed read is never kept: the next look tries again.

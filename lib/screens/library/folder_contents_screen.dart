@@ -55,6 +55,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 
 class FolderContentsScreen extends ConsumerStatefulWidget {
   final LibraryFolder folder;
@@ -1337,17 +1338,9 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         ? 'Exporting ${progress.processed} / ${progress.total} games...'
         : 'Preparing export...';
 
-    return Container(
+    return PopupGlass(
       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.isLightTheme
-              ? context.colors.divider
-              : Colors.white.withValues(alpha: 0.08),
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

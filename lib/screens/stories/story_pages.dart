@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
     show GameCardChessboard;
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart'
     show playerNameLabel;
+import 'package:chessever2/screens/chessboard/widgets/nag_display.dart'
+    show NagDisplay, getNagDisplay, nagInk;
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_replay.dart';
@@ -21,9 +24,10 @@ import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:dartchess/dartchess.dart' show Side;
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, immutable;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:skeletonizer/skeletonizer.dart' show Bone;
 
 /// The page's side margin: the bars, the header, the board and everything
@@ -112,17 +116,93 @@ abstract final class StoryGameLayout {
     return math.max(20.sp, line.ceilToDouble() + 1);
   }
 
-  /// The board's side within [constraints] (the story area), the rows and
-  /// the line taking [captionBox] around it.
-  static double boardSize(BoxConstraints constraints, double captionBox) {
+  /// The board's side within [constraints] (the story area), the rows, the
+  /// line taking [captionBox] and, for a collection that annotates, the move
+  /// notes' least room ([notes]) around it.
+  static double boardSize(
+    BoxConstraints constraints,
+    double captionBox,
+    StoryNoteMetrics? notes,
+  ) {
     final across = constraints.maxWidth - 2 * _gutter;
     final fixed =
-        2 * StoryPlayerRow.height + 2 * rowGap + captionGap + captionBox;
+        2 * StoryPlayerRow.height +
+        2 * rowGap +
+        captionGap +
+        captionBox +
+        (notes == null
+            ? 0
+            : StoryNoteMetrics.gap + notes.box(StoryNoteMetrics.minLines));
     final down = constraints.hasBoundedHeight
         ? constraints.maxHeight - fixed
         : double.infinity;
     return math.max(minBoard, math.min(across, down)).floorToDouble();
   }
+
+  /// How many lines of a move's words fit under a board of [side] upright:
+  /// every story of a collection that annotates keeps that room, annotated
+  /// or not, so the board never moves between one story and the next.
+  static int noteLines(
+    BoxConstraints constraints,
+    double side,
+    double captionBox,
+    StoryNoteMetrics notes,
+  ) {
+    if (!constraints.hasBoundedHeight) return StoryNoteMetrics.maxLines;
+    final taken =
+        2 * StoryPlayerRow.height +
+        2 * rowGap +
+        side +
+        captionGap +
+        captionBox +
+        StoryNoteMetrics.gap +
+        notes.box(0) +
+        StoryNoteMetrics.innerGap;
+    final lines = ((constraints.maxHeight - taken) / notes.commentLine).floor();
+    return lines.clamp(StoryNoteMetrics.minLines, StoryNoteMetrics.maxLines);
+  }
+
+  /// The story's width in the area [constraints]: the board's upright, the
+  /// board and the players beside it on its side. The actions under the
+  /// story line up with its edges.
+  static double storyWidth(
+    BuildContext context,
+    BoxConstraints constraints, {
+    required bool notesRoom,
+  }) {
+    if (beside(constraints)) {
+      final side = boardBeside(constraints);
+      return side + sideGap + sideWidth(constraints, side);
+    }
+    return boardSize(
+      constraints,
+      captionBox(context),
+      notesRoom ? StoryNoteMetrics.of(context) : null,
+    );
+  }
+
+  /// Whether [collection]'s game stories keep room for move notes: when any
+  /// of its stories carries notes (words, glyphs, arrows), every one of them
+  /// does, so the board stands still from a plain game to an annotated one.
+  /// Stories of plain games keep the story centred, with no empty band
+  /// under it. While the stories load, a book or an analysis (which mostly
+  /// carry notes) holds the room and an event does not.
+  static bool notesRoomOf(Collection collection, StoryBatch? batch) =>
+      batch == null
+      ? collection.kind != CollectionKind.event
+      : batch.games.any((g) => g.replay.annotated);
+
+  /// The caption's room beside a board on its side: two lines.
+  static double captionBoxBeside(BuildContext context) {
+    final style = captionStyle(context);
+    final line =
+        MediaQuery.textScalerOf(context).scale(style.fontSize ?? 12) *
+        (style.height ?? 1.4);
+    return (2 * line).ceilToDouble() + 1;
+  }
+
+  /// Air above and below the caption and notes beside a board.
+  static double get besideInset => _atLeast(8);
 
   /// Between the board and the players beside it.
   static double get sideGap => _atLeast(20);
@@ -157,18 +237,96 @@ abstract final class StoryGameLayout {
   }
 }
 
+/// The type and room of the move notes under a game story's board: the
+/// move's line, and the annotator's words under it. One size whatever the
+/// words' length (a larger text setting grows it up to [kDenseTextScale]);
+/// long words wrap to the lines there is room for and fade at their end.
+@immutable
+class StoryNoteMetrics {
+  const StoryNoteMetrics._({
+    required this.scaler,
+    required this.moveStyle,
+    required this.commentStyle,
+    required this.moveLine,
+    required this.commentLine,
+  });
+
+  factory StoryNoteMetrics.of(BuildContext context) {
+    final colors = context.colors;
+    final scaler = MediaQuery.textScalerOf(
+      context,
+    ).clamp(maxScaleFactor: kDenseTextScale);
+    final moveStyle = AppTypography.textSmBold.copyWith(
+      color: colors.textPrimary,
+      height: 1.3,
+    );
+    final commentStyle = AppTypography.textSmRegular.copyWith(
+      color: colors.textPrimaryMuted,
+      height: 1.4,
+    );
+    double line(TextStyle style) =>
+        scaler.scale(style.fontSize ?? 14) * (style.height ?? 1);
+    return StoryNoteMetrics._(
+      scaler: scaler,
+      moveStyle: moveStyle,
+      commentStyle: commentStyle,
+      moveLine: line(moveStyle).ceilToDouble(),
+      commentLine: line(commentStyle),
+    );
+  }
+
+  final TextScaler scaler;
+  final TextStyle moveStyle;
+  final TextStyle commentStyle;
+
+  /// The move's line.
+  final double moveLine;
+
+  /// One line of the annotator's words.
+  final double commentLine;
+
+  /// Upright, the words take between [minLines] and [maxLines] lines, as
+  /// the height allows.
+  static const int minLines = 2;
+  static const int maxLines = 4;
+
+  /// Beside a board on its side, up to this many.
+  static const int maxLinesBeside = 7;
+
+  /// Between the caption and the notes.
+  static double get gap => _atLeast(12);
+
+  /// Between the move's line and its words.
+  static double get innerGap => _atLeast(4);
+
+  /// The notes' room with [lines] lines of words.
+  double box(int lines) =>
+      moveLine +
+      (lines > 0 ? innerGap + (lines * commentLine).ceilToDouble() + 1 : 0);
+}
+
 /// A game story's arrangement, one for the story and its skeleton so
 /// nothing moves when the games land. Upright: the players over and under
-/// the board, the line centred below. On its side ([StoryGameLayout.beside]):
-/// the board as tall as the space, the players beside it level with its top
-/// and bottom edges, the line between them; the whole centred.
+/// the board, the line centred below, then the move notes' room. On its side
+/// ([StoryGameLayout.beside]): the board as tall as the space, the players
+/// beside it level with its top and bottom edges, the line and the notes
+/// between them; the whole centred.
+///
+/// In a collection that annotates ([notesRoom]) the notes' room is kept on
+/// every story, annotated or not, so the board stands in one place from one
+/// story to the next. A collection that does not keeps its stories centred.
 class _StoryGameFrame extends StatelessWidget {
   const _StoryGameFrame({
     required this.board,
     required this.top,
     required this.bottom,
     required this.line,
+    required this.notesRoom,
+    this.notes,
   });
+
+  /// Whether the notes' room is kept ([StoryGameLayout.notesRoomOf]).
+  final bool notesRoom;
 
   final Widget Function(double side) board;
 
@@ -180,12 +338,17 @@ class _StoryGameFrame extends StatelessWidget {
   /// where it may take two lines.
   final Widget? Function(bool beside) line;
 
+  /// The move notes, for [lines] lines of words; null keeps their room
+  /// empty (a game without annotations, the skeleton).
+  final Widget Function(bool beside, int lines)? notes;
+
   @override
   Widget build(BuildContext context) {
     final captionBox = StoryGameLayout.captionBox(context);
+    final metrics = StoryNoteMetrics.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (StoryGameLayout.beside(constraints)) {
+        if (StoryGameLayout.beside(constraints) && !notesRoom) {
           final side = StoryGameLayout.boardBeside(constraints);
           return Row(
             mainAxisSize: MainAxisSize.min,
@@ -204,9 +367,79 @@ class _StoryGameFrame extends StatelessWidget {
             ],
           );
         }
+        if (StoryGameLayout.beside(constraints)) {
+          final side = StoryGameLayout.boardBeside(constraints);
+          final inset = StoryGameLayout.besideInset;
+          final captionBeside = StoryGameLayout.captionBoxBeside(context);
+          final middle = side - 2 * StoryPlayerRow.height - 2 * inset;
+          final room =
+              middle - captionBeside - StoryNoteMetrics.gap - metrics.box(0);
+          final lines = room < StoryNoteMetrics.innerGap
+              ? 0
+              : ((room - StoryNoteMetrics.innerGap) / metrics.commentLine)
+                    .floor()
+                    .clamp(0, StoryNoteMetrics.maxLinesBeside);
+          final fits = room >= 0;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              board(side),
+              SizedBox(width: StoryGameLayout.sideGap),
+              SizedBox(
+                width: StoryGameLayout.sideWidth(constraints, side),
+                height: side,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    top,
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              height: math.max(
+                                0.0,
+                                math.min(captionBeside, middle),
+                              ),
+                              child: Align(
+                                alignment: AlignmentDirectional.centerStart,
+                                child: line(true),
+                              ),
+                            ),
+                            if (fits) ...[
+                              SizedBox(height: StoryNoteMetrics.gap),
+                              SizedBox(
+                                height: metrics.box(lines),
+                                child: notes?.call(true, lines),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    bottom,
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
         // As wide as the page allows and no taller than the space under
         // the header: the rows keep to the board's width.
-        final side = StoryGameLayout.boardSize(constraints, captionBox);
+        final side = StoryGameLayout.boardSize(
+          constraints,
+          captionBox,
+          notesRoom ? metrics : null,
+        );
+        final lines = StoryGameLayout.noteLines(
+          constraints,
+          side,
+          captionBox,
+          metrics,
+        );
+        final lineWidth = StoryGameLayout.lineWidth(constraints, side);
         return FittedBox(
           fit: BoxFit.scaleDown,
           child: Column(
@@ -228,10 +461,19 @@ class _StoryGameFrame extends StatelessWidget {
               SizedBox(height: StoryGameLayout.captionGap),
               // Centred under the board; wider than a board drawn small.
               SizedBox(
-                width: StoryGameLayout.lineWidth(constraints, side),
+                width: lineWidth,
                 height: captionBox,
                 child: line(false),
               ),
+              if (notesRoom) ...[
+                SizedBox(height: StoryNoteMetrics.gap),
+                SizedBox(
+                  key: const ValueKey('story_note_room'),
+                  width: lineWidth,
+                  height: metrics.box(lines),
+                  child: notes?.call(false, lines),
+                ),
+              ],
             ],
           ),
         );
@@ -247,12 +489,13 @@ class StoryCollectionPage extends ConsumerWidget {
     super.key,
     required this.collection,
     required this.storyIndex,
+    this.storyId,
     required this.progress,
     required this.chrome,
     required this.backdrop,
     required this.onClose,
     required this.onOpenGame,
-    required this.onOpenAll,
+    required this.onOpenCollection,
     required this.onRetry,
     this.avatarHidden,
   });
@@ -267,6 +510,10 @@ class StoryCollectionPage extends ConsumerWidget {
   /// been here (then it is where they left off, or the first new one).
   final int? storyIndex;
 
+  /// Which story that is ([storyIdAt]): a face whose stories were read
+  /// again while it was turned away finds it where it stands now.
+  final String? storyId;
+
   /// The story's run, 0 to 1. Still for every face but the one in view.
   final Animation<double> progress;
 
@@ -275,29 +522,30 @@ class StoryCollectionPage extends ConsumerWidget {
   final Color backdrop;
   final VoidCallback onClose;
   final VoidCallback onOpenGame;
-  final VoidCallback onOpenAll;
+
+  /// The collection's own page (the header, View collection, See all).
+  final VoidCallback onOpenCollection;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final read = ref.watch(storyBatchProvider(collection.slug));
     final batch = read.valueOrNull;
-    // Clamped to the stories the batch holds now: a re-read can bring a
-    // shorter list than the one the remembered place was counted on.
+    // The remembered story where it stands now, clamped to the stories the
+    // batch holds: a re-read can bring new games ahead of it, or fewer.
+    final id = storyId;
     final index = batch == null
         ? 0
         : clampStoryIndex(
-            storyIndex ??
+            (id == null ? null : storyIndexOf(batch, id)) ??
+                storyIndex ??
                 ref
                     .read(storySeenProvider.notifier)
-                    .resumeIndex(
-                      collection.slug,
-                      storySignature(collection),
-                      batch.storyCount,
-                    ),
+                    .resumeIndex(collection, batch),
             batch.storyCount,
           );
     final padding = MediaQuery.paddingOf(context);
+    final notesRoom = StoryGameLayout.notesRoomOf(collection, batch);
     final isGame =
         batch != null &&
         batch.storyCount > 0 &&
@@ -308,23 +556,24 @@ class StoryCollectionPage extends ConsumerWidget {
     if (batch == null && read.hasError) {
       body = StoryRetry(error: read.error, onRetry: onRetry);
     } else if (batch == null) {
-      body = const StorySkeleton();
+      body = StorySkeleton(notesRoom: notesRoom);
     } else if (batch.storyCount == 0) {
       body = const _StoryNotice(text: 'No games here yet.');
     } else if (batch.isSeeAll(index)) {
       body = StorySeeAll(
         collection: collection,
         total: batch.total,
-        onOpen: onOpenAll,
+        onOpen: onOpenCollection,
       );
     } else if (index >= batch.games.length) {
-      body = const StorySkeleton();
+      body = StorySkeleton(notesRoom: notesRoom);
     } else {
       final story = batch.games[index];
       body = StoryGameView(
         key: ValueKey('story_game_${story.id}'),
         story: story,
         progress: progress,
+        notesRoom: notesRoom,
       );
     }
 
@@ -356,20 +605,53 @@ class StoryCollectionPage extends ConsumerWidget {
               child: StoryHeader(
                 collection: collection,
                 onClose: onClose,
+                onOpen: onOpenCollection,
                 avatarHidden: avatarHidden,
               ),
             ),
-            Expanded(child: Center(child: body)),
-            // Air between the story and its action, kept where the story
-            // fills the height (a phone on its side).
-            SizedBox(height: StoryPageMetrics.actionGap),
-            FadeTransition(
-              opacity: chrome,
-              child: SizedBox(
-                height: StoryOpenGameButton.heightOf(context),
-                child: isGame
-                    ? Center(child: StoryOpenGameButton(onTap: onOpenGame))
-                    : null,
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, area) {
+                  final actions = StoryOpenGameButton.heightOf(context);
+                  // The story's own area, as the Center below hands it on:
+                  // the actions line up with the story's edges in it.
+                  final story = BoxConstraints(
+                    maxWidth: area.maxWidth,
+                    maxHeight: math.max(
+                      0.0,
+                      area.maxHeight - StoryPageMetrics.actionGap - actions,
+                    ),
+                  );
+                  return Column(
+                    children: [
+                      Expanded(child: Center(child: body)),
+                      // Air between the story and its actions, kept where
+                      // the story fills the height (a phone on its side).
+                      SizedBox(height: StoryPageMetrics.actionGap),
+                      FadeTransition(
+                        opacity: chrome,
+                        child: SizedBox(
+                          height: actions,
+                          child: isGame
+                              ? Center(
+                                  child: SizedBox(
+                                    width: StoryGameLayout.storyWidth(
+                                      context,
+                                      story,
+                                      notesRoom: notesRoom,
+                                    ),
+                                    child: StoryActions(
+                                      onOpenCollection: onOpenCollection,
+                                      onOpenGame: onOpenGame,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
             SizedBox(height: padding.bottom + 8.sp),
@@ -481,18 +763,22 @@ class _BarsPainter extends CustomPainter {
       old.gap != gap;
 }
 
-/// The face's header: the collection's cover, title and byline, and the way
-/// out.
+/// The face's header: the collection's cover, title and byline, which open
+/// the collection's own page, and the way out.
 class StoryHeader extends StatelessWidget {
   const StoryHeader({
     super.key,
     required this.collection,
     required this.onClose,
+    this.onOpen,
     this.avatarHidden,
   });
 
   final Collection collection;
   final VoidCallback onClose;
+
+  /// The collection's own page, from its cover, title or byline.
+  final VoidCallback? onOpen;
 
   /// Hides the cover circle while the viewer's flying cover stands in it.
   final ValueListenable<bool>? avatarHidden;
@@ -511,10 +797,9 @@ class StoryHeader extends StatelessWidget {
     // The circle and the close target sit in the first 44pt line, where the
     // viewer's way in and out knows to find them ([StoryPageMetrics]); a
     // title grown by a larger text setting runs below it, never clipped.
-    return Row(
+    final identity = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: _gutter),
         SizedBox(
           height: band,
           child: Center(
@@ -562,6 +847,36 @@ class StoryHeader extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+    final open = onOpen;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(width: _gutter),
+        Expanded(
+          child: open == null
+              ? identity
+              : Semantics(
+                  button: true,
+                  label: 'Open ${collection.title}',
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    key: const ValueKey('story_header_open'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: open,
+                    // A press dims it, never scales it: the cover circle
+                    // stays exactly where the viewer's cover lands.
+                    child: PressSpring(
+                      builder: (context, press, child) => Opacity(
+                        opacity: 1 - 0.38 * press.clamp(0.0, 1.0),
+                        child: child,
+                      ),
+                      child: identity,
+                    ),
+                  ),
+                ),
+        ),
         Semantics(
           button: true,
           label: 'Close stories',
@@ -597,10 +912,19 @@ class StoryHeader extends StatelessWidget {
 /// Every frame is read from the story's [progress]: a held story holds its
 /// board, and the bar and the board always agree.
 class StoryGameView extends StatefulWidget {
-  const StoryGameView({super.key, required this.story, required this.progress});
+  const StoryGameView({
+    super.key,
+    required this.story,
+    required this.progress,
+    this.notesRoom = true,
+  });
 
   final StoryGame story;
   final Animation<double> progress;
+
+  /// Whether the story keeps room for move notes under the board
+  /// ([StoryGameLayout.notesRoomOf]).
+  final bool notesRoom;
 
   @override
   State<StoryGameView> createState() => _StoryGameViewState();
@@ -657,7 +981,11 @@ class _StoryGameViewState extends State<StoryGameView> {
     final game = widget.story.game;
     final caption = widget.story.caption;
     final captionStyle = StoryGameLayout.captionStyle(context);
+    // Only the move just played carries its arrows and squares: the next
+    // move clears them.
+    final note = _replay.noteAt(_step);
     return _StoryGameFrame(
+      notesRoom: widget.notesRoom || _replay.annotated,
       top: StoryPlayerRow(game: game, white: false, revealed: _revealed),
       bottom: StoryPlayerRow(game: game, white: true, revealed: _revealed),
       board: (side) => GameCardChessboard(
@@ -670,7 +998,16 @@ class _StoryGameViewState extends State<StoryGameView> {
         gameStatus: _revealed ? game.gameStatus : null,
         // The board is the story's subject, set flat on its page.
         grounded: false,
+        shapes: note?.shapes ?? const {},
       ),
+      notes: _replay.annotated
+          ? (beside, lines) => StoryMoveNotes(
+              key: const ValueKey('story_notes'),
+              note: note,
+              lines: lines,
+              beside: beside,
+            )
+          : null,
       line: (beside) {
         if (caption == null) return null;
         final text = Text(
@@ -894,6 +1231,43 @@ class StorySeeAll extends StatelessWidget {
   }
 }
 
+/// The two quiet actions under a game story, on the story's own edges:
+/// the collection at the start, the game at the end. Two words on one
+/// baseline, told apart by their ink, never a filled and an outlined button.
+class StoryActions extends StatelessWidget {
+  const StoryActions({
+    super.key,
+    required this.onOpenCollection,
+    required this.onOpenGame,
+  });
+
+  final VoidCallback onOpenCollection;
+  final VoidCallback onOpenGame;
+
+  @override
+  Widget build(BuildContext context) {
+    // Each word as wide as it is; at the largest text on the narrowest
+    // phone they share the line and fade, never spill.
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Flexible(
+          child: _StoryAction(
+            key: const ValueKey('story_view_collection'),
+            label: 'View collection',
+            ink: context.colors.textSecondary,
+            align: CrossAxisAlignment.start,
+            onTap: onOpenCollection,
+          ),
+        ),
+        SizedBox(width: _gutter),
+        Flexible(child: StoryOpenGameButton(onTap: onOpenGame)),
+      ],
+    );
+  }
+}
+
 /// The quiet action under a game story: open the game on the board. A swipe
 /// up does the same; the chevron says so.
 class StoryOpenGameButton extends StatelessWidget {
@@ -912,30 +1286,66 @@ class StoryOpenGameButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    return _StoryAction(
+      key: const ValueKey('story_open_game'),
+      label: 'Open game',
+      ink: colors.textPrimary,
+      align: CrossAxisAlignment.center,
+      onTap: onTap,
+      above: Icon(
+        Icons.keyboard_arrow_up_rounded,
+        size: chevron,
+        color: colors.textSecondary,
+      ),
+    );
+  }
+}
+
+/// One action under a story: its label, and over it the swipe-up chevron
+/// or the same room left empty, so every label sits on one baseline. At
+/// least 44pt tall, as wide as its word.
+class _StoryAction extends StatelessWidget {
+  const _StoryAction({
+    super.key,
+    required this.label,
+    required this.ink,
+    required this.align,
+    required this.onTap,
+    this.above,
+  });
+
+  final String label;
+  final Color ink;
+  final CrossAxisAlignment align;
+  final VoidCallback onTap;
+  final Widget? above;
+
+  @override
+  Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Open game',
+      label: label,
       excludeSemantics: true,
       child: GestureDetector(
-        key: const ValueKey('story_open_game'),
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: PressSpring(
           pressedScale: 0.94,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 120, minHeight: 44),
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: align,
               children: [
-                Icon(
-                  Icons.keyboard_arrow_up_rounded,
-                  size: chevron,
-                  color: colors.textSecondary,
-                ),
+                SizedBox(height: StoryOpenGameButton.chevron, child: above),
                 Text(
-                  'Open game',
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
                   style: AppTypography.textSmBold.copyWith(
-                    color: colors.textPrimary,
+                    color: ink,
                     height: 1.2,
                   ),
                 ),
@@ -948,10 +1358,329 @@ class StoryOpenGameButton extends StatelessWidget {
   }
 }
 
+/// The notes under a game story's board while an annotated game plays: the
+/// move just played (its number, SAN and the annotator's glyphs in the
+/// app's annotation colours) and the annotator's words under it, wrapping to
+/// [lines] lines and fading at their end. A new move settles in over the
+/// last; the room never changes size, so nothing under it moves.
+class StoryMoveNotes extends StatefulWidget {
+  const StoryMoveNotes({
+    super.key,
+    required this.note,
+    required this.lines,
+    required this.beside,
+  });
+
+  /// The move on the board; null at a game's very start.
+  final StoryMoveNote? note;
+
+  /// Lines of words there is room for.
+  final int lines;
+
+  /// Beside a board on its side: set from the start edge. Upright, centred
+  /// under the board.
+  final bool beside;
+
+  @override
+  State<StoryMoveNotes> createState() => _StoryMoveNotesState();
+}
+
+class _StoryMoveNotesState extends State<StoryMoveNotes>
+    with SingleTickerProviderStateMixin {
+  /// A move's notes settling in: smooth, quick, no overshoot.
+  static const Motion _settle = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 260),
+    snapToEnd: true,
+  );
+
+  late final SingleMotionController _change = SingleMotionController(
+    motion: _settle,
+    vsync: this,
+    initialValue: 1,
+  );
+
+  /// The notes of the move before, fading out under the new ones.
+  StoryMoveNote? _previous;
+
+  @override
+  void didUpdateWidget(covariant StoryMoveNotes oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.note, widget.note)) return;
+    // Only a move the annotator spoke to settles in. The plain moves between
+    // them step in at once: at the replay's quick cadence a settle on each
+    // would pulse the line several times a second. Held (a face turning
+    // away), or motion turned off, the new notes stand at once too, never
+    // waiting on a settle that will not run.
+    final animate =
+        (widget.note?.annotated ?? false) &&
+        TickerMode.valuesOf(context).enabled &&
+        !(MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+    if (!animate) {
+      _change.stop();
+      _previous = null;
+      _change.value = 1;
+      return;
+    }
+    _previous = oldWidget.note;
+    _change.value = 0;
+    unawaited(
+      _change.animateTo(1).then((_) {
+        if (mounted && _previous != null) setState(() => _previous = null);
+      }),
+    );
+  }
+
+  @override
+  void dispose() {
+    _change.dispose();
+    super.dispose();
+  }
+
+  Widget _notes(
+    BuildContext context,
+    StoryNoteMetrics metrics,
+    StoryMoveNote? note, {
+    required bool current,
+  }) {
+    final beside = widget.beside;
+    final comment = note?.comment;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: metrics.moveLine,
+          child: note == null
+              ? null
+              : Align(
+                  alignment: beside
+                      ? AlignmentDirectional.centerStart
+                      : Alignment.center,
+                  child: Text.rich(
+                    _moveSpan(context, metrics, note),
+                    key: current ? const ValueKey('story_note_move') : null,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                  ),
+                ),
+        ),
+        if (widget.lines > 0) ...[
+          SizedBox(height: StoryNoteMetrics.innerGap),
+          SizedBox(
+            height:
+                metrics.box(widget.lines) -
+                metrics.moveLine -
+                StoryNoteMetrics.innerGap,
+            child: comment == null
+                ? null
+                : _StoryCommentText(
+                    key: current ? const ValueKey('story_note_comment') : null,
+                    text: comment,
+                    lines: widget.lines,
+                    style: metrics.commentStyle,
+                    centered: !beside,
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// "23. Qxf7+!!": the number a step quieter, the SAN in ink, the
+  /// annotator's glyphs in their annotation colours.
+  TextSpan _moveSpan(
+    BuildContext context,
+    StoryNoteMetrics metrics,
+    StoryMoveNote note,
+  ) {
+    final style = metrics.moveStyle;
+    return TextSpan(
+      style: style,
+      children: [
+        TextSpan(
+          text: '${note.number} ',
+          style: style.copyWith(
+            color: context.colors.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        TextSpan(text: note.san),
+        for (final nag in note.nags)
+          if (getNagDisplay(nag) case final display?)
+            TextSpan(
+              // A move's own glyph sits on it, as the notation prints it; a
+              // judgement of the position stands a hair apart.
+              text: display.isQuality
+                  ? display.symbol
+                  : '\u2009${display.symbol}',
+              style: style.copyWith(color: storyGlyphInk(context, display)),
+            ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = StoryNoteMetrics.of(context);
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: kDenseTextScale,
+      child: AnimatedBuilder(
+        animation: _change,
+        builder: (context, _) {
+          final v = _change.value.clamp(0.0, 1.0);
+          final previous = _previous;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Gone once it is past seeing: the spring's tail is not
+              // worth a second copy of the words.
+              if (previous != null && v < 0.97)
+                Opacity(
+                  opacity: 1 - v,
+                  child: _notes(context, metrics, previous, current: false),
+                ),
+              // Never invisible: the new notes start legible and settle.
+              Opacity(
+                opacity: 0.35 + 0.65 * v,
+                child: Transform.translate(
+                  offset: Offset(0, 3 * (1 - v)),
+                  child: _notes(context, metrics, widget.note, current: true),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// An annotator's glyph ([display]) as ink on the story's page: on paper
+/// the app's own legible annotation colour ([nagInk]); on the dark page its
+/// hue lifted until it reads there, since the board palette's deep hues
+/// (the good move's blue) sit at about 2:1 on near-black.
+Color storyGlyphInk(BuildContext context, NagDisplay display) {
+  if (context.isLightTheme) return nagInk(context, display);
+  return _liftedInk(display.color, context.colors.background);
+}
+
+final Map<(int, int), Color> _liftedInks = {};
+
+/// [hue] with its lightness raised in 0.01 steps until it reaches 4.5:1 on
+/// [on]: the same hue and saturation, only lighter.
+Color _liftedInk(Color hue, Color on) {
+  final key = (hue.toARGB32(), on.toARGB32());
+  final cached = _liftedInks[key];
+  if (cached != null) return cached;
+  final solidOn = on.withValues(alpha: 1);
+  var hsl = HSLColor.fromColor(hue.withValues(alpha: 1));
+  var ink = hsl.toColor();
+  while (wcagContrast(ink, solidOn) < 4.5 && hsl.lightness < 1) {
+    hsl = hsl.withLightness(math.min(1.0, hsl.lightness + 0.01));
+    ink = hsl.toColor();
+  }
+  if (_liftedInks.length > 64) _liftedInks.clear();
+  return _liftedInks[key] = ink;
+}
+
+/// The annotator's words, wrapping to [lines] lines at one size. Words that
+/// run longer stay one paragraph, its last line set like the others
+/// (centred under a centred note) and fading downward, so the shape of the
+/// paragraph holds to its end; never cut with dots or shrunk to fit.
+///
+/// Whether the words run over is measured with exactly what they are drawn
+/// with (the page's default text style under [style], its scaler, width
+/// basis and height behaviour), and the fade sits on the last line as
+/// drawn.
+class _StoryCommentText extends StatelessWidget {
+  const _StoryCommentText({
+    super.key,
+    required this.text,
+    required this.lines,
+    required this.style,
+    required this.centered,
+  });
+
+  final String text;
+  final int lines;
+  final TextStyle style;
+  final bool centered;
+
+  /// The last line's fade, from its top (whole) to its foot (gone), eased
+  /// over several steps so it never reads as a band.
+  static const List<double> _fadeStops = [0, 0.2, 0.4, 0.6, 0.8, 1];
+  static const List<double> _fadeAlphas = [1, 0.86, 0.62, 0.36, 0.14, 0];
+
+  @override
+  Widget build(BuildContext context) {
+    final align = centered ? TextAlign.center : TextAlign.start;
+    final defaults = DefaultTextStyle.of(context);
+    // What a Text under [defaults] draws [style] with.
+    final drawn = defaults.style.merge(style);
+    final direction = Directionality.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: drawn),
+          textAlign: align,
+          textDirection: direction,
+          textScaler: scaler,
+          maxLines: lines,
+          textWidthBasis: defaults.textWidthBasis,
+          textHeightBehavior: defaults.textHeightBehavior,
+        )..layout(maxWidth: constraints.maxWidth);
+        final runsOver = painter.didExceedMaxLines;
+        final shown = runsOver ? painter.computeLineMetrics() : null;
+        painter.dispose();
+        final paragraph = Text(
+          text,
+          maxLines: lines,
+          textAlign: align,
+          // Lines past the last are never laid out; the last one is a whole
+          // line of the paragraph, broken between words.
+          overflow: TextOverflow.clip,
+          style: drawn,
+        );
+        if (shown == null || shown.isEmpty) return paragraph;
+        final last = shown.last;
+        final lineTop = last.baseline - last.ascent;
+        final lineFoot = last.baseline + last.descent;
+        return ShaderMask(
+          key: const ValueKey('story_note_comment_fade'),
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (bounds) {
+            final height = bounds.height <= 0 ? 1.0 : bounds.height;
+            final top = (lineTop / height).clamp(0.0, 1.0);
+            final foot = (lineFoot / height).clamp(top, 1.0);
+            const ink = Color(0xFF000000);
+            return LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                ink,
+                for (final alpha in _fadeAlphas) ink.withValues(alpha: alpha),
+              ],
+              stops: [
+                0,
+                for (final stop in _fadeStops) top + (foot - top) * stop,
+              ],
+            ).createShader(bounds);
+          },
+          child: paragraph,
+        );
+      },
+    );
+  }
+}
+
 /// A story while its collection's games load: the rows, the board and the
 /// line, as quiet bones in their exact places.
 class StorySkeleton extends StatelessWidget {
-  const StorySkeleton({super.key});
+  const StorySkeleton({super.key, this.notesRoom = true});
+
+  /// Whether the story that lands keeps room for move notes.
+  final bool notesRoom;
 
   @override
   Widget build(BuildContext context) {
@@ -968,6 +1697,7 @@ class StorySkeleton extends StatelessWidget {
     return SkeletonWidget(
       key: const ValueKey('story_skeleton'),
       child: _StoryGameFrame(
+        notesRoom: notesRoom,
         top: row(),
         bottom: row(),
         board: (side) => Bone(

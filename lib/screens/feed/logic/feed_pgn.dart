@@ -33,6 +33,7 @@ class FeedPgnMove {
     this.nags = const <int>[],
     this.classification,
     this.clock,
+    this.comments = const <String>[],
   });
 
   /// 1-based: ply 1 is White's first move (or the first move after a FEN).
@@ -59,6 +60,11 @@ class FeedPgnMove {
   /// The mover's clock after the move, from `[%clk]`, as the board screen
   /// displays it (`01:23:45`, `04:07`). Null when the move carries no clock.
   final String? clock;
+
+  /// The move's PGN comments as written, commands included (`[%cal]`,
+  /// `[%clk]`, ...). Feed reads its numbers from them; the collection
+  /// stories show their words and draw their arrows.
+  final List<String> comments;
 
   Side get mover => before.turn;
   bool get hasEval => cp != null || mate != null;
@@ -204,6 +210,7 @@ FeedPgnGame? parseFlowPgn(String pgn, {int maxPlies = 400}) {
             classificationFromNags(nags) ??
             legacyClassificationFromComments(data.comments),
         clock: parseFlowClock(data.comments),
+        comments: data.comments ?? const <String>[],
       ),
     );
     position = next;

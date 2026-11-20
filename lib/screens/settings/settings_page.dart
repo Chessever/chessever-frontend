@@ -6,6 +6,7 @@ import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/story_row_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
@@ -192,6 +193,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       const SettingsAppearanceSection(),
                       SizedBox(height: 18.h),
                       const StartScreenSettingsBody(),
+                      SizedBox(height: 18.h),
+                      const StoryRowSettingsBody(),
                       SizedBox(height: 24.h),
                       const SectionLabel(title: 'Auto Pin'),
                       SizedBox(height: 12.h),

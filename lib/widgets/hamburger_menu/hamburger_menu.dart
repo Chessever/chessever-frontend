@@ -10,6 +10,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -71,20 +72,10 @@ class _AboutDialog extends ConsumerWidget {
     final rewarded = (RewardedAdsConfig.available || NativeAdsConfig.available)
         ? ref.read(rewardedAccessProvider.notifier)
         : null;
-    return Container(
+    return PopupGlass(
       constraints: BoxConstraints(maxWidth: 340.w),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: context.colors.divider, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: context.colors.shadow,
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      borderRadius: BorderRadius.circular(24),
+      tone: context.colors.surfaceElevated,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

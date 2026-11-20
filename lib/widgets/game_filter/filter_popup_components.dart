@@ -2,6 +2,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// The Home filter popup's shared panel, spacing and Reset/Apply controls.
@@ -17,17 +18,10 @@ class FilterPopupFrame extends StatelessWidget {
   final VoidCallback onApply;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => PopupGlass(
     width: 280.w,
     constraints: BoxConstraints(maxHeight: 600.h),
-    decoration: BoxDecoration(
-      color: context.colors.surface,
-      borderRadius: BorderRadius.circular(16.br),
-      border: Border.all(
-        color: context.colors.textPrimary.withValues(alpha: 0.1),
-        width: 1,
-      ),
-    ),
+    borderRadius: BorderRadius.circular(16.br),
     child: Material(
       type: MaterialType.transparency,
       child: SingleChildScrollView(
@@ -54,7 +48,8 @@ class FilterPopupFrame extends StatelessWidget {
                         onPressed: onReset,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: context.colors.textPrimary,
-                          backgroundColor: context.colors.surface,
+                          // Text on the glass, as it was on the opaque panel.
+                          backgroundColor: Colors.transparent,
                           side: BorderSide.none,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10.br),

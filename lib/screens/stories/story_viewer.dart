@@ -8,7 +8,6 @@ import 'package:chessever2/screens/collections/collections_screen.dart'
 import 'package:chessever2/screens/collections/open_collection_game.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
-import 'package:chessever2/screens/stories/story_replay.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -46,6 +45,14 @@ Future<void> openCollectionStories(
     ),
   );
 }
+
+/// The page a story's collection opens on: the collection's own screen, as
+/// its card opens it. Tests hand in a page of their own.
+final storyCollectionPageProvider =
+    Provider<Widget Function(Collection collection)>(
+      (ref) =>
+          (collection) => CollectionScreen(collection: collection),
+    );
 
 /// The viewer's route. It has no transition of its own: the viewer grows
 /// out of its circle and shrinks back into it on its own springs, over the
@@ -206,8 +213,17 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
 
   late int _active = widget.initialIndex;
 
-  /// The story each collection is on, once the reader has been there.
+  /// The story each collection is on, once the reader has been there: its
+  /// place in the collection's stories as they are now ([_story]), and
+  /// which story it is ([_storyId], a game's id or [kStorySeeAllId]). A
+  /// re-read of the stories (new games ahead of it, a Premium unlock) moves
+  /// the place with the story, never the story under the reader.
   final Map<String, int> _story = {};
+  final Map<String, String?> _storyId = {};
+
+  /// The story each collection's bar was last run for, and how long it ran:
+  /// when either changes under the reader, the bar starts again.
+  final Map<String, (String?, Duration)> _placed = {};
 
   /// The frame a face holds after it has turned away mid-turn, by slug: its
   /// board and bar stay exactly as they were while it is still on screen.
@@ -222,13 +238,13 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// again once the cube rests on that face.
   bool _restartAtRest = false;
 
-  /// The active story counted toward the seen record so far: 1 once half
-  /// of it played, 2 once its game was seen through to its result; and the
-  /// story it was counted for.
-  int _counted = 0;
+  /// The story already counted as seen: each counts once.
   Object? _countedFor;
 
-  /// Half a game story played counts as watched: the ring goes quiet.
+  /// A game story counts as seen once it has been on screen this long (or
+  /// its result has shown, or half of it has played, whichever comes
+  /// first), as a stories app counts a story once it has been shown.
+  static const Duration _seenBeat = Duration(milliseconds: 1200);
   static const double _watchedAt = 0.5;
 
   Size _size = Size.zero;
@@ -390,44 +406,56 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
   }
 
-  /// A game story watched half way marks its collection seen; one seen
-  /// through to its result counts as moved past, so the collection opens on
-  /// the next one. A reader who leaves mid-story keeps what they watched.
+  /// A game story on screen for a beat ([_seenBeat]) is seen: its
+  /// collection opens on the next story the reader has not seen, and its
+  /// ring goes quiet once every story is. A story the reader taps on past
+  /// is seen too ([_next]), however briefly it showed: skimming by taps
+  /// moves the place on. A reader who leaves mid-story keeps what they saw.
   void _onProgressTick() {
     if (_quietProgress) return;
+    final batch = _activeBatch;
+    final index = _story[_activeSlug];
+    if (batch == null || index == null || index >= batch.games.length) return;
+    if (_countedFor == _bound) return;
+    final story = batch.games[index];
+    final run = _progress.duration ?? kStoryGameDuration;
+    final beat = run.inMicroseconds <= 0
+        ? 0.0
+        : _seenBeat.inMicroseconds / run.inMicroseconds;
+    final seenAt = math.min(
+      math.min(beat, _watchedAt),
+      story.replay.revealShare,
+    );
+    if (_progress.value < seenAt) return;
+    _countActive();
+  }
+
+  /// Counts the game story on screen as seen, once.
+  void _countActive() {
     final batch = _activeBatch;
     final bound = _bound;
     final index = _story[_activeSlug];
     if (batch == null || bound == null || index == null) return;
-    if (index >= batch.games.length) return;
-    if (_countedFor != bound) {
-      _countedFor = bound;
-      _counted = 0;
-    }
-    final t = _progress.value;
-    final collection = _activeCollection;
-    final signature = storySignature(collection);
-    if (_counted < 2 && t >= StoryReplay.revealAt) {
-      _counted = 2;
-      _seen.advanced(collection.slug, signature, from: index, game: true);
-    } else if (_counted < 1 && t >= _watchedAt) {
-      _counted = 1;
-      _seen.watched(collection.slug, signature, index);
-    }
+    if (index >= batch.games.length || _countedFor == bound) return;
+    _countedFor = bound;
+    _seen.markSeen(_activeCollection, batch, batch.games[index].id);
   }
 
+  /// How long story [index] runs: an annotated game its own schedule.
   Duration _durationOf(StoryBatch batch, int index) =>
       batch.storyCount == 0 ? kStoryEmptyDuration : batch.durationOf(index);
 
-  /// The story [slug] opens on: where the reader left it, else the first
-  /// one they have not moved past.
-  int _resumeOf(Collection collection, StoryBatch batch) =>
-      _story[collection.slug] ??
-      _seen.resumeIndex(
-        collection.slug,
-        storySignature(collection),
-        batch.storyCount,
-      );
+  /// The story [collection] is on in [batch]: the one the reader left it
+  /// on, wherever it stands now; else (never visited, or that game gone)
+  /// the first one they have not seen.
+  int _placeIn(Collection collection, StoryBatch batch) {
+    final id = _storyId[collection.slug];
+    final placed = id == null ? null : storyIndexOf(batch, id);
+    return clampStoryIndex(
+      placed ?? _seen.resumeIndex(collection, batch),
+      batch.storyCount,
+    );
+  }
 
   /// Ties the bar to the active collection's stories once they are known.
   /// Called from build; anything that notifies runs after the frame.
@@ -439,22 +467,37 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       return;
     }
     final collection = _activeCollection;
-    // A re-read can bring fewer stories than the remembered place counted
-    // on: hold it inside the batch as it is now.
-    final index = clampStoryIndex(
-      _story[collection.slug] ?? _resumeOf(collection, batch),
-      batch.storyCount,
-    );
-    _story[collection.slug] = index;
-    final bound = (collection.slug, index, batch);
+    final slug = collection.slug;
+    final index = _placeIn(collection, batch);
+    final id = storyIdAt(batch, index);
+    _story[slug] = index;
+    _storyId[slug] = id;
+    final bound = (slug, index, batch);
     if (_bound == bound) return;
     _bound = bound;
-    _progress.duration = _durationOf(batch, index);
+    final duration = _durationOf(batch, index);
+    final before = _placed[slug];
+    _placed[slug] = (id, duration);
+    _progress.duration = duration;
+    if (before != null && (before.$1 != id || before.$2 != duration)) {
+      // Another story under the reader (its game gone from a re-read), or
+      // the same game on another run (a Premium unlock turning a still into
+      // a replay): it starts from its beginning, never part way through a
+      // story they did not watch. The descendants it notifies build next.
+      _progress.stop();
+      _setProgress(0);
+    }
+    final counted = !identical(_reconciled[slug], batch);
+    _reconciled[slug] = batch;
     _afterFrame(() {
-      _markIfLast(collection, batch, index);
+      // The collection's record keeps to the stories it shows now.
+      if (counted) _seen.reconcile(collection, batch);
       _sync();
     });
   }
+
+  /// The stories each collection's seen record was last counted against.
+  final Map<String, StoryBatch> _reconciled = {};
 
   void _afterFrame(VoidCallback action) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -462,29 +505,23 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     });
   }
 
-  /// The collection's last story is on screen: it reads as seen. Only once
-  /// the cube rests on its face (a face that turns in and back, or that the
-  /// viewer closes on mid-turn, was never reached), and never on the way
-  /// out.
-  void _markIfLast(Collection collection, StoryBatch batch, int index) {
-    if (_closing || !_settled) return;
-    if (batch.storyCount > 0 && index == batch.storyCount - 1) {
-      _seen.reachedLast(collection.slug, storySignature(collection), index);
-    }
-  }
-
   /// Shows story [index] of the active collection, from its start.
   void _go(int index) {
     final batch = _activeBatch;
     if (batch == null) return;
-    final collection = _activeCollection;
-    setState(() => _story[collection.slug] = index);
+    final slug = _activeSlug;
+    final id = storyIdAt(batch, index);
+    final duration = _durationOf(batch, index);
+    setState(() {
+      _story[slug] = index;
+      _storyId[slug] = id;
+    });
+    _placed[slug] = (id, duration);
     _progress
       ..stop()
-      ..duration = _durationOf(batch, index)
+      ..duration = duration
       ..value = 0;
-    _bound = (collection.slug, index, batch);
-    _markIfLast(collection, batch, index);
+    _bound = (slug, index, batch);
     _sync();
   }
 
@@ -494,21 +531,14 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     // A game being opened holds the story where it is.
     if (_closing || _away || !mounted) return;
     if (!auto) unawaited(HapticFeedbackService.selection());
+    // Moved on from: seen, as it showed (a tap past it included).
+    _countActive();
     final batch = _activeBatch;
     if (batch == null) {
       _toCollection(_active + 1);
       return;
     }
-    final collection = _activeCollection;
-    final index = _story[collection.slug] ?? 0;
-    if (batch.storyCount > 0) {
-      _seen.advanced(
-        collection.slug,
-        storySignature(collection),
-        from: index,
-        game: !batch.isSeeAll(index),
-      );
-    }
+    final index = _story[_activeSlug] ?? 0;
     if (index + 1 < batch.storyCount) {
       _go(index + 1);
     } else {
@@ -588,13 +618,6 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     if (_restartAtRest) {
       _restartAtRest = false;
       if (_progress.value >= 1) _setProgress(0);
-    }
-    // At rest on this face: its last story, if that is the one on screen,
-    // has now been reached.
-    final batch = _activeBatch;
-    final index = _story[_activeSlug];
-    if (batch != null && index != null) {
-      _markIfLast(_activeCollection, batch, index);
     }
   }
 
@@ -808,7 +831,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       final batch = _activeBatch;
       final index = _story[_activeSlug] ?? 0;
       if (batch != null && batch.isSeeAll(index)) {
-        unawaited(_openAll());
+        unawaited(_openCollection());
       } else {
         unawaited(_openGame());
       }
@@ -1042,19 +1065,21 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
   }
 
-  /// See all: the collection's own page over the stories, which wait.
-  Future<void> _openAll() async {
-    if (_away || _closing) return;
+  /// The collection's own page (its header, View collection, See all) over
+  /// the stories, which wait where they are and play on once the reader is
+  /// back.
+  Future<void> _openCollection() async {
+    if (_away || _closing || !_opened) return;
     unawaited(HapticFeedbackService.buttonPress());
     setState(() => _away = true);
     _publishCover();
     _sync();
+    final page = ref.read(storyCollectionPageProvider);
+    final collection = _activeCollection;
     try {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => CollectionScreen(collection: _activeCollection),
-        ),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => page(collection)));
     } finally {
       if (mounted) {
         setState(() => _away = false);
@@ -1156,6 +1181,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
                 key: ValueKey('story_page_${collection.slug}'),
                 collection: collection,
                 storyIndex: _story[collection.slug],
+                storyId: _storyId[collection.slug],
                 // A face turning away keeps the frame it was on.
                 progress: active
                     ? _progress
@@ -1167,7 +1193,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
                 backdrop: backdrop,
                 onClose: () => unawaited(_close()),
                 onOpenGame: () => unawaited(_openGame()),
-                onOpenAll: () => unawaited(_openAll()),
+                onOpenCollection: () => unawaited(_openCollection()),
                 onRetry: () => _retry(collection.slug),
               ),
             ),
@@ -1254,6 +1280,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
               CustomSemanticsAction(
                 label: _holding ? 'Resume stories' : 'Pause stories',
               ): _togglePause,
+              const CustomSemanticsAction(label: 'View collection'): () =>
+                  unawaited(_openCollection()),
               const CustomSemanticsAction(label: 'Close stories'): () =>
                   unawaited(_close()),
             },

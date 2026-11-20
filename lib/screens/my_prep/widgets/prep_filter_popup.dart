@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// A single, accessible entry point for filters in Games and Build Tree.
@@ -54,12 +55,12 @@ class PrepFilterPopup extends StatelessWidget {
         MediaQuery.sizeOf(context).height -
         MediaQuery.paddingOf(context).vertical -
         32;
-    return Container(
+    return PopupGlass(
       width: 320.w,
       constraints: BoxConstraints(maxHeight: math.min(640.h, availableHeight)),
+      borderRadius: BorderRadius.circular(16.br),
       child: Material(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
+        type: MaterialType.transparency,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

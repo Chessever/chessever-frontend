@@ -28,6 +28,7 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -468,19 +469,12 @@ class FolderCard extends ConsumerWidget {
     showAlertModal<void>(
       context: context,
       child: Builder(
-        builder: (dialogContext) => Container(
+        builder: (dialogContext) => PopupGlass(
           constraints: BoxConstraints(
             maxWidth: ResponsiveHelper.isTablet ? 400.w : double.infinity,
           ),
           padding: EdgeInsets.all(20.sp),
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            borderRadius: BorderRadius.circular(16.br),
-            border: Border.all(
-              color: context.colors.textPrimary.withValues(alpha: 0.1),
-              width: 1,
-            ),
-          ),
+          borderRadius: BorderRadius.circular(16.br),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

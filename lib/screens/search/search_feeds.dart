@@ -451,8 +451,8 @@ class SearchComingUpFeed extends SearchFeedNotifier<GroupEventCardModel> {
     // The cards already listed stay where they are, after the head, less
     // any that has started: whether the live set moved on or the upcoming
     // view was read again (one of its events started, or the read grew
-    // old). A row scrolled far, or the section opened in place, keeps its
-    // cards; nothing drops back to the first page.
+    // old). A row scrolled far keeps its cards; nothing drops back to the
+    // first page.
     final before = previous;
     final kept = before != null && before.ready
         ? searchUpcomingEvents(
@@ -599,12 +599,3 @@ class SearchNewsFeed extends SearchFeedNotifier<FeedNews> {
   @override
   Object identityOf(FeedNews item) => item.key;
 }
-
-// --------------------------------------------------------------- expansion
-
-/// The sections opened in place on the landing (by [SearchSectionId.name]),
-/// kept while the tab lives, so a search typed and cleared finds them as
-/// they were.
-final searchExpandedSectionsProvider = StateProvider.autoDispose<Set<String>>(
-  (ref) => const <String>{},
-);

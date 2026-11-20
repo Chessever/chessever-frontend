@@ -129,11 +129,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_routeSubscribed) return;
-    final route = ModalRoute.of(context);
+  /// The enclosing route, handed over by [_PageRouteProbe]. Read there, not
+  /// here: `ModalRoute.of` depends on every aspect of the route, so a dialog
+  /// pushed on top (its `isCurrent` flipping) would rebuild all of Today on
+  /// the tap frame. The probe rebuilds alone and hands back the same list.
+  void _attachRoute(ModalRoute<dynamic>? route) {
+    if (_routeSubscribed || !mounted) return;
     // Subscribe to the enclosing PAGE route only. pageRouteObserver ignores
     // transient popups (the share/copy-pgn menu, dialogs, sheets) so they no
     // longer blank this tab; only a real page push (tournament/board) does.
@@ -379,7 +380,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   Widget build(BuildContext context) {
     super.build(context); // required by AutomaticKeepAliveClientMixin
+    return _PageRouteProbe(onRoute: _attachRoute, child: _buildToday(context));
+  }
 
+  Widget _buildToday(BuildContext context) {
     // If PageView keeps this page around briefly while swiping, drop all
     // expensive provider subscriptions until For You > Today is visible again.
     final isTodayTabActive = ref.watch(forYouTodayTabActiveProvider);
@@ -453,7 +457,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     }
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(forYouEventsProvider.notifier).refresh(),
+      onRefresh: () {
+        // The story row's catalog comes with the rest of Today.
+        refreshStoryCatalog(ref);
+        return ref.read(forYouEventsProvider.notifier).refresh();
+      },
       color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       // The phone list and the tablet two-column layout are separate
@@ -1419,4 +1427,29 @@ class _ForYouEventSkeleton extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Reads the enclosing route for [ForYouGamesWidget] in its own element, so
+/// only this probe depends on it: a dialog or sheet pushed over Today
+/// rebuilds the probe, which returns the same [child] instance, and nothing
+/// under it rebuilds.
+class _PageRouteProbe extends StatefulWidget {
+  const _PageRouteProbe({required this.onRoute, required this.child});
+
+  final ValueChanged<ModalRoute<dynamic>?> onRoute;
+  final Widget child;
+
+  @override
+  State<_PageRouteProbe> createState() => _PageRouteProbeState();
+}
+
+class _PageRouteProbeState extends State<_PageRouteProbe> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    widget.onRoute(ModalRoute.of(context));
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

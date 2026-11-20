@@ -1,6 +1,7 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
@@ -86,30 +87,11 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return PopupGlass(
       width: ResponsiveHelper.isTablet ? 400.w : 340.w,
       padding: EdgeInsets.all(24.sp),
-      decoration: BoxDecoration(
-        color: context.colors.popup,
-        borderRadius: BorderRadius.circular(20.sp),
-        // Dark keeps its soft surface halo; on paper that halo is a pale
-        // glow over the scrim, so light casts one short ink shadow.
-        boxShadow: [
-          context.isLightTheme
-              ? BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              )
-              // Dark: one short black shadow cast downward, not a pale halo
-              // radiating on every side.
-              : BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-        ],
-      ),
+      borderRadius: BorderRadius.circular(20.sp),
+      tone: context.colors.popup,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,

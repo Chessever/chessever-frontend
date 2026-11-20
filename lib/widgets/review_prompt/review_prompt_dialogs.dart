@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 class ReviewResult {
@@ -138,31 +139,10 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return PopupGlass(
       constraints: BoxConstraints(maxWidth: 360.w),
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        borderRadius: BorderRadius.circular(20.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.08),
-          width: 1,
-        ),
-        // Dark floats the card on a deep black bloom; on paper that is a
-        // grey smear, so light casts one tight ink shadow instead.
-        boxShadow: [
-          context.isLightTheme
-              ? BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              )
-              : BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
-              ),
-        ],
-      ),
+      borderRadius: BorderRadius.circular(20.br),
+      tone: context.colors.background,
       child: AnimatedSize(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,

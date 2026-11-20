@@ -6,6 +6,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -142,27 +143,8 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       constraints: BoxConstraints(
         maxWidth: ResponsiveHelper.isTablet ? 420 : double.infinity,
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(24.br),
-          border: Border.all(color: context.colors.divider),
-          // Paper gets one tight contact shadow; the deep drop only reads
-          // on black.
-          boxShadow: [
-            context.isLightTheme
-                ? BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
-                : BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 40,
-                    offset: const Offset(0, 20),
-                  ),
-          ],
-        ),
+      child: PopupGlass(
+        borderRadius: BorderRadius.circular(24.br),
         child: SingleChildScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Padding(

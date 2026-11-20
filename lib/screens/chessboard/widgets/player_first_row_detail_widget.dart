@@ -34,6 +34,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 
 enum PlayerView { listView, gridView, boardView }
 
@@ -1138,17 +1139,10 @@ void _showEditNameDialog(
   showAlertModal<void>(
     context: context,
     child: Builder(
-      builder: (dialogContext) => Container(
+      builder: (dialogContext) => PopupGlass(
         width: double.infinity,
         padding: EdgeInsets.all(20.sp),
-        decoration: BoxDecoration(
-          color: dialogContext.colors.surface,
-          borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(
-            color: dialogContext.colors.textPrimary.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
+        borderRadius: BorderRadius.circular(16.br),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

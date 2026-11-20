@@ -1,7 +1,12 @@
 // Renders the Today collection stories to PNGs for review: the Today top
 // with its story row, and the viewer mid-story, at a story's end, mid open,
 // mid cube turn, mid drag down, on its See all story and on a phone turned
-// on its side, in light and dark, at a 393x852 phone view (852x393 on its
+// on its side; an annotated story on a commented move (its arrows, words
+// and glyph) with the actions under it; a long note wrapping and fading,
+// a note on the game's last move held to be read, the good move's glyph,
+// and a plain move the frame it lands; the row pulled past either end
+// (half way, and armed); and Settings › Customization with the Collection
+// stories choice. Light and dark, at a 393x852 phone view (852x393 on its
 // side), 3x.
 //
 //   flutter test --no-pub test/collection_stories_preview_test.dart \
@@ -15,17 +20,31 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/providers/notification_permission_provider.dart';
+import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
+import 'package:chessever2/screens/stories/story_pages.dart';
+import 'package:chessever2/screens/stories/story_replay.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
+import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:country_picker/country_picker.dart';
@@ -165,6 +184,9 @@ final Map<String, ImageProvider> _covers = {
 
 // ----------------------------------------------------------------- games
 
+/// One story template: a game that takes the story's id.
+typedef _Story = StoryGame Function(String id);
+
 CollectionPlayerSide _side(
   String name,
   String fed, {
@@ -178,8 +200,8 @@ CollectionPlayerSide _side(
   elo: elo,
 );
 
-StoryGame _game(
-  String id, {
+_Story _game(
+  String name, {
   required CollectionPlayerSide white,
   required CollectionPlayerSide black,
   required String result,
@@ -191,18 +213,20 @@ StoryGame _game(
   final pgn =
       '[Event "$event"]\n[White "${white.name}"]\n[Black "${black.name}"]\n'
       '[Result "$result"]\n[ECO "$eco"]\n\n$moves $result';
-  final game = CollectionGame.fromPreviewCard(
-    CollectionGameCard(
-      id: id,
-      white: white,
-      black: black,
-      result: result,
-      event: event,
-      eco: eco,
-      opening: opening,
-    ),
-  )!;
-  return buildStoryGame(game, pgn: pgn);
+  return (id) {
+    final game = CollectionGame.fromPreviewCard(
+      CollectionGameCard(
+        id: id,
+        white: white,
+        black: black,
+        result: result,
+        event: event,
+        eco: eco,
+        opening: opening,
+      ),
+    )!;
+    return buildStoryGame(game, pgn: pgn);
+  };
 }
 
 final _opera = _game(
@@ -271,9 +295,66 @@ final _reti = _game(
       '7. Bd2 Qxe5 8. O-O-O Nxe4 9. Qd8+ Kxd8 10. Bg5+ Kc7 11. Bd8#',
 );
 
-StoryBatch _batch(int total) {
+/// The Opera game as a book annotates it: arrows, marked squares, a glyph,
+/// and words on the moments that matter.
+const _operaAnnotatedMoves =
+    '1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 '
+    '7. Qb3 { [%clk 0:58:10] [%cal Gb3f7,Gb3b7] The queen eyes f7 and b7 '
+    'at once. } 7... Qe7 8. Nc3 c6 9. Bg5 b5?! 10. Nxb5! { [%csl Gb5] '
+    'White gives the knight to open lines toward the king. } 10... cxb5 '
+    '11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7! { [%cal Gd1d8] The exchange '
+    'goes back: every white piece joins the attack. } 13... Rxd7 14. Rd1 '
+    'Qe6 15. Bxd7+ Nxd7 16. Qb8+!! { [%eval #1] [%cal Gb8d8,Gd1d8] '
+    '[%csl Rd8] The queen is given so the rook can mate on d8. } '
+    '16... Nxb8 17. Rd8#';
+
+_Story _operaWith(String id, String moves) => _game(
+  id,
+  white: _side('Morphy, Paul', 'USA'),
+  black: _side('Duke Karl, Count Isouard', 'FRA'),
+  result: '1-0',
+  event: 'Paris Opera 1858',
+  eco: 'C41',
+  opening: 'Philidor Defence',
+  moves: moves,
+);
+
+final _operaAnnotated = _operaWith('opera_annotated', _operaAnnotatedMoves);
+
+/// A long note (about 290 characters) on 13. Rxd7!: more than the room
+/// under the board holds, so it wraps and fades, never dropping a line.
+const _longWords =
+    'The exchange goes back, and with it the last of the defenders. With '
+    'his bishop and his rook on d1, both now pointing at the black king, '
+    'White finds that every one of his pieces joins the attack, while the '
+    'queen on e7 and the knight on f6 stand too far away to help in time.';
+
+final _operaLong = _operaWith(
+  'opera_long',
+  _operaAnnotatedMoves.replaceFirst(
+    'The exchange goes back: every white piece joins the attack.',
+    _longWords,
+  ),
+);
+
+/// A summing-up note on the last move: it holds as long as its words need.
+const _finaleWords =
+    'Mate. Morphy spent a knight, the exchange and his queen, and every '
+    'piece he gave away opened one more line to the king.';
+
+final _operaFinale = _operaWith(
+  'opera_finale',
+  _operaAnnotatedMoves.replaceFirst('17. Rd8#', '17. Rd8# { $_finaleWords }'),
+);
+
+/// The stories of a collection of [total] games: the famous four, each
+/// story its own game id. [lead] opens the stories when given.
+StoryBatch _batch(int total, {_Story? lead}) {
   final games = [_opera, _century, _immortal, _reti];
-  final stories = [for (var i = 0; i < kStoryCap; i++) games[i % games.length]];
+  final stories = [
+    for (var i = 0; i < kStoryCap; i++)
+      (i == 0 && lead != null ? lead : games[i % games.length])('s$i'),
+  ];
   return StoryBatch(
     games: stories,
     ordered: [for (final s in stories) s.game],
@@ -281,7 +362,48 @@ StoryBatch _batch(int total) {
   );
 }
 
+/// The book whose first story is annotated.
+const _annotatedSlug = 'exchange-sacrifice-2';
+
+/// The analysis whose first story carries a long note.
+const _longSlug = 'neiksans-annotated';
+
+/// The analysis whose first story ends on a note.
+const _finaleSlug = 'jayaram-annotated';
+
+StoryBatch _batchOf(String slug) => _batch(
+  _catalog.firstWhere((c) => c.slug == slug).gameCount,
+  lead: switch (slug) {
+    _annotatedSlug => _operaAnnotated,
+    _longSlug => _operaLong,
+    _finaleSlug => _operaFinale,
+    _ => null,
+  },
+);
+
 // ---------------------------------------------------------------- harness
+
+class _RowStore implements StoryRowPrefsStore {
+  String? local;
+
+  @override
+  String? readLocal() => local;
+
+  @override
+  Future<void> writeLocal(String value) async => local = value;
+
+  @override
+  Future<Map<String, dynamic>?> readAccount() async => null;
+
+  @override
+  String? accountId() => null;
+
+  @override
+  Future<void> writeAccount(Map<String, Object?> value) async {}
+
+  @override
+  Stream<void> accountChanges() => const Stream.empty();
+}
 
 class _MemoryStorage implements StorySeenStorage {
   _MemoryStorage(this.value);
@@ -314,8 +436,9 @@ class _Country extends StateNotifier<AsyncValue<Country>>
 }
 
 /// The seen record the scenes start from: three collections new, the rest
-/// watched (they follow the new ones, in quiet rings), and [resume] stories
-/// in for the one the viewer opens.
+/// watched (they follow the new ones, in quiet rings), and the first
+/// [resume] stories seen of the one the viewer opens, so it opens on the
+/// next.
 String _seen(Map<String, int> resume) {
   final watched = {
     'neiksans-annotated',
@@ -325,23 +448,22 @@ String _seen(Map<String, int> resume) {
     '2021-in-52-games',
     '2022-in-53-games',
   };
-  final records = <String, Object>{
-    for (final c in _catalog)
-      if (watched.contains(c.slug))
-        c.slug: StorySeen(
-          signature: storySignature(c),
-          next: 0,
-          seen: true,
-        ).toJson(),
-    // Where the scene opens a collection: stories in, still new.
-    for (final MapEntry(:key, :value) in resume.entries)
-      key: StorySeen(
-        signature: storySignature(_catalog.firstWhere((c) => c.slug == key)),
-        next: value,
-        seen: false,
-      ).toJson(),
-  };
-  return jsonEncode(records);
+  StorySeen record(String slug, int seen) {
+    final c = _catalog.firstWhere((c) => c.slug == slug);
+    final ids = [for (final g in _batchOf(slug).games.take(seen)) g.id];
+    return StorySeen(ids: ids, count: c.gameCount, full: seen >= kStoryCap);
+  }
+
+  return jsonEncode({
+    'v': 2,
+    'c': {
+      for (final c in _catalog)
+        if (watched.contains(c.slug))
+          c.slug: record(c.slug, kStoryCap).toJson(),
+      for (final MapEntry(:key, :value) in resume.entries)
+        key: record(key, value).toJson(),
+    },
+  });
 }
 
 Future<void> _pumpToday(
@@ -376,11 +498,9 @@ Future<void> _pumpToday(
   final container = ProviderContainer(
     overrides: [
       storyCollectionsProvider.overrideWith((ref) async => _catalog),
-      storyBatchProvider.overrideWith(
-        (ref, slug) async =>
-            _batch(_catalog.firstWhere((c) => c.slug == slug).gameCount),
-      ),
+      storyBatchProvider.overrideWith((ref, slug) async => _batchOf(slug)),
       storySeenStorageProvider.overrideWithValue(_MemoryStorage(_seen(resume))),
+      storyRowPrefsStoreProvider.overrideWithValue(_RowStore()),
       storyCoverOverrideProvider.overrideWithValue((c) => _covers[c.slug]),
       boardSettingsProviderNew.overrideWith(_Board.new),
       favoritePlayersProviderNew.overrideWith(_NoFavorites.new),
@@ -489,6 +609,107 @@ Future<void> _play(WidgetTester tester, Duration duration) async {
   }
 }
 
+// ------------------------------------------------------------- settings
+
+class _Engine extends EngineSettingsNotifierNew {
+  @override
+  Future<EngineSettings> build() async => const EngineSettings();
+}
+
+class _BoardLinesVisibility extends BoardEngineLinesVisibleNotifier {
+  @override
+  Future<bool> build() async => true;
+}
+
+class _Notifications extends NotificationPreferencesNotifier {
+  @override
+  Future<NotificationPreferences> build() async =>
+      NotificationPreferences.defaults;
+}
+
+class _Permission extends StateNotifier<AsyncValue<bool>>
+    implements NotificationPermissionNotifier {
+  _Permission() : super(const AsyncData(false));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _Subscription extends StateNotifier<SubscriptionState>
+    implements SubscriptionNotifier {
+  _Subscription() : super(SubscriptionState(isSubscribed: true));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _AutoPin extends AutoPinPreferencesNotifier {
+  @override
+  Future<AutoPinPreferences> build() async => AutoPinPreferences.defaults;
+}
+
+class _Botvinnik extends BotvinnikEnabledNotifier {
+  @override
+  Future<bool> build() async => true;
+}
+
+/// Settings opened on Customization, as the reader finds it.
+Future<void> _pumpSettings(WidgetTester tester, {required bool light}) async {
+  tester.view.devicePixelRatio = 3;
+  tester.view.physicalSize = const Size(393 * 3, 852 * 3);
+  tester.view.padding = const FakeViewPadding(top: 59 * 3, bottom: 34 * 3);
+  tester.view.viewPadding = const FakeViewPadding(top: 59 * 3, bottom: 34 * 3);
+  addTearDown(tester.view.reset);
+  final container = ProviderContainer(
+    overrides: [
+      boardSettingsProviderNew.overrideWith(_Board.new),
+      engineSettingsProviderNew.overrideWith(_Engine.new),
+      boardEngineLinesVisibleProvider.overrideWith(_BoardLinesVisibility.new),
+      notificationPreferencesProvider.overrideWith(_Notifications.new),
+      notificationPermissionProvider.overrideWith((_) => _Permission()),
+      subscriptionProvider.overrideWith((_) => _Subscription()),
+      autoPinPreferencesProvider.overrideWith(_AutoPin.new),
+      botvinnikEnabledProvider.overrideWith(_Botvinnik.new),
+      storyRowPrefsStoreProvider.overrideWithValue(_RowStore()),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _capture,
+      child: UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+          builder: (_, child) => AdaptiveWindowScope(child: child!),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return const SettingsPage(
+                initiallyExpanded: SettingsSection.customization,
+              );
+            },
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// The row's pull mark as drawn: its fill and its armed disc.
+StoryPullMarkPainter? _pullMark(WidgetTester tester) {
+  final mark = find.byKey(const ValueKey('story_row_pull_mark'));
+  if (mark.evaluate().isEmpty) return null;
+  return tester
+          .widget<CustomPaint>(
+            find.descendant(of: mark, matching: find.byType(CustomPaint)),
+          )
+          .painter
+      as StoryPullMarkPainter?;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -514,6 +735,8 @@ void main() {
       '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
     );
     if (icons.existsSync()) await family('MaterialIcons', [icons.path]);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await SharedPreferencesService.instance.ensureInitialized();
   });
 
   for (final light in [false, true]) {
@@ -635,13 +858,243 @@ void main() {
       await _pumpToday(
         tester,
         light: light,
-        resume: {'60-instructive-wins': kStoryCap},
+        resume: {'60-instructive-wins': kStoryCap - 1},
       );
       await _open(tester, '60-instructive-wins');
+      // On the last game; a tap on goes to See all.
+      await tester.tapAt(const Offset(393 * 0.8, 852 * 0.5));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      await _precache(tester);
       expect(find.text('See all 60 games'), findsOneWidget);
       await tester.pump(kStorySeeAllDuration * 0.35);
       await _shot(tester, '07_see_all', light);
       await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('annotated story on a commented move, $theme', (tester) async {
+      await _pumpToday(tester, light: light);
+      await _open(tester, _annotatedSlug);
+      final replay = _batchOf(_annotatedSlug).games.first.replay;
+      expect(replay.annotated, isTrue);
+      final step = replay.notes.indexWhere((n) => n?.san == 'Qb8+');
+      final face = find.byKey(const ValueKey('story_page_$_annotatedSlug'));
+      final bars = tester.widget<StoryProgressBars>(
+        find.descendant(of: face, matching: find.byType(StoryProgressBars)),
+      );
+      // A third of the way into the queen sacrifice's hold: its arrows, its
+      // glyph and its words.
+      final target =
+          replay.startOf(step) +
+          (replay.startOf(step + 1) - replay.startOf(step)) / 3;
+      await _play(
+        tester,
+        replay.scheduledDuration! * (target - bars.progress.value),
+      );
+      await _precache(tester);
+      await _play(tester, const Duration(milliseconds: 400));
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('story_note_move')))
+            .textSpan!
+            .toPlainText(),
+        '16. Qb8+!!',
+      );
+      expect(find.byKey(const ValueKey('story_view_collection')), findsOne);
+      expect(find.byKey(const ValueKey('story_open_game')), findsOne);
+      await _shot(tester, '09_annotated_move', light);
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    /// Plays [slug]'s first story to [share] of its schedule.
+    Future<StoryReplay> playTo(
+      WidgetTester tester,
+      String slug,
+      double Function(StoryReplay replay) share,
+    ) async {
+      await _pumpToday(tester, light: light);
+      await tester.scrollUntilVisible(
+        _circle(slug),
+        120,
+        scrollable: find.descendant(
+          of: find.byType(TodayStoryRow),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pump();
+      await _precache(tester);
+      await _open(tester, slug);
+      final replay = _batchOf(slug).games.first.replay;
+      final face = find.byKey(ValueKey('story_page_$slug'));
+      final bars = tester.widget<StoryProgressBars>(
+        find.descendant(of: face, matching: find.byType(StoryProgressBars)),
+      );
+      await _play(
+        tester,
+        replay.scheduledDuration! * (share(replay) - bars.progress.value),
+      );
+      await _precache(tester);
+      return replay;
+    }
+
+    int stepOf(StoryReplay replay, String san) =>
+        replay.notes.indexWhere((n) => n?.san == san);
+
+    String moveLine(WidgetTester tester) => tester
+        .widget<Text>(find.byKey(const ValueKey('story_note_move')))
+        .textSpan!
+        .toPlainText();
+
+    testWidgets('a long note wraps whole and fades at its end, $theme', (
+      tester,
+    ) async {
+      await playTo(tester, _longSlug, (replay) {
+        final step = stepOf(replay, 'Rxd7');
+        return replay.startOf(step) +
+            (replay.startOf(step + 1) - replay.startOf(step)) / 2;
+      });
+      await _play(tester, const Duration(milliseconds: 400));
+      expect(moveLine(tester), '13. Rxd7!');
+      final comment = find.byKey(const ValueKey('story_note_comment'));
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: comment, matching: find.byType(RichText)),
+      );
+      // With the app's own fonts: one centred paragraph, cut after its
+      // lines, its last line fading downward under the fade.
+      expect(paragraph.text.toPlainText(), _longWords);
+      expect(paragraph.textAlign, TextAlign.center);
+      expect(
+        find.descendant(
+          of: comment,
+          matching: find.byKey(const ValueKey('story_note_comment_fade')),
+        ),
+        findsOneWidget,
+      );
+      await _shot(tester, '14_long_comment', light);
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('a note on the last move, read past the end\'s old beat, '
+        '$theme', (tester) async {
+      final replay = await playTo(tester, _finaleSlug, (replay) {
+        final total = replay.scheduledDuration!.inMicroseconds / 1e6;
+        // 3.5s into the last move's hold: the old 1.8s end had moved on.
+        return replay.startOf(replay.plies) + 3.5 / total;
+      });
+      await _play(tester, const Duration(milliseconds: 40));
+      expect(StoryReplay.dwellOf(replay.noteAt(replay.plies)!), greaterThan(5));
+      expect(moveLine(tester), '17. Rd8#');
+      expect(find.text(_finaleWords), findsOneWidget);
+      await _shot(tester, '15_last_move_note', light);
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('the good move\'s glyph on the page, $theme', (tester) async {
+      await playTo(tester, _annotatedSlug, (replay) {
+        final step = stepOf(replay, 'Nxb5');
+        return replay.startOf(step) +
+            (replay.startOf(step + 1) - replay.startOf(step)) / 3;
+      });
+      await _play(tester, const Duration(milliseconds: 400));
+      expect(moveLine(tester), '10. Nxb5!');
+      await _shot(tester, '16_good_move_glyph', light);
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('a plain move mid-replay, the frame it lands, $theme', (
+      tester,
+    ) async {
+      await playTo(tester, _annotatedSlug, (replay) {
+        final step = stepOf(replay, 'd6');
+        return replay.startOf(step);
+      });
+      await _play(tester, const Duration(milliseconds: 40));
+      expect(moveLine(tester), '2… d6');
+      final notes = tester.widget<Opacity>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('story_note_move')),
+              matching: find.byType(Opacity),
+            )
+            .first,
+      );
+      // Stepped in at once: full ink, no settle at the replay's cadence.
+      expect(notes.opacity, 1);
+      await _shot(tester, '17_plain_move_transit', light);
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    for (final end in [false, true]) {
+      final edge = end ? 'last' : 'first';
+      testWidgets('row pulled past its $edge circle, $theme', (tester) async {
+        await _pumpToday(tester, light: light);
+        final scroll = tester.state<ScrollableState>(
+          find.descendant(
+            of: find.byType(TodayStoryRow),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        // The circles' line, read before the row scrolls them away.
+        final y = tester.getCenter(_circle('us-championship-2026')).dy;
+        if (end) {
+          scroll.position.jumpTo(scroll.position.maxScrollExtent);
+          await tester.pump();
+        }
+        final gesture = await tester.startGesture(Offset(196, y));
+        final step = end ? -4.0 : 4.0;
+        // Early in the pull the mark is already there, small and growing.
+        for (var i = 0; i < 200 && _pullMark(tester) == null; i++) {
+          await gesture.moveBy(Offset(step, 0));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        // It comes in at about a quarter of the way to the trigger.
+        expect(_pullMark(tester)!.progress, lessThan(0.3));
+        for (var i = 0; i < 4; i++) {
+          await gesture.moveBy(Offset(step, 0));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(_pullMark(tester)!.progress, lessThan(0.4));
+        await _shot(tester, '18_row_pull_${edge}_early', light);
+        for (
+          var i = 0;
+          i < 200 && (_pullMark(tester)?.progress ?? 0) < 0.5;
+          i++
+        ) {
+          await gesture.moveBy(Offset(step, 0));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(_pullMark(tester)!.armed, 0);
+        await _shot(tester, '10_row_pull_${edge}_half', light);
+        for (
+          var i = 0;
+          i < 200 && (_pullMark(tester)?.progress ?? 0) < 1;
+          i++
+        ) {
+          await gesture.moveBy(Offset(step, 0));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await _play(tester, const Duration(milliseconds: 400));
+        expect(_pullMark(tester)!.armed, closeTo(1, 0.01));
+        await _shot(tester, '11_row_pull_${edge}_armed', light);
+        // Back inside before letting go: nothing is put away.
+        await gesture.moveBy(Offset(-step * 120, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+        await gesture.up();
+        await _run(tester, const Duration(seconds: 1));
+        expect(find.text('Undo'), findsNothing);
+      });
+    }
+
+    testWidgets('Settings, Customization, $theme', (tester) async {
+      await _pumpSettings(tester, light: light);
+      expect(find.text('Collection stories'), findsOneWidget);
+      expect(find.text('When new'), findsOneWidget);
+      await _shot(tester, '12_settings_customization', light);
+      await tester.tap(find.text('Collection stories'));
+      await tester.pumpAndSettle();
+      expect(find.text("When there's something new"), findsOneWidget);
+      await _shot(tester, '13_settings_story_choice', light);
     });
   }
 }

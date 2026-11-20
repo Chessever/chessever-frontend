@@ -10,6 +10,7 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 /// Shows the game filter dialog and returns the selected filter or null if cancelled
@@ -154,17 +155,10 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   }
 
   Widget _buildDialogCard(BuildContext context, double dialogWidth) {
-    return Container(
+    return PopupGlass(
       width: dialogWidth,
       constraints: BoxConstraints(maxHeight: 580.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -428,7 +422,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: context.colors.textPrimary,
-                  backgroundColor: context.colors.surface,
+                  // Text on the glass, as it was on the opaque panel.
+                  backgroundColor: Colors.transparent,
                   side: BorderSide.none,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10.br),

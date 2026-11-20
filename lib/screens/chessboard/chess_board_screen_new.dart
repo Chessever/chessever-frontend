@@ -50,6 +50,8 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
+import 'package:chessever2/screens/chessboard/utils/pgn_comment_annotations.dart'
+    show pgnCommentShapes;
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_pinch_coachmark.dart';
@@ -9631,81 +9633,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     return squares.last;
   }
 
+  /// The move's `[%cal]` arrows and `[%csl]` squares, in the palette every
+  /// board shares ([pgnCommentShapes]; the collection stories draw them too).
   Iterable<Shape> _extractAnnotationShapes(ChessMove? move) {
-    if (move == null || move.comments == null) return const [];
-
-    final shapes = <Shape>[];
-
-    Color getColor(String code) {
-      switch (code.toUpperCase()) {
-        case 'G':
-          return const Color(0xFF15781B).withValues(alpha: 0.8); // Green
-        case 'Y':
-          return const Color(0xFFE58F00).withValues(alpha: 0.8); // Yellow
-        case 'B':
-          return const Color(0xFF003088).withValues(alpha: 0.8); // Blue
-        case 'R':
-          return const Color(0xFF882020).withValues(alpha: 0.8); // Red
-        case 'O':
-          return const Color(0xFFE68F00).withValues(alpha: 0.8); // Orange
-        default:
-          return const Color(
-            0xFF15781B,
-          ).withValues(alpha: 0.8); // Default green
-      }
-    }
-
-    for (final comment in move.comments!) {
-      // Parse all [%cal ...] blocks in the comment
-      final calMatches = RegExp(r'\[%cal\s+([^\]]+)\]').allMatches(comment);
-      for (final match in calMatches) {
-        final content = match.group(1);
-        if (content != null) {
-          final items = content.split(',');
-          for (final item in items) {
-            final trimmed = item.trim();
-            if (trimmed.length == 5) {
-              // e.g. Gg8g7
-              final colorCode = trimmed[0];
-              final origStr = trimmed.substring(1, 3);
-              final destStr = trimmed.substring(3, 5);
-
-              try {
-                final orig = Square.fromName(origStr);
-                final dest = Square.fromName(destStr);
-                shapes.add(
-                  Arrow(color: getColor(colorCode), orig: orig, dest: dest),
-                );
-              } catch (_) {}
-            }
-          }
-        }
-      }
-
-      // Parse all [%csl ...] blocks in the comment
-      final cslMatches = RegExp(r'\[%csl\s+([^\]]+)\]').allMatches(comment);
-      for (final match in cslMatches) {
-        final content = match.group(1);
-        if (content != null) {
-          final items = content.split(',');
-          for (final item in items) {
-            final trimmed = item.trim();
-            if (trimmed.length == 3) {
-              // e.g. Re2
-              final colorCode = trimmed[0];
-              final sqStr = trimmed.substring(1, 3);
-
-              try {
-                final sq = Square.fromName(sqStr);
-                shapes.add(Circle(color: getColor(colorCode), orig: sq));
-              } catch (_) {}
-            }
-          }
-        }
-      }
-    }
-
-    return shapes;
+    final comments = move?.comments;
+    if (comments == null) return const [];
+    return pgnCommentShapes(comments);
   }
 
   /// [selfContainedChild] is true when [child] already paints its own filled

@@ -9,7 +9,7 @@ import 'package:chessever2/screens/collections/collections_data.dart'
 import 'package:chessever2/screens/feed/news/news_models.dart' show FeedNews;
 import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart'
-    show NewsArticleCard, newsCardExtent, newsGridMetrics;
+    show NewsArticleCard, newsCardExtent;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
     show SmartEventRequest;
@@ -39,9 +39,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// openings and the built-in smart events (both as smart events), the
 /// strongest events coming up, the collections, the news. Every section is
 /// a row of its cards read on as the reader scrolls it
-/// ([SearchLandingSection]): its title opens the section's own page, See
-/// more opens it in place. A section with nothing to list is simply not
-/// there; nothing explains itself in prose. The recent searches are not
+/// ([SearchLandingSection]): its title opens the section's own page, as the
+/// See more card the row ends in does. A section with nothing to list is
+/// simply not there; nothing explains itself in prose. The recent searches are not
 /// here: they stand in for the landing while the field has the cursor
 /// (`SearchRecentsView`), as X shows them.
 ///
@@ -82,7 +82,7 @@ const Widget _none = SliverToBoxAdapter(child: SizedBox.shrink());
 
 /// The landing's event sections (Live now, Coming up) as the Events list
 /// draws its events: compact cards on a phone, the image cards of its grid
-/// on a tablet (a column's width in the row, the grid down the page).
+/// on a tablet (a column's width in the row).
 SearchLandingSection<GroupEventCardModel> _eventSection(
   BuildContext context, {
   required SearchSectionId section,
@@ -115,20 +115,7 @@ SearchLandingSection<GroupEventCardModel> _eventSection(
         ? SearchCarouselSizing.fixed(EventCard.gridMainAxisExtent)
         // The tallest compact card: a two-line title over the LIVE line.
         : SearchCarouselSizing.ghost((_) => const SearchPendingEventCard()),
-    card: (context, event, index, inRow) => card(event),
-    columns: (width) => grid
-        ? ResponsiveHelper.columnsForWidth(width, spacing: searchCardGap)
-        : 1,
-    row: (context, items, start, columns, width) {
-      final cardWidth = (width - searchCardGap * (columns - 1)) / columns;
-      return searchCardRow(
-        items,
-        start,
-        columns,
-        cardBuilder: (event, _) => card(event),
-        extent: grid ? EventCard.gridMainAxisExtent(context, cardWidth) : null,
-      );
-    },
+    card: (context, event, index) => card(event),
   );
 }
 
@@ -170,8 +157,7 @@ class _LiveNowSection extends ConsumerWidget {
 
 /// Top players: the world ranking from its head, the ranking read on as the
 /// reader scrolls. The Events page's player cards (photo and flag) stand
-/// two to a card's room, their compact pair, in the row and down the page
-/// alike. A failed first read leaves no trace; a slow one holds the row's
+/// two to a card's room, their compact pair. A failed first read leaves no trace; a slow one holds the row's
 /// room with one quiet spinner. Its page is Rankings.
 ///
 /// A page can land odd (a nameless row skipped, a player repeated across
@@ -259,8 +245,7 @@ class _TopPlayersSection extends ConsumerWidget {
         lone ? (_) => _loneGhost : (_) => _pairGhost,
         tabletMinWidth: 320,
       ),
-      card: (context, players, index, inRow) => pair(players, index),
-      columns: (_) => 1,
+      card: (context, players, index) => pair(players, index),
     );
   }
 }
@@ -290,8 +275,8 @@ Widget _smartEventGhostBuilder(double width) => _smartEventGhost;
 
 /// The main openings, each as the smart event its search result opens (the
 /// games of every current event played in it), then the rest of the
-/// catalog as the reader scrolls on. Down the page and on its own page, the
-/// half cards My Space sets side by side.
+/// catalog as the reader scrolls on. On its own page, the half cards My
+/// Space sets side by side.
 class _OpeningsSection extends ConsumerWidget {
   const _OpeningsSection({required this.picks});
 
@@ -319,7 +304,7 @@ class _OpeningsSection extends ConsumerWidget {
       onRetry: notifier.retry,
       onOpen: () => openSearchSectionPage(context, section, onOpening: open),
       sizing: _smartEventSizing,
-      card: (context, opening, index, inRow) => KeyedSubtree(
+      card: (context, opening, index) => KeyedSubtree(
         key: ValueKey('opening-result-${opening.id}'),
         child: SmartEventRequestCard(
           request: SmartEventRequest.forOpeningSelection(opening.selection),
@@ -327,23 +312,6 @@ class _OpeningsSection extends ConsumerWidget {
           showFilters: false,
         ),
       ),
-      columns: searchSmartEventColumns,
-      row: (context, items, start, columns, width) {
-        final row = items.sublist(
-          start,
-          math.min(start + columns, items.length),
-        );
-        return searchSmartEventRow(
-          [
-            for (final opening in row)
-              SmartEventRequest.forOpeningSelection(opening.selection),
-          ],
-          0,
-          columns,
-          keyFor: (index) => ValueKey('opening-result-${row[index].id}'),
-          onTap: open == null ? null : (index) => tap(row[index]),
-        );
-      },
     );
   }
 }
@@ -372,21 +340,13 @@ class _SmartEventsSection extends StatelessWidget {
       items: requests,
       onOpen: () => openSearchSectionPage(context, section),
       sizing: _smartEventSizing,
-      card: (context, request, index, inRow) => KeyedSubtree(
+      card: (context, request, index) => KeyedSubtree(
         key: keyOf(request),
         child: SmartEventRequestCard(
           request: request,
           onTap: tap(request),
           showFilters: false,
         ),
-      ),
-      columns: searchSmartEventColumns,
-      row: (context, items, start, columns, width) => searchSmartEventRow(
-        items,
-        start,
-        columns,
-        keyFor: (index) => keyOf(items[index]),
-        onTap: open == null ? null : (index) => tap(items[index]),
       ),
     );
   }
@@ -515,21 +475,7 @@ class _CollectionsSection extends ConsumerWidget {
         (_) => _collectionsRowGhost(feed.items),
         tabletMinWidth: 340,
       ),
-      card: (context, collection, index, inRow) => card(collection),
-      columns: (width) => ResponsiveHelper.isTablet
-          ? ResponsiveHelper.columnsForWidth(
-              width,
-              minItemWidth: 360,
-              spacing: searchCardGap,
-              maxColumns: 2,
-            )
-          : 1,
-      row: (context, items, start, columns, width) => searchCardRow(
-        items,
-        start,
-        columns,
-        cardBuilder: (collection, _) => card(collection),
-      ),
+      card: (context, collection, index) => card(collection),
     );
   }
 }
@@ -594,14 +540,13 @@ class _NewsSection extends ConsumerWidget {
     final feed = shown.feed;
     final notifier = ref.read(searchNewsFeedProvider.notifier);
     final section = SearchSectionId.news;
-    Widget card(FeedNews news, int index, {required bool compact}) =>
-        NewsArticleCard(
-          key: ValueKey('search-news-${news.key}'),
-          news: news,
-          compact: compact,
-          heroTag: (_searchNewsHeroes, news.key),
-          onTap: () => unawaited(_open(context, index)),
-        );
+    Widget card(FeedNews news, int index) => NewsArticleCard(
+      key: ValueKey('search-news-${news.key}'),
+      news: news,
+      compact: true,
+      heroTag: (_searchNewsHeroes, news.key),
+      onTap: () => unawaited(_open(context, index)),
+    );
     return SearchLandingSection<FeedNews>(
       id: section.slug,
       title: section.title,
@@ -626,7 +571,7 @@ class _NewsSection extends ConsumerWidget {
         tabletMinWidth: 260,
         phoneColumns: 2,
       ),
-      card: (context, news, index, inRow) => LayoutBuilder(
+      card: (context, news, index) => LayoutBuilder(
         builder: (context, constraints) => Align(
           alignment: AlignmentDirectional.topStart,
           child: SizedBox(
@@ -635,24 +580,10 @@ class _NewsSection extends ConsumerWidget {
               MediaQuery.textScalerOf(context),
               compact: true,
             ),
-            child: card(news, index, compact: true),
+            child: card(news, index),
           ),
         ),
       ),
-      // Down the page, the News page's own grid.
-      columns: (width) =>
-          newsGridMetrics(width, MediaQuery.textScalerOf(context)).columns,
-      row: (context, items, start, columns, width) {
-        final grid = newsGridMetrics(width, MediaQuery.textScalerOf(context));
-        return searchCardRow(
-          items,
-          start,
-          columns,
-          cardBuilder: (news, index) =>
-              card(news, index, compact: grid.compact),
-          extent: grid.height,
-        );
-      },
     );
   }
 }

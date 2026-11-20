@@ -9,6 +9,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 
 class MiniatureOpeningFilterInput {
@@ -129,17 +130,10 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   @override
   Widget build(BuildContext context) {
     final dialogWidth = 320.w;
-    return Container(
+    return PopupGlass(
       width: dialogWidth,
       constraints: BoxConstraints(maxHeight: 560.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
+      borderRadius: BorderRadius.circular(16.br),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -374,7 +368,8 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
               child: Container(
                 height: 40.h * context.textGrowth,
                 decoration: BoxDecoration(
-                  color: context.colors.surface,
+                  // Text on the glass, as it was on the opaque panel.
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(4.br),
                 ),
                 alignment: Alignment.center,

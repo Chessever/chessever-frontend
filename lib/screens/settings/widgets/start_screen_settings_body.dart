@@ -82,85 +82,19 @@ class _StartScreenSettingsBodyState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _PickerRow(
+          SettingsPickerRow(
             title: 'Start section',
             value: namesBottomNavBarIcons[section]!,
             onTap: _pickSection,
           ),
           Divider(height: 1.h, thickness: 0.5.w, color: context.colors.divider),
-          _PickerRow(
+          SettingsPickerRow(
             title: 'Home page',
             caption: 'Used when Home is the start section',
             value: _homePage.label,
             onTap: _pickHomePage,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PickerRow extends StatelessWidget {
-  const _PickerRow({
-    required this.title,
-    required this.value,
-    required this.onTap,
-    this.caption,
-  });
-
-  final String title;
-  final String value;
-  final VoidCallback onTap;
-  final String? caption;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        onTap();
-      },
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 10.h),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                  if (caption != null) ...[
-                    SizedBox(height: 2.h),
-                    Text(
-                      caption!,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Text(
-              value,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
-              ),
-            ),
-            SizedBox(width: 4.w),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20.ic,
-              color: context.colors.textSecondary,
-            ),
-          ],
-        ),
       ),
     );
   }
