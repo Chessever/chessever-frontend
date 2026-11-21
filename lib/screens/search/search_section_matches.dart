@@ -12,9 +12,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // What a typed search finds in each of the landing's sections beyond the
 // players, events and openings the app-wide search returns: the events the
-// landing already holds (Live now, Coming up), the built-in smart events,
-// the collections (the catalog's own search) and the news the landing has
-// read (no server search: filtered here, capped).
+// landing already holds (Coming up), the built-in smart events, the
+// collections (the catalog's own search) and the news the landing has read
+// (no server search: filtered here, capped).
 
 /// At most this many collections a search lists.
 const int searchCollectionResultLimit = 6;
@@ -101,30 +101,29 @@ List<GroupEventCardModel> searchEventMatches(
   return found;
 }
 
-/// The events of one search, as the landing sorts them: in play (Live now),
-/// not started (Coming up), and the rest.
+/// The events of one search: not started (Coming up, as the landing has
+/// it) and the rest (Events), the events in play leading the rest.
 @immutable
 class SearchEventGroups {
-  const SearchEventGroups({
-    this.live = const [],
-    this.upcoming = const [],
-    this.other = const [],
-  });
+  const SearchEventGroups({this.upcoming = const [], this.events = const []});
 
-  final List<GroupEventCardModel> live;
   final List<GroupEventCardModel> upcoming;
-  final List<GroupEventCardModel> other;
 
-  bool get isEmpty => live.isEmpty && upcoming.isEmpty && other.isEmpty;
+  /// Every event found that is not coming up, in play first (each reading
+  /// LIVE on its card), then the rest in the search's order.
+  final List<GroupEventCardModel> events;
+
+  bool get isEmpty => upcoming.isEmpty && events.isEmpty;
 }
 
-/// [found] (the app-wide search's events) and the landing's [liveNow] and
-/// [comingUp] events [query] names, each once, sorted into the landing's
-/// sections. An event in play by [liveIds] reads LIVE, as Live now draws it.
+/// [found] (the app-wide search's events) and the landing's [comingUp]
+/// events [query] names, each once: not started under Coming up, the rest
+/// under Events. There is no group of events in play: an event in play by
+/// [liveIds] (by its own category before the live set is known) leads
+/// Events and reads LIVE.
 SearchEventGroups searchEventGroups(
   String query, {
   required List<GroupEventCardModel> found,
-  Iterable<GroupEventCardModel> liveNow = const [],
   Iterable<GroupEventCardModel> comingUp = const [],
   List<String> liveIds = const [],
   DateTime? now,
@@ -135,12 +134,12 @@ SearchEventGroups searchEventGroups(
     if (event.id.trim().isEmpty) continue;
     byId.putIfAbsent(event.id, () => event);
   }
-  for (final event in searchEventMatches(query, [...liveNow, ...comingUp])) {
+  for (final event in searchEventMatches(query, comingUp)) {
     byId.putIfAbsent(event.id, () => event);
   }
   final live = <GroupEventCardModel>[];
   final upcoming = <GroupEventCardModel>[];
-  final other = <GroupEventCardModel>[];
+  final rest = <GroupEventCardModel>[];
   for (final event in byId.values) {
     // The live set is the truth once it is known; before, the event's own
     // category.
@@ -157,9 +156,9 @@ SearchEventGroups searchEventGroups(
       upcoming.add(event);
       continue;
     }
-    other.add(event);
+    rest.add(event);
   }
-  return SearchEventGroups(live: live, upcoming: upcoming, other: other);
+  return SearchEventGroups(upcoming: upcoming, events: [...live, ...rest]);
 }
 
 /// The built-in smart events [query] names (its level or time control, its

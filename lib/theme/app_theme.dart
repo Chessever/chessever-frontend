@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:chessever2/widgets/popup_glass.dart';
+
 import 'app_colors.dart';
 import 'app_page_transitions.dart';
 
@@ -174,12 +176,23 @@ class AppTheme {
       modalBarrierColor: Color(0x99000000),
       surfaceTintColor: Colors.transparent,
     ),
-    tooltipTheme: TooltipThemeData(
-      decoration: BoxDecoration(
-        color: kBlack3Color,
-        borderRadius: BorderRadius.circular(8),
+    // Menus sit on the app's own neutral surface, as every glass does:
+    // Material's fallback (the scheme's surfaceContainer) is a cool
+    // blue-slate in the dark.
+    popupMenuTheme: const PopupMenuThemeData(
+      color: kBlack2Color,
+      surfaceTintColor: Colors.transparent,
+    ),
+    // A chip of the popups' glass, solid: the tone the dark glass averages
+    // to (the surface), the glass's lit top lip and one tight shadow cast
+    // down. A tooltip is too small and too brief to pay for a backdrop blur.
+    tooltipTheme: const TooltipThemeData(
+      decoration: SolidGlassDecoration(
+        tone: kBlack2Color,
+        light: false,
+        ink: kWhiteColor,
       ),
-      textStyle: const TextStyle(color: kWhiteColor, fontSize: 12),
+      textStyle: TextStyle(color: kWhiteColor, fontSize: 12),
     ),
     extensions: const [_darkAppColors],
     pageTransitionsTheme: kAppPageTransitionsTheme,
@@ -251,14 +264,17 @@ class AppTheme {
       modalBarrierColor: Color(0x660E1A1C),
       surfaceTintColor: Colors.transparent,
     ),
-    // Inverse ink capsule, mirroring the dark theme's raised tooltip: a
-    // light-on-dark tag reads instantly over the pale mint surfaces.
-    tooltipTheme: TooltipThemeData(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0E1A1C),
-        borderRadius: BorderRadius.circular(4),
+    // A chip of the popups' paper glass, solid: the mint the light glass
+    // averages to, its ink edge and one tight ink shadow cast down, so it
+    // stands off the pale page as every light popup does. Ink type at well
+    // over 7:1. No backdrop blur: a tooltip is too small and too brief.
+    tooltipTheme: const TooltipThemeData(
+      decoration: SolidGlassDecoration(
+        tone: Color(0xFFEEF4F3),
+        light: true,
+        ink: Color(0xFF0E1A1C),
       ),
-      textStyle: const TextStyle(color: Color(0xFFF4FAF9), fontSize: 12),
+      textStyle: TextStyle(color: Color(0xFF0E1A1C), fontSize: 12),
     ),
     // Text buttons follow colorScheme.primary, now the deep accent-text teal;
     // pinned here as well so a scheme tweak can never put cyan text on paper.

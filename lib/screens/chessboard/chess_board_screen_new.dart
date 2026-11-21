@@ -21,6 +21,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -58,11 +59,14 @@ import 'package:chessever2/screens/chessboard/widgets/board_pinch_coachmark.dart
 import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_focus_menus.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart'
     show feedRecordedPgn, feedWatchItem;
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart'
+    show showGlassModalBottomSheet;
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/round_space_shortcut.dart'
@@ -115,6 +119,7 @@ import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart'
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/string_utils.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessground/chessground.dart';
@@ -151,6 +156,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
@@ -1287,17 +1293,20 @@ class _ChessBoardPopupState {
 /// screen level instead of being ripped out with a disposed page.
 class _GameSwitcherController extends ChangeNotifier {
   _GameSwitcherController({required TickerProvider vsync})
-    : _animationController = AnimationController(
-        vsync: vsync,
-        duration: const Duration(milliseconds: 250),
-      ) {
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
+    : _animationController = AnimationController(vsync: vsync) {
     _animationController.addStatusListener(_onAnimationStatus);
   }
+
+  /// The panel opening and closing, on springs: no bounce, so the panel
+  /// never grows past its slot, and each lands exactly on its end value.
+  static const _openMotion = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 320),
+    snapToEnd: true,
+  );
+  static const _closeMotion = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 200),
+    snapToEnd: true,
+  );
 
   /// Minimum time the panel must stay open before an unforced dismiss is
   /// honoured. Tablets rebuild the app bar aggressively enough that a stray
@@ -1305,9 +1314,10 @@ class _GameSwitcherController extends ChangeNotifier {
   static const _minOpenDuration = Duration(milliseconds: 500);
 
   final AnimationController _animationController;
-  late final CurvedAnimation _animation;
 
-  Animation<double> get animation => _animation;
+  /// 0 shut, 1 open, driven by the springs; [AnimationStatus.reverse] while
+  /// the panel closes.
+  Animation<double> get animation => _animationController;
 
   bool _isOpen = false;
   bool get isOpen => _isOpen;
@@ -1352,7 +1362,13 @@ class _GameSwitcherController extends ChangeNotifier {
     _isOpen = true;
     _openedAt = DateTime.now();
     _ChessBoardPopupState.markOpen();
-    _animationController.forward();
+    _animationController.animateWith(
+      settlingSimulation(
+        _openMotion,
+        start: _animationController.value,
+        end: 1,
+      ),
+    );
     notifyListeners();
   }
 
@@ -1362,7 +1378,13 @@ class _GameSwitcherController extends ChangeNotifier {
     _isOpen = false;
     _openedAt = null;
     _ChessBoardPopupState.markClosed();
-    _animationController.reverse();
+    _animationController.animateBackWith(
+      settlingSimulation(
+        _closeMotion,
+        start: _animationController.value,
+        end: 0,
+      ),
+    );
     notifyListeners();
   }
 
@@ -1372,7 +1394,6 @@ class _GameSwitcherController extends ChangeNotifier {
   void dispose() {
     if (_isOpen) _ChessBoardPopupState.markClosed();
     _animationController.removeStatusListener(_onAnimationStatus);
-    _animation.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -1506,6 +1527,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// The route this board answers a result-less pop for (the iOS edge swipe,
   /// Android back): it returns [_lastViewedIndex], as the chevron does.
   BoardPageRoute? _resultRoute;
+
+  /// The route this board is on, as [_BoardRouteProbe] last reported it.
+  /// Read through the probe, never `ModalRoute.of(context)` here: that would
+  /// subscribe the whole screen to the route's status, and every popup
+  /// pushed over the board (a menu, a sheet, a dialog) would rebuild the
+  /// page under it on open and again on close.
+  ModalRoute<Object?>? _route;
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
   bool _isRevertingPage = false;
@@ -1668,7 +1696,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     bool ready() =>
         mounted &&
         context.mounted &&
-        ModalRoute.of(context)?.isCurrent == true &&
+        _route?.isCurrent == true &&
         !_isRouteCovered &&
         !_isLifecycleBackgrounded &&
         !_showPinchTutorial &&
@@ -2424,9 +2452,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final route = ModalRoute.of(context)!;
-    routeObserver.subscribe(this, route);
-    _bindResultRoute(route);
+    // The route is bound by [_onRoute], from [_BoardRouteProbe].
     // Baseline for the rotation/resize check in [didChangeMetrics].
     _metricsView = View.of(context);
     _lastMetricsSize = _metricsView!.physicalSize;
@@ -2534,7 +2560,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     // Only play audio if this chess board screen is currently active
-    final route = ModalRoute.of(context);
+    final route = _route;
     if (route == null || !route.isCurrent) {
       return;
     }
@@ -2713,7 +2739,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || generation != _pipRecoveryGeneration) return;
     if (PipService.instance.isInPip) return;
-    final route = ModalRoute.of(context);
+    final route = _route;
     if (route?.isCurrent != true) return;
     if (widget.games.isEmpty) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
@@ -3184,10 +3210,37 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  /// Whether the route directly over the board only hangs over it for a
+  /// moment (see [_isTransientCover]): the board is still on screen and
+  /// live, so it was not paused, and has nothing to resume when it closes.
+  bool _coverIsTransient = false;
+
+  /// The route now on top of the board's navigator.
+  Route<dynamic>? _topRoute() {
+    Route<dynamic>? top;
+    // A predicate that holds for the top route pops nothing: this only reads
+    // which route that is.
+    _route?.navigator?.popUntil((route) {
+      top = route;
+      return true;
+    });
+    return top;
+  }
+
   @override
   void didPushNext() {
     _isRouteCovered = true;
     if (_showTutorialOverlay) _onWalkthroughFinished();
+    // A menu, a popover or the move actions hang over the board for a
+    // moment: the board stays on screen and live under it. Pausing the
+    // engine and the PiP feed here, and resuming both when it closes,
+    // re-ran the position's evaluation and rebuilt the whole page (its
+    // notation, board and bottom bar: ~200 widgets) for every menu.
+    _coverIsTransient = _isTransientCover(_topRoute());
+    if (_coverIsTransient) {
+      super.didPushNext();
+      return;
+    }
     // Another route pushed on top (e.g. Player Profile, Explorer).
     // Pause Stockfish so it doesn't compete with the foreground screen.
     _handleLifecyclePaused(preserveVisibleGameReview: true);
@@ -3204,6 +3257,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void didPopNext() {
     // Route on top was popped — board is visible again.
     _isRouteCovered = false;
+    if (_coverIsTransient) {
+      // It never paused the board: nothing to restore or resume.
+      _coverIsTransient = false;
+      super.didPopNext();
+      return;
+    }
     // Nested score cards and boards update the legacy global source. Restore
     // this route's immutable contract before its player rows become tappable
     // again, so returning cannot silently inherit the nested route's context.
@@ -3224,7 +3283,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       key: 'chessboard_resume_$hashCode',
       task: () {
         if (!mounted) return;
-        final route = ModalRoute.of(context);
+        final route = _route;
         if (route?.isCurrent != true) return;
         _handleLifecycleResume();
       },
@@ -3395,8 +3454,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     ref.read(boardExplorerToggleRequestProvider(game.gameId).notifier).state++;
   }
 
+  /// The board's route, from [_BoardRouteProbe]: subscribes the board to
+  /// its covers and binds the result-less pop.
+  void _onRoute(ModalRoute<Object?>? route) {
+    _route = route;
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _bindResultRoute(route);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      _BoardRouteProbe(onRoute: _onRoute, child: _buildScreen(context));
+
+  Widget _buildScreen(BuildContext context) {
     // Keep the visit policy alive even if a refresh temporarily replaces the
     // board/notation with a loading surface. It still disposes on route exit.
     if (widget.games.isNotEmpty) {
@@ -3731,8 +3802,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       _isProgrammaticPageJump ||
                                       _isRouteCovered ||
                                       _isLifecycleBackgrounded ||
-                                      ModalRoute.of(context)?.isCurrent !=
-                                          true) {
+                                      _route?.isCurrent != true) {
                                     _swipeLearningGesture.reset();
                                     return false;
                                   }
@@ -3973,6 +4043,62 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       ),
     );
   }
+}
+
+/// Reads the board's route for the screen, so that only this probe depends
+/// on the route's status.
+///
+/// `ModalRoute.of(context)` subscribes its caller to every change of the
+/// route's status, and pushing anything over the board (a menu, a sheet, a
+/// dialog) changes it twice: covered on open, current again on close. Read
+/// from the screen, the board page and its app bar, that rebuilt the whole
+/// page under each popup, on the frame the popup was opening. Here the
+/// probe alone rebuilds: it hands back the same child, and [_BoardRouteScope]
+/// only notifies when the route itself changes.
+class _BoardRouteProbe extends StatefulWidget {
+  const _BoardRouteProbe({required this.onRoute, required this.child});
+
+  final ValueChanged<ModalRoute<Object?>?> onRoute;
+  final Widget child;
+
+  @override
+  State<_BoardRouteProbe> createState() => _BoardRouteProbeState();
+}
+
+class _BoardRouteProbeState extends State<_BoardRouteProbe> {
+  ModalRoute<Object?>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (identical(route, _route)) return;
+    _route = route;
+    widget.onRoute(route);
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _BoardRouteScope(route: _route, child: widget.child);
+}
+
+/// The board's route, for the widgets under the screen.
+class _BoardRouteScope extends InheritedWidget {
+  const _BoardRouteScope({required this.route, required super.child});
+
+  final ModalRoute<Object?>? route;
+
+  /// The route the board is on, without subscribing [context] to its status:
+  /// read [ModalRoute.isCurrent] off it when it is needed. Outside a board
+  /// screen it falls back to `ModalRoute.of`.
+  static ModalRoute<Object?>? routeOf(BuildContext context) {
+    final scope = context.getInheritedWidgetOfExactType<_BoardRouteScope>();
+    return scope != null ? scope.route : ModalRoute.of(context);
+  }
+
+  @override
+  bool updateShouldNotify(_BoardRouteScope oldWidget) =>
+      !identical(route, oldWidget.route);
 }
 
 /// Shown when a board page's provider lands in [AsyncValue.error]. Replaces a
@@ -5013,7 +5139,6 @@ bool _isSnapshotAtFinishedSharePosition({
 
 class _AppBarState extends ConsumerState<_AppBar> {
   BoardGameMenuController? _menuHost;
-  final _tabletMenuKey = GlobalKey<_TabletSafePopupMenuState<String>>();
   bool _boardMenuOpen = false;
   bool _overflowMenuOpen = false;
 
@@ -5113,37 +5238,77 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
   }
 
+  /// A hold on the board: the board's menu, at the finger.
   Future<void> _openBoardMenu(Offset globalPosition) async {
     if (!mounted ||
         widget.isLoading ||
         !widget.isActivePage ||
         _boardMenuOpen ||
+        _overflowMenuOpen ||
         _ChessBoardPopupState.isAnyPopupOpen) {
-      return;
-    }
-    if (ResponsiveHelper.isTablet) {
-      _tabletMenuKey.currentState?._openMenu(anchor: globalPosition);
       return;
     }
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final point = overlay.globalToLocal(globalPosition);
     _boardMenuOpen = true;
+    await _showBoardMenu(
+      RelativeRect.fromRect(point & Size.zero, Offset.zero & overlay.size),
+      color: context.colors.surfaceRecessed,
+    );
+  }
+
+  /// The app bar's three dots: the same menu, hung from the button as a
+  /// [PopupMenuButton] hangs it.
+  Future<void> _openOverflowMenu(BuildContext buttonContext) async {
+    if (!mounted ||
+        widget.isLoading ||
+        _boardMenuOpen ||
+        _overflowMenuOpen ||
+        _ChessBoardPopupState.isAnyPopupOpen) {
+      return;
+    }
+    final button = buttonContext.findRenderObject();
+    final overlay = Navigator.of(
+      buttonContext,
+    ).overlay?.context.findRenderObject();
+    if (button is! RenderBox || overlay is! RenderBox) return;
+    _overflowMenuOpen = true;
+    await _showBoardMenu(
+      RelativeRect.fromRect(
+        Rect.fromPoints(
+          button.localToGlobal(Offset.zero, ancestor: overlay),
+          button.localToGlobal(
+            button.size.bottomRight(Offset.zero),
+            ancestor: overlay,
+          ),
+        ),
+        Offset.zero & overlay.size,
+      ),
+      // Phones keep the theme's menu tone, tablets the recessed one their
+      // overlay menu had.
+      color: ResponsiveHelper.isTablet ? context.colors.surfaceRecessed : null,
+    );
+  }
+
+  /// The board menu on the popups' glass ([showTabletSafeMenu]): a route
+  /// over a plain dim, which on tablets ignores the phantom tap that follows
+  /// an open. Either opener has set its flag; both are cleared here.
+  Future<void> _showBoardMenu(RelativeRect position, {Color? color}) async {
     _ChessBoardPopupState.markOpen();
-    HapticFeedback.selectionClick();
+    // Tablets get theirs from the menu itself.
+    if (!ResponsiveHelper.isTablet) HapticFeedback.selectionClick();
     String? selected;
     try {
-      selected = await showMenu<String>(
+      selected = await showTabletSafeMenu<String>(
         context: context,
-        position: RelativeRect.fromRect(
-          point & Size.zero,
-          Offset.zero & overlay.size,
-        ),
-        color: context.colors.surfaceRecessed,
+        position: position,
+        color: color,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         items: _menuItems(context),
       );
     } finally {
       _boardMenuOpen = false;
+      _overflowMenuOpen = false;
       _ChessBoardPopupState.markClosed();
     }
     if (mounted && selected != null) await _selectMenuAction(selected);
@@ -5322,7 +5487,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           game.gameStatus != GameStatus.unknown &&
           (spoilers.isLoading || spoilers.enabled) &&
           !ref.read(eventNoSpoilersRevealedGamesProvider).contains(game.gameId);
-      final route = ModalRoute.of(context);
+      final route = _BoardRouteScope.routeOf(context);
       final resolved = await _resolveAppBarShareData();
       // The board is still what the viewer sees: Feed's Analyze comes back
       // to the route under it, which must be this board.
@@ -5409,10 +5574,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
       final openedAt = DateTime.now();
       const minOpenDuration = Duration(milliseconds: 600);
 
-      showModalBottomSheet(
+      // The one sheet route: the glass scrim, the sheet spring.
+      showGlassModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        backgroundColor: Colors.transparent,
         constraints: ResponsiveHelper.bottomSheetConstraints,
         isDismissible: false, // We handle dismissal ourselves with timing guard
         enableDrag: true,
@@ -5425,10 +5590,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
         _ChessBoardPopupState.markClosed();
       });
     } else {
-      showModalBottomSheet(
+      showGlassModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        backgroundColor: Colors.transparent,
         constraints: ResponsiveHelper.bottomSheetConstraints,
         builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
       );
@@ -5725,43 +5889,21 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   ),
                 // Save Analysis button — with auto-save status animation for library games
                 if (widget.allowGameExport) _buildSaveButton(),
-                // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
-                // phantom tap dismissals, use standard PopupMenuButton on mobile
-                if (ResponsiveHelper.isTablet)
-                  _TabletSafePopupMenu<String>(
-                    key: _tabletMenuKey,
+                // 3-dot menu: the board menu on glass. Tablets hold off the
+                // phantom tap that follows an open (showTabletSafeMenu).
+                Builder(
+                  builder: (buttonContext) => IconButton(
                     icon: Icon(
                       Icons.more_vert,
                       color: context.colors.textPrimary,
                       size: 22.sp,
                     ),
-                    enabled: !widget.isLoading,
-                    onSelected: _selectMenuAction,
-                    itemBuilder: _menuItems,
-                  )
-                else
-                  PopupMenuButton<String>(
-                    icon: Icon(
-                      Icons.more_vert,
-                      color: context.colors.textPrimary,
-                      size: 22.sp,
-                    ),
-                    enabled: !widget.isLoading,
-                    onOpened: () {
-                      _overflowMenuOpen = true;
-                      _ChessBoardPopupState.markOpen();
-                    },
-                    onCanceled: () {
-                      _overflowMenuOpen = false;
-                      _ChessBoardPopupState.markClosed();
-                    },
-                    onSelected: (value) {
-                      _overflowMenuOpen = false;
-                      _ChessBoardPopupState.markClosed();
-                      _selectMenuAction(value);
-                    },
-                    itemBuilder: _menuItems,
+                    tooltip: MaterialLocalizations.of(context).showMenuTooltip,
+                    onPressed: widget.isLoading
+                        ? null
+                        : () => _openOverflowMenu(buttonContext),
                   ),
+                ),
               ],
             ),
           ],
@@ -5945,243 +6087,6 @@ class _StaggeredActions extends StatelessWidget {
       child: Transform.translate(
         offset: Offset(gone * 7.w, 0),
         child: Transform.scale(scale: 1.0 - 0.3 * gone, child: child),
-      ),
-    );
-  }
-}
-
-/// Tablet-safe popup menu that uses an overlay instead of Flutter's route-based
-/// popup to prevent phantom tap dismissals on tablets.
-/// This provides the same timing guard protection as _GameSelectionDropdown.
-class _TabletSafePopupMenu<T> extends StatefulWidget {
-  final Widget icon;
-  final List<PopupMenuEntry<T>> Function(BuildContext) itemBuilder;
-  final void Function(T)? onSelected;
-  final bool enabled;
-
-  const _TabletSafePopupMenu({
-    super.key,
-    required this.icon,
-    required this.itemBuilder,
-    this.onSelected,
-    this.enabled = true,
-  });
-
-  @override
-  State<_TabletSafePopupMenu<T>> createState() =>
-      _TabletSafePopupMenuState<T>();
-}
-
-class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
-    with SingleTickerProviderStateMixin {
-  final LayerLink _layerLink = LayerLink();
-  late AnimationController _animationController;
-  late Animation<double> _animation;
-  bool _isOpen = false;
-  bool _isClosing = false;
-  OverlayEntry? _overlayEntry;
-  DateTime? _openedAt;
-  static const _minOpenDuration = Duration(milliseconds: 600);
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-  }
-
-  @override
-  void dispose() {
-    if (_isOpen) _ChessBoardPopupState.markClosed();
-    _removeOverlay();
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _removeOverlay() {
-    try {
-      _overlayEntry?.remove();
-    } catch (_) {}
-    _overlayEntry = null;
-  }
-
-  bool _canDismiss() {
-    if (_openedAt == null) return true;
-    final elapsed = DateTime.now().difference(_openedAt!);
-    if (elapsed < _minOpenDuration) {
-      debugPrint(
-        '🛡️ TABLET POPUP: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms',
-      );
-      return false;
-    }
-    return true;
-  }
-
-  void _openMenu({Offset? anchor}) {
-    if (!widget.enabled || _isOpen || _ChessBoardPopupState.isAnyPopupOpen) {
-      return;
-    }
-
-    HapticFeedback.selectionClick();
-    _openedAt = DateTime.now();
-    _ChessBoardPopupState.markOpen();
-
-    debugPrint('📂 TABLET POPUP OPENED: time=$_openedAt');
-
-    setState(() => _isOpen = true);
-    _showOverlay(anchor: anchor);
-    _animationController.forward();
-  }
-
-  Future<bool> _closeMenu({bool force = false}) async {
-    if (!_isOpen || _isClosing) return false;
-
-    final elapsed = _openedAt != null
-        ? DateTime.now().difference(_openedAt!)
-        : Duration.zero;
-    debugPrint(
-      '📕 TABLET POPUP _closeMenu called: force=$force, elapsed=${elapsed.inMilliseconds}ms',
-    );
-
-    if (!force && !_canDismiss()) {
-      debugPrint('🛡️ TABLET POPUP dismiss blocked - opened too recently');
-      return false;
-    }
-
-    debugPrint('📕 TABLET POPUP CLOSING: proceeding with close');
-
-    _isClosing = true;
-    _openedAt = null;
-    await _animationController.reverse();
-    if (!mounted) return false;
-    _isClosing = false;
-    setState(() => _isOpen = false);
-    _removeOverlay();
-    _ChessBoardPopupState.markClosed();
-    return true;
-  }
-
-  void _showOverlay({Offset? anchor}) {
-    final overlay = Overlay.of(context);
-    final overlayBox = overlay.context.findRenderObject() as RenderBox;
-    final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    final point = overlayBox.globalToLocal(
-      anchor ??
-          renderBox.localToGlobal(
-            Offset(renderBox.size.width, renderBox.size.height),
-          ),
-    );
-
-    // Build menu items
-    final items = widget.itemBuilder(context);
-
-    _overlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          // Barrier with timing guard
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                debugPrint('🔲 TABLET POPUP BARRIER TAP: calling _closeMenu');
-                _closeMenu();
-              },
-              onHorizontalDragStart: (_) {},
-              onHorizontalDragUpdate: (_) {},
-              onHorizontalDragEnd: (_) {},
-              child: Container(color: Colors.black.withValues(alpha: 0.01)),
-            ),
-          ),
-          // Clamp both board and overflow anchors to the safe viewport.
-          Positioned.fill(
-            child: CustomSingleChildLayout(
-              delegate: BoardMenuPositionDelegate(
-                anchor: point,
-                padding:
-                    MediaQuery.paddingOf(context) + const EdgeInsets.all(8),
-              ),
-              child: AnimatedBuilder(
-                animation: _animation,
-                builder: (context, child) {
-                  final progress = _animation.value.clamp(0.0, 1.0);
-                  return Transform.scale(
-                    scale: 0.92 + (progress * 0.08),
-                    alignment: Alignment.topRight,
-                    child: Opacity(opacity: progress, child: child),
-                  );
-                },
-                child: Material(
-                  elevation: 8,
-                  borderRadius: BorderRadius.circular(12),
-                  color: context.colors.surfaceRecessed,
-                  child: SingleChildScrollView(
-                    child: IntrinsicWidth(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: items.map((item) {
-                          if (item is PopupMenuItem<T>) {
-                            return InkWell(
-                              onTap: () async {
-                                if (!await _closeMenu(force: true) ||
-                                    !mounted) {
-                                  return;
-                                }
-                                if (item.onTap != null) {
-                                  item.onTap!();
-                                }
-                                if (item.value != null &&
-                                    widget.onSelected != null) {
-                                  widget.onSelected!(item.value as T);
-                                }
-                              },
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16.w,
-                                  vertical: 12.h,
-                                ),
-                                child: item.child,
-                              ),
-                            );
-                          } else if (item is PopupMenuDivider) {
-                            return Divider(
-                              height: 1,
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.1,
-                              ),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        }).toList(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    overlay.insert(_overlayEntry!);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: IconButton(
-        icon: widget.icon,
-        onPressed: widget.enabled ? _openMenu : null,
       ),
     );
   }
@@ -6519,7 +6424,13 @@ class _GameChipButton extends StatelessWidget {
   }
 }
 
-/// The floating dropdown overlay with glass morphism
+/// The game switcher's popdown: a panel of the popups' frosted glass
+/// ([PopupGlass]) hung from the app-bar chip, over the anchored menus' plain
+/// dim ([AnchoredGlassDim]), which leaves the chip lit.
+///
+/// It opens at full strength, growing from just under its size; it closes
+/// by folding up into the chip while its content fades. The glass is never
+/// under an opacity: the frost would drop out.
 class _GameDropdownOverlay extends StatelessWidget {
   /// Rect of the app-bar chip the panel hangs from, in this widget's own
   /// coordinate space (see [_GameSwitcherController.panelSpaceKey]).
@@ -6621,8 +6532,38 @@ class _GameDropdownOverlay extends StatelessWidget {
       );
     }
 
+    final content = _GameDropdownContent(
+      key: boardGameDropdownContentTestKey,
+      dropdownWidth: dropdownWidth,
+      availableHeight: maxPanelHeight,
+      animation: animation,
+      games: games,
+      viewSource: viewSource,
+      playerProfileDataSource: playerProfileDataSource,
+      currentGameIndex: currentGameIndex,
+      isLoading: isLoading,
+      onSelect: onSelect,
+    );
+
     return Stack(
       children: [
+        // The anchored menus' dim the glass is solved over: a plain tint
+        // that follows the panel (repainted, never rebuilt), never a blur,
+        // with the chip left lit so it reads as what the panel hangs from.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: GlassScrimPainter(
+                color: AnchoredGlassDim.colorOf(context),
+                hole: RRect.fromRectAndRadius(
+                  triggerRect,
+                  Radius.circular(triggerRect.shortestSide / 2),
+                ),
+                progress: animation,
+              ),
+            ),
+          ),
+        ),
         Positioned.fill(child: buildBarrier()),
         Positioned(
           left: leftOffset,
@@ -6633,10 +6574,18 @@ class _GameDropdownOverlay extends StatelessWidget {
               animation: animation,
               builder: (context, child) {
                 final progress = animation.value.clamp(0.0, 1.0);
-                return Transform.scale(
-                  scale: 0.95 + (progress * 0.05),
+                final closing = animation.status == AnimationStatus.reverse;
+                final scale = 0.95 + (progress * 0.05);
+                return Transform(
                   alignment: Alignment.topCenter,
-                  child: Opacity(opacity: progress, child: child),
+                  // Opening: the whole panel grows into place. Closing: it
+                  // folds up into the chip, so nothing is left to vanish.
+                  transform: Matrix4.diagonal3Values(
+                    scale,
+                    closing ? progress : scale,
+                    1,
+                  ),
+                  child: child,
                 );
               },
               child: GestureDetector(
@@ -6648,37 +6597,26 @@ class _GameDropdownOverlay extends StatelessWidget {
                 onHorizontalDragUpdate: isTablet ? (_) {} : null,
                 onHorizontalDragEnd: isTablet ? (_) {} : null,
                 behavior: HitTestBehavior.opaque,
-                child: Container(
+                // One backdrop filter, the panel's own: a move played on the
+                // board underneath still shows through, as frost.
+                child: PopupGlass(
                   width: dropdownWidth,
                   constraints: BoxConstraints(maxHeight: maxPanelHeight),
-                  decoration: BoxDecoration(
-                    // Slightly see-through so a move played on the board
-                    // underneath is still noticeable while the dropdown is
-                    // open. A flat alpha fill, not a blur: BackdropFilter
-                    // would repaint the blur every scroll/animation frame
-                    // this popup is open for — a solid translucent color is
-                    // free by comparison and just as readable here.
-                    color: context.colors.surface.withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(
-                      color: context.colors.textPrimary.withValues(alpha: 0.08),
-                      width: 1.0,
+                  borderRadius: BorderRadius.circular(12.br),
+                  tone: context.colors.surface,
+                  page: AnchoredGlassDim.pageOf(context),
+                  cover: AnchoredGlassDim.cover,
+                  // The content fades only while the panel folds away (an
+                  // opacity of 1 costs no layer).
+                  child: AnimatedBuilder(
+                    animation: animation,
+                    builder: (context, child) => Opacity(
+                      opacity: animation.status == AnimationStatus.reverse
+                          ? animation.value.clamp(0.0, 1.0)
+                          : 1,
+                      child: child,
                     ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12.br),
-                    child: _GameDropdownContent(
-                      key: boardGameDropdownContentTestKey,
-                      dropdownWidth: dropdownWidth,
-                      availableHeight: maxPanelHeight,
-                      animation: animation,
-                      games: games,
-                      viewSource: viewSource,
-                      playerProfileDataSource: playerProfileDataSource,
-                      currentGameIndex: currentGameIndex,
-                      isLoading: isLoading,
-                      onSelect: onSelect,
-                    ),
+                    child: content,
                   ),
                 ),
               ),
@@ -8038,7 +7976,7 @@ class _BottomNavBar extends ConsumerWidget {
         isActivePage: isActivePage,
         gameIndex: index,
         coachingGameId:
-            '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
+            '${identityHashCode(_BoardRouteScope.routeOf(context))}:${game.gameId}',
         showGamebaseButton: showGamebaseButton,
         explorerPanelVisible: explorerPanelVisible,
         onFlip: () => notifier.flipBoard(),
@@ -8564,7 +8502,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           return StreamScrollCoachingHost(
             key: ValueKey('stream_scroll_${game.gameId}'),
             gameId:
-                '${identityHashCode(ModalRoute.of(context))}:${game.gameId}',
+                '${identityHashCode(_BoardRouteScope.routeOf(context))}:${game.gameId}',
             active:
                 video.isActive(game.gameId) && video.visible && isVisiblePage,
             canShow: () => BoardFeatureTeachingHost.allowsContextual(context),
@@ -10701,7 +10639,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           .tryShowLikeReminder(() {
             if (!mounted ||
                 !_isLikeNudgeEligible ||
-                ModalRoute.of(context)?.isCurrent != true ||
+                _BoardRouteScope.routeOf(context)?.isCurrent != true ||
                 WidgetsBinding.instance.lifecycleState !=
                     AppLifecycleState.resumed) {
               return false;
@@ -11715,6 +11653,65 @@ class _NextMoveOptionsPanel extends StatelessWidget {
   }
 }
 
+/// The notation's "Preview mode" veil: while an engine line is previewed on
+/// the board it lies over the moves, on the popups' frosted glass
+/// ([PopupGlass]) cut to the notation panel.
+///
+/// The glass is solved over the panel it covers, so it averages to the
+/// theme's surface and the copy on it keeps the contrast it was drawn with.
+/// It rises into place on a spring (a short lift and a slight grow), at full
+/// strength with its copy on screen from the first frame: the glass is never
+/// under an opacity (the frost would drop out), and nothing it says waits on
+/// the motion.
+class _PvPreviewVeil extends StatelessWidget {
+  const _PvPreviewVeil({required this.radius, required this.child});
+
+  final double radius;
+  final Widget child;
+
+  /// No bounce: the veil never rises past its slot.
+  static const _rise = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 360),
+    snapToEnd: true,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final borderRadius = BorderRadius.vertical(top: Radius.circular(radius));
+    return ClipRRect(
+      // Holds the veil to the notation panel: neither its lift nor its
+      // contact shadow reaches the bar below.
+      borderRadius: borderRadius,
+      child: SingleMotionBuilder(
+        motion: _rise,
+        // Reduced motion: in place from the start.
+        from: MediaQuery.disableAnimationsOf(context) ? null : 0,
+        value: 1,
+        builder: (context, t, glass) => Transform.translate(
+          offset: Offset(0, (1 - t) * 16),
+          child: Transform.scale(
+            scale: 0.97 + 0.03 * t,
+            alignment: Alignment.topCenter,
+            child: glass,
+          ),
+        ),
+        child: PopupGlass(
+          borderRadius: borderRadius,
+          // Its lower edge is the panel's: no rim drawn along it.
+          openBottom: true,
+          tone: colors.surface,
+          page: Color.alphaBlend(
+            colors.surfaceRecessed.withValues(alpha: 0.3),
+            colors.background,
+          ),
+          child: Center(child: child),
+        ),
+      ),
+    );
+  }
+}
+
 class _MovesDisplay extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -12251,179 +12248,116 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                             .read(chessBoardScreenProviderNew(params).notifier)
                             .clearPvPreview();
                       },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(12.sp),
-                            topRight: Radius.circular(12.sp),
+                      child: _PvPreviewVeil(
+                        radius: 12.sp,
+                        // Scrolls only when larger text outgrows a short
+                        // notation panel.
+                        child: SingleChildScrollView(
+                          primary: false,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 18.sp,
+                            vertical: 16.sp,
                           ),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(12.sp),
-                            topRight: Radius.circular(12.sp),
-                          ),
-                          child: Stack(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                child: Container(
-                                  // Paper frost in light: a black veil there
-                                  // leaves the ink copy below at ~2.9:1.
-                                  color: context.isLightTheme
-                                      ? context.colors.surface.withValues(
-                                          alpha: 0.82,
-                                        )
-                                      : Colors.black.withValues(alpha: 0.55),
+                              Icon(
+                                Icons.visibility_outlined,
+                                color: context.isLightTheme
+                                    ? context.colors.iconPrimary
+                                    : Colors.white.withValues(alpha: 0.95),
+                                size: 20.sp,
+                              ),
+                              SizedBox(height: 8.sp),
+                              Text(
+                                'Preview mode',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: context.colors.textPrimary,
+                                  letterSpacing: 0.4,
                                 ),
                               ),
-                              Align(
-                                alignment: Alignment.center,
-                                child: TweenAnimationBuilder<double>(
-                                  duration: const Duration(milliseconds: 400),
-                                  curve: Curves.elasticOut,
-                                  tween: Tween(begin: 0.0, end: 1.0),
-                                  builder: (context, value, child) {
-                                    final clampedValue = value.clamp(0.0, 1.0);
-                                    return Transform.scale(
-                                      scale: 0.8 + (clampedValue * 0.2),
-                                      child: Opacity(
-                                        opacity: clampedValue,
-                                        child: child,
-                                      ),
-                                    );
+                              SizedBox(height: 4.sp),
+                              Text(
+                                'Tap anywhere to exit or swipe the hero card up to apply.',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.textXsRegular.copyWith(
+                                  color: context.textInk(0.85),
+                                ),
+                              ),
+                              SizedBox(height: 12.sp),
+                              // Promote main variant button
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () async {
+                                    // Prevent tap from propagating to parent GestureDetector
+                                    HapticFeedback.mediumImpact();
+
+                                    final lockedLine =
+                                        widget.state.lockedPvLine;
+                                    if (lockedLine == null) return;
+
+                                    // Confirm before promoting
+                                    final confirmed =
+                                        await showSmoothConfirmDialog(
+                                          context: context,
+                                          title: 'Promote to main variant?',
+                                          message:
+                                              'This will replace the main variant with this preview line.',
+                                          confirmText: 'Promote',
+                                        ) ??
+                                        false;
+
+                                    if (!confirmed) return;
+                                    if (!context.mounted) return;
+
+                                    notifier.promotePreviewToMainVariant();
                                   },
-                                  // Scrolls only when larger text outgrows
-                                  // a short notation panel.
-                                  child: SingleChildScrollView(
-                                    primary: false,
+                                  borderRadius: BorderRadius.circular(8.sp),
+                                  splashColor: kPrimaryColor.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                  highlightColor: kPrimaryColor.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                  child: Container(
                                     padding: EdgeInsets.symmetric(
-                                      horizontal: 18.sp,
-                                      vertical: 16.sp,
+                                      horizontal: 20.sp,
+                                      vertical: 10.sp,
                                     ),
-                                    child: Column(
+                                    decoration: BoxDecoration(
+                                      color: kPrimaryColor.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8.sp),
+                                      border: Border.all(
+                                        color: context.isLightTheme
+                                            ? context.colors.accentText
+                                            : kPrimaryColor.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
                                       children: [
                                         Icon(
-                                          Icons.visibility_outlined,
-                                          color: context.isLightTheme
-                                              ? context.colors.iconPrimary
-                                              : Colors.white.withValues(
-                                                  alpha: 0.95,
-                                                ),
-                                          size: 20.sp,
+                                          Icons.upgrade_rounded,
+                                          color: context.colors.textPrimary,
+                                          size: 16.sp,
                                         ),
-                                        SizedBox(height: 8.sp),
+                                        SizedBox(width: 8.sp),
                                         Text(
-                                          'Preview mode',
-                                          textAlign: TextAlign.center,
+                                          'Promote main variant',
                                           style: AppTypography.textSmMedium
                                               .copyWith(
                                                 color:
                                                     context.colors.textPrimary,
-                                                letterSpacing: 0.4,
+                                                letterSpacing: 0.2,
                                               ),
-                                        ),
-                                        SizedBox(height: 4.sp),
-                                        Text(
-                                          'Tap anywhere to exit or swipe the hero card up to apply.',
-                                          textAlign: TextAlign.center,
-                                          style: AppTypography.textXsRegular
-                                              .copyWith(
-                                                color: context.textInk(0.85),
-                                              ),
-                                        ),
-                                        SizedBox(height: 12.sp),
-                                        // Promote main variant button
-                                        Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: () async {
-                                              // Prevent tap from propagating to parent GestureDetector
-                                              HapticFeedback.mediumImpact();
-
-                                              final lockedLine =
-                                                  widget.state.lockedPvLine;
-                                              if (lockedLine == null) return;
-
-                                              // Confirm before promoting
-                                              final confirmed =
-                                                  await showSmoothConfirmDialog(
-                                                    context: context,
-                                                    title:
-                                                        'Promote to main variant?',
-                                                    message:
-                                                        'This will replace the main variant with this preview line.',
-                                                    confirmText: 'Promote',
-                                                  ) ??
-                                                  false;
-
-                                              if (!confirmed) return;
-                                              if (!context.mounted) return;
-
-                                              notifier
-                                                  .promotePreviewToMainVariant();
-                                            },
-                                            borderRadius: BorderRadius.circular(
-                                              8.sp,
-                                            ),
-                                            splashColor: kPrimaryColor
-                                                .withValues(alpha: 0.3),
-                                            highlightColor: kPrimaryColor
-                                                .withValues(alpha: 0.2),
-                                            child: Container(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: 20.sp,
-                                                vertical: 10.sp,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: kPrimaryColor.withValues(
-                                                  alpha: 0.15,
-                                                ),
-                                                borderRadius:
-                                                    BorderRadius.circular(8.sp),
-                                                border: Border.all(
-                                                  color: context.isLightTheme
-                                                      ? context
-                                                            .colors
-                                                            .accentText
-                                                      : kPrimaryColor
-                                                            .withValues(
-                                                              alpha: 0.4,
-                                                            ),
-                                                  width: 1.5,
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(
-                                                    Icons.upgrade_rounded,
-                                                    color: context
-                                                        .colors
-                                                        .textPrimary,
-                                                    size: 16.sp,
-                                                  ),
-                                                  SizedBox(width: 8.sp),
-                                                  Text(
-                                                    'Promote main variant',
-                                                    style: AppTypography
-                                                        .textSmMedium
-                                                        .copyWith(
-                                                          color: context
-                                                              .colors
-                                                              .textPrimary,
-                                                          letterSpacing: 0.2,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
                                         ),
                                       ],
                                     ),
@@ -14002,11 +13936,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         .goToMovePointer(List<Number>.of(pointer));
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    await showGlassModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      barrierColor: context.colors.scrim,
       builder: (sheetContext) => _NagPickerSheet(
         moveText: moveText,
         params: params,
@@ -15805,9 +15737,27 @@ Future<void> _showNotationActionSheet({
       initialSheetFraction: initialSheetFraction,
     ),
   );
+  // The move's actions hang over the board for a moment: the board stays
+  // live under them.
+  _markTransientCover(route);
 
   await Navigator.of(context).push(route);
 }
+
+/// Routes the board marked as hanging over it for a moment (its move
+/// actions sheet), beside the ones that say so themselves
+/// ([TransientOverlayRoute]).
+final Expando<bool> _transientCovers = Expando<bool>('transient board cover');
+
+void _markTransientCover(Route<dynamic> route) =>
+    _transientCovers[route] = true;
+
+/// Whether [route], directly over a board, leaves the board on screen and
+/// live: an anchored glass menu, the focus menu, or a sheet the board
+/// marked ([_markTransientCover]).
+bool _isTransientCover(Route<dynamic>? route) =>
+    route is TransientOverlayRoute ||
+    (route != null && _transientCovers[route] == true);
 
 class _VariationCommentSheetConfig {
   final String? initialValue;
@@ -16410,433 +16360,6 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
   }
 }
 
-// DEPRECATED: Old dialog-based comment approach replaced with smooth bottom sheet
-// Keeping for reference - can be removed in future cleanup
-/*
-class _CommentDialog extends ConsumerStatefulWidget {
-  final String initialComment;
-  final ValueChanged<String> onSave;
-  final FocusNode focusNode;
-
-  const _CommentDialog({
-    required this.initialComment,
-    required this.onSave,
-    required this.focusNode,
-  });
-
-  @override
-  ConsumerState<_CommentDialog> createState() => _CommentDialogState();
-}
-
-class _CommentDialogState extends ConsumerState<_CommentDialog>
-    with SingleTickerProviderStateMixin {
-  late TextEditingController _controller;
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _fadeAnimation;
-  bool _hasChanges = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialComment);
-    _controller.addListener(_onTextChanged);
-
-    // Setup entrance animation
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-
-    _scaleAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: const SnappySpringCurve(),
-    );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    );
-
-    // Start animation and focus field
-    _animationController.forward();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.focusNode.requestFocus();
-    });
-  }
-
-  void _onTextChanged() {
-    final hasChanges = _controller.text != widget.initialComment;
-    if (_hasChanges != hasChanges) {
-      setState(() {
-        _hasChanges = hasChanges;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_onTextChanged);
-    _controller.dispose();
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleSave() async {
-    if (!_hasChanges) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    HapticFeedback.mediumImpact();
-    await _animationController.reverse();
-    if (!mounted) return;
-
-    widget.onSave(_controller.text);
-    Navigator.of(context).pop();
-  }
-
-  Future<void> _handleCancel() async {
-    HapticFeedback.lightImpact();
-    await _animationController.reverse();
-    if (!mounted) return;
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Get platform-specific keyboard height default
-    final keyboardTotalHeight = ref.watch(keyboardTotalHeightProvider);
-
-    return MediaQuery.removeViewInsets(
-      context: context,
-      removeBottom: true,
-      removeTop: true,
-      child: GestureDetector(
-        onTap: _handleCancel,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          children: [
-            FadeTransition(
-              opacity: _fadeAnimation,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: Container(
-                  color:
-                      context.isLightTheme
-                          ? context.colors.scrim
-                          : Colors.black.withValues(alpha: 0.6),
-                ),
-              ),
-            ),
-            Positioned.fill(
-            child: KeyboardAnimationBuilder(
-              focusNode: _focusNode,
-              keyboardTotalHeight: keyboardTotalHeight,
-              interpolateLastPart: Platform.isIOS,
-              interpolationConfig: InterpolationConfig.fidelity,
-              warmUpFrame: true,
-              onChange: (height) {
-                if (height > 0) {
-                  ref
-                      .read(keyboardTotalHeightProvider.notifier)
-                      .update(height);
-                }
-              },
-                builder: (context, keyboardHeight) {
-                final safePadding = MediaQuery.paddingOf(context);
-                final screenSize = MediaQuery.sizeOf(context);
-                final effectiveKeyboardHeight =
-                    keyboardHeight.clamp(0.0, keyboardTotalHeight);
-
-                // Calculate lift to center in available space
-                // Available space center is (screenHeight - keyboardHeight) / 2
-                // Current center is screenHeight / 2
-                // Lift = Current - Available = keyboardHeight / 2
-                final double liftDistance = effectiveKeyboardHeight / 2;
-
-                return Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    20.sp,
-                    safePadding.top + 24.h,
-                    20.sp,
-                    safePadding.bottom + 24.h,
-                  ),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth:
-                            math.min(520.w, screenSize.width - 32.w),
-                        maxHeight: screenSize.height * 0.65,
-                      ),
-                      child: GestureDetector(
-                        onTap: () {},
-                        child: ScaleTransition(
-                          scale: _scaleAnimation,
-                          alignment: Alignment.center,
-                          child: FadeTransition(
-                            opacity: _fadeAnimation,
-                            child: Transform.translate(
-                              offset: Offset(0, -liftDistance),
-                              child: _buildCommentDialogCard(context),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCommentDialogCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(24.sp),
-        border: Border.all(
-          color: kPrimaryColor.withValues(alpha: 0.3),
-          width: 2,
-        ),
-        boxShadow:
-            context.isLightTheme
-                ? [
-                  BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, -1),
-                  ),
-                ]
-                : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    blurRadius: 40,
-                    offset: const Offset(0, -10),
-                    spreadRadius: 5,
-                  ),
-                ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              margin: EdgeInsets.only(top: 12.sp, bottom: 8.sp),
-              width: 36.w,
-              height: 4.h,
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(2.sp),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 12.sp),
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(10.sp),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12.sp),
-                  ),
-                  child: Icon(
-                    Icons.comment_outlined,
-                    color: context.colors.accentText,
-                    size: 20.sp,
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Add Comment',
-                        style: AppTypography.textLgBold.copyWith(
-                          color: context.colors.textPrimary,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      Text(
-                        'Share your thoughts on this position',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.textInk(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            height: 1,
-            margin: EdgeInsets.symmetric(horizontal: 20.sp),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.transparent,
-                  context.colors.textPrimary.withValues(alpha: 0.1),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(20.sp),
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                style: AppTypography.textMdRegular.copyWith(
-                  color: context.colors.textPrimary,
-                  height: 1.5,
-                ),
-                maxLines: null,
-                minLines: 3,
-                maxLength: _variationCommentMaxChars,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: 'What do you think about this position?',
-                  hintStyle: AppTypography.textMdRegular.copyWith(
-                    color: context.textInk(0.4),
-                  ),
-                  filled: true,
-                  fillColor: context.colors.textPrimary.withValues(alpha: 0.03),
-                  contentPadding: EdgeInsets.all(16.sp),
-                  counterStyle: AppTypography.textXsRegular.copyWith(
-                    color: context.textInk(0.5),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16.sp),
-                    borderSide: BorderSide(
-                      color: context.colors.textPrimary.withValues(alpha: 0.1),
-                      width: 1.5,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16.sp),
-                    borderSide: BorderSide(
-                      color:
-                          context.isLightTheme
-                              ? context.colors.accentText
-                              : kPrimaryColor.withValues(alpha: 0.6),
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Container(
-            padding: EdgeInsets.fromLTRB(
-              20.sp,
-              12.sp,
-              20.sp,
-              20.sp + MediaQuery.paddingOf(context).bottom,
-            ),
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: context.colors.textPrimary.withValues(alpha: 0.05),
-                  width: 1,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                if (_controller.text.isNotEmpty)
-                  Expanded(
-                    child: TextButton.icon(
-                      onPressed: () {
-                        HapticFeedback.selectionClick();
-                        _controller.clear();
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: context.colors.textPrimary.withValues(alpha: 0.7),
-                        padding: EdgeInsets.symmetric(vertical: 14.sp),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.sp),
-                        ),
-                      ),
-                      icon: Icon(Icons.clear, size: 18.sp),
-                      label: Text(
-                        'Clear',
-                        style: AppTypography.textSmMedium,
-                      ),
-                    ),
-                  ),
-                if (_controller.text.isNotEmpty) SizedBox(width: 12.w),
-                Expanded(
-                  child: TextButton(
-                    onPressed: _handleCancel,
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textPrimary.withValues(alpha: 0.8),
-                      padding: EdgeInsets.symmetric(vertical: 14.sp),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.sp),
-                        side: BorderSide(
-                          color: context.colors.textPrimary.withValues(alpha: 0.15),
-                        ),
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: AppTypography.textSmMedium,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: _handleSave,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _hasChanges
-                          ? kPrimaryColor
-                          : context.colors.textPrimary.withValues(alpha: 0.1),
-                      foregroundColor: _hasChanges
-                          ? context.colors.textPrimary
-                          : context.colors.textPrimary.withValues(alpha: 0.4),
-                      padding: EdgeInsets.symmetric(vertical: 14.sp),
-                      elevation: _hasChanges ? 4 : 0,
-                      shadowColor: _hasChanges
-                          ? (context.isLightTheme
-                              ? context.colors.shadow
-                              : kPrimaryColor.withValues(alpha: 0.5))
-                          : null,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.sp),
-                      ),
-                    ),
-                    icon: Icon(Icons.check_circle_outline, size: 20.sp),
-                    label: Text(
-                      _hasChanges ? 'Save Comment' : 'No Changes',
-                      style: AppTypography.textSmBold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-*/
-// End of deprecated _CommentDialog class
-
 bool _isEventInfoUuid(String value) {
   return RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
@@ -17213,11 +16736,10 @@ class _EventInfoSheet extends ConsumerWidget {
       initialChildSize: 0.55,
       minChildSize: 0.35,
       maxChildSize: 0.85,
-      builder: (context, scrollController) => Container(
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.sp)),
-        ),
+      // The sheet's surface is the popups' frosted glass, averaging to the
+      // surface it used to be filled with.
+      builder: (context, scrollController) => ChessSheetGlass(
+        radius: 16.sp,
         child: Column(
           children: [
             // Drag handle
@@ -17403,7 +16925,7 @@ class _EventInfoSheet extends ConsumerWidget {
         rows.add(
           openingDraft == null
               ? row
-              : BoardInfoFocusRow(
+              : _GlassInfoFocusRow(
                   actions: (rowContext, ref) => [
                     labeledSpaceMenuAction(
                       context: rowContext,
@@ -17430,7 +16952,7 @@ class _EventInfoSheet extends ConsumerWidget {
     final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
 
     // Long-press: open the profile, pin the player or their Games tab, share.
-    return BoardInfoFocusRow(
+    return _GlassInfoFocusRow(
       actions: (rowContext, ref) =>
           boardPlayerMenuActions(rowContext, ref, player),
       onOpen: () => openBoardPlayerProfile(context, player),
@@ -17451,12 +16973,11 @@ class _EventInfoSheet extends ConsumerWidget {
     String federationForFlag,
     bool showFlag,
   ) {
-    return Container(
+    // No fill: a wash of the sheet's own colour, invisible on the opaque
+    // sheet it was drawn for, reads as a card on the glass. The lifted copy
+    // has its plate ([_GlassInfoFocusRow]).
+    return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surface.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8.sp),
-      ),
       child: Row(
         children: [
           // Side indicator
@@ -17742,7 +17263,7 @@ class _EventInfoSheet extends ConsumerWidget {
           dates: dates,
         );
     if (draft == null) return child;
-    return BoardInfoFocusRow(
+    return _GlassInfoFocusRow(
       onOpen: onOpen,
       actions: (rowContext, ref) => [
         if (onOpen != null)
@@ -17785,7 +17306,7 @@ class _EventInfoSheet extends ConsumerWidget {
       eventName: eventName,
     );
     if (draft == null) return child;
-    return BoardInfoFocusRow(
+    return _GlassInfoFocusRow(
       actions: (rowContext, ref) => [
         labeledSpaceMenuAction(
           context: rowContext,
@@ -17917,143 +17438,196 @@ class _NagPickerSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final stateAsync = ref.watch(chessBoardScreenProviderNew(params));
+    // Only this move's glyphs: the board state also changes with every
+    // engine line and clock tick, and the open sheet need not rebuild then.
+    final activeNags = ref
+        .watch(
+          chessBoardScreenProviderNew(
+            params,
+          ).select((state) => _NagList(state.valueOrNull?.moveNags[pointerId])),
+        )
+        .nags;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final activeNags =
-        stateAsync.valueOrNull?.moveNags[pointerId] ?? const <int>[];
     final activeSet = activeNags.toSet();
 
-    return SafeArea(
-      top: false,
-      child: ClipRRect(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.sp)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            color: context.colors.surface.withValues(alpha: 0.92),
-            padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 18.sp),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36.sp,
-                    height: 4.sp,
-                    margin: EdgeInsets.only(bottom: 14.sp),
-                    decoration: BoxDecoration(
-                      color: context.colors.textPrimary.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
+    // The popups' frosted glass, down to the screen's bottom edge; the safe
+    // area keeps the content where it was.
+    return ChessSheetGlass(
+      radius: 20.sp,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 18.sp),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36.sp,
+                  height: 4.sp,
+                  margin: EdgeInsets.only(bottom: 14.sp),
+                  decoration: BoxDecoration(
+                    color: context.colors.textPrimary.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.label_important_outline_rounded,
-                      size: 16.sp,
-                      color: context.isLightTheme
-                          ? context.colors.success
-                          : const Color(0xFF22AC38),
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.label_important_outline_rounded,
+                    size: 16.sp,
+                    color: context.isLightTheme
+                        ? context.colors.success
+                        : const Color(0xFF22AC38),
+                  ),
+                  SizedBox(width: 6.sp),
+                  Text(
+                    'Annotate',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.textInk(0.55),
+                      letterSpacing: 1.2,
+                      fontSize: 11.sp,
                     ),
-                    SizedBox(width: 6.sp),
-                    Text(
-                      'Annotate',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.textInk(0.55),
-                        letterSpacing: 1.2,
-                        fontSize: 11.sp,
+                  ),
+                  SizedBox(width: 8.sp),
+                  Expanded(
+                    child: Text(
+                      moveText,
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                        fontSize: 16.sp,
+                        letterSpacing: -0.2,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    SizedBox(width: 8.sp),
-                    Expanded(
-                      child: Text(
-                        moveText,
-                        style: AppTypography.textMdBold.copyWith(
-                          color: context.colors.textPrimary,
-                          fontSize: 16.sp,
-                          letterSpacing: -0.2,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (activeNags.isNotEmpty)
-                      _NagPickerClearButton(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          notifier.clearMoveNags(pointerId);
-                        },
-                      ),
-                    SizedBox(width: 6.sp),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Done',
-                      onPressed: () {
+                  ),
+                  if (activeNags.isNotEmpty)
+                    _NagPickerClearButton(
+                      onTap: () {
                         HapticFeedback.lightImpact();
-                        Navigator.of(context).pop();
+                        notifier.clearMoveNags(pointerId);
                       },
-                      icon: Icon(
-                        Icons.check_rounded,
-                        size: 18.sp,
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.82,
-                        ),
-                      ),
                     ),
-                  ],
-                ),
-                SizedBox(height: 14.sp),
-                _NagGroup(
-                  label: 'Quality',
-                  hint: 'How good was the move?',
-                  nags: _qualityNags,
-                  activeSet: activeSet,
-                  onTap: (nag) {
-                    HapticFeedback.selectionClick();
-                    notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
-                  },
-                ),
-                SizedBox(height: 14.sp),
-                _NagGroup(
-                  label: 'Position assessment',
-                  hint: 'Who stands better?',
-                  nags: _evaluationNags,
-                  activeSet: activeSet,
-                  onTap: (nag) {
-                    HapticFeedback.selectionClick();
-                    notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
-                  },
-                ),
-                SizedBox(height: 14.sp),
-                _NagGroup(
-                  label: 'Observation',
-                  hint: 'Theme of the move',
-                  nags: _observationNags,
-                  activeSet: activeSet,
-                  onTap: (nag) {
-                    HapticFeedback.selectionClick();
-                    notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
-                  },
-                ),
-                SizedBox(height: 18.sp),
-                Center(
-                  child: Text(
-                    'One glyph per category. Tap a glyph again to remove it.',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: context.textInk(0.4),
-                      fontSize: 10.5.sp,
-                      letterSpacing: 0.1,
+                  SizedBox(width: 6.sp),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Done',
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).pop();
+                    },
+                    icon: Icon(
+                      Icons.check_rounded,
+                      size: 18.sp,
+                      color: context.colors.textPrimary.withValues(alpha: 0.82),
                     ),
                   ),
+                ],
+              ),
+              SizedBox(height: 14.sp),
+              _NagGroup(
+                label: 'Quality',
+                hint: 'How good was the move?',
+                nags: _qualityNags,
+                activeSet: activeSet,
+                onTap: (nag) {
+                  HapticFeedback.selectionClick();
+                  notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
+                },
+              ),
+              SizedBox(height: 14.sp),
+              _NagGroup(
+                label: 'Position assessment',
+                hint: 'Who stands better?',
+                nags: _evaluationNags,
+                activeSet: activeSet,
+                onTap: (nag) {
+                  HapticFeedback.selectionClick();
+                  notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
+                },
+              ),
+              SizedBox(height: 14.sp),
+              _NagGroup(
+                label: 'Observation',
+                hint: 'Theme of the move',
+                nags: _observationNags,
+                activeSet: activeSet,
+                onTap: (nag) {
+                  HapticFeedback.selectionClick();
+                  notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
+                },
+              ),
+              SizedBox(height: 18.sp),
+              Center(
+                child: Text(
+                  'One glyph per category. Tap a glyph again to remove it.',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.textInk(0.4),
+                    fontSize: 10.5.sp,
+                    letterSpacing: 0.1,
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+/// A row of the event info sheet that long-presses into the shared focus
+/// menu, as [BoardInfoFocusRow] does, on the glass sheet: the plate of the
+/// sheet's colour the row lifts on is drawn in the lifted copy only.
+///
+/// [BoardInfoFocusRow] paints that plate in place too, where an opaque sheet
+/// of the same colour hid it. The glass only averages to that colour (it
+/// carries the frost of the page behind, its grain and its sheen), so in
+/// place the plate would read as a card around every row.
+class _GlassInfoFocusRow extends ConsumerWidget {
+  const _GlassInfoFocusRow({
+    required this.actions,
+    required this.child,
+    this.onOpen,
+  });
+
+  final List<LibraryMenuAction> Function(BuildContext context, WidgetRef ref)
+  actions;
+  final Widget child;
+
+  /// Tapping the lifted row. The menu closes first.
+  final FutureOr<void> Function()? onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = onOpen;
+    final surface = context.colors.surface;
+    return CardContextMenu(
+      actions: (rowContext) => actions(rowContext, ref),
+      onPreviewTap: open == null ? null : () => unawaited(Future.sync(open)),
+      previewBuilder: (_) => MenuPreviewSurface(color: surface, child: child),
+      child: child,
+    );
+  }
+}
+
+/// One move's annotation glyphs, equal by content: the board state rebuilds
+/// the list on every emission, and the picker only cares when it changes.
+@immutable
+class _NagList {
+  const _NagList(List<int>? nags) : nags = nags ?? const <int>[];
+
+  final List<int> nags;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _NagList && listEquals(other.nags, nags);
+
+  @override
+  int get hashCode => Object.hashAll(nags);
 }
 
 class _NagPickerClearButton extends StatelessWidget {

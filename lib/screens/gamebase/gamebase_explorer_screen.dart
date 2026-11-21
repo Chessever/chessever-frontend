@@ -58,7 +58,7 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.da
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_workspace_controls.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart'
-    show explorerSheetSurface;
+    show ExplorerSheetGlass, explorerSheetSurface;
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
@@ -70,6 +70,8 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 import 'package:chessever2/widgets/paywall/pgn_copy_access.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
@@ -889,53 +891,75 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             icon: const ExplorerBoardEditorIcon(),
           ),
         ),
-        PopupMenuButton<ExplorerBoardMenuAction>(
-          key: const ValueKey<String>('opening_explorer_more_menu'),
-          tooltip: 'More board actions',
-          icon: Icon(Icons.more_vert, size: 22.ic),
-          onSelected: _handleBoardMenuAction,
-          itemBuilder: (context) {
-            final inSpace = ref.read(
-              spaceShortcutExistsProvider(
-                SpaceShortcut.keyFor(
-                  SpaceShortcutKind.position,
-                  ref.read(gamebaseExplorerProvider).currentFen,
-                ),
-              ),
-            );
-            return [
-              for (final item in [
-                ...explorerBoardMenuItems,
-                if (inSpace)
-                  ExplorerBoardMenuItem(
-                    action: ExplorerBoardMenuAction.addToSpace,
-                    label: inSpace
-                        ? 'Remove position from My Space'
-                        : 'Add position to My Space',
-                    icon: inSpace
-                        ? Icons.dashboard_customize
-                        : Icons.dashboard_customize_outlined,
-                  ),
-              ])
-                PopupMenuItem<ExplorerBoardMenuAction>(
-                  value: item.action,
-                  child: Row(
-                    children: [
-                      Icon(
-                        item.icon,
-                        color: context.colors.textPrimary,
-                        size: 20.ic,
-                      ),
-                      SizedBox(width: 10.sp),
-                      Flexible(child: Text(item.label)),
-                    ],
-                  ),
-                ),
-            ];
-          },
+        // The shared menu (the glass popover the other overflow menus
+        // use), anchored over the button as PopupMenuButton anchored it.
+        Builder(
+          builder: (buttonContext) => IconButton(
+            key: const ValueKey<String>('opening_explorer_more_menu'),
+            tooltip: 'More board actions',
+            icon: Icon(Icons.more_vert, size: 22.ic),
+            onPressed: () => _openBoardMenu(buttonContext),
+          ),
         ),
       ],
     );
+  }
+
+  Future<void> _openBoardMenu(BuildContext buttonContext) async {
+    final button = buttonContext.findRenderObject();
+    final overlay = Navigator.of(
+      buttonContext,
+    ).overlay?.context.findRenderObject();
+    if (button is! RenderBox || overlay is! RenderBox) return;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero),
+          ancestor: overlay,
+        ),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final inSpace = ref.read(
+      spaceShortcutExistsProvider(
+        SpaceShortcut.keyFor(
+          SpaceShortcutKind.position,
+          ref.read(gamebaseExplorerProvider).currentFen,
+        ),
+      ),
+    );
+    final action = await showTabletSafeMenu<ExplorerBoardMenuAction>(
+      context: buttonContext,
+      position: position,
+      items: [
+        for (final item in [
+          ...explorerBoardMenuItems,
+          if (inSpace)
+            ExplorerBoardMenuItem(
+              action: ExplorerBoardMenuAction.addToSpace,
+              label: inSpace
+                  ? 'Remove position from My Space'
+                  : 'Add position to My Space',
+              icon: inSpace
+                  ? Icons.dashboard_customize
+                  : Icons.dashboard_customize_outlined,
+            ),
+        ])
+          PopupMenuItem<ExplorerBoardMenuAction>(
+            value: item.action,
+            child: Row(
+              children: [
+                Icon(item.icon, color: context.colors.textPrimary, size: 20.ic),
+                SizedBox(width: 10.sp),
+                Flexible(child: Text(item.label)),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (action == null || !mounted) return;
+    await _handleBoardMenuAction(action);
   }
 
   Future<void> _handleBoardMenuAction(ExplorerBoardMenuAction action) async {
@@ -1632,17 +1656,22 @@ void showExplorerFilterSheet(
   GamebasePlayer? scopedPlayer,
 }) {
   final container = ProviderScope.containerOf(context);
-  showModalBottomSheet(
+  showGlassModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: explorerSheetSurface(context),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-    ),
     constraints: ResponsiveHelper.bottomSheetConstraints,
+    // The explorer's glass, toned to the sheet's old fill; the taps inside
+    // keep the ink they drew on that fill. A full-height page of controls:
+    // solid, the glass's look without a live blur under it (the frost rule,
+    // PopupGlassStyle.frostMaxScreenShare).
     builder: (_) => UncontrolledProviderScope(
       container: container,
-      child: ExplorerFilterSheet(scopedPlayer: scopedPlayer),
+      child: ExplorerSheetGlass(
+        radius: 16.br,
+        inkSurface: true,
+        solid: true,
+        child: ExplorerFilterSheet(scopedPlayer: scopedPlayer),
+      ),
     ),
   );
 }

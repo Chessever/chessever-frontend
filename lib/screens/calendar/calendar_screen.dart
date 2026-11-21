@@ -34,6 +34,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/layout_swap_scroll_keeper.dart';
 import 'package:chessever2/widgets/paywall/past_event_access.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 
 /// Filter mode for the calendar view
 enum CalendarFilterMode { all, upcoming, favorites }
@@ -319,7 +320,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         ),
                       ),
                       child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
+                        child: GlassDropdown<int>(
                           value: ref.watch(selectedYearProvider),
                           onChanged: (int? newValue) {
                             if (newValue != null) {
@@ -369,7 +370,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           ),
                         ),
                         child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String?>(
+                          child: GlassDropdown<String?>(
                             value: ref.watch(calendarTimeControlProvider),
                             hint: Row(
                               children: [

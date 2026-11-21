@@ -1,16 +1,13 @@
-// Renders the Today collection stories to PNGs for review: the Today top
-// with its story row, and the viewer mid-story, at a story's end, mid open,
-// mid cube turn, mid drag down, on its See all story and on a phone turned
-// on its side; an annotated story on a commented move (its arrows, words
-// and glyph) with the actions under it; a long note wrapping and fading,
-// a note on the game's last move held to be read, the good move's glyph,
-// and a plain move the frame it lands; the row pulled past either end
-// (half way, and armed); and Settings › Customization with the Collection
-// stories choice. Light and dark, at a 393x852 phone view (852x393 on its
-// side), 3x.
+// Renders the Today collection stories to PNGs for review: the Today row
+// (unseen circles first, watched ones grey, the Missed chances mark), and
+// the viewer on a commented position, a classified blunder, a position
+// asking for the move, the move found, a missed chance asking for the win,
+// the actions under a story, the end card once everything is watched, and
+// a phone on its side; then Settings › Customization with the Collection
+// stories choice. Light and dark, at a 393x852 phone view, 3x.
 //
 //   flutter test --no-pub test/collection_stories_preview_test.dart \
-//     --dart-define=STORIES_DIR=/tmp/stories/out
+//     --dart-define=STORIES_DIR=/tmp/stories_v3/out
 //
 // Covers are read from STORIES_COVERS (default /tmp/stories/covers_full,
 // u1.png ... u9.png: real collection covers); a missing file falls back to
@@ -39,7 +36,6 @@ import 'package:chessever2/screens/group_event/widget/premium_collection_cards.d
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
-import 'package:chessever2/screens/stories/story_replay.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
@@ -72,6 +68,7 @@ Collection _collection(
   String? author,
   String? location,
   int? year,
+  int hoursAgo = 0,
 }) => Collection(
   id: slug,
   slug: slug,
@@ -81,14 +78,19 @@ Collection _collection(
   location: location,
   publishedYear: year,
   gameCount: games,
+  contentVersion: 'v-$slug',
+  updatedAt: _now.subtract(Duration(hours: 2 + hoursAgo)),
   access: CollectionAccess.free,
 );
+
+final _now = DateTime(2026, 11, 21, 10);
 
 final _catalog = [
   _collection(
     'us-championship-2026',
     CollectionKind.event,
     'U.S. Championship 2026',
+    hoursAgo: 3,
     games: 66,
     location: 'Saint Louis',
     year: 2026,
@@ -97,6 +99,7 @@ final _catalog = [
     'exchange-sacrifice-2',
     CollectionKind.book,
     'Exchange Sacrifice in Openings, Vol. 2',
+    hoursAgo: 6,
     games: 48,
     author: 'Sarhan Guliev',
   ),
@@ -104,6 +107,7 @@ final _catalog = [
     '60-instructive-wins',
     CollectionKind.book,
     '60 Instructive Wins',
+    hoursAgo: 9,
     games: 60,
     author: 'Ulvi Bajarani, Ilgar Bajarani',
   ),
@@ -111,6 +115,7 @@ final _catalog = [
     'neiksans-annotated',
     CollectionKind.analysis,
     'GM Neiksans Annotated Games',
+    hoursAgo: 12,
     games: 24,
     author: 'GM Arturs Neiksans',
   ),
@@ -118,6 +123,7 @@ final _catalog = [
     'fide-candidates-2026',
     CollectionKind.event,
     'FIDE Candidates 2026',
+    hoursAgo: 15,
     games: 56,
     location: 'Cyprus',
     year: 2026,
@@ -126,6 +132,7 @@ final _catalog = [
     'exchange-sacrifice-1',
     CollectionKind.book,
     'Exchange Sacrifice in Openings, Vol. 1',
+    hoursAgo: 18,
     games: 51,
     author: 'Sarhan Guliev',
   ),
@@ -133,6 +140,7 @@ final _catalog = [
     'jayaram-annotated',
     CollectionKind.analysis,
     'GM Jayaram Annotated Games',
+    hoursAgo: 21,
     games: 18,
     author: 'GM Jayaram',
   ),
@@ -140,6 +148,7 @@ final _catalog = [
     '2021-in-52-games',
     CollectionKind.book,
     '2021 in 52 Games',
+    hoursAgo: 24,
     games: 52,
     author: 'GM Vasif Durarbayli',
   ),
@@ -147,6 +156,7 @@ final _catalog = [
     '2022-in-53-games',
     CollectionKind.book,
     '2022 in 53 Games',
+    hoursAgo: 27,
     games: 53,
     author: 'GM Ulvi Bajarani',
   ),
@@ -184,9 +194,6 @@ final Map<String, ImageProvider> _covers = {
 
 // ----------------------------------------------------------------- games
 
-/// One story template: a game that takes the story's id.
-typedef _Story = StoryGame Function(String id);
-
 CollectionPlayerSide _side(
   String name,
   String fed, {
@@ -200,186 +207,112 @@ CollectionPlayerSide _side(
   elo: elo,
 );
 
-_Story _game(
-  String name, {
+CollectionGame _card(
+  String id, {
   required CollectionPlayerSide white,
   required CollectionPlayerSide black,
   required String result,
   required String event,
-  required String eco,
-  required String opening,
-  required String moves,
-}) {
-  final pgn =
-      '[Event "$event"]\n[White "${white.name}"]\n[Black "${black.name}"]\n'
-      '[Result "$result"]\n[ECO "$eco"]\n\n$moves $result';
-  return (id) {
-    final game = CollectionGame.fromPreviewCard(
-      CollectionGameCard(
-        id: id,
-        white: white,
-        black: black,
-        result: result,
-        event: event,
-        eco: eco,
-        opening: opening,
-      ),
-    )!;
-    return buildStoryGame(game, pgn: pgn);
-  };
-}
-
-final _opera = _game(
-  'opera',
-  white: _side('Morphy, Paul', 'USA'),
-  black: _side('Duke Karl, Count Isouard', 'FRA'),
-  result: '1-0',
-  event: 'Paris Opera 1858',
-  eco: 'C41',
-  opening: 'Philidor Defence',
-  moves:
-      '1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 '
-      '7. Qb3 Qe7 8. Nc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 '
-      '12. O-O-O Rd8 13. Rxd7 Rxd7 14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 '
-      '17. Rd8#',
-);
-
-final _century = _game(
-  'century',
-  white: _side('Byrne, Donald', 'USA', title: 'IM'),
-  black: _side('Fischer, Robert James', 'USA'),
-  result: '0-1',
-  event: 'Rosenwald Memorial, New York 1956',
-  eco: 'D92',
-  opening: 'Grünfeld Defence',
-  moves:
-      '1. Nf3 Nf6 2. c4 g6 3. Nc3 Bg7 4. d4 O-O 5. Bf4 d5 6. Qb3 dxc4 '
-      '7. Qxc4 c6 8. e4 Nbd7 9. Rd1 Nb6 10. Qc5 Bg4 11. Bg5 Na4 12. Qa3 Nxc3 '
-      '13. bxc3 Nxe4 14. Bxe7 Qb6 15. Bc4 Nxc3 16. Bc5 Rfe8+ 17. Kf1 Be6 '
-      '18. Bxb6 Bxc4+ 19. Kg1 Ne2+ 20. Kf1 Nxd4+ 21. Kg1 Ne2+ 22. Kf1 Nc3+ '
-      '23. Kg1 axb6 24. Qb4 Ra4 25. Qxb6 Nxd1 26. h3 Rxa2 27. Kh2 Nxf2 '
-      '28. Re1 Rxe1 29. Qd8+ Bf8 30. Nxe1 Bd5 31. Nf3 Ne4 32. Qb8 b5 33. h4 h5 '
-      '34. Ne5 Kg7 35. Kg1 Bc5+ 36. Kf1 Ng3+ 37. Ke1 Bb4+ 38. Kd1 Bb3+ '
-      '39. Kc1 Ne2+ 40. Kb1 Nc3+ 41. Kc1 Rc2#',
-);
-
-final _immortal = _game(
-  'kasparov-topalov',
-  white: _side('Kasparov, Garry', 'RUS', title: 'GM', elo: 2812),
-  black: _side('Topalov, Veselin', 'BUL', title: 'GM', elo: 2700),
-  result: '1-0',
-  event: 'Hoogovens, Wijk aan Zee 1999',
-  eco: 'B07',
-  opening: 'Pirc Defence',
-  moves:
-      '1. e4 d6 2. d4 Nf6 3. Nc3 g6 4. Be3 Bg7 5. Qd2 c6 6. f3 b5 7. Nge2 Nbd7 '
-      '8. Bh6 Bxh6 9. Qxh6 Bb7 10. a3 e5 11. O-O-O Qe7 12. Kb1 a6 13. Nc1 '
-      'O-O-O 14. Nb3 exd4 15. Rxd4 c5 16. Rd1 Nb6 17. g3 Kb8 18. Na5 Ba8 '
-      '19. Bh3 d5 20. Qf4+ Ka7 21. Rhe1 d4 22. Nd5 Nbxd5 23. exd5 Qd6 '
-      '24. Rxd4 cxd4 25. Re7+ Kb6 26. Qxd4+ Kxa5 27. b4+ Ka4 28. Qc3 Qxd5 '
-      '29. Ra7 Bb7 30. Rxb7 Qc4 31. Qxf6 Kxa3 32. Qxa6+ Kxb4 33. c3+ Kxc3 '
-      '34. Qa1+ Kd2 35. Qb2+ Kd1 36. Bf1 Rd2 37. Rd7 Rxd7 38. Bxc4 bxc4 '
-      '39. Qxh8 Rd3 40. Qa8 c3 41. Qa4+ Ke1 42. f4 f5 43. Kc1 Rd2 44. Qa7',
-);
-
-final _reti = _game(
-  'reti-tartakower',
-  white: _side('Reti, Richard', 'CZE'),
-  black: _side('Tartakower, Savielly', 'POL'),
-  result: '1-0',
-  event: 'Vienna 1910',
-  eco: 'B15',
-  opening: 'Caro-Kann Defence',
-  moves:
-      '1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nf6 5. Qd3 e5 6. dxe5 Qa5+ '
-      '7. Bd2 Qxe5 8. O-O-O Nxe4 9. Qd8+ Kxd8 10. Bg5+ Kc7 11. Bd8#',
-);
-
-/// The Opera game as a book annotates it: arrows, marked squares, a glyph,
-/// and words on the moments that matter.
-const _operaAnnotatedMoves =
-    '1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 '
-    '7. Qb3 { [%clk 0:58:10] [%cal Gb3f7,Gb3b7] The queen eyes f7 and b7 '
-    'at once. } 7... Qe7 8. Nc3 c6 9. Bg5 b5?! 10. Nxb5! { [%csl Gb5] '
-    'White gives the knight to open lines toward the king. } 10... cxb5 '
-    '11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7! { [%cal Gd1d8] The exchange '
-    'goes back: every white piece joins the attack. } 13... Rxd7 14. Rd1 '
-    'Qe6 15. Bxd7+ Nxd7 16. Qb8+!! { [%eval #1] [%cal Gb8d8,Gd1d8] '
-    '[%csl Rd8] The queen is given so the rook can mate on d8. } '
-    '16... Nxb8 17. Rd8#';
-
-_Story _operaWith(String id, String moves) => _game(
-  id,
-  white: _side('Morphy, Paul', 'USA'),
-  black: _side('Duke Karl, Count Isouard', 'FRA'),
-  result: '1-0',
-  event: 'Paris Opera 1858',
-  eco: 'C41',
-  opening: 'Philidor Defence',
-  moves: moves,
-);
-
-final _operaAnnotated = _operaWith('opera_annotated', _operaAnnotatedMoves);
-
-/// A long note (about 290 characters) on 13. Rxd7!: more than the room
-/// under the board holds, so it wraps and fades, never dropping a line.
-const _longWords =
-    'The exchange goes back, and with it the last of the defenders. With '
-    'his bishop and his rook on d1, both now pointing at the black king, '
-    'White finds that every one of his pieces joins the attack, while the '
-    'queen on e7 and the knight on f6 stand too far away to help in time.';
-
-final _operaLong = _operaWith(
-  'opera_long',
-  _operaAnnotatedMoves.replaceFirst(
-    'The exchange goes back: every white piece joins the attack.',
-    _longWords,
+  String? eco,
+  String? opening,
+}) => CollectionGame.fromPreviewCard(
+  CollectionGameCard(
+    id: id,
+    white: white,
+    black: black,
+    result: result,
+    event: event,
+    eco: eco,
+    opening: opening,
   ),
+)!;
+
+/// The Opera game as a book annotates it: arrows, marked squares, glyphs,
+/// and words on the moments that matter.
+const _operaPgn = '''[Event "Paris Opera 1858"]
+[White "Morphy, Paul"]
+[Black "Duke Karl, Count Isouard"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 7. Qb3 { [%clk 0:58:10] [%cal Gb3f7,Gb3b7] The queen eyes f7 and b7 at once, and Black has no single move that covers both. } 7... Qe7 8. Nc3 c6 9. Bg5 b5?! 10. Nxb5! { [%csl Gb5] White gives the knight to open lines toward the king, two pieces ahead in development. } 10... cxb5 11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7! { [%cal Gd1d8] The exchange goes back, and with it the last of the defenders. With his bishop and his rook on d1 both pointing at the black king, every white piece joins the attack, while the queen on e7 and the knight on f6 stand too far away to help in time. } 13... Rxd7 14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+!! { [%cal Gb8d8,Gd1d8] [%csl Rd8] The queen is given so the rook can mate on d8. } 16... Nxb8 17. Rd8# 1-0''';
+
+/// A report from a broadcast: an evaluation on every move, the verdicts,
+/// and the engine line beside the missed win.
+const _reportPgn = '''[Event "Round 5: Firouzja - Caruana"]
+[BroadcastName "Sinquefield Cup 2026"]
+[White "Firouzja, Alireza"]
+[Black "Caruana, Fabiano"]
+[Result "1/2-1/2"]
+
+1. e4 \$247 { [%eval 0.2] } 1... e5 \$247 { [%eval 0.2] } 2. Bc4 { [%eval 0.1] } 2... Nc6 { [%eval 0.1] } 3. Qh5 { [%eval 0.0] } 3... Nf6 \$4 \$246 { [%eval #1] } ( 3... g6 4. Qf3 Nf6 ) 4. Qf3 \$4 \$243 { [%eval 0.1] } ( 4. Qxf7# ) 4... Be7 { [%eval 0.1] } 5. Ne2 { [%eval 0.0] } 5... d6 { [%eval 0.1] } 1/2-1/2''';
+
+final _morphy = _side('Morphy, Paul', 'USA');
+final _duke = _side('Duke Karl, Count Isouard', 'FRA');
+final _firouzja = _side('Firouzja, Alireza', 'FRA', title: 'GM', elo: 2766);
+final _caruana = _side('Caruana, Fabiano', 'USA', title: 'GM', elo: 2795);
+
+StoryGame _opera(String id) => buildStoryGame(
+  _card(
+    id,
+    white: _morphy,
+    black: _duke,
+    result: '1-0',
+    event: 'Paris Opera 1858',
+    eco: 'C41',
+    opening: 'Philidor Defence',
+  ),
+  pgn: _operaPgn,
 );
 
-/// A summing-up note on the last move: it holds as long as its words need.
-const _finaleWords =
-    'Mate. Morphy spent a knight, the exchange and his queen, and every '
-    'piece he gave away opened one more line to the king.';
-
-final _operaFinale = _operaWith(
-  'opera_finale',
-  _operaAnnotatedMoves.replaceFirst('17. Rd8#', '17. Rd8# { $_finaleWords }'),
+/// The report game as a collection story: the blunder, then the missed win.
+StoryGame _report(String id) => buildStoryGame(
+  _card(
+    id,
+    white: _firouzja,
+    black: _caruana,
+    result: '1/2-1/2',
+    event: 'Sinquefield Cup 2026',
+    eco: 'C23',
+    opening: "Bishop's Opening",
+  ),
+  pgn: _reportPgn,
 );
 
-/// The stories of a collection of [total] games: the famous four, each
-/// story its own game id. [lead] opens the stories when given.
-StoryBatch _batch(int total, {_Story? lead}) {
-  final games = [_opera, _century, _immortal, _reti];
-  final stories = [
-    for (var i = 0; i < kStoryCap; i++)
-      (i == 0 && lead != null ? lead : games[i % games.length])('s$i'),
-  ];
+StoryBatch _batchOf(String slug) {
+  final collection = _catalog.firstWhere((c) => c.slug == slug);
+  final stories = switch (slug) {
+    'us-championship-2026' => [_report('r0'), _opera('o1')],
+    _ => [_opera('o0'), _report('r1')],
+  };
   return StoryBatch(
     games: stories,
     ordered: [for (final s in stories) s.game],
-    total: total,
+    gameCount: collection.gameCount,
+    signature: storySignature(collection),
   );
 }
 
-/// The book whose first story is annotated.
-const _annotatedSlug = 'exchange-sacrifice-2';
-
-/// The analysis whose first story carries a long note.
-const _longSlug = 'neiksans-annotated';
-
-/// The analysis whose first story ends on a note.
-const _finaleSlug = 'jayaram-annotated';
-
-StoryBatch _batchOf(String slug) => _batch(
-  _catalog.firstWhere((c) => c.slug == slug).gameCount,
-  lead: switch (slug) {
-    _annotatedSlug => _operaAnnotated,
-    _longSlug => _operaLong,
-    _finaleSlug => _operaFinale,
-    _ => null,
-  },
-);
+StoryBatch _missedBatch() {
+  final game = _card(
+    'm0',
+    white: _firouzja,
+    black: _caruana,
+    result: '1/2-1/2',
+    event: 'Sinquefield Cup 2026',
+  ).game;
+  final segments = pickMissedChanceSegments(parseStoryPgn(_reportPgn)!);
+  return StoryBatch(
+    games: [
+      StoryGame(
+        game: game,
+        segments: segments,
+        caption: 'Sinquefield Cup 2026 · Round 5',
+      ),
+    ],
+    ordered: [game],
+    signature: 'v:missed:2026-11-21',
+  );
+}
 
 // ---------------------------------------------------------------- harness
 
@@ -437,40 +370,41 @@ class _Country extends StateNotifier<AsyncValue<Country>>
 
 /// The seen record the scenes start from: three collections new, the rest
 /// watched (they follow the new ones, in quiet rings), and the first
-/// [resume] stories seen of the one the viewer opens, so it opens on the
-/// next.
-String _seen(Map<String, int> resume) {
+/// The device's seen record: the collections the reader caught up with
+/// (every one with [allWatched]).
+String _seen({bool allWatched = false}) {
   final watched = {
     'neiksans-annotated',
     'fide-candidates-2026',
     'exchange-sacrifice-1',
     'jayaram-annotated',
     '2021-in-52-games',
-    '2022-in-53-games',
   };
-  StorySeen record(String slug, int seen) {
-    final c = _catalog.firstWhere((c) => c.slug == slug);
-    final ids = [for (final g in _batchOf(slug).games.take(seen)) g.id];
-    return StorySeen(ids: ids, count: c.gameCount, full: seen >= kStoryCap);
-  }
-
   return jsonEncode({
-    'v': 2,
+    'v': 3,
     'c': {
       for (final c in _catalog)
-        if (watched.contains(c.slug))
-          c.slug: record(c.slug, kStoryCap).toJson(),
-      for (final MapEntry(:key, :value) in resume.entries)
-        key: record(key, value).toJson(),
+        if (allWatched || watched.contains(c.slug))
+          c.slug: StorySeen(
+            ids: [for (final g in _batchOf(c.slug).games) g.id],
+            signature: storySignature(c),
+            caught: true,
+          ).toJson(),
+      if (allWatched)
+        kMissedChancesSlug: StorySeen(
+          ids: [for (final g in _missedBatch().games) g.id],
+          signature: 'v:missed:2026-11-21',
+          caught: true,
+        ).toJson(),
     },
   });
 }
 
-Future<void> _pumpToday(
+Future<ProviderContainer> _pumpToday(
   WidgetTester tester, {
   required bool light,
-  Map<String, int> resume = const {},
   bool landscape = false,
+  bool allWatched = false,
 }) async {
   tester.view.devicePixelRatio = 3;
   if (landscape) {
@@ -498,8 +432,14 @@ Future<void> _pumpToday(
   final container = ProviderContainer(
     overrides: [
       storyCollectionsProvider.overrideWith((ref) async => _catalog),
-      storyBatchProvider.overrideWith((ref, slug) async => _batchOf(slug)),
-      storySeenStorageProvider.overrideWithValue(_MemoryStorage(_seen(resume))),
+      storyBatchProvider.overrideWith(
+        (ref, slug) async =>
+            slug == kMissedChancesSlug ? _missedBatch() : _batchOf(slug),
+      ),
+      storySeenStorageProvider.overrideWithValue(
+        _MemoryStorage(_seen(allWatched: allWatched)),
+      ),
+      storyClockProvider.overrideWithValue(() => _now),
       storyRowPrefsStoreProvider.overrideWithValue(_RowStore()),
       storyCoverOverrideProvider.overrideWithValue((c) => _covers[c.slug]),
       boardSettingsProviderNew.overrideWith(_Board.new),
@@ -543,6 +483,7 @@ Future<void> _pumpToday(
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
   await _precache(tester);
+  return container;
 }
 
 /// Decodes every picture on screen (covers, tile art, pieces) for real, so
@@ -588,6 +529,16 @@ Future<void> _run(WidgetTester tester, Duration duration) async {
 
 Finder _circle(String slug) => find.byKey(ValueKey('story_circle_$slug'));
 
+/// Taps the story beside its position (between the header and the board),
+/// at a share of the width: the next position, or the previous one.
+Future<void> _tapAside(WidgetTester tester, double share) async {
+  final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+  final header = tester.getRect(find.byKey(const ValueKey('story_close')));
+  final frame = tester.getRect(find.byType(StoryFrameView));
+  await tester.tapAt(Offset(width * share, (header.bottom + frame.top) / 2));
+  await tester.pump();
+}
+
 /// Opens [slug]'s stories and lets the surface settle.
 Future<void> _open(WidgetTester tester, String slug) async {
   await tester.tap(_circle(slug));
@@ -597,8 +548,8 @@ Future<void> _open(WidgetTester tester, String slug) async {
   await _precache(tester);
 }
 
-/// Plays [duration] of a story frame by frame, as a phone would, so the
-/// board's pieces slide one move at a time.
+/// Plays [duration] frame by frame, as a phone would, so the board's
+/// pieces slide.
 Future<void> _play(WidgetTester tester, Duration duration) async {
   const frame = Duration(milliseconds: 40);
   var left = duration;
@@ -698,18 +649,6 @@ Future<void> _pumpSettings(WidgetTester tester, {required bool light}) async {
   await tester.pumpAndSettle();
 }
 
-/// The row's pull mark as drawn: its fill and its armed disc.
-StoryPullMarkPainter? _pullMark(WidgetTester tester) {
-  final mark = find.byKey(const ValueKey('story_row_pull_mark'));
-  if (mark.evaluate().isEmpty) return null;
-  return tester
-          .widget<CustomPaint>(
-            find.descendant(of: mark, matching: find.byType(CustomPaint)),
-          )
-          .painter
-      as StoryPullMarkPainter?;
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -742,359 +681,125 @@ void main() {
   for (final light in [false, true]) {
     final theme = light ? 'light' : 'dark';
 
-    testWidgets('Today top with the story row, $theme', (tester) async {
+    testWidgets('Today row: unseen first, watched grey, Missed chances, '
+        '$theme', (tester) async {
       await _pumpToday(tester, light: light);
-      // The new ones first, in catalog order, then the watched ones.
-      final first = tester.getTopLeft(_circle('us-championship-2026')).dx;
-      final third = tester.getTopLeft(_circle('60-instructive-wins')).dx;
-      final watched = tester.getTopLeft(_circle('neiksans-annotated')).dx;
-      expect(first, closeTo(16, 0.01));
-      expect(third, greaterThan(first));
-      expect(watched, greaterThan(third));
+      expect(_circle(kMissedChancesSlug), findsOneWidget);
       await _shot(tester, '01_today_row', light);
     });
 
-    testWidgets('mid open transition, $theme', (tester) async {
+    testWidgets('a commented position, $theme', (tester) async {
       await _pumpToday(tester, light: light);
-      // Once round, so the board's own pictures are decoded, then again.
-      await _open(tester, '60-instructive-wins');
-      await tester.tap(find.byKey(const ValueKey('story_close')));
-      await tester.pump();
-      await _run(tester, const Duration(seconds: 1));
-      await tester.pump();
-      await tester.tap(_circle('60-instructive-wins'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
-      await tester.pump(const Duration(milliseconds: 85));
-      await _shot(tester, '02_open_transition', light);
-      await _run(tester, const Duration(seconds: 1));
+      await _open(tester, 'exchange-sacrifice-2');
+      await _play(tester, const Duration(milliseconds: 900));
+      expect(find.byKey(const ValueKey('story_comment')), findsOneWidget);
+      await _shot(tester, '02_commented_position', light);
+      // The same frame is the actions' scene.
+      expect(find.byKey(const ValueKey('story_open_game')), findsOneWidget);
+      await _shot(tester, '07_bottom_actions', light);
     });
 
-    testWidgets('viewer mid-story, $theme', (tester) async {
-      await _pumpToday(
-        tester,
-        light: light,
-        resume: {'60-instructive-wins': 1},
-      );
-      await _open(tester, '60-instructive-wins');
-      // The Game of the Century, halfway through its finale.
-      await _play(tester, kStoryGameDuration * 0.5);
-      await _shot(tester, '03_viewer_mid_story', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('viewer at a story end, $theme', (tester) async {
-      await _pumpToday(
-        tester,
-        light: light,
-        resume: {'60-instructive-wins': 2},
-      );
-      await _open(tester, '60-instructive-wins');
-      // Kasparov's immortal, its last move landed and the result shown.
-      await _play(tester, kStoryGameDuration * 0.9);
-      // The ending's marks (the fallen king) decode, then land.
-      await _precache(tester);
-      await _play(tester, kStoryGameDuration * 0.02);
-      await _shot(tester, '04_viewer_story_end', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('mid cube turn, $theme', (tester) async {
-      await _pumpToday(
-        tester,
-        light: light,
-        resume: {'60-instructive-wins': 3},
-      );
-      await _open(tester, '60-instructive-wins');
-      await _play(tester, kStoryGameDuration * 0.4);
-      final swipe = await tester.startGesture(const Offset(330, 520));
-      for (var i = 0; i < 9; i++) {
-        await swipe.moveBy(const Offset(-20, 0));
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      await _precache(tester);
-      await _shot(tester, '05_cube_turn', light);
-      await swipe.moveBy(const Offset(-200, 0));
-      await swipe.up();
-      await _run(tester, const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('mid drag down, $theme', (tester) async {
-      await _pumpToday(
-        tester,
-        light: light,
-        resume: {'60-instructive-wins': 2},
-      );
-      await _open(tester, '60-instructive-wins');
-      await _play(tester, kStoryGameDuration * 0.6);
-      final drag = await tester.startGesture(const Offset(196, 360));
-      for (var i = 0; i < 12; i++) {
-        await drag.moveBy(const Offset(0, 18));
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      await _shot(tester, '06_drag_down', light);
-      await drag.moveBy(const Offset(0, -216));
-      await tester.pump(const Duration(milliseconds: 16));
-      await drag.up();
-      await _run(tester, const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('a phone on its side, $theme', (tester) async {
-      await _pumpToday(
-        tester,
-        light: light,
-        landscape: true,
-        resume: {'us-championship-2026': 1},
-      );
+    testWidgets('a classified blunder, $theme', (tester) async {
+      await _pumpToday(tester, light: light);
       await _open(tester, 'us-championship-2026');
-      await _play(tester, kStoryGameDuration * 0.6);
-      await _shot(tester, '08_landscape', light);
-      await tester.pump(const Duration(seconds: 1));
+      await _play(tester, const Duration(milliseconds: 900));
+      expect(find.text('Blunder'), findsOneWidget);
+      await _shot(tester, '03_blunder_position', light);
     });
 
-    testWidgets('See all story, $theme', (tester) async {
-      await _pumpToday(
-        tester,
-        light: light,
-        resume: {'60-instructive-wins': kStoryCap - 1},
-      );
-      await _open(tester, '60-instructive-wins');
-      // On the last game; a tap on goes to See all.
-      await tester.tapAt(const Offset(393 * 0.8, 852 * 0.5));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
-      await _precache(tester);
-      expect(find.text('See all 60 games'), findsOneWidget);
-      await tester.pump(kStorySeeAllDuration * 0.35);
-      await _shot(tester, '07_see_all', light);
-      await tester.pump(const Duration(seconds: 6));
-    });
-
-    testWidgets('annotated story on a commented move, $theme', (tester) async {
-      await _pumpToday(tester, light: light);
-      await _open(tester, _annotatedSlug);
-      final replay = _batchOf(_annotatedSlug).games.first.replay;
-      expect(replay.annotated, isTrue);
-      final step = replay.notes.indexWhere((n) => n?.san == 'Qb8+');
-      final face = find.byKey(const ValueKey('story_page_$_annotatedSlug'));
-      final bars = tester.widget<StoryProgressBars>(
-        find.descendant(of: face, matching: find.byType(StoryProgressBars)),
-      );
-      // A third of the way into the queen sacrifice's hold: its arrows, its
-      // glyph and its words.
-      final target =
-          replay.startOf(step) +
-          (replay.startOf(step + 1) - replay.startOf(step)) / 3;
-      await _play(
-        tester,
-        replay.scheduledDuration! * (target - bars.progress.value),
-      );
-      await _precache(tester);
-      await _play(tester, const Duration(milliseconds: 400));
-      expect(
-        tester
-            .widget<Text>(find.byKey(const ValueKey('story_note_move')))
-            .textSpan!
-            .toPlainText(),
-        '16. Qb8+!!',
-      );
-      expect(find.byKey(const ValueKey('story_view_collection')), findsOne);
-      expect(find.byKey(const ValueKey('story_open_game')), findsOne);
-      await _shot(tester, '09_annotated_move', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    /// Plays [slug]'s first story to [share] of its schedule.
-    Future<StoryReplay> playTo(
-      WidgetTester tester,
-      String slug,
-      double Function(StoryReplay replay) share,
+    testWidgets('a position asking for the move, then found, $theme', (
+      tester,
     ) async {
       await _pumpToday(tester, light: light);
-      await tester.scrollUntilVisible(
-        _circle(slug),
-        120,
-        scrollable: find.descendant(
+      await _open(tester, 'exchange-sacrifice-2');
+      // To the third position: 13. Rxd7! asks.
+      await _tapAside(tester, 0.8);
+      await _play(tester, const Duration(milliseconds: 300));
+      await _tapAside(tester, 0.8);
+      await _play(tester, const Duration(milliseconds: 600));
+      await _precache(tester);
+      expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
+      await _shot(tester, '04_puzzle_prompt', light);
+      final board = tester.getRect(
+        find.byKey(const ValueKey('story_puzzle_board')),
+      );
+      Offset at(int file, int rank) => Offset(
+        board.left + (file + 0.5) * board.width / 8,
+        board.top + (7 - rank + 0.5) * board.width / 8,
+      );
+      // The rook takes on d7.
+      await tester.tapAt(at(3, 0));
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(at(3, 6));
+      await _play(tester, const Duration(milliseconds: 700));
+      expect(find.textContaining('Found it'), findsOneWidget);
+      await _shot(tester, '05_puzzle_solved', light);
+    });
+
+    testWidgets('a missed chance asking for the win, $theme', (tester) async {
+      await _pumpToday(tester, light: light);
+      await _open(tester, kMissedChancesSlug);
+      await _play(tester, const Duration(milliseconds: 600));
+      await _precache(tester);
+      expect(find.text('White missed a win here'), findsOneWidget);
+      await _shot(tester, '06_missed_chance_prompt', light);
+    });
+
+    testWidgets('all caught up, $theme', (tester) async {
+      await _pumpToday(tester, light: light);
+      // Everything else watched: the last story ends on the card.
+      await tester.pumpWidget(const SizedBox());
+      await _pumpToday(tester, light: light, allWatched: true);
+      await _shot(tester, '09_today_row_all_watched', light);
+      // The row's last circle: the 2022 book is the ninth by its update,
+      // past the row's eight.
+      final row = tester.state<ScrollableState>(
+        find.descendant(
           of: find.byType(TodayStoryRow),
           matching: find.byType(Scrollable),
         ),
       );
+      row.position.jumpTo(row.position.maxScrollExtent);
       await tester.pump();
-      await _precache(tester);
-      await _open(tester, slug);
-      final replay = _batchOf(slug).games.first.replay;
-      final face = find.byKey(ValueKey('story_page_$slug'));
-      final bars = tester.widget<StoryProgressBars>(
-        find.descendant(of: face, matching: find.byType(StoryProgressBars)),
-      );
-      await _play(
-        tester,
-        replay.scheduledDuration! * (share(replay) - bars.progress.value),
-      );
-      await _precache(tester);
-      return replay;
-    }
-
-    int stepOf(StoryReplay replay, String san) =>
-        replay.notes.indexWhere((n) => n?.san == san);
-
-    String moveLine(WidgetTester tester) => tester
-        .widget<Text>(find.byKey(const ValueKey('story_note_move')))
-        .textSpan!
-        .toPlainText();
-
-    testWidgets('a long note wraps whole and fades at its end, $theme', (
-      tester,
-    ) async {
-      await playTo(tester, _longSlug, (replay) {
-        final step = stepOf(replay, 'Rxd7');
-        return replay.startOf(step) +
-            (replay.startOf(step + 1) - replay.startOf(step)) / 2;
-      });
-      await _play(tester, const Duration(milliseconds: 400));
-      expect(moveLine(tester), '13. Rxd7!');
-      final comment = find.byKey(const ValueKey('story_note_comment'));
-      final paragraph = tester.renderObject<RenderParagraph>(
-        find.descendant(of: comment, matching: find.byType(RichText)),
-      );
-      // With the app's own fonts: one centred paragraph, cut after its
-      // lines, its last line fading downward under the fade.
-      expect(paragraph.text.toPlainText(), _longWords);
-      expect(paragraph.textAlign, TextAlign.center);
-      expect(
-        find.descendant(
-          of: comment,
-          matching: find.byKey(const ValueKey('story_note_comment_fade')),
-        ),
-        findsOneWidget,
-      );
-      await _shot(tester, '14_long_comment', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('a note on the last move, read past the end\'s old beat, '
-        '$theme', (tester) async {
-      final replay = await playTo(tester, _finaleSlug, (replay) {
-        final total = replay.scheduledDuration!.inMicroseconds / 1e6;
-        // 3.5s into the last move's hold: the old 1.8s end had moved on.
-        return replay.startOf(replay.plies) + 3.5 / total;
-      });
-      await _play(tester, const Duration(milliseconds: 40));
-      expect(StoryReplay.dwellOf(replay.noteAt(replay.plies)!), greaterThan(5));
-      expect(moveLine(tester), '17. Rd8#');
-      expect(find.text(_finaleWords), findsOneWidget);
-      await _shot(tester, '15_last_move_note', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('the good move\'s glyph on the page, $theme', (tester) async {
-      await playTo(tester, _annotatedSlug, (replay) {
-        final step = stepOf(replay, 'Nxb5');
-        return replay.startOf(step) +
-            (replay.startOf(step + 1) - replay.startOf(step)) / 3;
-      });
-      await _play(tester, const Duration(milliseconds: 400));
-      expect(moveLine(tester), '10. Nxb5!');
-      await _shot(tester, '16_good_move_glyph', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    testWidgets('a plain move mid-replay, the frame it lands, $theme', (
-      tester,
-    ) async {
-      await playTo(tester, _annotatedSlug, (replay) {
-        final step = stepOf(replay, 'd6');
-        return replay.startOf(step);
-      });
-      await _play(tester, const Duration(milliseconds: 40));
-      expect(moveLine(tester), '2… d6');
-      final notes = tester.widget<Opacity>(
-        find
-            .ancestor(
-              of: find.byKey(const ValueKey('story_note_move')),
-              matching: find.byType(Opacity),
-            )
-            .first,
-      );
-      // Stepped in at once: full ink, no settle at the replay's cadence.
-      expect(notes.opacity, 1);
-      await _shot(tester, '17_plain_move_transit', light);
-      await tester.pump(const Duration(seconds: 1));
-    });
-
-    for (final end in [false, true]) {
-      final edge = end ? 'last' : 'first';
-      testWidgets('row pulled past its $edge circle, $theme', (tester) async {
-        await _pumpToday(tester, light: light);
-        final scroll = tester.state<ScrollableState>(
-          find.descendant(
-            of: find.byType(TodayStoryRow),
-            matching: find.byType(Scrollable),
-          ),
-        );
-        // The circles' line, read before the row scrolls them away.
-        final y = tester.getCenter(_circle('us-championship-2026')).dy;
-        if (end) {
-          scroll.position.jumpTo(scroll.position.maxScrollExtent);
-          await tester.pump();
+      expect(_circle('2022-in-53-games'), findsNothing);
+      await _open(tester, '2021-in-52-games');
+      // Through the last circle's pages.
+      for (var i = 0; i < 12; i++) {
+        if (find
+            .byKey(const ValueKey('story_caught_up'))
+            .evaluate()
+            .isNotEmpty) {
+          break;
         }
-        final gesture = await tester.startGesture(Offset(196, y));
-        final step = end ? -4.0 : 4.0;
-        // Early in the pull the mark is already there, small and growing.
-        for (var i = 0; i < 200 && _pullMark(tester) == null; i++) {
-          await gesture.moveBy(Offset(step, 0));
-          await tester.pump(const Duration(milliseconds: 16));
-        }
-        // It comes in at about a quarter of the way to the trigger.
-        expect(_pullMark(tester)!.progress, lessThan(0.3));
-        for (var i = 0; i < 4; i++) {
-          await gesture.moveBy(Offset(step, 0));
-          await tester.pump(const Duration(milliseconds: 16));
-        }
-        expect(_pullMark(tester)!.progress, lessThan(0.4));
-        await _shot(tester, '18_row_pull_${edge}_early', light);
-        for (
-          var i = 0;
-          i < 200 && (_pullMark(tester)?.progress ?? 0) < 0.5;
-          i++
-        ) {
-          await gesture.moveBy(Offset(step, 0));
-          await tester.pump(const Duration(milliseconds: 16));
-        }
-        await tester.pump(const Duration(milliseconds: 16));
-        expect(_pullMark(tester)!.armed, 0);
-        await _shot(tester, '10_row_pull_${edge}_half', light);
-        for (
-          var i = 0;
-          i < 200 && (_pullMark(tester)?.progress ?? 0) < 1;
-          i++
-        ) {
-          await gesture.moveBy(Offset(step, 0));
-          await tester.pump(const Duration(milliseconds: 16));
-        }
+        await _tapAside(tester, 0.8);
         await _play(tester, const Duration(milliseconds: 400));
-        expect(_pullMark(tester)!.armed, closeTo(1, 0.01));
-        await _shot(tester, '11_row_pull_${edge}_armed', light);
-        // Back inside before letting go: nothing is put away.
-        await gesture.moveBy(Offset(-step * 120, 0));
-        await tester.pump(const Duration(milliseconds: 16));
-        await gesture.up();
-        await _run(tester, const Duration(seconds: 1));
-        expect(find.text('Undo'), findsNothing);
-      });
-    }
+        if (find
+            .byKey(const ValueKey('story_show_answer'))
+            .evaluate()
+            .isNotEmpty) {
+          await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+          await _play(tester, const Duration(milliseconds: 400));
+        }
+      }
+      expect(find.byKey(const ValueKey('story_caught_up')), findsOneWidget);
+      await _shot(tester, '08_all_caught_up', light);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a phone on its side, $theme', (tester) async {
+      await _pumpToday(tester, light: light, landscape: true);
+      await _open(tester, 'exchange-sacrifice-2');
+      await _play(tester, const Duration(milliseconds: 900));
+      await _shot(tester, '10_landscape', light);
+    });
 
     testWidgets('Settings, Customization, $theme', (tester) async {
       await _pumpSettings(tester, light: light);
       expect(find.text('Collection stories'), findsOneWidget);
-      expect(find.text('When new'), findsOneWidget);
-      await _shot(tester, '12_settings_customization', light);
+      await _shot(tester, '11_settings_customization', light);
       await tester.tap(find.text('Collection stories'));
       await tester.pumpAndSettle();
-      expect(find.text("When there's something new"), findsOneWidget);
-      await _shot(tester, '13_settings_story_choice', light);
+      await _shot(tester, '12_settings_story_choice', light);
     });
   }
 }

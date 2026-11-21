@@ -16,6 +16,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -182,7 +183,10 @@ Future<bool> showPremiumPaywallSheet({
     properties: {"trigger": trigger.name},
   );
   final handoff = _PaywallHandoff();
-  final result = await showModalBottomSheet<bool>(
+  // The paywall slides on the sheet spring every sheet rides
+  // (showGlassModalBottomSheet), over the glass scrim; its own surface is
+  // the paywall's.
+  final result = await showGlassModalBottomSheet<bool>(
     context: context,
     // Save flow / chess board sheets host their own nested Navigator
     // (smooth_sheets PagedSheet). Without rootNavigator:true the paywall
@@ -191,7 +195,6 @@ Future<bool> showPremiumPaywallSheet({
     useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => _PremiumPaywallSheet(
       hostContext: context,
@@ -586,11 +589,10 @@ Future<void> _showAndroidCodeRedeemSheet(
   required Package? annualPackage,
   required PlanType selectedPlan,
 }) async {
-  await showModalBottomSheet<void>(
+  await showGlassModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => _AndroidCodeRedeemSheet(
       parentRef: ref,
@@ -707,14 +709,11 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
 
     return Padding(
       // Lift the sheet above the keyboard so the CTA stays tappable.
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-        ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      // Frosted glass toned to the surface it used to be painted on.
+      child: GlassSheet(
+        radius: 28.sp,
+        tone: context.colors.surface,
         padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
         child: Column(
           mainAxisSize: MainAxisSize.min,

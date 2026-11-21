@@ -225,7 +225,8 @@ Widget searchEventCard(
       tourEventCardModel: event,
       forceCompactLayout: !grid,
       // A suffix keeps the card off Heroine: the same event can be listed
-      // twice on this page (a recent search that is live now).
+      // twice on this page (a recent search, and the same event coming up
+      // on the landing under it).
       heroTagSuffix: 'search-${event.id}',
       favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
       onTap: () => onOpen(event),

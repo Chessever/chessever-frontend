@@ -16,7 +16,6 @@ import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/screens/search/search_carousel.dart';
 import 'package:chessever2/screens/search/search_feeds.dart';
-import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/screens/search/search_landing_section.dart';
 import 'package:chessever2/screens/search/search_page_sections.dart';
 import 'package:chessever2/screens/search/sections/search_section_pages.dart';
@@ -35,19 +34,20 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// and a long-press offers exactly what it offers there (My Space for
 /// events, smart events and collections).
 ///
-/// In order: the events in play, the top of the world ranking, the main
-/// openings and the built-in smart events (both as smart events), the
-/// strongest events coming up, the collections, the news. Every section is
-/// a row of its cards read on as the reader scrolls it
+/// In order: the top of the world ranking, the main openings and the
+/// built-in smart events (both as smart events), the strongest events
+/// coming up, the collections, the news. The events in play have no
+/// section of their own: a search finds them, under Events. Every section
+/// is a row of its cards read on as the reader scrolls it
 /// ([SearchLandingSection]): its title opens the section's own page, as the
 /// See more card the row ends in does. A section with nothing to list is
-/// simply not there; nothing explains itself in prose. The recent searches are not
-/// here: they stand in for the landing while the field has the cursor
-/// (`SearchRecentsView`), as X shows them.
+/// simply not there; nothing explains itself in prose. The recent searches
+/// are not here: they stand in for the landing while the field has the
+/// cursor (`SearchRecentsView`), as X shows them.
 ///
-/// Each section listens to its own source, so a live event starting rebuilds
-/// only Live now. The sources are kept warm by the tab (`SearchTabScreen`),
-/// so clearing a search brings this back at once.
+/// Each section listens to its own source, so an event going live rebuilds
+/// only Coming up (it leaves it). The sources are kept warm by the tab
+/// (`SearchTabScreen`), so clearing a search brings this back at once.
 class SearchPageLanding extends StatelessWidget {
   const SearchPageLanding({super.key, required this.picks});
 
@@ -61,7 +61,6 @@ class SearchPageLanding extends StatelessWidget {
       primary: true,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       slivers: [
-        _LiveNowSection(picks: picks),
         _TopPlayersSection(picks: picks),
         _OpeningsSection(picks: picks),
         _SmartEventsSection(picks: picks),
@@ -80,9 +79,9 @@ class SearchPageLanding extends StatelessWidget {
 
 const Widget _none = SliverToBoxAdapter(child: SizedBox.shrink());
 
-/// The landing's event sections (Live now, Coming up) as the Events list
-/// draws its events: compact cards on a phone, the image cards of its grid
-/// on a tablet (a column's width in the row).
+/// The landing's event section (Coming up) as the Events list draws its
+/// events: compact cards on a phone, the image cards of its grid on a
+/// tablet (a column's width in the row).
 SearchLandingSection<GroupEventCardModel> _eventSection(
   BuildContext context, {
   required SearchSectionId section,
@@ -128,31 +127,6 @@ SearchLandingSection<GroupEventCardModel> _eventSection(
   }
   if (feed.isEmpty) return null;
   return (feed: feed, pending: 0);
-}
-
-/// Live now: an event card per event in play, as the Events list draws it,
-/// strongest first, more listed as the reader scrolls on. Events still
-/// being looked up arrive into room already held for them
-/// ([SearchLiveNow.pending]), so nothing moves when they land. Its page is
-/// Events on Current, live events first.
-class _LiveNowSection extends ConsumerWidget {
-  const _LiveNowSection({required this.picks});
-
-  final SearchPicks picks;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final live = ref.watch(searchLiveNowProvider);
-    if (live.isEmpty) return _none;
-    return _eventSection(
-      context,
-      section: SearchSectionId.liveNow,
-      feed: SearchFeed(items: live.events, hasMore: live.more),
-      pending: live.pending,
-      picks: picks,
-      onLoadMore: () => ref.read(searchLiveNowProvider.notifier).showMore(),
-    );
-  }
 }
 
 /// Top players: the world ranking from its head, the ranking read on as the
@@ -354,8 +328,8 @@ class _SmartEventsSection extends StatelessWidget {
 
 /// Coming up: the strongest events not started yet, soonest first, then the
 /// rest of the upcoming view as the reader scrolls on, as the Events list's
-/// Upcoming draws them. One that starts leaves at once (it is under Live
-/// now). Its page is Events on Upcoming.
+/// Upcoming draws them. One that starts leaves at once. Its page is Events
+/// on Upcoming.
 class _ComingUpSection extends ConsumerWidget {
   const _ComingUpSection({required this.picks});
 

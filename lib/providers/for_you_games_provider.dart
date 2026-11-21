@@ -70,6 +70,14 @@ Duration forYouLoadMoreBackoff(int failures) {
   return Duration(seconds: steps[(failures - 1).clamp(0, steps.length - 1)]);
 }
 
+/// Today's filters: none. Today has no filter of its own (its Filters
+/// button is gone), and the Events page's ([eventAppliedFilterProvider],
+/// still also exported as `forYouAppliedFilterProvider`) belong to the
+/// Events page alone. Today's page fetch, the saved feed it is keyed by and
+/// the events in play it counts for Live first all read these, so the
+/// three always agree, whatever the Events page is filtered to.
+const FilterPopupState todayFeedFilters = defaultFilterPopupState;
+
 /// Disk budget for the saved feed at launch, where it races the network.
 const Duration _kForYouLaunchCacheBudget = Duration(milliseconds: 250);
 
@@ -162,7 +170,8 @@ class ForYouState {
 
   /// The events Live first lifts on Today, whether it is on or not: the
   /// loaded events in play and the ones in play below the loaded pages that
-  /// Today's filters let through. Empty while nothing is in play; null until
+  /// Today's filters ([todayFeedFilters]) let through. Empty while nothing
+  /// is in play; null until
   /// the feed knows (its first page, or a live event it has not looked up
   /// yet, with no earlier answer to keep).
   final Set<String>? liveEventIds;
@@ -457,9 +466,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     bool fallback = false,
   }) async {
     final storage = ref.read(forYouFeedLocalStorageProvider);
-    final filterKey = forYouFeedCacheFilterKey(
-      ref.read(forYouAppliedFilterProvider),
-    );
+    final filterKey = forYouFeedCacheFilterKey(todayFeedFilters);
     try {
       final cached = await storage
           .read(filterKey: filterKey, fallback: fallback)
@@ -469,8 +476,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           cached.broadcasts.isNotEmpty &&
           state.events.isEmpty &&
           (state.isLoading || state.error != null) &&
-          filterKey ==
-              forYouFeedCacheFilterKey(ref.read(forYouAppliedFilterProvider))) {
+          filterKey == forYouFeedCacheFilterKey(todayFeedFilters)) {
         final liveIds = _getLiveIdsSnapshot();
         final models = cached.broadcasts
             .map(
@@ -727,8 +733,8 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     bool isCurrent() => mounted && generation == _fetchGeneration;
 
     try {
-      // Read filter state
-      final appliedFilters = ref.read(forYouAppliedFilterProvider);
+      // Today's filters: none, never the Events page's ([todayFeedFilters]).
+      const appliedFilters = todayFeedFilters;
 
       // Parse filters
       final formatFilters =
@@ -1031,7 +1037,8 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   /// Fetches, by id, the events in play that no loaded page holds, keeps the
-  /// ones this feed's filters let through ([liveEventPassesForYouFilters]) in
+  /// ones Today's filters let through ([todayFeedFilters], none: so every
+  /// one; [liveEventPassesForYouFilters]) in
   /// [_liveExtras] with their boards, counts them in
   /// [ForYouState.liveEventIds], and shows them while Live first is on.
   ///
@@ -1090,7 +1097,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
             .getGroupBroadcastsByIdsOrNames(missing)
             .timeout(_kForYouRequestTimeout);
         if (!mounted) return;
-        final filters = ref.read(forYouAppliedFilterProvider);
+        const filters = todayFeedFilters;
         final liveIdList = liveIds.toList(growable: false);
         found = [
           for (final broadcast in broadcasts)

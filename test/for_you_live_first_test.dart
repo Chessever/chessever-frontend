@@ -153,23 +153,30 @@ void main() {
       ]);
     });
 
-    test('keeps out a live event its filters would not list', () async {
-      final feed = _Feed([
-        for (var i = 0; i < 25; i++) _gb('e$i', 2800 - i * 10),
-      ]);
-      final container = _container(
-        feed,
-        liveIds: const ['e23'],
-        filters: defaultFilterPopupState.copyWith(formatsAndStates: {'Blitz'}),
-      );
-      await _loaded(container);
+    test(
+      'never keeps out a live event for the Events page\'s filters',
+      () async {
+        // Today has no filters: one applied on the Events page is the Events
+        // page's alone.
+        final feed = _Feed([
+          for (var i = 0; i < 25; i++) _gb('e$i', 2800 - i * 10),
+        ]);
+        final container = _container(
+          feed,
+          liveIds: const ['e23'],
+          filters: defaultFilterPopupState.copyWith(
+            formatsAndStates: {'Blitz'},
+          ),
+        );
+        await _loaded(container);
 
-      final notifier = container.read(forYouEventsProvider.notifier);
-      expect(await notifier.hasLiveEvent(), isFalse);
-      // Asked once, not again on every press.
-      expect(await notifier.hasLiveEvent(), isFalse);
-      expect(feed.fetchedByIds, hasLength(1));
-    });
+        final notifier = container.read(forYouEventsProvider.notifier);
+        expect(await notifier.hasLiveEvent(), isTrue);
+        // Asked once, not again on every press.
+        expect(await notifier.hasLiveEvent(), isTrue);
+        expect(feed.fetchedByIds, hasLength(1));
+      },
+    );
 
     test('follows the live set while it is on', () async {
       final live = StreamController<List<String>>();
@@ -227,7 +234,8 @@ void main() {
       },
     );
 
-    test('leaves out a live event its filters would not list', () async {
+    test('counts every live event, whatever the Events page is filtered '
+        'to', () async {
       final feed = _Feed([
         for (var i = 0; i < 25; i++) _gb('e$i', 2800 - i * 10),
       ]);
@@ -239,7 +247,9 @@ void main() {
       await _loaded(container);
       await _settle(() => count(container) != null);
 
-      expect(count(container), 0);
+      expect(count(container), 1);
+      // The feed itself was asked unfiltered.
+      expect(feed.formatFilters, everyElement(isEmpty));
     });
 
     test(
@@ -346,7 +356,8 @@ void main() {
 
   group('Today button', () {
     final toggle = find.byKey(const ValueKey(kForYouLiveFirstButtonKey));
-    final filter = find.byKey(const ValueKey(kForYouFilterButtonKey));
+    // Today's main button: Search, where the filter stood.
+    final search = find.byKey(const ValueKey(kForYouSearchButtonKey));
     // The mark in its off or on state.
     Finder words(String state) => find.descendant(
       of: toggle,
@@ -371,7 +382,7 @@ void main() {
 
       expect(toggle, findsNothing);
       expect(find.byType(LiveFirstCapsule), findsNothing);
-      expect(filter, findsOneWidget);
+      expect(search, findsOneWidget);
       expect(container.read(homeEventsLiveFirstProvider), isFalse);
       expect(_rows(tester), ['a', 'b', 'c']);
       await _unmount(tester);
@@ -408,7 +419,7 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('comes in above the filter, which stays put on the gutter', (
+    testWidgets('comes in above Search, which stays put on the gutter', (
       tester,
     ) async {
       final live = StreamController<List<String>>();
@@ -416,22 +427,22 @@ void main() {
       live.add(const []);
       await _pumpHome(tester, liveStream: live.stream);
       expect(toggle, findsNothing);
-      final rest = tester.getRect(filter);
+      final rest = tester.getRect(search);
 
       live.add(const ['c']);
       await tester.pump();
       await tester.pump();
 
       expect(toggle, findsOneWidget);
-      expect(tester.getRect(filter), rest);
-      // Stacked as every page's buttons are (the event screen's): a disc the
-      // filter's size a step above it, rims on one trailing edge.
+      expect(tester.getRect(search), rest);
+      // Stacked as every page's buttons are (the event screen's): a disc
+      // Search's size a step above it, rims on one trailing edge.
       expect(
         rest.top - tester.getRect(toggle).bottom,
         moreOrLessEquals(InkFabStack.step, epsilon: 0.01),
       );
       final capsule = glassOf(tester, toggle);
-      final disc = glassOf(tester, filter);
+      final disc = glassOf(tester, search);
       expect(capsule.right, moreOrLessEquals(disc.right, epsilon: 0.01));
       expect(
         capsule.height,
@@ -444,14 +455,14 @@ void main() {
       // On the floating buttons' gutter.
       expect(rest.right, 393 - 16);
 
-      // Turned on, it changes colour in place; the filter holds.
+      // Turned on, it changes colour in place; Search holds.
       await tester.tap(toggle);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 120));
-      expect(tester.getRect(filter), rest);
+      expect(tester.getRect(search), rest);
       expect(tester.getRect(toggle).right, rest.right);
       await tester.pump(const Duration(milliseconds: 600));
-      expect(tester.getRect(filter), rest);
+      expect(tester.getRect(search), rest);
       expect(
         glassOf(tester, toggle).right,
         moreOrLessEquals(disc.right, epsilon: 0.01),
@@ -522,21 +533,30 @@ void main() {
       await _unmount(tester);
     });
 
-    testWidgets('the filter always floats over Today, counting what it '
-        'narrows', (tester) async {
-      // Home has no search field any more: the filter for this feed is a
-      // floating button of its own.
+    testWidgets('Search always floats over Today, wearing the search '
+        'buttons\' magnifier; Today has no filter button', (tester) async {
+      // Search left the dock for this button: it is always there, Live
+      // first or not.
       final container = await _pumpHome(tester, liveIds: const []);
-      expect(filter, findsOneWidget);
-      expect(find.bySemanticsLabel('Filters'), findsOneWidget);
+      expect(search, findsOneWidget);
+      expect(
+        find.descendant(of: search, matching: find.byType(SearchInkFab)),
+        findsNothing,
+      );
+      expect(tester.widget(search), isA<SearchInkFab>());
+      expect(find.bySemanticsLabel('Search'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('^Filters')), findsNothing);
+      expect(find.byIcon(Icons.tune_rounded), findsNothing);
 
+      // A filter applied on the Events page puts no count on it.
       container
           .read(eventAppliedFilterProvider.notifier)
           .state = defaultFilterPopupState.copyWith(
         eloRange: const RangeValues(2600, kFilterMaxElo),
       );
       await tester.pump();
-      expect(find.bySemanticsLabel('Filters, 1 applied'), findsOneWidget);
+      expect(find.bySemanticsLabel('Search'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('applied')), findsNothing);
       await _unmount(tester);
     });
 
@@ -772,6 +792,9 @@ class _Feed implements GroupBroadcastRepository {
   final Future<void>? gate;
   final List<List<String>> fetchedByIds = [];
 
+  /// The time controls each page was asked for.
+  final List<List<String>> formatFilters = [];
+
   @override
   Future<List<GroupBroadcast>> getForYouGroupBroadcasts({
     int limit = 20,
@@ -781,6 +804,7 @@ class _Feed implements GroupBroadcastRepository {
     int? maxElo,
     Set<String>? statusFilters,
   }) async {
+    formatFilters.add([...?timeControlFilters]);
     await gate;
     return ranked.skip(offset).take(limit).toList();
   }

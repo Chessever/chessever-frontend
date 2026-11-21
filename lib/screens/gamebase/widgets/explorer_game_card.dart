@@ -478,21 +478,13 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
   /// strip had it from a current answer; the sheet's own count slot always
   /// shows the live total.
   void _openAllGames(BuildContext context, {required int? totalCount}) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.88,
-      ),
-      builder:
-          (_) => PositionGamesSheet(
-            fen: widget.fen,
-            moves: widget.moves,
-            filters: widget.filters,
-            useFenEndpoint: widget.useFenEndpoint,
-            title: totalCount != null ? '$totalCount games' : 'All games',
-          ),
+    showPositionGamesSheet(
+      context,
+      fen: widget.fen,
+      moves: widget.moves,
+      filters: widget.filters,
+      useFenEndpoint: widget.useFenEndpoint,
+      title: totalCount != null ? '$totalCount games' : 'All games',
     );
   }
 }

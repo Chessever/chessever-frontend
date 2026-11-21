@@ -574,7 +574,6 @@ void main() {
       final sound = FeedMoveSound(sfx, boardSoundOn: () => boardSoundOn);
       sound.play(san: 'e4');
       sound.play(san: 'Qxh7+', moveClass: MoveClass.blunder);
-      sfx.playSwipe();
       sfx.playGameEnd(_item('½-½'));
 
       sfx.muted = false;
@@ -586,13 +585,13 @@ void main() {
       expect(output.calls, isEmpty);
     });
 
-    test('Feed: swipes whoosh; a drawn game ends on the board draw chime, a '
-        'win does not', () {
+    test('Feed: a page turn is silent; a drawn game ends on the board draw '
+        'chime, a win does not', () {
       final sfx = FeedSfx.forTesting();
-      sfx.playSwipe();
+      sfx.pageTurned();
       sfx.playGameEnd(_item('1-0'));
       sfx.playGameEnd(_item('½-½'));
-      expect(output.calls, ['ordinary:feedSwipe', 'ordinary:draw']);
+      expect(output.calls, ['ordinary:draw']);
     });
   });
 

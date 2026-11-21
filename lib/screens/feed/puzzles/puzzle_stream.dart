@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_tab_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
-import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -20,9 +19,10 @@ final puzzleCurrentIdProvider = StateProvider<String?>((ref) => null);
 /// The Puzzle tab's body: puzzles as posts, one per page, swiped exactly
 /// like the Feed tab's games and pulled down on the first one to refresh.
 ///
-/// [FeedPuzzlePage] already sits on the Feed's page geometry (player rows,
-/// board, then the status and caption beside the action rail), so a puzzle
-/// here lands where a game lands in the Feed.
+/// [FeedPuzzlePage] already sits on the Feed's page geometry (its header,
+/// the player rows and the board, then the status beside the action rail),
+/// so a puzzle here lands where a game lands in the Feed. Paging is silent,
+/// as in the Feed.
 class PuzzleStream extends ConsumerStatefulWidget {
   const PuzzleStream({
     required this.isVisible,
@@ -85,7 +85,6 @@ class _PuzzleStreamState extends ConsumerState<PuzzleStream> {
     if (index < puzzles.length) {
       ref.read(puzzleCurrentIdProvider.notifier).state = puzzles[index].id;
     }
-    feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
     if (index >= puzzles.length - 3) {
       unawaited(ref.read(puzzleTabProvider.notifier).loadMore());
     }

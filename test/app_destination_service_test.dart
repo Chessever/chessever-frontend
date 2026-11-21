@@ -17,6 +17,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
@@ -456,4 +457,65 @@ void main() {
       expect(opened, isEmpty);
     },
   );
+
+  testWidgets('Collections opens on its dock tab, over Home, pushing nothing', (
+    tester,
+  ) async {
+    late BuildContext homeContext;
+    late WidgetRef homeRef;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDestinationPageNavigationProvider.overrideWithValue((
+            _,
+            page,
+            name,
+          ) {
+            opened.add(page);
+            routeNames.add(name);
+          }),
+        ],
+        child: MaterialApp(
+          onGenerateRoute: (settings) => MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => const Text('another page'),
+          ),
+          // Home, as the app names its route.
+          onGenerateInitialRoutes: (_) => [
+            MaterialPageRoute<void>(
+              settings: const RouteSettings(name: '/home_screen'),
+              builder: (_) => Consumer(
+                builder: (ctx, widgetRef, _) {
+                  homeContext = ctx;
+                  homeRef = widgetRef;
+                  return const Text('home');
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    final container = ProviderScope.containerOf(homeContext);
+    final section = container.listen(
+      selectedBottomNavBarItemProvider,
+      (_, _) {},
+    );
+    addTearDown(section.close);
+    expect(section.read(), BottomNavBarItem.forYou);
+
+    expect(
+      await openAppDestination(
+        homeContext,
+        homeRef,
+        parseAppDestination('/app/collections')!,
+        openLegacyLink: (_) async => throw StateError('Must not resolve'),
+      ),
+      isTrue,
+    );
+    await tester.pump();
+    expect(section.read(), BottomNavBarItem.collections);
+    expect(opened, isEmpty);
+    expect(find.text('home'), findsOneWidget);
+  });
 }

@@ -11,6 +11,8 @@ import 'dart:ui' as ui;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -33,6 +35,7 @@ const _outDir = String.fromEnvironment('POPUP_DIR');
 const _capture = ValueKey('popup_capture');
 const _confirm = ValueKey('popup_confirm');
 const _games = ValueKey('popup_games');
+const _eventFilter = ValueKey('popup_event_filter');
 
 const _fens = [
   'r1bqkb1r/pp3ppp/2nppn2/8/3NP3/2N5/PPP1BPPP/R1BQK2R w KQkq - 0 7',
@@ -161,6 +164,34 @@ Future<void> _pumpToday(WidgetTester tester, {required bool light}) async {
                                 isDangerous: true,
                               ),
                               child: const Text('confirm'),
+                            ),
+                            // The event filter, as the Events page opens
+                            // it (Today has no filter button any more).
+                            TextButton(
+                              key: _eventFilter,
+                              onPressed: () {
+                                ref
+                                    .read(filterPopupProvider.notifier)
+                                    .setState(
+                                      ref.read(eventAppliedFilterProvider),
+                                    );
+                                showAlertModal<void>(
+                                  context: context,
+                                  horizontalPadding: 0,
+                                  child: FilterPopup(
+                                    onApplyFilters: (next) =>
+                                        ref
+                                                .read(
+                                                  eventAppliedFilterProvider
+                                                      .notifier,
+                                                )
+                                                .state =
+                                            next,
+                                    onResetFilters: () {},
+                                  ),
+                                );
+                              },
+                              child: const Text('event filter'),
                             ),
                             TextButton(
                               key: _games,
@@ -301,11 +332,9 @@ void main() {
   for (final light in [false, true]) {
     final theme = light ? 'light' : 'dark';
 
-    _scene('Today filter popup over live boards, $theme', (tester) async {
+    _scene('event filter popup over live boards, $theme', (tester) async {
       await _pumpToday(tester, light: light);
-      await tester.tap(find.byKey(const ValueKey(kForYouFilterButtonKey)));
-      await tester.pump();
-      await _settle(tester);
+      await _press(tester, find.byKey(_eventFilter, skipOffstage: false));
       expect(find.text('Apply Filters'), findsOneWidget);
       await _shot(tester, 'today_filter', light);
     });

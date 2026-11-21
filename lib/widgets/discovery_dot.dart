@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -482,32 +483,14 @@ class _DiscoveryBubbleState extends State<_DiscoveryBubble> {
       active: !MediaQuery.disableAnimationsOf(context),
       builder: (context, scale, child) =>
           Transform.scale(scale: scale, child: child),
-      // The same capsule as the app snack: ink in dark, paper in light.
+      // The popups' frosted glass in the snack capsule's tones: ink in dark,
+      // paper in light. Its lit rim is the edge, its one tight shadow the
+      // lift.
       child: Semantics(
         liveRegion: true,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: isLight ? context.colors.popup : const Color(0xFF08080A),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isLight
-                  ? context.colors.textPrimary.withValues(alpha: 0.10)
-                  : Colors.white.withValues(alpha: 0.08),
-            ),
-            boxShadow: [
-              isLight
-                  ? const BoxShadow(
-                      color: Color(0x2E0E1A1C),
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
-                    )
-                  : BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
-                    ),
-            ],
-          ),
+        child: PopupGlass(
+          tone: isLight ? context.colors.popup : const Color(0xFF08080A),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             child: Text(

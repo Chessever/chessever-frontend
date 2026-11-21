@@ -1452,21 +1452,13 @@ class _MoveStatisticsSummaryRow extends ConsumerWidget {
         );
 
     void openGames() {
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.88,
-        ),
-        builder:
-            (_) => PositionGamesSheet(
-              fen: currentFen,
-              moves: exploredMoves,
-              // No per-move UCI: all games that reached this explorer position.
-              filters: filters,
-              title: 'Games for $moveNumberLabel∑',
-            ),
+      showPositionGamesSheet(
+        context,
+        fen: currentFen,
+        moves: exploredMoves,
+        // No per-move UCI: all games that reached this explorer position.
+        filters: filters,
+        title: 'Games for $moveNumberLabel∑',
       );
     }
 
@@ -1787,21 +1779,13 @@ class _MoveStatisticsRow extends ConsumerWidget {
         );
 
     void openGames() {
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.88,
-        ),
-        builder:
-            (_) => PositionGamesSheet(
-              fen: currentFen,
-              moves: exploredMoves,
-              uci: aggregate.uci,
-              filters: filters,
-              title: 'Games for $moveNumberLabel$sanMove',
-            ),
+      showPositionGamesSheet(
+        context,
+        fen: currentFen,
+        moves: exploredMoves,
+        uci: aggregate.uci,
+        filters: filters,
+        title: 'Games for $moveNumberLabel$sanMove',
       );
     }
 

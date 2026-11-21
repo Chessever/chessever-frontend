@@ -24,6 +24,7 @@ import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/icons/fen_position_icon.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart'
@@ -49,6 +50,11 @@ class ShareGameCardOverlay extends StatefulWidget {
   final Move? lastMove;
   final Uint8List? boardImageBytes;
   final String pgn;
+
+  /// The PGN when it was still being fetched as the overlay opened (a grid
+  /// card's share): it replaces [pgn] once it lands, and the GIF export
+  /// waits for it.
+  final Future<String>? pendingPgn;
   final List<String> moveSans; // The actual move list from analysis state
   final String whitePlayerName;
   final String blackPlayerName;
@@ -82,6 +88,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.lastMove,
     this.boardImageBytes,
     required this.pgn,
+    this.pendingPgn,
     required this.moveSans,
     required this.whitePlayerName,
     required this.blackPlayerName,
@@ -131,6 +138,28 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   bool _isTilting = false;
 
   bool _cancelled = false; // Set on dispose to abort in-flight GIF generation
+
+  /// [ShareGameCardOverlay.pendingPgn], once it has landed.
+  String? _latePgn;
+
+  /// The game's PGN: the late one when it came after the open.
+  String get _pgn => _latePgn ?? widget.pgn;
+
+  /// The off-screen export card waits for the first frame: the overlay
+  /// opens with only the card the reader sees to build.
+  bool _exportCardReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.pendingPgn?.then((pgn) {
+      if (!mounted || pgn.isEmpty) return;
+      setState(() => _latePgn = pgn);
+    }, onError: (Object _) {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _exportCardReady = true);
+    });
+  }
 
   @override
   void dispose() {
@@ -358,7 +387,24 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       }
     }
 
-    if (!pgnHasMoves(widget.pgn)) {
+    // Opened before its PGN landed (a grid card's share): wait for it here,
+    // under the GIF's own progress, rather than holding the overlay's open.
+    final pending = widget.pendingPgn;
+    if (_latePgn == null && pending != null) {
+      setState(() {
+        _isGeneratingGif = true;
+        _gifProgressLabel = 'Preparing your GIF…';
+        _gifProgress = null;
+      });
+      try {
+        final pgn = await pending;
+        if (pgn.isNotEmpty) _latePgn = pgn;
+      } catch (_) {}
+      if (!mounted || _cancelled) return;
+      setState(() => _isGeneratingGif = false);
+    }
+
+    if (!pgnHasMoves(_pgn)) {
       // No moves to animate — fall back to static image export
       await _shareImage();
       return;
@@ -392,7 +438,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       if (!mounted || _cancelled) return;
       setState(() => _gifProgressLabel = 'Starting your GIF…');
       final job = await service.submitJob(
-        pgn: widget.pgn,
+        pgn: _pgn,
         flipped: widget.isFlipped,
         metadata: _cloudGifMetadata(
           whitePhotoData: photoData[0],
@@ -499,7 +545,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       caseSensitive: false,
       multiLine: true,
     );
-    final value = int.tryParse(pattern.firstMatch(widget.pgn)?.group(1) ?? '');
+    final value = int.tryParse(pattern.firstMatch(_pgn)?.group(1) ?? '');
     return value != null && value > 0 ? value : null;
   }
 
@@ -686,6 +732,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     );
   }
 
+  /// The overlay's stage: the page dimmed under the card.
+  Color get _stage => context.isLightTheme
+      ? context.colors.scrim
+      : Colors.black.withValues(alpha: 0.7);
+
+  /// The page as the stage leaves it: what the controls' glass is solved
+  /// over, so it averages to each control's own tone.
+  Color get _stagePage => Color.alphaBlend(_stage, context.colors.background);
+
   Widget _buildEvalToggle() {
     final isLight = context.isLightTheme;
     // The whole pill toggles, and it is never shorter than a 44dp target.
@@ -697,14 +752,13 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _showEvalBar = !_showEvalBar),
-        child: Container(
+        // The popups' glass, frosted over the overlay's stage.
+        child: PopupGlass(
           constraints: const BoxConstraints(minHeight: 44),
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            borderRadius: BorderRadius.circular(22.br),
-            border: Border.all(color: context.colors.surfaceRecessed),
-          ),
+          borderRadius: BorderRadius.circular(22.br),
+          tone: context.colors.surface,
+          page: _stagePage,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -855,14 +909,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       isPrimary ? context.colors.inkOnAccent : context.colors.textPrimary;
 
   Widget _buildActionButtons() {
-    return Container(
+    return PopupGlass(
       width: 370.w,
       padding: EdgeInsets.all(4.w),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: context.colors.surfaceRecessed),
-      ),
+      borderRadius: BorderRadius.circular(12.br),
+      tone: context.colors.surface,
+      page: _stagePage,
       child: Row(
         children: [
           _buildActionButton(
@@ -902,14 +954,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   Widget _buildGifProgress() {
-    return Container(
+    // Solid glass: its spinner and bar move on every frame, and a live blur
+    // under them would be paid again on each one.
+    return PopupGlass(
       width: 370.w,
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: context.colors.surfaceRecessed),
-      ),
+      borderRadius: BorderRadius.circular(12.br),
+      tone: context.colors.surface,
+      page: _stagePage,
+      solid: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -959,15 +1012,13 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
     final isLight = context.isLightTheme;
     // The whole bar copies the link; the small copy button is the visible cue.
-    final bar = Container(
+    final bar = PopupGlass(
       width: 370.w,
       padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        // Dark keeps its slate bar; paper gets a paper bar with an edge.
-        color: isLight ? context.colors.surface : const Color(0xFF141A20),
-        borderRadius: BorderRadius.circular(22.br),
-        border: isLight ? Border.all(color: context.colors.divider) : null,
-      ),
+      borderRadius: BorderRadius.circular(22.br),
+      // Dark keeps its slate bar; paper gets the paper glass.
+      tone: isLight ? context.colors.surface : const Color(0xFF141A20),
+      page: _stagePage,
       child: Row(
         children: [
           Expanded(
@@ -1052,9 +1103,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     return Material(
       type: MaterialType.transparency,
       child: Container(
-        color: context.isLightTheme
-            ? context.colors.scrim
-            : Colors.black.withValues(alpha: 0.7),
+        color: _stage,
         child: Stack(
           children: [
             Positioned.fill(
@@ -1116,7 +1165,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                                 lastMove: widget.lastMove,
                                 boardImageBytes: widget.boardImageBytes,
                                 onClose: widget.onClose,
-                                pgn: widget.pgn,
+                                pgn: _pgn,
                                 moveSans: widget.moveSans,
                                 whitePlayerName: widget.whitePlayerName,
                                 blackPlayerName: widget.blackPlayerName,
@@ -1184,47 +1233,50 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
             ),
             // Offscreen full card for screenshot (with all moves)
             // Position off-screen instead of using Offstage to ensure proper rendering
-            Positioned(
-              left: -10000,
-              top: -10000,
-              child: Screenshot(
-                controller: _fullScreenshotController,
-                child: Container(
-                  color: context.colors.background,
-                  padding: EdgeInsets.all(16.w),
-                  child: _ShareCard(
-                    boardSettings: widget.boardSettings,
-                    positionFen: widget.positionFen,
-                    lastMove: widget.lastMove,
-                    boardImageBytes: widget.boardImageBytes,
-                    onClose: null,
-                    pgn: widget.pgn,
-                    moveSans: widget.moveSans,
-                    whitePlayerName: widget.whitePlayerName,
-                    blackPlayerName: widget.blackPlayerName,
-                    whitePlayerCountry: widget.whitePlayerCountry,
-                    blackPlayerCountry: widget.blackPlayerCountry,
-                    whitePlayerElo: widget.whitePlayerElo,
-                    blackPlayerElo: widget.blackPlayerElo,
-                    whitePlayerTitle: widget.whitePlayerTitle,
-                    blackPlayerTitle: widget.blackPlayerTitle,
-                    whitePlayerClock: widget.whitePlayerClock,
-                    blackPlayerClock: widget.blackPlayerClock,
-                    tournamentName: widget.tournamentName,
-                    roundInfo: widget.roundInfo,
-                    currentMoveIndex: widget.currentMoveIndex,
-                    evaluation: widget.evaluation,
-                    mate: widget.mate,
-                    isFlipped: widget.isFlipped,
-                    gameStatus: widget.gameStatus,
-                    isAtGameEnd: widget.isAtGameEnd,
-                    isPreview: false,
-                    showEvalBar: _showEvalBar,
-                    gameId: widget.gameId,
+            // Built from the second frame: the open builds only the card the
+            // reader sees, and an export is never asked for before then.
+            if (_exportCardReady)
+              Positioned(
+                left: -10000,
+                top: -10000,
+                child: Screenshot(
+                  controller: _fullScreenshotController,
+                  child: Container(
+                    color: context.colors.background,
+                    padding: EdgeInsets.all(16.w),
+                    child: _ShareCard(
+                      boardSettings: widget.boardSettings,
+                      positionFen: widget.positionFen,
+                      lastMove: widget.lastMove,
+                      boardImageBytes: widget.boardImageBytes,
+                      onClose: null,
+                      pgn: _pgn,
+                      moveSans: widget.moveSans,
+                      whitePlayerName: widget.whitePlayerName,
+                      blackPlayerName: widget.blackPlayerName,
+                      whitePlayerCountry: widget.whitePlayerCountry,
+                      blackPlayerCountry: widget.blackPlayerCountry,
+                      whitePlayerElo: widget.whitePlayerElo,
+                      blackPlayerElo: widget.blackPlayerElo,
+                      whitePlayerTitle: widget.whitePlayerTitle,
+                      blackPlayerTitle: widget.blackPlayerTitle,
+                      whitePlayerClock: widget.whitePlayerClock,
+                      blackPlayerClock: widget.blackPlayerClock,
+                      tournamentName: widget.tournamentName,
+                      roundInfo: widget.roundInfo,
+                      currentMoveIndex: widget.currentMoveIndex,
+                      evaluation: widget.evaluation,
+                      mate: widget.mate,
+                      isFlipped: widget.isFlipped,
+                      gameStatus: widget.gameStatus,
+                      isAtGameEnd: widget.isAtGameEnd,
+                      isPreview: false,
+                      showEvalBar: _showEvalBar,
+                      gameId: widget.gameId,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

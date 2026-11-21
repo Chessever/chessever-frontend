@@ -8,6 +8,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -54,13 +55,7 @@ class AttPromptService {
       }
 
       if (showExplainer && context.mounted) {
-        await showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          barrierColor: Colors.black.withValues(alpha: 0.6),
-          builder: (_) => const _AttExplainerSheet(),
-        );
+        await showAttExplainerSheet(context);
       }
 
       // Always trigger Apple's system dialog after the explainer dismisses,
@@ -78,17 +73,29 @@ class AttPromptService {
   }
 }
 
+/// The explainer [AttPromptService.ensurePrompted] shows before Apple's
+/// dialog: a glass sheet over the glass scrim.
+@visibleForTesting
+Future<void> showAttExplainerSheet(BuildContext context) =>
+    showGlassModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const _AttExplainerSheet(),
+    );
+
 class _AttExplainerSheet extends StatelessWidget {
   const _AttExplainerSheet();
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
-    return Container(
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    // Glass toned to the surface it used to be painted on. Most of the
+    // screen tall: solid, the glass's look without a live blur under it
+    // (the frost rule, PopupGlassStyle.frostMaxScreenShare).
+    return GlassSheet(
+      radius: 28,
+      tone: context.colors.surface,
+      solid: true,
       padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset),
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -1,9 +1,11 @@
-// Feed as the home shell holds it: the top bar steps away and the dock
-// draws in to its compact capsule as the reader pages on; both come back as
-// they page back, on the same chrome as every other root. The posts never
-// change size and are never under a bar at rest; as the bars move, each
-// post is moved (never laid out again) so its centre stays on the centre of
-// the room the bars leave. The deck under the pages moves with the posts.
+// Feed as the home shell holds it: no top bar of its own (no title, no
+// speaker), the posts under the status bar's strip; the dock leaves whole
+// (past the screen's edge, faded out) as the reader pages on and comes back
+// as they page back,
+// on the same chrome as every other root. The posts never change size and
+// are never under a bar at rest; as the dock moves, each post is moved
+// (never laid out again) so its centre stays on the centre of the room the
+// bars leave. The deck under the pages moves with the posts.
 
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -51,13 +53,15 @@ const HomeNavMetrics _dock = HomeNavMetrics(
   gap: _homeIndicator - 12,
   count: 5,
   screenWidth: 393,
+  inset: _homeIndicator,
 );
 
 /// The dock's slot, constant: 78.
 final double _bar = _dock.extent;
 
-/// What the drawn-in capsule covers: 66.
-final double _compact = _dock.compactExtent;
+/// What covers the screen's foot with the dock gone: the home indicator's
+/// strip, 34.
+final double _away = _dock.awayExtent;
 
 final Finder _pages = find.byKey(const ValueKey('feed_pages'));
 final Finder _deck = find.byKey(const ValueKey('feed_bottom_deck'));
@@ -197,10 +201,11 @@ Rect _likeOnScreen(WidgetTester tester) {
 
 /// The room the bars leave a post when [shown] of them is on screen (1 all
 /// of it, 0 none): from under the top bar's band (the status bar's strip
-/// always stays) to over the dock (its compact capsule always stays).
+/// always stays) to over the dock (gone, only the home indicator's strip
+/// stays).
 ({double top, double bottom}) _room(double shown, double header) => (
   top: _statusBar + shown * (header - _statusBar),
-  bottom: _phone.height - (_compact + shown * (_bar - _compact)),
+  bottom: _phone.height - (_away + shown * (_bar - _away)),
 );
 
 /// Every post built (the one in view and its neighbours): its laid-out box
@@ -286,16 +291,15 @@ void _expectDeckUnderPost(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('paging on sends the top bar away and draws the dock in; every '
+  testWidgets('paging on sends the bars away, the dock whole; every '
       'post keeps one size and stays centred in the room they leave', (
     tester,
   ) async {
     final chrome = await _pump(tester);
     // Measured where the bar is: the pages' own context has had the status
     // bar's inset spent on them.
-    final header = HomeTopBarMetrics.headerExtent(
-      tester.element(find.byType(FeedScreen)),
-    );
+    // Feed has no top bar: its page starts under the status bar's strip.
+    const header = _statusBar;
     final page = tester.getSize(_pages);
     // The pages run edge to edge under both bars.
     expect(page, _phone);
@@ -337,17 +341,23 @@ void main() {
       position.position.pixels,
       moreOrLessEquals(_phone.height, epsilon: 0.01),
     );
+    // No bar to step away: only the status bar's strip, in the page's
+    // ground, over the pages.
+    expect(find.byType(HomeTopBarFrame), findsNothing);
+    expect(find.text('Feed'), findsNothing);
+    expect(find.byKey(const ValueKey('feed_sound_toggle')), findsNothing);
     expect(
-      tester.getRect(find.byType(HomeTopBarFrame)).height,
+      tester.getRect(find.byKey(const ValueKey('feed_status_strip'))).height,
       closeTo(_statusBar, 0.5),
     );
-    // The dock never leaves: its slot keeps its place.
+    // The dock's slot keeps its place, the dock gone or not.
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('bottom-bar'))).dy,
       closeTo(_phone.height - _bar, 0.5),
     );
     // With the bars away, the post is framed between the status bar and
-    // the compact capsule, and still answers where it is drawn. The deck
+    // the home indicator's strip, and still answers where it is drawn. The
+    // deck
     // moved with it.
     final away = _room(0, header);
     final shownPost = _posts(tester).firstWhere(
@@ -382,9 +392,8 @@ void main() {
   testWidgets('a pull back short of a turn brings the bars back; the post '
       'springs back to its place, centred between them', (tester) async {
     final chrome = await _pump(tester);
-    final header = HomeTopBarMetrics.headerExtent(
-      tester.element(find.byType(FeedScreen)),
-    );
+    // Feed has no top bar: its page starts under the status bar's strip.
+    const header = _statusBar;
     final post = Size(_phone.width, _phone.height - header - _bar);
     final position = tester
         .state<ScrollableState>(
@@ -477,9 +486,8 @@ void main() {
   testWidgets('re-tapping the Feed tab rides home to the first post, with '
       'the bars back', (tester) async {
     final chrome = await _pump(tester);
-    final header = HomeTopBarMetrics.headerExtent(
-      tester.element(find.byType(FeedScreen)),
-    );
+    // Feed has no top bar: its page starts under the status bar's strip.
+    const header = _statusBar;
     final post = Size(_phone.width, _phone.height - header - _bar);
     for (var i = 0; i < 2; i++) {
       await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
@@ -526,9 +534,8 @@ void main() {
     tester,
   ) async {
     final chrome = await _pump(tester, reduceMotion: true);
-    final header = HomeTopBarMetrics.headerExtent(
-      tester.element(find.byType(FeedScreen)),
-    );
+    // Feed has no top bar: its page starts under the status bar's strip.
+    const header = _statusBar;
     final post = Size(_phone.width, _phone.height - header - _bar);
     await tester.flingFrom(_onTopRow(tester), const Offset(0, -320), 1500);
     for (var i = 0; i < 60; i++) {
@@ -543,14 +550,24 @@ void main() {
 
   test('the travel centres a post between the bars', () {
     // Shown: a 80pt band under a 59pt status bar, the dock's 78pt slot.
-    // Away: the status bar's strip, and the compact capsule's 66.
+    // Away: the status bar's strip, and the home indicator's 34 (the dock
+    // gone).
     final travel = FeedCentredBetweenBars.travelFor(
       shown: const EdgeInsets.only(top: 139, bottom: 78),
-      away: const EdgeInsets.only(top: 59, bottom: 66),
+      away: const EdgeInsets.only(top: 59, bottom: 34),
     );
-    // The room gains 80 at the top and 12 at the bottom: its centre rises
-    // by 34.
-    expect(travel, -34);
+    // The room gains 80 at the top and 44 at the bottom: its centre rises
+    // by 18.
+    expect(travel, -18);
+    // Feed itself: no band, only the status bar's strip, top shown or not;
+    // the dock alone leaves, so the post settles 22 lower.
+    expect(
+      FeedCentredBetweenBars.travelFor(
+        shown: const EdgeInsets.only(top: 59, bottom: 78),
+        away: const EdgeInsets.only(top: 59, bottom: _homeIndicator),
+      ),
+      22,
+    );
   });
 }
 
@@ -704,9 +721,6 @@ class _SilentSfx implements FeedSfx {
 
   @override
   void playGameEnd(FeedItem item) {}
-
-  @override
-  void playSwipe() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

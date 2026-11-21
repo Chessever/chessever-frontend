@@ -5,6 +5,7 @@ import '../../../widgets/app_snack.dart';
 import 'dart:math' as math;
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -392,103 +393,105 @@ class EventVideoFlags extends StatelessWidget {
             hint: selected ? 'Hide video' : 'Switch stream',
             child: Tooltip(
               message: label,
-              child: InkWell(
-                key: ValueKey('video_stream_${stream.id}'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => session.activateStream(stream.id),
-                onLongPress: stream.authorId == null
-                    ? null
-                    : () async {
-                        final box = context.findRenderObject() as RenderBox?;
-                        final overlayBox =
-                            Navigator.of(
-                                  context,
-                                ).overlay!.context.findRenderObject()
-                                as RenderBox;
-                        final chosen = await showMenu<bool>(
-                          context: context,
-                          positionBuilder: (_, _) {
-                            final at = box == null || !box.attached
-                                ? Offset.zero
-                                : overlayBox.globalToLocal(
-                                    box.localToGlobal(Offset.zero),
-                                  );
-                            return RelativeRect.fromRect(
+              child: Builder(
+                builder: (chip) => InkWell(
+                  key: ValueKey('video_stream_${stream.id}'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => session.activateStream(stream.id),
+                  onLongPress: stream.authorId == null
+                      ? null
+                      : () async {
+                          // The chip's own box: [context] here is the list's.
+                          final box = chip.findRenderObject() as RenderBox?;
+                          final overlayBox =
+                              Navigator.of(
+                                    context,
+                                  ).overlay!.context.findRenderObject()
+                                  as RenderBox;
+                          final at = box == null || !box.attached
+                              ? Offset.zero
+                              : overlayBox.globalToLocal(
+                                  box.localToGlobal(Offset.zero),
+                                );
+                          // The one glass popup menu, at the chip's corner.
+                          final chosen = await showTabletSafeMenu<bool>(
+                            context: context,
+                            position: RelativeRect.fromRect(
                               at & const Size(1, 1),
                               Offset.zero & overlayBox.size,
-                            );
-                          },
-                          items: [
-                            PopupMenuItem(
-                              value: true,
-                              child: Text(
-                                stream.followed
-                                    ? 'Unfollow author'
-                                    : 'Follow author',
-                              ),
                             ),
-                          ],
-                        );
-                        if (chosen != true) return;
-                        try {
-                          if (!context.mounted) return;
-                          final ref = ProviderScope.containerOf(
-                            context,
-                            listen: false,
+                            items: [
+                              PopupMenuItem(
+                                value: true,
+                                child: Text(
+                                  stream.followed
+                                      ? 'Unfollow author'
+                                      : 'Follow author',
+                                ),
+                              ),
+                            ],
                           );
-                          await ref
-                              .read(gamebaseRepositoryProvider)
-                              .followGameVideoAuthor(
-                                stream.authorId!,
-                                !stream.followed,
-                              );
-                          ref.invalidate(gameVideoSourcesProvider);
-                        } catch (_) {
-                          if (context.mounted) {
-                            showAppSnack(
+                          if (chosen != true) return;
+                          try {
+                            if (!context.mounted) return;
+                            final ref = ProviderScope.containerOf(
                               context,
-                              'Sign in to follow authors, then try again.',
+                              listen: false,
                             );
+                            await ref
+                                .read(gamebaseRepositoryProvider)
+                                .followGameVideoAuthor(
+                                  stream.authorId!,
+                                  !stream.followed,
+                                );
+                            ref.invalidate(gameVideoSourcesProvider);
+                          } catch (_) {
+                            if (context.mounted) {
+                              showAppSnack(
+                                context,
+                                'Sign in to follow authors, then try again.',
+                              );
+                            }
                           }
-                        }
-                      },
-                child: Container(
-                  width: 112,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: selected
-                        ? Theme.of(
-                            context,
-                          ).colorScheme.primary.withValues(alpha: .14)
-                        : null,
-                    border: Border.all(
-                      color: selected
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.transparent,
+                        },
+                  child: Container(
+                    width: 112,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 3,
                     ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (stream.flagCode != null)
-                        CountryFlag.fromCountryCode(
-                          stream.flagCode!,
-                          theme: const ImageTheme(width: 28, height: 20),
-                        )
-                      else
-                        const Icon(Icons.language, size: 20),
-                      const SizedBox(height: 3),
-                      Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 10, height: 1.5),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: selected
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: .14)
+                          : null,
+                      border: Border.all(
+                        color: selected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.transparent,
                       ),
-                    ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (stream.flagCode != null)
+                          CountryFlag.fromCountryCode(
+                            stream.flagCode!,
+                            theme: const ImageTheme(width: 28, height: 20),
+                          )
+                        else
+                          const Icon(Icons.language, size: 20),
+                        const SizedBox(height: 3),
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10, height: 1.5),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

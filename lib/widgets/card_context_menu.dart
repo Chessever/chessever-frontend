@@ -11,14 +11,15 @@ typedef CardMenuActionsBuilder =
     List<LibraryMenuAction> Function(BuildContext context);
 
 /// Makes any card open the shared focus menu ([showLibraryContextMenu]) on
-/// long-press: the card lifts in place above a blurred page and its actions
-/// open beside it.
+/// long-press: the card lifts in place above a dimmed page and its actions
+/// open beside it on frosted glass.
 ///
 /// The card itself is the preview, so there is nothing to keep in sync. A
 /// [CardMoreButton] anywhere inside [child] opens the same menu anchored to
 /// the whole card, so the three-dot button and the long-press are one menu.
 /// While the copy is lifted the original is hidden (its layout, state and
-/// tickers kept), so the blur behind never shows a halo of the card.
+/// tickers kept), so a copy that travels never leaves a twin of the card
+/// under the dim.
 ///
 /// The preview is a rebuilt copy of [child] in the menu's route. Do not wrap a
 /// child that carries a GlobalKey (it would be mounted twice) or a heavy live

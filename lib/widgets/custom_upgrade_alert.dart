@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:chessever2/widgets/phone_update_route_observer.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -266,7 +267,9 @@ class CustomUpgradeAlertState extends State<CustomUpgradeAlert>
       }
       final _UpdateChoice? choice;
       try {
-        choice = await showDialog<_UpdateChoice>(
+        // No fade: the dialog's glass is frosted from its first frame (and
+        // iOS's own alert keeps its native blur through the open).
+        choice = await showGlassDialog<_UpdateChoice>(
           context: navigatorContext,
           // A mandatory dialog's PopScope also refuses barrier taps, which
           // covers an optional offer that Remote Config locks while open.
@@ -491,12 +494,39 @@ class _PhoneStoreUpdateDialogState extends State<_PhoneStoreUpdateDialog> {
     return PopScope(
       canPop: !mandatory && !_acting,
       child: cupertino
+          // iOS keeps its native alert: it is already the system's own
+          // frosted glass.
           ? CupertinoAlertDialog(
               title: title,
               content: content,
               actions: actions,
             )
-          : AlertDialog(title: title, content: content, actions: actions),
+          : _glassAlert(
+              context,
+              AlertDialog(
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                elevation: 0,
+                title: title,
+                content: content,
+                actions: actions,
+              ),
+            ),
+    );
+  }
+
+  /// [dialog] on the popups' glass, cut to the dialog theme's own surface
+  /// and corner.
+  Widget _glassAlert(BuildContext context, AlertDialog dialog) {
+    final theme = DialogTheme.of(context);
+    final shape = theme.shape;
+    return GlassAlertFrame(
+      tone: theme.backgroundColor ?? context.colors.popup,
+      borderRadius: shape is RoundedRectangleBorder
+          ? shape.borderRadius.resolve(Directionality.of(context))
+          : BorderRadius.circular(28),
+      child: dialog,
     );
   }
 }

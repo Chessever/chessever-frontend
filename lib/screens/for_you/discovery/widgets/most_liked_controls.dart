@@ -14,6 +14,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,7 +32,9 @@ Future<void> showMostLikedShareMenu(
   if (box == null || overlay == null) return;
   final origin = box.localToGlobal(Offset.zero) & box.size;
   HapticFeedbackService.medium();
-  final selected = await showMenu<bool>(
+  // The one glass popup menu (tablet-safe against the phantom tap that
+  // follows a long-press).
+  final selected = await showTabletSafeMenu<bool>(
     context: context,
     position: RelativeRect.fromRect(origin, Offset.zero & overlay.size),
     items: const [PopupMenuItem(value: true, child: Text('Share'))],

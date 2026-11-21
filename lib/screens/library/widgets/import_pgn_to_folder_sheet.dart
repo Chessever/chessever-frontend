@@ -47,7 +47,7 @@ Future<bool> showImportPgnToFolderSheet({
   if (!allowed) return false;
   if (!context.mounted) return false;
 
-  // `ChessSheetRoutes.commentEditor` is typed `SpringModalSheetRoute<void>`,
+  // `ChessSheetRoutes.commentEditor` is typed `MotionSheetRoute<void>`,
   // so we track the save outcome out-of-band via a shared flag rather than
   // the route's return value.
   final result = _ImportSheetResult();

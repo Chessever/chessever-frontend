@@ -326,17 +326,23 @@ class InkFabStack extends StatelessWidget {
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
     final scope = SearchModeScope.maybeOf(context);
+    // A fade from above (the buttons leaving with the chrome) multiplies
+    // with the siblings' own fade while a search opens.
+    final outer = GlassFade.maybeOf(context);
     Widget place(Widget child) {
       if (scope == null || child is SearchInkFab) return child;
       final searching = scope.isSearching;
+      final opacity = outer == null
+          ? scope.siblingOpacity
+          : AnimationProduct(outer, scope.siblingOpacity);
       return IgnorePointer(
         ignoring: searching,
         child: ExcludeSemantics(
           excluding: searching,
           child: GlassFade(
-            opacity: scope.siblingOpacity,
+            opacity: opacity,
             child: _DrawnWhileShown(
-              opacity: scope.siblingOpacity,
+              opacity: opacity,
               child: ScaleTransition(scale: scope.siblingScale, child: child),
             ),
           ),
@@ -418,4 +424,20 @@ class _RenderDrawnWhileShown extends RenderProxyBox {
   void paint(PaintingContext context, Offset offset) {
     if (_shown) super.paint(context, offset);
   }
+}
+
+/// Two opacities at once: [a] times [b].
+class AnimationProduct extends CompoundAnimation<double> {
+  AnimationProduct(Animation<double> a, Animation<double> b)
+    : super(first: a, next: b);
+
+  @override
+  double get value => first.value * next.value;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AnimationProduct && other.first == first && other.next == next;
+
+  @override
+  int get hashCode => Object.hash(first, next);
 }

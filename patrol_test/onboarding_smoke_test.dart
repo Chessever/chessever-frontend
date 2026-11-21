@@ -14,7 +14,7 @@ void main() {
       await expectVisible($, E2eIds.forYouRoot);
       await expectVisible($, E2eIds.navForYou);
       await expectVisible($, E2eIds.navFeed);
-      await expectVisible($, E2eIds.navSearch);
+      await expectVisible($, E2eIds.navCollections);
       await expectVisible($, E2eIds.navProfile);
     },
     config: patrolE2eConfig,

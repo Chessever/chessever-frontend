@@ -4,6 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -42,6 +43,9 @@ class BoardPinchCoachmark extends StatefulWidget {
 
 class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
     with TickerProviderStateMixin {
+  /// The teaching stage: the page all but gone under it.
+  static const Color _scrim = Color(0xCC000000);
+
   double _opacityTarget = 1.0;
   bool _isExiting = false;
 
@@ -123,7 +127,7 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
               child: Container(
                 height: MediaQuery.sizeOf(context).height,
                 width: MediaQuery.sizeOf(context).width,
-                color: kBlackColor.withValues(alpha: 0.8),
+                color: _scrim,
                 child: BoardCoachmarkViewport(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -146,31 +150,18 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
                                         strokeWidth: 3.0,
                                         borderRadius: 28.br,
                                       ),
-                                  child: Container(
+                                  // White glass + black text stays legible
+                                  // on the dim scrim in both themes, as the
+                                  // other teaching cards.
+                                  child: TeachingCardGlass(
+                                    stage: _scrim,
                                     padding: EdgeInsets.fromLTRB(
                                       24.w,
                                       36.h,
                                       24.w,
                                       24.h,
                                     ),
-                                    decoration: BoxDecoration(
-                                      // White surface + black text stays legible
-                                      // on the dim scrim in both themes — matches
-                                      // the other teaching cards.
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(
-                                        28.br,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                          blurRadius: 30,
-                                          offset: const Offset(0, 12),
-                                        ),
-                                      ],
-                                    ),
+                                    borderRadius: BorderRadius.circular(28.br),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [

@@ -17,8 +17,7 @@ import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
-import 'package:chessever2/widgets/flag_pole_scene.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -749,8 +748,7 @@ class _ArchiveVisual extends ConsumerWidget {
   }
 }
 
-/// The viewer's flag: washed back behind the dark tile, flying from a pole
-/// on the light one.
+/// The viewer's flag, filling the tile's picture.
 class _FlagVisual extends StatelessWidget {
   const _FlagVisual({required this.countryCode});
 
@@ -791,41 +789,10 @@ class _FlagVisual extends StatelessWidget {
         ),
       );
     }
-    if (context.isLightTheme) {
-      // Paper: the reader's real flag flying from the light scene's pole,
-      // whole and at full strength, the pole and its flag (finial to the
-      // cloth's resting fly edge, at the flag's own proportions) centred on
-      // the tile as the rail's other pictures are. The mound runs off the
-      // tile's foot.
-      return SizedBox.expand(
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final size = box.biggest;
-            final clothMax = Size(
-              math.min(66.w, size.width * 0.5),
-              math.min(46.w, size.height * 0.48),
-            );
-            return FlagPoleScene(
-              flagCode: flagClothCode(code),
-              layout: (aspect) => FlagPoleLayout.centred(
-                width: size.width,
-                bottom: size.height,
-                height: size.height - 4.w,
-                cloth: FlagPoleLayout.fitCloth(clothMax, aspect),
-              ),
-            );
-          },
-        ),
-      );
-    }
-    final flag = FittedBox(
-      fit: BoxFit.cover,
-      child: CountryFlag.fromCountryCode(
-        code,
-        theme: const ImageTheme(width: 200, height: 150),
-      ),
-    );
-    return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
+    // The flag edge to edge at full strength, the same picture in both
+    // themes; the tile's words sit below it, on the page.
+    return MediaFlagBackdrop.ofFederation(code) ??
+        const _FlagVisual(countryCode: null);
   }
 }
 

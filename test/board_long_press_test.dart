@@ -311,33 +311,47 @@ void main() {
     'menu lists flip without video and respects export and analysis state',
     (tester) async {
       List<PopupMenuEntry<String>> entries = [];
-      Future<void> pump({bool export = true, bool cleared = false}) =>
-          tester.pumpWidget(
-            MaterialApp(
-              theme: ThemeData.dark().copyWith(
-                extensions: const [AppColors.dark],
-              ),
-              home: Builder(
-                builder: (context) {
-                  ResponsiveHelper.init(context);
-                  entries = chessBoardContextMenuItems(
-                    context,
-                    videoSession: null,
-                    analysisCleared: cleared,
-                    allowCopyPgn: export,
-                  );
-                  return Material(
-                    child: ExcludeSemantics(child: Column(children: entries)),
-                  );
-                },
-              ),
-            ),
-          );
+      Future<void> pump({
+        bool export = true,
+        bool cleared = false,
+        bool attach = false,
+      }) => tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              entries = chessBoardContextMenuItems(
+                context,
+                videoSession: null,
+                analysisCleared: cleared,
+                allowCopyPgn: export,
+                allowAttachVideo: attach,
+              );
+              return Material(
+                child: ExcludeSemantics(child: Column(children: entries)),
+              );
+            },
+          ),
+        ),
+      );
       await pump();
       expect(find.text('Flip Board'), findsOneWidget);
       expect(find.text('Copy PGN'), findsOneWidget);
       expect(find.text('Clear Analysis'), findsOneWidget);
-      expect(entries.whereType<PopupMenuItem<String>>().map((e) => e.value), [
+      Iterable<String?> values() =>
+          entries.whereType<PopupMenuItem<String>>().map((e) => e.value);
+      // Attaching a video is offered only to those with the right (37.6.12).
+      expect(values(), [
+        'flip_board',
+        'watch',
+        'board_settings',
+        'share',
+        'copy_pgn',
+        'clear_analysis',
+      ]);
+      await pump(attach: true);
+      expect(values(), [
         'flip_board',
         'attach_video',
         'watch',

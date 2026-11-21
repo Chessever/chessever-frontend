@@ -2,21 +2,17 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_view.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/my_space_view.dart';
+import 'package:chessever2/screens/search/search_tab_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
@@ -62,11 +58,11 @@ final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
 ///
 /// Its only chrome is the page tabs, set in the bar every root wears
 /// ([HomeTopBarFrame]): the same inset, height, gutter and centre line as
-/// Feed's, Botvinnik's, Search's and Profile's, with the pages starting at
-/// the same line under it. The band scrolls away with the page and back.
-/// Search and the reader's profile have tabs of their own; Today's Live
-/// first and filter float over it ([ForYouTodayFabs]). The picked tab holds
-/// for the session; a launch opens on Today.
+/// Feed's, Botvinnik's, Collections' and Profile's, with the pages starting
+/// at the same line under it. The band scrolls away with the page and back.
+/// The reader's profile has a tab of its own; Today's Search and Live first
+/// float over it ([ForYouTodayFabs]). The picked tab holds for the session;
+/// a launch opens on Today.
 class ForYouScreen extends HookConsumerWidget {
   const ForYouScreen({super.key, this.pageBuilder});
 
@@ -241,8 +237,8 @@ class ForYouScreen extends HookConsumerWidget {
               // The header: the pages as tabs with an indicator that rides
               // the swipe, in the bar every root wears. The status bar's
               // inset stays; the band under it scrolls away with the page and
-              // back (X-style). No avatar and no search field: Profile and
-              // Search have tabs of their own.
+              // back (X-style). No avatar and no search field: Profile has a
+              // tab of its own, and Search floats over Today.
               HomeTopBarFrame(
                 child: _ForYouHeader(
                   pageController: pageController,
@@ -326,49 +322,26 @@ class ForYouScreen extends HookConsumerWidget {
 /// The key of Today's Live first button.
 const String kForYouLiveFirstButtonKey = 'for_you_live_first_button';
 
-/// The key of Today's filter button.
-const String kForYouFilterButtonKey = 'for_you_filter_button';
-
-/// How many filters narrow the event lists (formats and states, Elo, ECO).
-int eventFilterCount(FilterPopupState state) =>
-    state.formatsAndStates.length +
-    (state.hasEloFilter ? 1 : 0) +
-    (state.eco.isAll ? 0 : 1);
-
-/// Opens the event filter that Today and the Search tab share. Applying it
-/// reloads the Today feed it narrows.
-void showEventFilters(BuildContext context, WidgetRef ref) {
-  ref
-      .read(filterPopupProvider.notifier)
-      .setState(ref.read(eventAppliedFilterProvider));
-  void apply(FilterPopupState next) {
-    ref.read(eventAppliedFilterProvider.notifier).state = next;
-    ref.invalidate(forYouEventsProvider);
-  }
-
-  showAlertModal<void>(
-    context: context,
-    horizontalPadding: 0,
-    child: FilterPopup(
-      onApplyFilters: apply,
-      onResetFilters: () => apply(defaultFilterPopupState),
-    ),
-  );
-}
+/// The key of Today's Search button.
+const String kForYouSearchButtonKey = E2eIds.forYouSearchButton;
 
 /// Today's floating buttons, in the thumb's reach where the search field and
 /// Botvinnik used to be (Trello #1420), stacked as every page's are
 /// ([InkFabStack]: the main button at the bottom, the smaller one above it,
 /// rims flush on one trailing edge):
 ///
-/// * The event filter (formats, Elo, ECO), always, at the bottom: the
-///   page's main, regular button. It narrows this feed, and its count says
-///   how many filters are on. It never moves.
-/// * Live first above it, the small broadcast icon ([LiveFirstCapsule]).
-///   Its tooltip and accessibility label count the events a press lifts
+/// * Search, always, at the bottom: the page's main, regular button, the
+///   magnifier every list's search button wears ([SearchInkFab]). It opens
+///   Search over Home ([SearchTabScreen.open]), the app-wide search that had
+///   the dock's slot Collections holds now. It never moves.
+/// * Live first above it, the live mark ([LiveFirstCapsule]). Its tooltip
+///   and accessibility label count the events a press lifts
 ///   ([todayLiveEventCountProvider]). It stays available while events are
 ///   live, while the count is unknown, or while the toggle is on. Turning
 ///   it on puts live events first and scrolls Today to the top.
+///
+/// Today has no filter of its own: the event filter belongs to the Events
+/// page (Profile), which keeps it.
 class ForYouTodayFabs extends HookConsumerWidget {
   const ForYouTodayFabs({super.key});
 
@@ -379,7 +352,6 @@ class ForYouTodayFabs extends HookConsumerWidget {
     final pressing = useRef(false);
     final liveFirst = ref.watch(homeEventsLiveFirstProvider);
     final liveCount = ref.watch(todayLiveEventCountProvider);
-    final filters = eventFilterCount(ref.watch(eventAppliedFilterProvider));
     return InkFabStack(
       children: [
         if (showsHomeLiveFirst(liveCount: liveCount, on: liveFirst))
@@ -403,13 +375,9 @@ class ForYouTodayFabs extends HookConsumerWidget {
               }
             },
           ),
-        InkFab(
-          key: const ValueKey(kForYouFilterButtonKey),
-          label: 'Filters',
-          badgeCount: filters,
-          onTap: () => showEventFilters(context, ref),
-          glyph: (color, size) =>
-              Icon(Icons.tune_rounded, size: size, color: color),
+        SearchInkFab(
+          key: const ValueKey(kForYouSearchButtonKey),
+          onTap: () => unawaited(SearchTabScreen.open(context)),
         ),
       ],
     );
@@ -454,7 +422,8 @@ class _ForYouHeader extends StatelessWidget {
 /// Equal-width text tabs with an indicator that follows [pageController],
 /// as tall as the bar's row ([HomeTopBarMetrics.rowExtent]) so each label
 /// sits on the centre line every root's title sits on, and the indicator
-/// rests on the row's foot.
+/// rests on the row's foot. A root whose pages are its header wears them:
+/// Home, and Collections on its tab.
 class ForYouPageTabs extends StatelessWidget {
   const ForYouPageTabs({
     super.key,
@@ -463,6 +432,7 @@ class ForYouPageTabs extends StatelessWidget {
     required this.labels,
     required this.onSelected,
     required this.onHold,
+    this.holdHint,
   });
 
   final PageController pageController;
@@ -470,6 +440,10 @@ class ForYouPageTabs extends StatelessWidget {
   final List<String> labels;
   final ValueChanged<int> onSelected;
   final ValueChanged<int> onHold;
+
+  /// What assistive technology announces for holding tab `index`; null for
+  /// Home's ("Make Home → Today the start screen").
+  final String Function(int index)? holdHint;
 
   static const double _barHeight = 3;
 
@@ -534,10 +508,12 @@ class ForYouPageTabs extends StatelessWidget {
                           button: true,
                           selected: i == selectedIndex,
                           label: labels[i],
-                          onLongPressHint: startScreenHint(
-                            BottomNavBarItem.forYou,
-                            forYouStartPage(ForYouTab.values[i]),
-                          ),
+                          onLongPressHint:
+                              holdHint?.call(i) ??
+                              startScreenHint(
+                                BottomNavBarItem.forYou,
+                                forYouStartPage(ForYouTab.values[i]),
+                              ),
                           excludeSemantics: true,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,

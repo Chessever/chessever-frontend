@@ -11,23 +11,18 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/flag_pole_scene.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 
 import 'package:chessever2/widgets/hub_tile.dart';
-import 'package:chessever2/widgets/light_media_art.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// On-media ink and the tile's own ink, from the shared hub tile.
+/// On-media ink, from the shared hub tile.
 const Color _kOnTile = kHubTileOnMedia;
-
-Color _onTile(BuildContext context) => hubTileOnTile(context);
 
 /// Collection cards displayed at the top of For You tab.
 /// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
@@ -114,25 +109,18 @@ class _PremiumCollectionCard extends ConsumerWidget {
   }
 
   Widget _buildTile(BuildContext context, WidgetRef ref) {
-    // Light: the tile's own drawing in the light hub style (the stands the
-    // favourites glide across, the pole the federation's flag flies from),
-    // with the photos and the flag at full strength in a region of their
-    // own, clear of the label. Nothing is laid over them.
-    if (context.isLightTheme) {
-      return HubTileFace(
-        title: title,
-        ramp: false,
-        artwork: type == PremiumGamesType.favorites
-            ? _FavoritesPaperArt(title: title)
-            : _CountrymenPaperArt(ref: ref, title: title),
-      );
-    }
-    // Full background: the player grid for Favorites, the flag for
-    // Countrymen.
-    final artwork = type == PremiumGamesType.favorites
-        ? const _FavoritePlayersGridBackground()
-        : _FlagFullBackground(ref: ref);
-    return HubTileFace(title: title, ramp: true, artwork: artwork);
+    // One design in both themes (the dark media tile): the followed
+    // players' photo mosaic for Favorites, the federation's flag in its own
+    // colours for Countrymen, each filling the tile at full strength, the
+    // label carried by one soft shade out of its corner.
+    final favorites = type == PremiumGamesType.favorites;
+    return HubTileFace(
+      title: title,
+      ramp: true,
+      artwork: favorites
+          ? const _FavoritePlayersGridBackground()
+          : _FlagFullBackground(ref: ref),
+    );
   }
 
   void _handleTap(BuildContext context, WidgetRef ref) {
@@ -320,7 +308,6 @@ class _StaticPlayerGrid extends StatelessWidget {
     required this.cellSpacing,
     required this.cellWithSpacing,
     required this.verticalPadding,
-    this.rowPitch,
   });
 
   final List<FavoritePlayer> favorites;
@@ -333,16 +320,12 @@ class _StaticPlayerGrid extends StatelessWidget {
   final double cellWithSpacing;
   final double verticalPadding;
 
-  /// From one row's top to the next; a cell and its gap unless set. The
-  /// light strip packs its staggered rows closer (they never touch).
-  final double? rowPitch;
-
   @override
   Widget build(BuildContext context) {
     final cells = <Widget>[];
     for (int row = 0; row < rows; row++) {
       final rowStagger = row.isOdd ? cellWithSpacing * 0.5 : 0.0;
-      final y = row * (rowPitch ?? cellSize + cellSpacing) + verticalPadding;
+      final y = row * (cellSize + cellSpacing) + verticalPadding;
       for (int i = 0; i < cellsPerRow; i++) {
         final patternIndex = i % patternCellCount;
         final playerIndex = patternIndex % favorites.length;
@@ -371,10 +354,6 @@ class _StaticPlayerGrid extends StatelessWidget {
     // _PremiumCollectionCard handles the final visible clip.
     return Stack(clipBehavior: Clip.none, children: cells);
   }
-
-  /// The smallest a photo is drawn, as a share of [cellSize]
-  /// ([_getSizeVariation]'s least).
-  static const double smallestShare = 0.88;
 
   /// Deterministic size variation (0.88–1.0) for organic feel.
   double _getSizeVariation(int playerIndex, int row) {
@@ -427,7 +406,7 @@ class _PlayerPhotoCell extends StatelessWidget {
           ? CachedNetworkImage(
               imageUrl: photoUrl!,
               fit: BoxFit.cover,
-              filterQuality: FilterQuality.low,
+              filterQuality: FilterQuality.medium,
               memCacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
                   .toInt(),
               memCacheHeight: (size * MediaQuery.devicePixelRatioOf(context))
@@ -439,22 +418,6 @@ class _PlayerPhotoCell extends StatelessWidget {
             )
           : _buildInitials(context),
     );
-    if (context.isLightTheme) {
-      // Paper: the photo fills its whole circle, and its own edge is
-      // deepened a touch into a fine rim (no ring of another colour, no
-      // shadow), so a pale photo still reads as a round portrait.
-      return SizedBox.square(
-        dimension: size,
-        child: DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0x24000000), width: 1),
-          ),
-          child: photo,
-        ),
-      );
-    }
     return Container(
       width: size,
       height: size,
@@ -473,8 +436,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _onTile(context).withValues(alpha: 0.15),
-            _onTile(context).withValues(alpha: 0.08),
+            _kOnTile.withValues(alpha: 0.15),
+            _kOnTile.withValues(alpha: 0.08),
           ],
         ),
       ),
@@ -482,7 +445,7 @@ class _PlayerPhotoCell extends StatelessWidget {
         child: Icon(
           Icons.person_rounded,
           size: size * 0.5,
-          color: _onTile(context).withValues(alpha: 0.4),
+          color: _kOnTile.withValues(alpha: 0.4),
         ),
       ),
     );
@@ -513,8 +476,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _onTile(context).withValues(alpha: 0.12),
-            _onTile(context).withValues(alpha: 0.06),
+            _kOnTile.withValues(alpha: 0.12),
+            _kOnTile.withValues(alpha: 0.06),
           ],
         ),
       ),
@@ -525,7 +488,7 @@ class _PlayerPhotoCell extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.32,
             fontWeight: FontWeight.w700,
-            color: _onTile(context).withValues(alpha: 0.9),
+            color: _kOnTile.withValues(alpha: 0.9),
             letterSpacing: -0.5,
             // Default line height leaves the glyphs sitting a hair high in the
             // circle. Pinning it to 1 hands the vertical centring to the Center
@@ -550,14 +513,14 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _onTile(context).withValues(alpha: 0.1),
-            _onTile(context).withValues(alpha: 0.05),
-            _onTile(context).withValues(alpha: 0.07),
+            _kOnTile.withValues(alpha: 0.1),
+            _kOnTile.withValues(alpha: 0.05),
+            _kOnTile.withValues(alpha: 0.07),
           ],
         ),
       ),
       child: CustomPaint(
-        painter: _FloatingHeartsPainter(accentColor: _onTile(context)),
+        painter: _FloatingHeartsPainter(accentColor: _kOnTile),
         size: Size.infinite,
       ),
     );
@@ -636,16 +599,11 @@ class _FlagFullBackground extends StatelessWidget {
     final countryAsync = ref.watch(countryDropdownProvider);
 
     return countryAsync.when(
-      data: (country) {
-        final flag = FittedBox(
-          fit: BoxFit.cover,
-          child: CountryFlag.fromCountryCode(
-            country.countryCode,
-            theme: ImageTheme(width: 200, height: 150),
-          ),
-        );
-        return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
-      },
+      // The flag edge to edge in its own colours; the tile's shade carries
+      // the label over it.
+      data: (country) =>
+          MediaFlagBackdrop.ofFederation(country.countryCode) ??
+          _FlagPlaceholder(),
       loading: () => _FlagPlaceholder(),
       error: (_, __) => _FlagPlaceholder(),
     );
@@ -661,8 +619,8 @@ class _FlagPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _onTile(context).withValues(alpha: 0.1),
-            _onTile(context).withValues(alpha: 0.05),
+            _kOnTile.withValues(alpha: 0.1),
+            _kOnTile.withValues(alpha: 0.05),
           ],
         ),
       ),
@@ -670,357 +628,9 @@ class _FlagPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.public_rounded,
           size: 48.sp,
-          color: _onTile(context).withValues(alpha: 0.15),
+          color: _kOnTile.withValues(alpha: 0.15),
         ),
       ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------- light
-
-/// The light Today tiles' picture band: the room above the title's capitals.
-/// The Favorites photos and the Countrymen flag share its top and its size,
-/// centred between the tile's top edge and the title, so the two tiles read
-/// as a pair and the label always sits on calm ground below.
-@immutable
-class _PaperBand {
-  const _PaperBand._({
-    required this.top,
-    required this.size,
-    required this.capTop,
-  });
-
-  /// The band of a tile [height] tall titled [title], at the reader's text
-  /// size.
-  factory _PaperBand.of(
-    BuildContext context, {
-    required String title,
-    required double height,
-  }) {
-    final capTop = HubTileFace.labelCapTop(
-      context,
-      title: title,
-      height: height,
-    );
-    // A photo large enough to know its face, with room above and below.
-    final size = math.max(0.0, math.min(36.sp, capTop - 2 * margin));
-    return _PaperBand._(top: (capTop - size) / 2, size: size, capTop: capTop);
-  }
-
-  /// The least room above and below the band's art.
-  static double get margin => 5.sp;
-
-  /// Where the art starts: a photo's top, the finial's.
-  final double top;
-
-  /// A photo's diameter; the most a flag stands.
-  final double size;
-
-  /// The top of the title's capitals.
-  final double capTop;
-}
-
-/// The light Favorites drawing: an empty grandstand in the light hub style,
-/// 768x512 on a transparent ground.
-const String _kFavoritesLightAsset = 'assets/pngs/hub_favorites_light.webp';
-
-/// Where the grandstand's two tiers sit in [_kFavoritesLightAsset], as
-/// shares of its height, measured once on the 1536x1024 master by scanning
-/// its columns for drawn pixels: the upper tier's seats from y 166, the
-/// lower tier's from 332 at the top of its arch (down its middle column the
-/// seat backs run to 375, the seat bottoms to 409, the rail to 443). The
-/// tiers arch down toward the sides; the upper tier never reaches below
-/// y 280.
-const double _kStandsUpperSeatTop = 166 / 1024;
-const double _kStandsLowerSeatTop = 332 / 1024;
-const double _kStandsLowerRailFoot = 444 / 1024;
-const double _kStandsBetweenTiers = 300 / 1024;
-
-/// Light Favorites: the followed players' photos glide in a row across the
-/// tile's picture band, in front of the grandstand's lower tier, at full
-/// strength. Only the strip's two ends fade, short, where the photos glide
-/// in and out; the label below sits on plain ground. With no favourite yet,
-/// the empty stands fill the band.
-class _FavoritesPaperArt extends HookConsumerWidget {
-  const _FavoritesPaperArt({required this.title});
-
-  /// The tile's title, which the photos keep above.
-  final String title;
-
-  /// How long the strip takes to glide one photo's width (about seven
-  /// logical pixels a second).
-  static const Duration _glidePerPhoto = Duration(milliseconds: 3800);
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final favorites =
-        ref.watch(favoritePlayersProviderNew).valueOrNull ??
-        const <FavoritePlayer>[];
-    final pattern = favorites.take(12).toList(growable: false);
-    final period = _glidePerPhoto * math.max(1, pattern.length);
-    final controller = useAnimationController(duration: period);
-    final still = MediaQuery.disableAnimationsOf(context);
-    useEffect(() {
-      if (still || pattern.isEmpty) {
-        controller
-          ..stop()
-          ..value = 0;
-      } else {
-        controller.repeat(period: period);
-      }
-      return null;
-    }, [controller, still, period, pattern.isEmpty]);
-    final photoUrls =
-        ref
-            .watch(_favoritePhotoUrlsProvider(_photoUrlKey(pattern)))
-            .valueOrNull ??
-        const <String, String?>{};
-
-    return ExcludeSemantics(
-      child: IgnorePointer(
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final width = box.maxWidth;
-            final height = box.maxHeight;
-            if (!width.isFinite || width <= 0 || !height.isFinite) {
-              return const SizedBox.shrink();
-            }
-            final band = _PaperBand.of(context, title: title, height: height);
-            if (pattern.isEmpty) {
-              return _stands(
-                width: width,
-                // Both tiers, from the upper seats to the lower rail, fill
-                // the band.
-                height:
-                    band.size / (_kStandsLowerRailFoot - _kStandsUpperSeatTop),
-                seatTop: band.top,
-                seatShare: _kStandsUpperSeatTop,
-              );
-            }
-            // One row of photos large enough to know each face; two
-            // staggered rows only where the band is tall enough for both.
-            final room = band.capTop - 2 * _PaperBand.margin;
-            final twoRows = room / 1.9 >= 30.sp;
-            final cell = twoRows ? math.min(34.sp, room / 1.9) : band.size;
-            if (cell < 12) return const SizedBox.shrink();
-            final gap = 4.sp;
-            final pitch = cell + gap;
-            // Staggered by half a photo, two rows can sit closer than a
-            // photo's height and still never touch.
-            final rowPitch = cell * 0.9;
-            final strip = twoRows ? cell + rowPitch : cell;
-            final top = (band.capTop - strip) / 2;
-            final distance = pattern.length * pitch;
-            // The lower tier stands behind the last row, in its photos'
-            // lower half: its seats rise no higher than the photos' centre
-            // line (their bottoms and the rail sit behind the lower third)
-            // and its rail ends at the foot of the smallest photo, so
-            // nothing of the stands shows between the faces above their
-            // centre line. The upper tier is left out.
-            final centre = top + strip - cell / 2;
-            final radius = cell * _StaticPlayerGrid.smallestShare / 2;
-            final standsHeight =
-                (radius - 0.5) / (_kStandsLowerRailFoot - _kStandsLowerSeatTop);
-            final grid = RepaintBoundary(
-              child: _StaticPlayerGrid(
-                favorites: pattern,
-                photoUrls: photoUrls,
-                patternCellCount: pattern.length,
-                rows: twoRows ? 2 : 1,
-                cellsPerRow: ((width + distance) / pitch).ceil() + 2,
-                cellSize: cell,
-                cellSpacing: gap,
-                cellWithSpacing: pitch,
-                verticalPadding: 0,
-                rowPitch: rowPitch,
-              ),
-            );
-            return Stack(
-              clipBehavior: Clip.hardEdge,
-              children: [
-                _stands(
-                  width: width,
-                  height: standsHeight,
-                  seatTop: centre + 0.5,
-                  seatShare: _kStandsLowerSeatTop,
-                  upperTier: false,
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: top,
-                  height: strip,
-                  // The strip's own layer: each frame moves the photos
-                  // under its fade and repaints nothing else of the tile.
-                  child: RepaintBoundary(
-                    child: LightEdgeFade(
-                      gradient: stripEdgeFade(),
-                      child: ClipRect(
-                        child: _glide(
-                          controller,
-                          grid: grid,
-                          distance: distance,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  /// The grandstand [height] tall, centred across [width], with the seat
-  /// top at [seatShare] of its height standing at [seatTop]: the whole of it
-  /// as the tile's picture, or (without the [upperTier]) its lower tier
-  /// alone, everything above it cut away, as a layer of the tile's picture.
-  Widget _stands({
-    required double width,
-    required double height,
-    required double seatTop,
-    required double seatShare,
-    bool upperTier = true,
-  }) {
-    final standsTop = seatTop - seatShare * height;
-    // Its own proportions, or stretched across the tile where they would
-    // leave its ends inside it.
-    final standsWidth = math.max(height * 1.5, width + 2);
-    final picture = Image.asset(
-      _kFavoritesLightAsset,
-      fit: BoxFit.fill,
-      cacheWidth: 768,
-      filterQuality: FilterQuality.medium,
-    );
-    if (upperTier) {
-      return Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          Positioned(
-            left: (width - standsWidth) / 2,
-            top: standsTop,
-            width: standsWidth,
-            height: height,
-            child: picture,
-          ),
-        ],
-      );
-    }
-    final cut = standsTop + _kStandsBetweenTiers * height;
-    return Positioned(
-      left: 0,
-      right: 0,
-      top: cut,
-      bottom: 0,
-      child: ClipRect(
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: (width - standsWidth) / 2,
-              top: standsTop - cut,
-              width: standsWidth,
-              height: height,
-              child: picture,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _glide(
-    AnimationController controller, {
-    required Widget grid,
-    required double distance,
-  }) {
-    return AnimatedBuilder(
-      animation: controller,
-      child: grid,
-      builder: (context, child) => Transform.translate(
-        offset: Offset(-controller.value * distance, 0),
-        child: child,
-      ),
-    );
-  }
-}
-
-/// Light Countrymen: the federation's real flag flying from the drawing's
-/// pole in the tile's picture band, the pole and its flag centred across the
-/// tile. The cloth is matched to the Favorites photos beside it (as tall,
-/// level with them), the finial just above; the pole's foot and the mound
-/// ease into the ground just above the title, so the label sits on calm
-/// ground below.
-class _CountrymenPaperArt extends StatelessWidget {
-  const _CountrymenPaperArt({required this.ref, required this.title});
-
-  final WidgetRef ref;
-  final String title;
-
-  /// The shaft showing under the cloth at rest, as a share of its height.
-  static const double _shaftUnderCloth = 0.05;
-
-  @override
-  Widget build(BuildContext context) {
-    final country = ref.watch(countryDropdownProvider);
-    // Nothing until the federation is known, so the pole never stands bare
-    // and then moves for the flag it flies.
-    if (country.isLoading && !country.hasValue) return const SizedBox.shrink();
-    final code = country.valueOrNull == null
-        ? null
-        : flagClothCode(country.valueOrNull!.countryCode);
-    return LayoutBuilder(
-      builder: (context, box) {
-        final size = box.biggest;
-        if (!size.isFinite || size.isEmpty) return const SizedBox.shrink();
-        final band = _PaperBand.of(context, title: title, height: size.height);
-        // The ground the mound fades into, a little above the title's
-        // capitals, the room the mound needs to fade there, and the least
-        // room above the finial.
-        final ground = band.capTop - 1.5.sp;
-        final fade = 4.sp;
-        final headroom = 7.sp;
-        // Down the picture, per point of cloth: the finial and collar above
-        // it, and the cloth, the shaft under it and the base block below.
-        const shaft = FlagPoleArt.poleFoot - FlagPoleArt.hoistTop;
-        const perCloth = (1 + _shaftUnderCloth) / shaft;
-        const above = (FlagPoleArt.hoistTop - FlagPoleArt.finialTop) * perCloth;
-        const below = (FlagPoleArt.moundTop - FlagPoleArt.hoistTop) * perCloth;
-        // The cloth level with the photos and as tall, or shorter where
-        // the picture would not then fit between the headroom and the
-        // ground.
-        var cloth = math.min(band.size, (ground - fade - band.top) / below);
-        var clothTop = band.top;
-        if (clothTop - above * cloth < headroom) {
-          cloth = math.min(cloth, (ground - fade - headroom) / (above + below));
-          clothTop = math.max(band.top, headroom + above * cloth);
-        }
-        if (cloth < 12) return const SizedBox.shrink();
-        final height = cloth * perCloth;
-        final pictureTop = clothTop - FlagPoleArt.hoistTop * height;
-        return FlagPoleScene(
-          flagCode: code,
-          footFade: ground - (pictureTop + FlagPoleArt.moundTop * height),
-          groundLine: ground,
-          layout: (aspect) => FlagPoleLayout.centred(
-            width: size.width,
-            bottom: pictureTop + height,
-            height: height,
-            cloth: FlagPoleLayout.fitCloth(
-              Size(
-                size.width -
-                    2 * HubTileFace.labelInset -
-                    FlagPoleLayout.finialReach(height),
-                cloth,
-              ),
-              aspect,
-            ),
-          ),
-        );
-      },
     );
   }
 }

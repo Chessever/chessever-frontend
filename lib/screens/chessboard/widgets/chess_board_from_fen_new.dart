@@ -283,25 +283,43 @@ final _resolvedFenProvider = Provider.autoDispose
       return _kStartFen;
     });
 
-/// Shows the share overlay for a game from the grid/list view.
+/// The PGN a grid/list game's share GIF animates: the first of three tiers
+/// (the model's own PGN, then Supabase, then Gamebase for Gamebase games)
+/// that parses to moves, or '' when none does.
 ///
-/// Resolves PGN data via a 3-tier fallback (local → Supabase → Gamebase)
-/// before opening the overlay, so that GIF export has move history.
-Future<void> showGameShareOverlay(
-  BuildContext context,
-  WidgetRef ref,
-  GamesTourModel game,
-) async {
-  // ---------------------------------------------------------------------------
-  // Resolve PGN move history (3-tier fallback, parse-and-accept)
-  // ---------------------------------------------------------------------------
-  String resolvedPgn = '';
-  List<String> moveSans = const [];
-  int currentMoveIndex = -1;
+/// Each tier is asked only when the ones before it gave nothing playable:
+/// the first PGN that parses is the one used, so fetching the later tiers
+/// when the model's PGN already plays was a network wait for nothing. The
+/// repositories are read before the first await, so a card that leaves the
+/// screen mid-way never reads a disposed ref.
+Future<String> _resolveSharePgn(WidgetRef ref, GamesTourModel game) async {
+  final games = ref.read(gameRepositoryProvider);
+  final gamebase = ref.read(gamebaseRepositoryProvider);
+  final tried = <String>{};
 
-  // Collect candidate PGNs from all tiers as (source, pgn) pairs.
-  // Each tier is wrapped in try/catch so a network failure doesn't block later tiers.
-  final candidates = <(String source, String pgn)>[];
+  // Parse-and-accept: the PGN counts when it yields at least one move.
+  Future<String?> accept(String source, String? pgn) async {
+    if (!pgnHasMoves(pgn)) return null;
+    final candidate = pgn!.trim();
+    // The same text is never parsed twice.
+    if (!tried.add(candidate)) return null;
+    try {
+      final parseResult = await compute(parsePgnWorker, candidate);
+      if (parseResult.moveSans.isNotEmpty) {
+        debugPrint(
+          'GIF share [${game.gameId}]: accepted PGN from $source '
+          '(${parseResult.moveSans.length} moves)',
+        );
+        return candidate;
+      }
+      debugPrint(
+        'GIF share [${game.gameId}]: $source PGN parsed but yielded 0 moves',
+      );
+    } catch (e) {
+      debugPrint('GIF share [${game.gameId}]: $source PGN parse failed: $e');
+    }
+    return null;
+  }
 
   // Tier 1: game.pgn (already available on the model)
   debugPrint(
@@ -309,103 +327,63 @@ Future<void> showGameShareOverlay(
     '${game.pgn == null ? "null" : "(${game.pgn!.length} chars)"} '
     'hasMoves=${pgnHasMoves(game.pgn)}',
   );
-  try {
-    if (pgnHasMoves(game.pgn)) {
-      candidates.add(('game.pgn', game.pgn!.trim()));
-    }
-  } catch (e) {
-    debugPrint('GIF share [${game.gameId}]: Tier 1 failed: $e');
-  }
+  final local = await accept('game.pgn', game.pgn);
+  if (local != null) return local;
 
   // Tier 2: Supabase getGamePgn
   try {
-    final fetched = await ref
-        .read(gameRepositoryProvider)
-        .getGamePgn(game.gameId);
+    final fetched = await games.getGamePgn(game.gameId);
     debugPrint(
       'GIF share [${game.gameId}]: Tier 2 Supabase '
       '${fetched == null ? "null" : "(${fetched.length} chars)"} '
       'hasMoves=${pgnHasMoves(fetched)}',
     );
-    if (pgnHasMoves(fetched)) {
-      candidates.add(('Supabase', fetched!.trim()));
-    }
+    final remote = await accept('Supabase', fetched);
+    if (remote != null) return remote;
   } catch (e) {
     debugPrint('GIF share [${game.gameId}]: Tier 2 failed: $e');
   }
 
   // Tier 3: Gamebase getGameWithPgn — only for Gamebase-sourced games
   // Non-Gamebase IDs (e.g. broadcast IDs like mrqvQ9VS) produce HTTP 400.
-  if (isGamebasePreviewGame(game)) {
-    debugPrint('GIF share [${game.gameId}]: Tier 3 Gamebase attempted');
-    try {
-      final gameWithPgn = await ref
-          .read(gamebaseRepositoryProvider)
-          .getGameWithPgn(game.gameId);
-      if (gameWithPgn != null) {
-        if (pgnHasMoves(gameWithPgn.pgn)) {
-          candidates.add(('Gamebase.pgn', gameWithPgn.pgn!.trim()));
-        } else {
-          final built = buildPgnFromGamebaseData(gameWithPgn.data);
-          if (pgnHasMoves(built)) {
-            candidates.add(('Gamebase.data', built!.trim()));
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('GIF share [${game.gameId}]: Tier 3 failed: $e');
-    }
-  } else {
+  if (!isGamebasePreviewGame(game)) {
     debugPrint('GIF share [${game.gameId}]: Tier 3 skipped (not gamebase)');
+    return '';
   }
-
-  // Deduplicate by PGN content so the same string isn't parsed twice
-  final seen = <String>{};
-  final uniqueCandidates = <(String, String)>[];
-  for (final c in candidates) {
-    if (seen.add(c.$2)) {
-      uniqueCandidates.add(c);
+  debugPrint('GIF share [${game.gameId}]: Tier 3 Gamebase attempted');
+  try {
+    final gameWithPgn = await gamebase.getGameWithPgn(game.gameId);
+    if (gameWithPgn != null) {
+      final pgn = pgnHasMoves(gameWithPgn.pgn)
+          ? gameWithPgn.pgn
+          : buildPgnFromGamebaseData(gameWithPgn.data);
+      final archived = await accept(
+        pgnHasMoves(gameWithPgn.pgn) ? 'Gamebase.pgn' : 'Gamebase.data',
+        pgn,
+      );
+      if (archived != null) return archived;
     }
+  } catch (e) {
+    debugPrint('GIF share [${game.gameId}]: Tier 3 failed: $e');
   }
+  // On total failure the overlay still works; the GIF is unavailable and
+  // the share falls back to the static image.
+  debugPrint('GIF share [${game.gameId}]: NO MOVES RESOLVED');
+  return '';
+}
 
-  debugPrint(
-    'GIF share [${game.gameId}]: ${uniqueCandidates.length} '
-    'candidate(s) after dedup',
-  );
-
-  // Parse-and-accept: accept the first candidate that yields non-empty moveSans
-  for (final (source, pgn) in uniqueCandidates) {
-    try {
-      final parseResult = await compute(parsePgnWorker, pgn);
-      if (parseResult.moveSans.isNotEmpty) {
-        resolvedPgn = pgn;
-        moveSans = parseResult.moveSans;
-        currentMoveIndex = moveSans.length - 1;
-        debugPrint(
-          'GIF share [${game.gameId}]: accepted PGN from $source '
-          '(${moveSans.length} moves)',
-        );
-        break;
-      } else {
-        debugPrint(
-          'GIF share [${game.gameId}]: $source PGN parsed '
-          'but yielded 0 moves',
-        );
-      }
-    } catch (e) {
-      debugPrint('GIF share [${game.gameId}]: $source PGN parse failed: $e');
-    }
-  }
-
-  debugPrint(
-    'GIF share [${game.gameId}]: '
-    '${moveSans.isNotEmpty ? "resolved ${moveSans.length} moves" : "NO MOVES RESOLVED"}',
-  );
-  // On total failure: all remain empty/default — overlay opens but GIF
-  // is unavailable. resolvedPgn stays '' (non-null String).
-
-  // Guard: widget may have been disposed during async gap
-  if (!context.mounted) return;
+/// Shows the share overlay for a game from the grid/list view.
+///
+/// The overlay opens on the tap: everything it shows is on the model. The
+/// PGN its GIF export needs ([_resolveSharePgn], which can go to the
+/// network) resolves behind it, and the GIF waits for it if it is tapped
+/// first.
+Future<void> showGameShareOverlay(
+  BuildContext context,
+  WidgetRef ref,
+  GamesTourModel game,
+) async {
+  final pendingPgn = _resolveSharePgn(ref, game);
 
   // ---------------------------------------------------------------------------
   // Build board settings and open overlay
@@ -480,8 +458,11 @@ Future<void> showGameShareOverlay(
             boardSettings: chessboardSettings,
             positionFen: positionFen,
             lastMove: lastMove,
-            pgn: resolvedPgn,
-            moveSans: moveSans,
+            pgn: '',
+            pendingPgn: pendingPgn,
+            // The card shows the position on the model; the moves are only
+            // the GIF's, and they come with [pendingPgn].
+            moveSans: const [],
             whitePlayerName: game.whitePlayer.name,
             blackPlayerName: game.blackPlayer.name,
             whitePlayerCountry: game.whitePlayer.federation,
@@ -496,7 +477,7 @@ Future<void> showGameShareOverlay(
             blackPlayerClock: blackClock,
             tournamentName: tournamentName,
             roundInfo: roundInfo,
-            currentMoveIndex: currentMoveIndex,
+            currentMoveIndex: -1,
             evaluation: null, // No evaluation available from grid view
             mate: 0,
             isFlipped: false,

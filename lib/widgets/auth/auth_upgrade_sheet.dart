@@ -11,6 +11,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth_button.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widget_previews.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -28,10 +29,9 @@ Future<bool> showAuthUpgradeSheet({
   String? dismissLabel,
   bool completeSignInInSheet = false,
 }) async {
-  await showModalBottomSheet<void>(
+  await showGlassModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder:
         (_) => _AuthUpgradeSheet(
@@ -84,11 +84,13 @@ class _AuthUpgradeSheet extends HookWidget {
       minChildSize: 0.6,
       maxChildSize: 0.95,
       builder: (BuildContext context, ScrollController scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: context.colors.surface.withValues(alpha: 0.98),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-          ),
+        // The sheet glass in the surface it was painted on (at 98%), solid:
+        // the particles drift on every frame the sheet is open, and a live
+        // blur under them would be paid again on each one.
+        return GlassSheet(
+          radius: 28.sp,
+          tone: context.colors.surface,
+          solid: true,
           child: _AuthUpgradePage(
             hostContext: hostContext,
             scrollController: scrollController,

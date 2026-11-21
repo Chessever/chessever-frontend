@@ -12,6 +12,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The Feed post header: one line whatever the width or text size, the
@@ -204,6 +205,107 @@ void main() {
         semantics.dispose();
       });
     }
+  });
+
+  group('the event keeps its words longest', () {
+    // The game header's own order: the signal compacts, then the opening
+    // leaves the line whole, and only then does the event give up width.
+    FeedPostHeader header() => FeedPostHeader(
+      height: 44,
+      parts: [
+        const FeedHeaderPart(
+          id: 'signal',
+          pieces: [
+            FeedHeaderPiece.text('Comeback', tone: FeedHeaderTone.strong),
+          ],
+          shrinkable: true,
+        ),
+        FeedHeaderPart(
+          id: 'event',
+          pieces: const [FeedHeaderPiece.text('Norway Chess 2026')],
+          shrinkable: true,
+          onTap: () {},
+        ),
+        FeedHeaderPart(
+          id: 'opening',
+          pieces: const [
+            FeedHeaderPiece.text(
+              'Sicilian Defense',
+              tone: FeedHeaderTone.secondary,
+            ),
+          ],
+          shrinkable: true,
+          onTap: () {},
+        ),
+      ],
+      compactOrder: const [0],
+      yieldOrder: const [2],
+      shrinkOrder: const [1, 0],
+      dropOrder: const [0],
+    );
+
+    Future<void> pumpAt(WidgetTester tester, double width) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(width: width, child: header()),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('room for all: every part on the line', (tester) async {
+      await _initResponsive(tester);
+      // The test font sets every glyph a full em wide: 13pt a glyph.
+      await pumpAt(tester, 1000);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Sicilian Defense'), findsOneWidget);
+      expect(find.text('Norway Chess 2026'), findsOneWidget);
+    });
+
+    testWidgets('short of room: the opening leaves, the event stays whole', (
+      tester,
+    ) async {
+      await _initResponsive(tester);
+      // Comeback (104) + " · " (39) + Norway Chess 2026 (221) fits; the
+      // opening (208) and its separator do not.
+      await pumpAt(tester, 420);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Sicilian Defense'), findsNothing);
+      final event = find.text('Norway Chess 2026');
+      expect(event, findsOneWidget);
+      // Whole: nothing ellipsized.
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: event, matching: find.byType(RichText)),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+    });
+
+    testWidgets('shorter still: the event gives up width last of all', (
+      tester,
+    ) async {
+      await _initResponsive(tester);
+      await pumpAt(tester, 300);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Sicilian Defense'), findsNothing);
+      expect(find.byKey(const ValueKey('feed_header_event')), findsOneWidget);
+      final line = tester.getRect(find.byType(FeedPostHeader));
+      for (final text in tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(FeedPostHeader),
+          matching: find.byType(Text),
+        ),
+      )) {
+        expect(
+          tester.getRect(find.byWidget(text)).right,
+          lessThanOrEqualTo(line.right + 0.5),
+        );
+      }
+    });
   });
 
   group('signals, not captions', () {

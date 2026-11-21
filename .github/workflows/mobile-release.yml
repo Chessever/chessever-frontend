@@ -273,7 +273,9 @@ jobs:
     name: iOS IPA
     needs: preflight
     if: inputs.ios
-    runs-on: macos-26
+    # The `xcode-27` image (macOS 27, Xcode 27.x): `macos-26` carries only
+    # Xcode 26.x, and App Store Connect requires the iOS 27 SDK (ITMS-90725).
+    runs-on: xcode-27
     # The Apple Watch app adds the flutter-watchos toolchain and a second build.
     timeout-minutes: ${{ inputs.watch && 60 || 30 }}
     environment: release
@@ -286,13 +288,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode 27
         background: true
-        # Codemagic's "latest" resolved to 26.6 (17F113) when this was ported.
-        # Move deliberately; App Store Connect enforces a minimum SDK.
+        # App Store Connect requires the iOS 27 SDK (Xcode 27 or later) from
+        # April 2027: ITMS-90725 arrived for 39.1.0, built with Xcode 26.6 and
+        # the iOS 26.5 SDK. Take the newest Xcode 27 the runner image carries,
+        # and fail loudly (listing what is installed) when it has none.
         run: |
-          sudo xcode-select --switch /Applications/Xcode_26.6.app
+          xcode=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$xcode" ]; then
+            echo "::error::No Xcode 27 on this runner; installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode"
           xcodebuild -version
+          xcodebuild -showsdks | grep -iE "iphoneos|macosx" || true
 
       - name: Set up Flutter (stable)
         if: inputs.source_run == ''

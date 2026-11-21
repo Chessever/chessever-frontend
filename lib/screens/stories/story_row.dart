@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/screens/chessboard/game_review/classification_style.dart'
+    show moveAnnotationColor;
 import 'package:chessever2/screens/collections/collections_screen.dart'
-    show CollectionCover, CollectionScreen, collectionMenuActions;
+    show CollectionCover, collectionMenuActions;
 import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/services/lichess_move_annotations_service.dart'
+    show LichessMoveAnnotationType;
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
@@ -136,6 +141,7 @@ class StoryCoverImage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (isMissedChances(collection)) return const MissedChancesMark();
     final local = ref.watch(storyCoverOverrideProvider)?.call(collection);
     if (local != null) {
       return Image(image: local, fit: BoxFit.cover, gaplessPlayback: true);
@@ -186,18 +192,18 @@ void refreshStoryCatalog(WidgetRef ref) {
   ref.invalidate(collectionsProvider);
 }
 
-/// The collections' story row at the top of Today: one circle per
-/// collection, what arrived while it was put away first, then the ones with
-/// stories the reader has not seen, then the seen. A skeleton of the same
-/// geometry while they load.
+/// The collections' story row at the top of Today: the Missed chances
+/// circle and the [kStoryCollectionCap] collections updated most recently,
+/// what arrived while the row was put away first, then the circles with
+/// something the reader has not seen, then the seen ones, quiet. A
+/// collection that gets a new game or an update lands leftmost. A skeleton
+/// of the same geometry while they load.
 ///
-/// The row comes and goes on its own spring, by the reader's choice in
-/// Settings ([StoryRowMode]) and its lifecycle ([decideStoryRow]): pulled
-/// past its first or last circle it goes until something new arrives; left
-/// unopened for [kStoryRowIdleDays] days with nothing new, it steps away
-/// the same way; with everything seen it stays for the rest of the day.
-/// Today's first frame already knows whether it is there
-/// ([storyRowExpected]), so the list never jumps on launch.
+/// The row stays while it is On, everything seen or not: watched circles
+/// go grey, and the row is never empty of what the reader can come back to.
+/// Pulled past its first or last circle it goes until something new
+/// arrives ([decideStoryRow]). Today's first frame already knows whether it
+/// is there ([storyRowExpected]), so the list never jumps on launch.
 ///
 /// [gutter] is the page's: the row scrolls edge to edge and starts and ends
 /// on it.
@@ -318,6 +324,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   void dispose() {
     _lifecycle.dispose();
     _retry?.cancel();
+    _missedWait?.cancel();
     _scroll.dispose();
     _presence.dispose();
     _pull.dispose();
@@ -329,7 +336,13 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     List<Collection> collections,
     StorySeenNotifier seen,
   ) {
-    final slugs = [for (final c in collections) c.slug];
+    // The order is fixed while the row is on screen; a circle watched just
+    // now goes quiet where it stands. A circle that gets something new (a
+    // game, an update: its signature changes) orders the row again, so it
+    // lands leftmost the moment the catalog says so.
+    final slugs = [
+      for (final c in collections) '${c.slug}|${storySignature(c)}',
+    ];
     if (!listEquals(slugs, _orderedFrom)) {
       _orderedFrom = slugs;
       _order = orderStoryCollections(collections, seen.isSeen, fresh: _fresh);
@@ -407,11 +420,6 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     final index = _order.indexOf(collection);
     if (index < 0) return;
     HapticFeedbackService.cardTap();
-    // The row is wanted: its idle days start again.
-    final catalog = _catalog;
-    if (catalog != null) {
-      ref.read(storyRowPrefsProvider.notifier).opened(catalog);
-    }
     openCollectionStories(
       context,
       collections: List.unmodifiable(_order),
@@ -424,11 +432,10 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   }
 
   void _openPage(Collection collection) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CollectionScreen(collection: collection),
-      ),
-    );
+    final page = ref.read(storyCollectionPageProvider);
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => page(collection)));
   }
 
   // ------------------------------------------------------------ presence
@@ -460,22 +467,14 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     if (_lastContent != null) setState(() => _lastContent = null);
   }
 
-  /// Records what the lifecycle decided, after the frame: something new
-  /// since a pull-away brings the row back (the new first); every story seen
-  /// starts (or something unseen ends) the row's last day; a day on Today
-  /// counts toward the row's stretch.
+  /// Records what the row decided, after the frame: something new since a
+  /// pull-away brings the row back (the new first), and a pull-away made on
+  /// another device takes this device's snapshot.
   void _apply(StoryRowDecision decision, StoryRowPrefs prefs) {
     final clear = decision.clearDismissal;
-    final day = decision.allSeenDay;
-    final run = decision.run;
     final adopt = decision.adoptSnapshot;
     final dismissal = prefs.dismissal;
-    if (!clear &&
-        adopt == null &&
-        day == prefs.allSeenDay &&
-        run == prefs.run) {
-      return;
-    }
+    if (!clear && adopt == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final notifier = ref.read(storyRowPrefsProvider.notifier);
@@ -483,7 +482,6 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
       if (adopt != null && dismissal != null) {
         notifier.adoptDismissalSnapshot(dismissal, adopt);
       }
-      notifier.observe(allSeenDay: day, run: run);
     });
   }
 
@@ -495,10 +493,10 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   /// The catalog the row last saw arrive, to tell a new read from a rebuild.
   List<Collection>? _arrived;
 
-  /// Back from the background: the day may have turned (the row's day
-  /// rules read it again), and a catalog read long ago is read again, so
-  /// what arrived meanwhile shows (new circles, lit rings, a row that was
-  /// put away coming back) without a cold start.
+  /// Back from the background: the day may have turned (a new day of
+  /// Missed chances), and a catalog read long ago is read again, so what
+  /// arrived meanwhile shows (new circles, lit rings, a row that was put
+  /// away coming back) without a cold start.
   void _onResume() {
     if (!mounted) return;
     final readAt = _catalogReadAt;
@@ -510,9 +508,9 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     setState(() {});
   }
 
-  /// A catalog read that counts more games in a collection than its stories
-  /// were read with: those stories are read again (they are kept warm for a
-  /// few minutes), so opening its lit ring shows its new games.
+  /// A catalog read where a collection changed since its stories were read
+  /// (a new game, an update): those stories are read again (they are kept
+  /// warm for a few minutes), so opening its lit ring shows what is new.
   void _onCatalogArrived(List<Collection> list) {
     _catalogReadAt = ref.read(storyClockProvider)();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -520,8 +518,12 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
       for (final c in list) {
         final batch = storyBatchProvider(c.slug);
         if (!ref.exists(batch)) continue;
-        final read = ref.read(batch).valueOrNull?.gameCount;
-        if (read == null || read >= c.gameCount) continue;
+        final read = ref.read(batch).valueOrNull;
+        if (read == null) continue;
+        final grew = (read.gameCount ?? c.gameCount) < c.gameCount;
+        final changed =
+            read.signature != null && read.signature != storySignature(c);
+        if (!grew && !changed) continue;
         ref.invalidate(collectionDetailProvider(c.slug));
         ref.invalidate(collectionGamesProvider(c.slug));
       }
@@ -634,10 +636,50 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
 
   // --------------------------------------------------------------- build
 
+  /// The day the Missed chances circle was last read for: a new day reads
+  /// a new set.
+  String? _missedDay;
+
+  /// The catalog has been here this long without the Missed chances read:
+  /// the row shows without that circle rather than wait on it.
+  bool _missedWaitOver = false;
+  Timer? _missedWait;
+
+  /// How long the row waits for Missed chances once the catalog is in, so
+  /// the circle does not arrive after the rest and move them.
+  static const Duration _missedPatience = Duration(milliseconds: 2500);
+
+  /// The Missed chances circle for today, when the day's read holds a game;
+  /// null while it is still worth waiting for ([_missedWaitOver]).
+  ({bool waiting, Collection? circle}) _missedCircle(DateTime now) {
+    final day = storyDayKey(now);
+    if (_missedDay != day) {
+      if (_missedDay != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ref.invalidate(missedChancesBatchProvider);
+        });
+      }
+      _missedDay = day;
+    }
+    final read = ref.watch(storyBatchProvider(kMissedChancesSlug));
+    final batch = read.valueOrNull;
+    if (batch != null) {
+      return (
+        waiting: false,
+        circle: batch.games.isEmpty ? null : missedChancesCollection(now),
+      );
+    }
+    if (read.hasError) return (waiting: false, circle: null);
+    _missedWait ??= Timer(_missedPatience, () {
+      if (mounted) setState(() => _missedWaitOver = true);
+    });
+    return (waiting: !_missedWaitOver, circle: null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final prefs = ref.watch(storyRowPrefsProvider);
-    final today = storyDayKey(ref.watch(storyClockProvider)());
+    final now = ref.watch(storyClockProvider)();
     final Widget? content;
     final bool shown;
     if (prefs.mode == StoryRowMode.off) {
@@ -648,15 +690,20 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
       final collections = ref.watch(storyCollectionsProvider);
       final seenRecord = ref.watch(storySeenProvider);
       final list = collections.valueOrNull;
+      final missed = prefs.dismissal != null || list == null
+          ? null
+          : _missedCircle(now);
       if (list == null && collections.hasError) {
         _scheduleRetry();
         shown = false;
         content = null;
-      } else if (list == null || seenRecord == null) {
+      } else if (list == null ||
+          seenRecord == null ||
+          ((missed?.waiting ?? false) && _order.isEmpty)) {
         // Loading: the device's copy says whether the row will be there, so
         // a row that stays away never shows its skeleton.
         if (list == null) _retryDelay = const Duration(seconds: 8);
-        shown = storyRowExpected(prefs, today);
+        shown = storyRowExpected(prefs);
         content = shown ? _StoryRowSkeleton(gutter: widget.gutter) : null;
       } else {
         _retryDelay = const Duration(seconds: 8);
@@ -665,16 +712,10 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
           _onCatalogArrived(list);
         }
         final seen = ref.read(storySeenProvider.notifier);
-        final decision = decideStoryRow(
-          prefs: prefs,
-          catalog: list,
-          isSeen: seen.isSeen,
-          today: today,
-        );
+        final decision = decideStoryRow(prefs: prefs, catalog: list);
         _apply(decision, prefs);
         if (decision.returning && !setEquals(_fresh, decision.fresh)) {
-          // Back after a pull-away, or after it stepped away: what arrived
-          // leads from its first frame.
+          // Back after a pull-away: what arrived leads from its first frame.
           _fresh = decision.fresh;
           _orderedFrom = null;
         }
@@ -682,10 +723,11 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
         // Coming back onto Today: ordered afresh before its first frame.
         if (shown && _shown == false) _orderedFrom = null;
         _catalog = list;
+        final circles = [?missed?.circle, ...selectStoryCollections(list)];
         // Drawn while it is there or still springing away.
-        content = list.isEmpty || (!shown && _shown != true)
+        content = circles.isEmpty || (!shown && _shown != true)
             ? null
-            : _row(list, seen);
+            : _row(circles, seen);
       }
     }
     _setShown(shown);
@@ -998,6 +1040,29 @@ class _StoryCircle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final face = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onOpen,
+      // Outside the press: the circle is measured where it rests.
+      child: _AnchorReporter(
+        onAnchor: onAnchor,
+        child: PressSpring(
+          delay: const Duration(milliseconds: 70),
+          child: ExcludeSemantics(
+            child: StoryCircleFace(collection: collection, seen: seen),
+          ),
+        ),
+      ),
+    );
+    if (isMissedChances(collection)) {
+      // Not a collection: no collection menu to hold it into.
+      return Semantics(
+        container: true,
+        button: true,
+        label: '${collection.title}, ${seen ? 'stories seen' : 'new stories'}',
+        child: face,
+      );
+    }
     // One button for the screen reader: its tap opens the stories, its
     // long-press the collection's menu (both from the detectors below).
     return Semantics(
@@ -1015,20 +1080,7 @@ class _StoryCircle extends ConsumerWidget {
         previewBuilder: (_) =>
             StoryCircleFace(collection: collection, seen: seen),
         onPreviewTap: onOpenPage,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onOpen,
-          // Outside the press: the circle is measured where it rests.
-          child: _AnchorReporter(
-            onAnchor: onAnchor,
-            child: PressSpring(
-              delay: const Duration(milliseconds: 70),
-              child: ExcludeSemantics(
-                child: StoryCircleFace(collection: collection, seen: seen),
-              ),
-            ),
-          ),
-        ),
+        child: face,
       ),
     );
   }
@@ -1197,4 +1249,120 @@ class _StoryRowSkeleton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The Missed chances circle's own mark, drawn instead of a cover: a crop
+/// of the reader's board, one square ringed in the missed win's coral, and
+/// an arrow that stops one square short of it. The win was there; the move
+/// played did not reach it.
+class MissedChancesMark extends ConsumerWidget {
+  const MissedChancesMark({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme =
+        (ref.watch(boardSettingsProviderNew).valueOrNull ??
+                const BoardSettingsNew())
+            .colorScheme;
+    return ExcludeSemantics(
+      child: CustomPaint(
+        key: const ValueKey('missed_chances_mark'),
+        painter: MissedChancesMarkPainter(
+          light: scheme.lightSquare,
+          dark: scheme.darkSquare,
+          ring: moveAnnotationColor(LichessMoveAnnotationType.missedWin),
+        ),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+/// Paints [MissedChancesMark] into any square: a 5 by 5 crop of the board
+/// whose middle three squares each way hold the drawing, so the circle's
+/// edge never cuts it.
+@visibleForTesting
+class MissedChancesMarkPainter extends CustomPainter {
+  const MissedChancesMarkPainter({
+    required this.light,
+    required this.dark,
+    required this.ring,
+  });
+
+  final Color light;
+  final Color dark;
+  final Color ring;
+
+  /// The arrow's ink: near-black, a touch see-through, as the board's own
+  /// arrows lie on the squares.
+  static const Color ink = Color(0xD9101314);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final side = size.shortestSide;
+    final origin = Offset((size.width - side) / 2, (size.height - side) / 2);
+    final cell = side / 5;
+    final squares = Paint();
+    for (var row = 0; row < 5; row++) {
+      for (var col = 0; col < 5; col++) {
+        squares.color = (row + col).isEven ? light : dark;
+        canvas.drawRect(
+          Rect.fromLTWH(
+            origin.dx + col * cell,
+            origin.dy + row * cell,
+            cell + 0.5,
+            cell + 0.5,
+          ),
+          squares,
+        );
+      }
+    }
+    Offset centre(int col, int row) =>
+        origin + Offset((col + 0.5) * cell, (row + 0.5) * cell);
+    // The win: a ring inside its square.
+    canvas.drawCircle(
+      centre(3, 1),
+      cell * 0.36,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = cell * 0.13
+        ..color = ring,
+    );
+    // The move played: from b2 toward the ring, landing a square short.
+    final from = centre(1, 3);
+    final to = centre(2, 2);
+    final direction = (to - from) / (to - from).distance;
+    final normal = Offset(-direction.dy, direction.dx);
+    final head = cell * 0.42;
+    final tip = to + direction * cell * 0.18;
+    final base = tip - direction * head;
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cell * 0.2
+      ..strokeCap = StrokeCap.round
+      ..color = ink;
+    canvas.drawLine(from, base + direction * cell * 0.02, stroke);
+    final arrowHead = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(
+        base.dx + normal.dx * head * 0.62,
+        base.dy + normal.dy * head * 0.62,
+      )
+      ..lineTo(
+        base.dx - normal.dx * head * 0.62,
+        base.dy - normal.dy * head * 0.62,
+      )
+      ..close();
+    canvas.drawPath(
+      arrowHead,
+      Paint()
+        ..color = ink
+        ..style = PaintingStyle.fill
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(MissedChancesMarkPainter old) =>
+      old.light != light || old.dark != dark || old.ring != ring;
 }

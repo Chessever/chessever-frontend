@@ -17,7 +17,6 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/search/search_carousel.dart'
     show searchCarouselItemWidth;
 import 'package:chessever2/screens/search/search_feeds.dart';
-import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/screens/search/search_page_landing.dart';
 import 'package:chessever2/screens/search/search_page_sections.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -142,7 +141,6 @@ Future<void> _pumpLanding(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        searchLiveNowProvider.overrideWith(_NoLiveNow.new),
         searchTopPlayersFeedProvider.overrideWith(_NoTopPlayers.new),
         searchOpeningsFeedProvider.overrideWith(_NoOpenings.new),
         searchComingUpFeedProvider.overrideWith(_NoComingUp.new),
@@ -221,11 +219,6 @@ class _FixedCollections extends SearchCollectionsFeed {
 
   @override
   SearchFeed<Collection> build() => SearchFeed(items: items);
-}
-
-class _NoLiveNow extends SearchLiveNowNotifier {
-  @override
-  SearchLiveNow build() => SearchLiveNow.none;
 }
 
 class _NoTopPlayers extends SearchTopPlayersFeed {

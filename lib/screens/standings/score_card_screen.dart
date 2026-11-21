@@ -2579,9 +2579,8 @@ Future<void> showOpponentScoreCardSheet({
   return Navigator.of(context).push(
     MotionSheetRoute<void>(
       builder: (_) => _OpponentScoreCardSheet(player: player),
-      barrierColor: context.isLightTheme
-          ? context.colors.scrim
-          : Colors.black.withValues(alpha: 0.6),
+      // The popups' plain scrim, which the card's glass is solved over.
+      barrierColor: ChessSheetGlass.barrierColor(context),
       barrierLabel: 'Close player card',
       // Keep the card clear of the status bar. It still reaches the bottom
       // edge, so nothing is inset away from the home indicator.
@@ -2637,11 +2636,19 @@ class _OpponentScoreCardSheetState extends State<_OpponentScoreCardSheet> {
     // then the route) down with the finger.
     return Sheet(
       scrollConfiguration: const SheetScrollConfiguration(),
-      decoration: MaterialSheetDecoration(
+      // The one sheet glass, toned to the page the card used to be. The
+      // card fills the screen, so it is solid (the frost rule,
+      // PopupGlassStyle.frostMaxScreenShare): the glass's look without the
+      // live blur, so nothing re-blurs the page behind it on every frame
+      // the card scrolls.
+      decoration: SheetDecorationBuilder(
         size: SheetSize.stretch,
-        color: context.colors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.br)),
-        clipBehavior: Clip.antiAlias,
+        builder: (context, child) => ChessSheetGlass(
+          radius: 20.br,
+          tone: context.colors.background,
+          solid: true,
+          child: child,
+        ),
       ),
       child: SizedBox(
         height: restingHeight,

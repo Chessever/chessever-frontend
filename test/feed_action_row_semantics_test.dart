@@ -71,7 +71,7 @@ void main() {
           tester,
           SizedBox(
             width: FeedLayout.railWidth,
-            height: 4 * FeedLayout.railCellMin,
+            height: 4 * FeedLayout.railCellMin + FeedLayout.railInsets,
             child: FeedActionRail(
               cellHeight: FeedLayout.railCellMin,
               liked: state,

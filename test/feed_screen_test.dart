@@ -23,13 +23,13 @@ import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
+import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/ads/ad_disclosure.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessground/chessground.dart';
@@ -271,28 +271,18 @@ void main() {
       expect(find.byType(PlayerFirstRowDetailWidget), findsNWidgets(2));
       expect(find.text('Brilliant finish'), findsNothing);
       expect(find.text('Test Open 2026'), findsOneWidget);
-      expect(find.text('C20'), findsOneWidget);
-      // The opening's name may give way to its code on a narrow line; it is
-      // always in the button's label.
-      expect(
-        find.bySemanticsLabel(RegExp("C20 King's Pawn Game")),
-        findsOneWidget,
-      );
+      // Never the opening's ECO code. On a line this narrow (the test font
+      // is wide) the opening leaves the line whole, so the event keeps
+      // every one of its words.
+      expect(find.text('C20'), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('C20')), findsNothing);
       expect(find.textContaining('Carlsen', findRichText: true), findsWidgets);
       expect(find.textContaining('Nakamura', findRichText: true), findsWidgets);
       expect(find.text('Start'), findsOneWidget);
 
-      // The name, set as every root sets its name: centred on the screen,
-      // on Home's selected-tab type, no mark beside it (the bottom bar
-      // carries the marks).
-      final heading = tester.getRect(find.byType(HomeTopBarTitle));
-      final screenWidth =
-          tester.view.physicalSize.width / tester.view.devicePixelRatio;
-      expect(heading.center.dx, closeTo(screenWidth / 2, 0.5));
-      expect(heading.height, lessThan(48));
-      final titleText = tester.widget<Text>(find.text('Feed'));
-      expect(titleText.style!.fontSize, AppTypography.textMdMedium.fontSize);
-      expect(titleText.style!.fontWeight, FontWeight.w700);
+      // No page title: the post's own header says what it is.
+      expect(find.byType(HomeTopBarTitle), findsNothing);
+      expect(find.text('Feed'), findsNothing);
       expect(find.byIcon(Icons.smart_display_rounded), findsNothing);
       // Autoplay: the first move lands after the opening beat, with the
       // board's ordinary sound (it is unclassified).
@@ -648,21 +638,20 @@ void main() {
     },
   );
 
-  testWidgets('a back button stands where the tabs keep the avatar', (
-    tester,
-  ) async {
+  testWidgets('a back button stands where the tabs keep the avatar, and '
+      'nothing else: no title, no speaker', (tester) async {
     await _pumpFeed(tester, withDrawer: true);
     expect(find.byKey(const ValueKey('feed_sidebar_avatar')), findsNothing);
     expect(find.byKey(const ValueKey('feed_back')), findsOneWidget);
-    expect(find.text('Feed'), findsOneWidget);
+    expect(find.text('Feed'), findsNothing);
+    expect(find.byKey(const ValueKey('feed_sound_toggle')), findsNothing);
     // No stream titles: Feed is games and news, puzzles come later.
     expect(find.text('Puzzle'), findsNothing);
     await _tearDown(tester);
   });
 
-  testWidgets('the header is one line: event and opening, no caption', (
-    tester,
-  ) async {
+  testWidgets('the header is one line at the top of the post: event and '
+      'opening, no ECO code, no caption', (tester) async {
     await _pumpFeed(
       tester,
       games: [
@@ -676,8 +665,15 @@ void main() {
     );
     final header = find.byKey(const ValueKey('feed_post_header'));
     expect(header, findsOneWidget);
-    // One row, 44pt, every text on it single-line.
+    // One row, 44pt, every text on it single-line, over the board block.
     expect(tester.getSize(header).height, 44);
+    expect(
+      tester.getRect(header).bottom,
+      closeTo(
+        tester.getRect(find.byKey(const ValueKey('feed_row_black'))).top,
+        0.5,
+      ),
+    );
     final texts = find.descendant(of: header, matching: find.byType(Text));
     final top = tester.getTopLeft(texts.first).dy;
     for (final element in texts.evaluate()) {
@@ -693,12 +689,33 @@ void main() {
     );
     expect(find.textContaining('Caruana'), findsOneWidget);
     expect(find.textContaining('Because you follow'), findsNothing);
-    // Both the event and the opening are buttons.
+    // The event is a button, whole on the line.
     expect(find.bySemanticsLabel('Open event Test Open 2026'), findsOneWidget);
+    expect(find.text('Test Open 2026'), findsOneWidget);
+    expect(find.textContaining('C20'), findsNothing);
+    // The opening is a button too, named in words, never by its ECO code;
+    // it is the part that leaves the line first when there is no room (the
+    // test font is wide), before the event gives up any of its words.
+    final line = tester.widget<FeedPostHeader>(header);
+    final opening = line.parts.indexWhere((part) => part.id == 'opening');
+    expect(opening, isNot(-1));
     expect(
-      find.bySemanticsLabel("Open C20 King's Pawn Game in the board editor"),
-      findsOneWidget,
+      line.parts[opening].semanticsLabel,
+      "Open King's Pawn Game in the board editor",
     );
+    expect(line.parts[opening].pieces.map((piece) => piece.text), [
+      "King's Pawn Game",
+    ]);
+    expect(line.parts[opening].compact, isNull);
+    expect(line.yieldOrder, [opening]);
+    expect(line.shrinkOrder, isNot(contains(opening)));
+    for (final part in line.parts) {
+      for (final piece in [...part.pieces, ...?part.compact]) {
+        expect(piece.text ?? '', isNot(contains('C20')));
+      }
+      expect(part.semanticsLabel ?? '', isNot(contains('C20')));
+    }
+    expect(find.bySemanticsLabel(RegExp('C20')), findsNothing);
     await _tearDown(tester);
   });
 
@@ -1262,9 +1279,6 @@ class _SilentSfx implements FeedSfx {
 
   @override
   void playGameEnd(FeedItem item) => gameEnds++;
-
-  @override
-  void playSwipe() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

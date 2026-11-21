@@ -17,7 +17,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/droplet_animation_curves.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
@@ -25,6 +25,7 @@ import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -256,88 +257,108 @@ class _CategoryDropdownContent extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final layerLink = useMemoized(() => LayerLink());
     final isOpen = useState(false);
-    final animationController = useAnimationController(
-      duration: const Duration(milliseconds: 200),
-    );
+    // The open panel's overlay entry. Only this widget inserts and removes
+    // it, so the chip never waits on a listener to close it.
+    final entry = useRef<_OpenPanel?>(null);
+    // Panels folding shut after a close: each takes itself away when its
+    // fold is done, or with the chip if the chip leaves first.
+    final folding = useRef<Set<_OpenPanel>>(<_OpenPanel>{});
 
-    final animation = useMemoized(
-      () => CurvedAnimation(
-        parent: animationController,
-        curve: DropletCurves.openPop,
-        reverseCurve: DropletCurves.close,
-      ),
-      [animationController],
-    );
+    void release() {
+      entry.value = null;
+      if (ResponsiveHelper.isTablet) {
+        TabletPopupState.markClosed();
+      }
+    }
 
-    useEffect(() {
-      return () {
-        if (isOpen.value) {
-          isOpen.value = false;
+    void drop(_OpenPanel panel) {
+      if (identical(entry.value, panel)) release();
+      folding.value.remove(panel);
+      panel.dispose();
+    }
+
+    // Leaving the screen with the panel open takes the panel (and any still
+    // folding) with it, at once. It must not write [isOpen]: this element is
+    // being unmounted.
+    useEffect(
+      () => () {
+        final current = entry.value;
+        if (current != null) drop(current);
+        for (final panel in folding.value.toList()) {
+          drop(panel);
         }
-      };
-    }, []);
+      },
+      const [],
+    );
 
     final hasMultipleOptions = categories.length > 1 || rounds.length > 1;
 
+    /// Folds the panel shut into the chip; the chip turns closed at once and
+    /// the page under the folding panel already takes taps. [instant] takes
+    /// it away in this frame instead: a route is about to open (the paywall,
+    /// a focus menu), and an overlay entry left folding would sit above it,
+    /// or the window changed and the panel no longer hangs from the chip.
+    void closeDropdown({bool instant = false}) {
+      final current = entry.value;
+      if (current != null) {
+        release();
+        if (instant) {
+          drop(current);
+        } else {
+          folding.value.add(current);
+          current.fold();
+        }
+      }
+      if (isOpen.value) isOpen.value = false;
+    }
+
     void openDropdown() {
-      if (!hasMultipleOptions) return;
+      if (!hasMultipleOptions || entry.value != null) return;
+      // A panel still folding from the last close gives way to the new one.
+      for (final panel in folding.value.toList()) {
+        drop(panel);
+      }
 
       HapticFeedbackService.selection();
       _traceDropdown('open_requested');
-      isOpen.value = true;
-      animationController.forward();
-
-      _showOverlay(
+      // The panel goes in now, in the frame the chip turns open, not one
+      // frame later: the chip is laid out, so it can be measured here.
+      final panel = _showOverlay(
         context: context,
-        layerLink: layerLink,
-        isOpen: isOpen,
-        animationController: animationController,
-        animation: animation,
+        close: closeDropdown,
+        onFolded: (panel) => drop(panel),
         ref: ref,
       );
+      if (panel != null) {
+        entry.value = panel;
+        isOpen.value = true;
+      }
     }
 
-    void closeDropdown() {
-      _traceDropdown('closed_by_chip');
-      animationController.reverse().then((_) {
+    return _StadiumChipButton(
+      label: combinedSelected
+          ? kCombinedCategoryLabel
+          : tourCategoryLabel(selectedCategory.tour.name, groupName: groupName),
+      // Combined is live while any of its categories is.
+      status: combinedSelected
+          ? (categories.any(
+                  (category) => category.roundStatus == RoundStatus.live,
+                )
+                ? RoundStatus.live
+                : null)
+          : selectedRound?.roundStatus ?? selectedCategory.roundStatus,
+      isOpen: isOpen.value,
+      showChevron: hasMultipleOptions,
+      constrainWidth: constrainWidth,
+      onTap: () {
         if (isOpen.value) {
-          isOpen.value = false;
+          _traceDropdown('closed_by_chip');
+          closeDropdown();
+        } else {
+          openDropdown();
         }
-      });
-    }
-
-    return CompositedTransformTarget(
-      link: layerLink,
-      child: _StadiumChipButton(
-        label:
-            combinedSelected
-                ? kCombinedCategoryLabel
-                : tourCategoryLabel(
-                  selectedCategory.tour.name,
-                  groupName: groupName,
-                ),
-        // Combined is live while any of its categories is.
-        status:
-            combinedSelected
-                ? (categories.any(
-                      (category) => category.roundStatus == RoundStatus.live,
-                    )
-                    ? RoundStatus.live
-                    : null)
-                : selectedRound?.roundStatus ?? selectedCategory.roundStatus,
-        isOpen: isOpen.value,
-        showChevron: hasMultipleOptions,
-        constrainWidth: constrainWidth,
-        onTap: () {
-          if (isOpen.value) {
-            closeDropdown();
-          } else {
-            openDropdown();
-          }
-        },
-      ),
+      },
     );
   }
 
@@ -388,15 +409,24 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     unawaited(menu);
   }
 
-  void _showOverlay({
+  /// Puts the open panel on the overlay under the chip, in this frame.
+  /// Returns null when the chip cannot be measured (it is leaving).
+  _OpenPanel? _showOverlay({
     required BuildContext context,
-    required LayerLink layerLink,
-    required ValueNotifier<bool> isOpen,
-    required AnimationController animationController,
-    required Animation<double> animation,
+    required void Function({bool instant}) close,
+    required ValueChanged<_OpenPanel> onFolded,
     required WidgetRef ref,
   }) {
-    OverlayEntry? overlayEntry;
+    if (!context.mounted) {
+      _traceDropdown('aborted_unmounted');
+      return null;
+    }
+    final overlay = Overlay.of(context);
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      _traceDropdown('aborted_no_box');
+      return null;
+    }
 
     // Track when opened for tablet phantom tap protection
     final openedAt = DateTime.now();
@@ -404,140 +434,107 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       TabletPopupState.markOpen();
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) {
-        _traceDropdown('aborted_unmounted');
-        isOpen.value = false;
-        return;
-      }
+    final size = renderBox.size;
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    final offset = overlayBox.globalToLocal(
+      renderBox.localToGlobal(Offset.zero),
+    );
+    final screenSize = MediaQuery.of(context).size;
+    final availableHeight =
+        (screenSize.height - offset.dy - size.height - 32.sp).clamp(
+          0.0,
+          double.infinity,
+        );
 
-      final overlay = Overlay.of(context);
-      final renderBox = context.findRenderObject() as RenderBox?;
-
-      if (renderBox == null) {
-        _traceDropdown('aborted_no_box');
-        isOpen.value = false;
-        return;
-      }
-
-      final size = renderBox.size;
-      final overlayBox = overlay.context.findRenderObject() as RenderBox;
-      final offset = overlayBox.globalToLocal(
-        renderBox.localToGlobal(Offset.zero),
-      );
-      final screenSize = MediaQuery.of(context).size;
-      final availableHeight =
-          (screenSize.height - offset.dy - size.height - 32.sp).clamp(
-            0.0,
-            double.infinity,
-          );
-
-      overlayEntry = OverlayEntry(
-        builder: (context) => WindowMetricsDismissal(
-          onChanged: () {
-            _traceDropdown('closed_by_window_resize');
-            TabletPopupState.markClosed();
-            animationController.value = 0;
-            isOpen.value = false;
+    final closing = ValueNotifier<bool>(false);
+    late final _OpenPanel panel;
+    // The builder's own context is not used: `context` below stays the
+    // chip's, which outlives the panel (the focus menu's snack lands there).
+    final overlayEntry = OverlayEntry(
+      builder: (_) => WindowMetricsDismissal(
+        onChanged: () {
+          _traceDropdown('closed_by_window_resize');
+          close(instant: true);
+        },
+        child: _DropdownOverlay(
+          closing: closing,
+          onFolded: () => onFolded(panel),
+          triggerSize: size,
+          triggerOffset: offset,
+          screenWidth: screenSize.width,
+          availableHeight: availableHeight,
+          categories: categories,
+          groupName: groupName,
+          openedAt: openedAt,
+          onCategorySelect: (category) {
+            HapticFeedbackService.selection();
+            onCategoryChanged(category);
+            // Close immediately after selection
+            close();
           },
-          child: _DropdownOverlay(
-            layerLink: layerLink,
-            triggerSize: size,
-            triggerOffset: offset,
-            screenWidth: screenSize.width,
-            availableHeight: availableHeight,
-            animation: animation,
-            categories: categories,
-            groupName: groupName,
-            openedAt: openedAt,
-            onCategorySelect: (category) {
-              HapticFeedbackService.selection();
-              onCategoryChanged(category);
-              // Close immediately after selection
-              if (ResponsiveHelper.isTablet) {
-                TabletPopupState.markClosed();
-              }
-              animationController.reverse().then((_) {
-                isOpen.value = false;
-              });
-            },
-            onCategoryChange: (category) {
-              // Select category WITHOUT closing dropdown (for expand arrow)
-              HapticFeedbackService.selection();
-              onCategoryChanged(category);
-              // Don't close - let the dropdown stay open to show loaded rounds
-            },
-            onCombinedSelect: () {
-              HapticFeedbackService.selection();
-              if (ResponsiveHelper.isTablet) {
-                TabletPopupState.markClosed();
-              }
-              // Close first: a viewer without Premium gets the paywall next,
-              // and it must not open underneath the dropdown.
-              animationController.reverse().then((_) {
-                isOpen.value = false;
-              });
-              onCombinedSelected();
-            },
-            onRoundSelect: (round) {
-              debugPrint(
-                '🟢 onRoundSelect called: ${round.name} (${round.id})',
-              );
-              HapticFeedbackService.selection();
-              onRoundChanged(round);
-              // Close immediately after selection
-              if (ResponsiveHelper.isTablet) {
-                TabletPopupState.markClosed();
-              }
-              animationController.reverse().then((_) {
-                isOpen.value = false;
-              });
-            },
-            onDismiss: () {
-              _traceDropdown('closed_by_backdrop');
-              if (ResponsiveHelper.isTablet) {
-                TabletPopupState.markClosed();
-              }
-              animationController.reverse().then((_) {
-                isOpen.value = false;
-              });
-            },
-            onRoundLongPress: (round, rowContext, preview) => _showRoundMenu(
-              chipContext: context,
-              rowContext: rowContext,
-              preview: preview,
-              round: round,
-              ref: ref,
-              dismissDropdown: () {
-                if (ResponsiveHelper.isTablet) {
-                  TabletPopupState.markClosed();
-                }
-                animationController.value = 0;
-                isOpen.value = false;
-              },
-            ),
+          onCategoryChange: (category) {
+            // Select category WITHOUT closing dropdown (for expand arrow)
+            HapticFeedbackService.selection();
+            onCategoryChanged(category);
+            // Don't close - let the dropdown stay open to show loaded rounds
+          },
+          onCombinedSelect: () {
+            HapticFeedbackService.selection();
+            // Close first, at once: a viewer without Premium gets the
+            // paywall next, and it must not open underneath the dropdown
+            // (a folding overlay entry would sit above the new route).
+            close(instant: true);
+            onCombinedSelected();
+          },
+          onRoundSelect: (round) {
+            HapticFeedbackService.selection();
+            onRoundChanged(round);
+            // Close immediately after selection
+            close();
+          },
+          onDismiss: () {
+            _traceDropdown('closed_by_backdrop');
+            close();
+          },
+          onRoundLongPress: (round, rowContext, preview) => _showRoundMenu(
+            chipContext: context,
+            rowContext: rowContext,
+            preview: preview,
+            round: round,
+            ref: ref,
+            dismissDropdown: () => close(instant: true),
           ),
         ),
-      );
+      ),
+    );
+    panel = _OpenPanel(overlayEntry, closing);
+    overlay.insert(overlayEntry);
+    _traceDropdown('shown');
+    return panel;
+  }
+}
 
-      overlay.insert(overlayEntry!);
-      _traceDropdown('shown');
+/// An open category panel: its overlay entry and the switch that folds it.
+class _OpenPanel {
+  _OpenPanel(this.entry, this._closing);
 
-      void removeOverlay() {
-        try {
-          if (ResponsiveHelper.isTablet) {
-            TabletPopupState.markClosed();
-          }
-          if (overlayEntry?.mounted == true) {
-            overlayEntry?.remove();
-          }
-        } catch (e) {
-          overlayEntry?.dispose();
-        }
-      }
+  final OverlayEntry entry;
+  final ValueNotifier<bool> _closing;
+  bool _disposed = false;
 
-      isOpen.addListener(removeOverlay);
-    });
+  /// Folds the panel shut; it is dropped once the fold is done.
+  void fold() {
+    if (!_disposed) _closing.value = true;
+  }
+
+  /// Takes the panel away now. Removing during a frame defers the overlay's
+  /// rebuild to the end of it, so this is safe from a dispose too.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    entry.remove();
+    entry.dispose();
+    _closing.dispose();
   }
 }
 
@@ -581,66 +578,66 @@ class _StadiumChipButton extends HookWidget {
     // re-recording the app bar around the chip.
     final button = RepaintBoundary(
       child: CustomPaint(
-      painter: isOpen
-          ? null
-          : _FluidShimmerPainter(
-              progress: shimmerController,
-              shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-              borderRadius: 12.br,
-            ),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.br),
-          color: isOpen
-              ? kPrimaryColor.withValues(alpha: 0.15)
-              : context.colors.textPrimary.withValues(alpha: 0.06),
-          border: Border.all(
+        painter: isOpen
+            ? null
+            : _FluidShimmerPainter(
+                progress: shimmerController,
+                shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                borderRadius: 12.br,
+              ),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12.br),
             color: isOpen
-                ? context.colors.accentText.withValues(alpha: 0.4)
-                : context.colors.textPrimary.withValues(alpha: 0.12),
-            width: 1.0,
+                ? kPrimaryColor.withValues(alpha: 0.15)
+                : context.colors.textPrimary.withValues(alpha: 0.06),
+            border: Border.all(
+              color: isOpen
+                  ? context.colors.accentText.withValues(alpha: 0.4)
+                  : context.colors.textPrimary.withValues(alpha: 0.12),
+              width: 1.0,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (status == RoundStatus.live) ...[
+                _LiveDot(),
+                SizedBox(width: 8.sp),
+              ],
+              Flexible(
+                child: _MarqueeText(
+                  text: label,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: isOpen
+                        ? context.colors.accentText
+                        : context.colors.textPrimary,
+                    letterSpacing: 0.3,
+                  ),
+                  continuous: false, // Single cycle for chip button
+                ),
+              ),
+              if (showChevron) ...[
+                SizedBox(width: 6.sp),
+                AnimatedRotation(
+                  turns: isOpen ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: isOpen
+                        ? context.colors.accentText
+                        : context.colors.textPrimary.withValues(alpha: 0.7),
+                    size: 18.ic,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (status == RoundStatus.live) ...[
-              _LiveDot(),
-              SizedBox(width: 8.sp),
-            ],
-            Flexible(
-              child: _MarqueeText(
-                text: label,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isOpen
-                      ? context.colors.accentText
-                      : context.colors.textPrimary,
-                  letterSpacing: 0.3,
-                ),
-                continuous: false, // Single cycle for chip button
-              ),
-            ),
-            if (showChevron) ...[
-              SizedBox(width: 6.sp),
-              AnimatedRotation(
-                turns: isOpen ? 0.5 : 0,
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: isOpen
-                      ? context.colors.accentText
-                      : context.colors.textPrimary.withValues(alpha: 0.7),
-                  size: 18.ic,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
       ),
     );
 
@@ -928,12 +925,13 @@ class _LiveDot extends HookWidget {
 
 /// The floating dropdown overlay
 class _DropdownOverlay extends ConsumerWidget {
-  final LayerLink layerLink;
+  /// Turns true to fold the panel shut; [onFolded] once it has.
+  final ValueListenable<bool> closing;
+  final VoidCallback onFolded;
   final Size triggerSize;
   final Offset triggerOffset;
   final double screenWidth;
   final double availableHeight;
-  final Animation<double> animation;
   final List<TourModel> categories;
   final String? groupName;
   final DateTime openedAt;
@@ -945,12 +943,12 @@ class _DropdownOverlay extends ConsumerWidget {
   final _RoundLongPress? onRoundLongPress;
 
   const _DropdownOverlay({
-    required this.layerLink,
+    required this.closing,
+    required this.onFolded,
     required this.triggerSize,
     required this.triggerOffset,
     required this.screenWidth,
     required this.availableHeight,
-    required this.animation,
     required this.categories,
     required this.groupName,
     required this.openedAt,
@@ -972,14 +970,19 @@ class _DropdownOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch providers directly to get live data when category changes
-    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    // Watch providers directly to get live data when category changes. Only
+    // the selected category's id: the rest of the event's data refreshing
+    // while the panel is open must not rebuild it.
+    final selectedTourId = ref.watch(
+      tourDetailScreenProvider.select(
+        (async) => async.valueOrNull?.aboutTourModel.id,
+      ),
+    );
     final roundsAsync = ref.watch(gamesAppBarProvider);
 
-    final tourData = tourDetailAsync.valueOrNull;
-    final selectedCategory = tourData != null
+    final selectedCategory = selectedTourId != null
         ? (categories.firstWhere(
-            (t) => t.tour.id == tourData.aboutTourModel.id,
+            (t) => t.tour.id == selectedTourId,
             orElse: () => categories.first,
           ))
         : categories.first;
@@ -1005,9 +1008,17 @@ class _DropdownOverlay extends ConsumerWidget {
     final dropdownWidth = (screenWidth - 32.w).clamp(minWidth, maxWidth);
     final leftOffset = (screenWidth - dropdownWidth) / 2;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
+    return GlassPopoverLayer(
+      left: leftOffset,
+      top: triggerOffset.dy + triggerSize.height + 8.sp,
+      closing: closing,
+      onClosed: onFolded,
+      // The chip stays lit, readable as what the panel hangs from.
+      hole: RRect.fromRectAndRadius(
+        triggerOffset & triggerSize,
+        Radius.circular(12.br),
+      ),
+      onDismiss: () {
         // Tablet phantom tap protection - ignore taps that come too soon after opening
         if (!_canDismiss()) {
           debugPrint(
@@ -1017,71 +1028,32 @@ class _DropdownOverlay extends ConsumerWidget {
         }
         onDismiss();
       },
-      child: Stack(
-        children: [
-          Positioned.fill(child: Container(color: Colors.transparent)),
-          Positioned(
-            left: leftOffset,
-            top: triggerOffset.dy + triggerSize.height + 8.sp,
-            child: Material(
-              type: MaterialType.transparency,
-              child: AnimatedBuilder(
-                animation: animation,
-                builder: (context, child) {
-                  final progress = animation.value.clamp(0.0, 1.0);
-                  return Transform.scale(
-                    scale: 0.92 + (progress * 0.08),
-                    alignment: Alignment.topCenter,
-                    child: Opacity(opacity: progress, child: child),
-                  );
-                },
-                child: GestureDetector(
-                  // Block taps from reaching the dismiss handler
-                  onTap: () {},
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    width: dropdownWidth,
-                    constraints: BoxConstraints(
-                      maxHeight: availableHeight.clamp(100.0, 350.0),
-                    ),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(16.br),
-                      border: Border.all(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.08,
-                        ),
-                        width: 1.0,
-                      ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16.br),
-                      child: _DropdownContent(
-                        animation: animation,
-                        categories: categories,
-                        groupName: groupName,
-                        selectedCategory: selectedCategory,
-                        rounds: rounds,
-                        selectedRound: selectedRound,
-                        combinedCount:
-                            combinedCategories.canCombine
-                                ? combinedCategories.items.length
-                                : 0,
-                        combinedSelected: combinedSelected,
-                        combinedLocked: combinedLocked,
-                        onCategorySelect: onCategorySelect,
-                        onCategoryChange: onCategoryChange,
-                        onCombinedSelect: onCombinedSelect,
-                        onRoundSelect: onRoundSelect,
-                        onRoundLongPress: onRoundLongPress,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: GlassPopoverPanel(
+          width: dropdownWidth,
+          constraints: BoxConstraints(
+            maxHeight: availableHeight.clamp(100.0, 350.0),
           ),
-        ],
+          borderRadius: BorderRadius.circular(16.br),
+          child: _DropdownContent(
+            categories: categories,
+            groupName: groupName,
+            selectedCategory: selectedCategory,
+            rounds: rounds,
+            selectedRound: selectedRound,
+            combinedCount: combinedCategories.canCombine
+                ? combinedCategories.items.length
+                : 0,
+            combinedSelected: combinedSelected,
+            combinedLocked: combinedLocked,
+            onCategorySelect: onCategorySelect,
+            onCategoryChange: onCategoryChange,
+            onCombinedSelect: onCombinedSelect,
+            onRoundSelect: onRoundSelect,
+            onRoundLongPress: onRoundLongPress,
+          ),
+        ),
       ),
     );
   }
@@ -1089,7 +1061,6 @@ class _DropdownOverlay extends ConsumerWidget {
 
 /// Dropdown content with expandable categories and draggable droplet selector
 class _DropdownContent extends StatefulWidget {
-  final Animation<double> animation;
   final List<TourModel> categories;
   final String? groupName;
   final TourModel selectedCategory;
@@ -1110,7 +1081,6 @@ class _DropdownContent extends StatefulWidget {
   final _RoundLongPress? onRoundLongPress;
 
   const _DropdownContent({
-    required this.animation,
     required this.categories,
     required this.groupName,
     required this.selectedCategory,
@@ -1627,8 +1597,6 @@ class _DropdownContentState extends State<_DropdownContent> {
                   return KeyedSubtree(
                     key: _itemKeys[index],
                     child: _CombinedRow(
-                      index: index,
-                      animation: widget.animation,
                       categoryCount: widget.combinedCount,
                       isSelected: isSelected,
                       isLocked: widget.combinedLocked,
@@ -1653,8 +1621,6 @@ class _DropdownContentState extends State<_DropdownContent> {
                   return KeyedSubtree(
                     key: _itemKeys[index],
                     child: _CategoryRow(
-                      index: index,
-                      animation: widget.animation,
                       category: category,
                       groupName: widget.groupName,
                       isSelected: isSelected,
@@ -1680,8 +1646,6 @@ class _DropdownContentState extends State<_DropdownContent> {
                   return KeyedSubtree(
                     key: _itemKeys[index],
                     child: _RoundRow(
-                      index: index,
-                      animation: widget.animation,
                       round: round,
                       isSelected: isSelected,
                       isNested: isNested,
@@ -1794,8 +1758,6 @@ class _DropdownItem {
 
 /// The Combined row: every category of the event in one Games list.
 class _CombinedRow extends StatelessWidget {
-  final int index;
-  final Animation<double> animation;
   final int categoryCount;
   final bool isSelected;
   final bool isLocked;
@@ -1803,8 +1765,6 @@ class _CombinedRow extends StatelessWidget {
   final VoidCallback onTap;
 
   const _CombinedRow({
-    required this.index,
-    required this.animation,
     required this.categoryCount,
     required this.isSelected,
     required this.isLocked,
@@ -1814,99 +1774,78 @@ class _CombinedRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final itemDelay = index * 0.05;
-    final itemAnimation = CurvedAnimation(
-      parent: animation,
-      curve: Interval(
-        itemDelay.clamp(0.0, 0.4),
-        (itemDelay + 0.5).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic,
-      ),
-    );
-    final ink =
-        isSelected ? context.colors.accentText : context.colors.textPrimary;
+    final ink = isSelected
+        ? context.colors.accentText
+        : context.colors.textPrimary;
     // The category rows end in an expand arrow of this footprint.
     final arrowSlot = 20.ic + 12.sp;
 
     return Semantics(
       button: true,
       selected: isSelected,
-      label:
-          isLocked
-              ? '$kCombinedCategoryLabel, all $categoryCount categories, '
-                  'Premium'
-              : '$kCombinedCategoryLabel, all $categoryCount categories',
+      label: isLocked
+          ? '$kCombinedCategoryLabel, all $categoryCount categories, '
+                'Premium'
+          : '$kCombinedCategoryLabel, all $categoryCount categories',
       // One node for the whole row; it still has to be activatable.
       excludeSemantics: true,
       onTap: onTap,
-      child: AnimatedBuilder(
-        animation: itemAnimation,
-        builder: (context, child) {
-          final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
-          return Transform.translate(
-            offset: Offset(0, 12 * (1 - clampedValue)),
-            child: Opacity(opacity: clampedValue, child: child),
-          );
-        },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
-            color: Colors.transparent,
-            child: Row(
-              children: [
-                CustomPaint(
-                  size: Size.square(16.ic),
-                  painter: _ConfluencePainter(color: ink),
-                ),
-                SizedBox(width: 8.sp),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      text: kCombinedCategoryLabel,
-                      children: [
-                        TextSpan(
-                          text: '   all $categoryCount',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: context.textInk(0.55),
-                          ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
+          color: Colors.transparent,
+          child: Row(
+            children: [
+              CustomPaint(
+                size: Size.square(16.ic),
+                painter: _ConfluencePainter(color: ink),
+              ),
+              SizedBox(width: 8.sp),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    text: kCombinedCategoryLabel,
+                    children: [
+                      TextSpan(
+                        text: '   all $categoryCount',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.textInk(0.55),
                         ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: ink,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: ink,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
-                if (reserveArrowSlot) ...[
-                  SizedBox(width: 8.sp),
-                  SizedBox(
-                    width: arrowSlot,
-                    height: arrowSlot,
-                    child:
-                        isLocked
-                            ? Icon(
-                              Icons.lock_outline_rounded,
-                              size: 16.ic,
-                              color: context.textInk(0.55),
-                            )
-                            : null,
-                  ),
-                ] else if (isLocked) ...[
-                  SizedBox(width: 8.sp),
-                  Icon(
-                    Icons.lock_outline_rounded,
-                    size: 16.ic,
-                    color: context.textInk(0.55),
-                  ),
-                ],
+              ),
+              if (reserveArrowSlot) ...[
+                SizedBox(width: 8.sp),
+                SizedBox(
+                  width: arrowSlot,
+                  height: arrowSlot,
+                  child: isLocked
+                      ? Icon(
+                          Icons.lock_outline_rounded,
+                          size: 16.ic,
+                          color: context.textInk(0.55),
+                        )
+                      : null,
+                ),
+              ] else if (isLocked) ...[
+                SizedBox(width: 8.sp),
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 16.ic,
+                  color: context.textInk(0.55),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -1924,13 +1863,12 @@ class _ConfluencePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final paint =
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w * 0.1
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.1
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
     final left = w * 0.09;
     final join = w * 0.56;
@@ -1938,31 +1876,16 @@ class _ConfluencePainter extends CustomPainter {
     final middle = h * 0.5;
     final spread = h * 0.31;
 
-    final path =
-        Path()
-          // Middle lane, straight through to the single outlet.
-          ..moveTo(left, middle)
-          ..lineTo(right, middle)
-          // Upper lane bends down into it.
-          ..moveTo(left, middle - spread)
-          ..cubicTo(
-            w * 0.34,
-            middle - spread,
-            w * 0.34,
-            middle,
-            join,
-            middle,
-          )
-          // Lower lane bends up into it.
-          ..moveTo(left, middle + spread)
-          ..cubicTo(
-            w * 0.34,
-            middle + spread,
-            w * 0.34,
-            middle,
-            join,
-            middle,
-          );
+    final path = Path()
+      // Middle lane, straight through to the single outlet.
+      ..moveTo(left, middle)
+      ..lineTo(right, middle)
+      // Upper lane bends down into it.
+      ..moveTo(left, middle - spread)
+      ..cubicTo(w * 0.34, middle - spread, w * 0.34, middle, join, middle)
+      // Lower lane bends up into it.
+      ..moveTo(left, middle + spread)
+      ..cubicTo(w * 0.34, middle + spread, w * 0.34, middle, join, middle);
     canvas.drawPath(path, paint);
   }
 
@@ -1973,8 +1896,6 @@ class _ConfluencePainter extends CustomPainter {
 
 /// Category row with expand/collapse arrow
 class _CategoryRow extends StatelessWidget {
-  final int index;
-  final Animation<double> animation;
   final TourModel category;
   final String? groupName;
   final bool isSelected;
@@ -1985,8 +1906,6 @@ class _CategoryRow extends StatelessWidget {
   final VoidCallback onArrowTapped;
 
   const _CategoryRow({
-    required this.index,
-    required this.animation,
     required this.category,
     required this.groupName,
     required this.isSelected,
@@ -1999,90 +1918,70 @@ class _CategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final itemDelay = index * 0.05;
-    final itemAnimation = CurvedAnimation(
-      parent: animation,
-      curve: Interval(
-        itemDelay.clamp(0.0, 0.4),
-        (itemDelay + 0.5).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic,
-      ),
-    );
-
-    return AnimatedBuilder(
-      animation: itemAnimation,
-      builder: (context, child) {
-        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
-        return Transform.translate(
-          offset: Offset(0, 12 * (1 - clampedValue)),
-          child: Opacity(opacity: clampedValue, child: child),
-        );
-      },
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
-        color: Colors.transparent,
-        child: Row(
-          children: [
-            // Tappable area for category selection (live dot + name)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onTap,
-                child: Row(
-                  children: [
-                    // Live indicator
-                    if (category.roundStatus == RoundStatus.live) ...[
-                      _LiveDot(),
-                      SizedBox(width: 8.sp),
-                    ],
-                    // Category name
-                    Expanded(
-                      child: _MarqueeText(
-                        text: tourCategoryLabel(
-                          category.tour.name,
-                          groupName: groupName,
-                        ),
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: isSelected
-                              ? context.colors.accentText
-                              : context.colors.textPrimary,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                        ),
-                        continuous: true, // Continuous in open dropdown
-                      ),
-                    ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
+      color: Colors.transparent,
+      child: Row(
+        children: [
+          // Tappable area for category selection (live dot + name)
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Row(
+                children: [
+                  // Live indicator
+                  if (category.roundStatus == RoundStatus.live) ...[
+                    _LiveDot(),
+                    SizedBox(width: 8.sp),
                   ],
-                ),
+                  // Category name
+                  Expanded(
+                    child: _MarqueeText(
+                      text: tourCategoryLabel(
+                        category.tour.name,
+                        groupName: groupName,
+                      ),
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: isSelected
+                            ? context.colors.accentText
+                            : context.colors.textPrimary,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                      ),
+                      continuous: true, // Continuous in open dropdown
+                    ),
+                  ),
+                ],
               ),
             ),
-            // Expand/collapse arrow - SEPARATE tap target
-            if (hasRounds) ...[
-              SizedBox(width: 8.sp),
-              GestureDetector(
-                onTapDown: (_) => onArrowTapped(),
-                onTap: onToggleExpand,
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: EdgeInsets.all(6.sp),
-                  child: AnimatedRotation(
-                    turns: isExpanded ? -0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 20.ic,
-                      color: isExpanded
-                          ? context.colors.textPrimary
-                          : context.textInk(0.5),
-                    ),
+          ),
+          // Expand/collapse arrow - SEPARATE tap target
+          if (hasRounds) ...[
+            SizedBox(width: 8.sp),
+            GestureDetector(
+              onTapDown: (_) => onArrowTapped(),
+              onTap: onToggleExpand,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.all(6.sp),
+                child: AnimatedRotation(
+                  turns: isExpanded ? -0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20.ic,
+                    color: isExpanded
+                        ? context.colors.textPrimary
+                        : context.textInk(0.5),
                   ),
                 ),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -2090,8 +1989,6 @@ class _CategoryRow extends StatelessWidget {
 
 /// Round row (can be nested under a category)
 class _RoundRow extends StatelessWidget {
-  final int index;
-  final Animation<double> animation;
   final GamesAppBarModel round;
   final bool isSelected;
   final bool isNested;
@@ -2103,8 +2000,6 @@ class _RoundRow extends StatelessWidget {
   onLongPress;
 
   const _RoundRow({
-    required this.index,
-    required this.animation,
     required this.round,
     required this.isSelected,
     required this.isNested,
@@ -2121,8 +2016,6 @@ class _RoundRow extends StatelessWidget {
       outset: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(12.br),
       child: _RoundRow(
-        index: 0,
-        animation: kAlwaysCompleteAnimation,
         round: round,
         isSelected: isSelected,
         isNested: isNested,
@@ -2133,89 +2026,67 @@ class _RoundRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final itemDelay = index * 0.04;
-    final itemAnimation = CurvedAnimation(
-      parent: animation,
-      curve: Interval(
-        itemDelay.clamp(0.0, 0.4),
-        (itemDelay + 0.5).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic,
-      ),
-    );
-
-    return AnimatedBuilder(
-      animation: itemAnimation,
-      builder: (context, child) {
-        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
-        return Transform.translate(
-          offset: Offset(0, 8 * (1 - clampedValue)),
-          child: Opacity(opacity: clampedValue, child: child),
-        );
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        onLongPress: onLongPress == null
-            ? null
-            : () => onLongPress!(context, _buildMenuCopy),
-        child: Container(
-          padding: EdgeInsets.only(
-            left: isNested ? 28.sp : 14.sp,
-            right: 14.sp,
-            top: 8.sp,
-            bottom: 8.sp,
-          ),
-          color: Colors.transparent,
-          child: Row(
-            children: [
-              // Live indicator
-              if (round.roundStatus == RoundStatus.live) ...[
-                _LiveDot(),
-                SizedBox(width: 8.sp),
-              ],
-              // Round name
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _MarqueeText(
-                      text: round.name,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: isSelected
-                            ? context.colors.accentText
-                            : context.colors.textPrimary.withValues(
-                                alpha: 0.85,
-                              ),
-                        fontWeight: isSelected
-                            ? FontWeight.w500
-                            : FontWeight.w400,
-                      ),
-                      continuous: true, // Continuous in open dropdown
-                    ),
-                    if (round.formattedRoundDateTime.isNotEmpty)
-                      Text(
-                        round.formattedRoundDateTime,
-                        style: AppTypography.textXxsRegular.copyWith(
-                          color: isSelected
-                              // 0.7 of the paper ink drops to 3.5:1
-                              // at 10sp; light keeps it solid.
-                              ? (context.isLightTheme
-                                    ? context.colors.accentText
-                                    : context.colors.accentText.withValues(
-                                        alpha: 0.7,
-                                      ))
-                              : context.textInk(0.5),
-                          fontSize: 10.sp,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      onLongPress: onLongPress == null
+          ? null
+          : () => onLongPress!(context, _buildMenuCopy),
+      child: Container(
+        padding: EdgeInsets.only(
+          left: isNested ? 28.sp : 14.sp,
+          right: 14.sp,
+          top: 8.sp,
+          bottom: 8.sp,
+        ),
+        color: Colors.transparent,
+        child: Row(
+          children: [
+            // Live indicator
+            if (round.roundStatus == RoundStatus.live) ...[
+              _LiveDot(),
+              SizedBox(width: 8.sp),
             ],
-          ),
+            // Round name
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _MarqueeText(
+                    text: round.name,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: isSelected
+                          ? context.colors.accentText
+                          : context.colors.textPrimary.withValues(alpha: 0.85),
+                      fontWeight: isSelected
+                          ? FontWeight.w500
+                          : FontWeight.w400,
+                    ),
+                    continuous: true, // Continuous in open dropdown
+                  ),
+                  if (round.formattedRoundDateTime.isNotEmpty)
+                    Text(
+                      round.formattedRoundDateTime,
+                      style: AppTypography.textXxsRegular.copyWith(
+                        color: isSelected
+                            // 0.7 of the paper ink drops to 3.5:1
+                            // at 10sp; light keeps it solid.
+                            ? (context.isLightTheme
+                                  ? context.colors.accentText
+                                  : context.colors.accentText.withValues(
+                                      alpha: 0.7,
+                                    ))
+                            : context.textInk(0.5),
+                        fontSize: 10.sp,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

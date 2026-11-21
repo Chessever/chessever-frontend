@@ -97,7 +97,7 @@ class SearchCarouselSizing {
 /// page that fails ends the row in a quiet retry card ([onRetry]). Once the
 /// source is spent the row ends in the See more card, the size of the
 /// others, which opens the section's own page ([onSeeMore]). [pending]
-/// slots hold the room of cards already on their way (Live now's lookups).
+/// slots hold the room of cards already on their way (a first page).
 ///
 /// A swipe comes to rest one card on, its leading edge on the gutter, a
 /// fling perhaps several ([SearchCarouselPhysics]). The row is horizontal,

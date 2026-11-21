@@ -2,6 +2,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 enum AddToLibraryChoice { createDatabase, importPgn, pickPgnFile }
@@ -19,27 +21,23 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
   String createDatabaseSubtitle = 'Add a database to hold games',
   bool showImports = true,
 }) {
-  return showModalBottomSheet<AddToLibraryChoice>(
+  return showGlassModalBottomSheet<AddToLibraryChoice>(
     context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: context.colors.scrim,
     // A folded landscape window caps a default sheet at ~260 pt, which hid
     // the last source; let it take the height it needs and scroll beyond.
     isScrollControlled: true,
     useSafeArea: true,
-    builder:
-        (context) => SafeArea(
-          top: false,
-          child: Container(
-            margin: EdgeInsets.all(12.w),
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.circular(20.br),
-              border: Border.all(color: context.colors.divider),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SingleChildScrollView(
-              child: Column(
+    builder: (context) => SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.all(12.w),
+        // A floating card of the popups' frosted glass (it clips its
+        // content to its corners).
+        child: PopupGlass(
+          borderRadius: BorderRadius.circular(20.br),
+          tone: context.colors.surface,
+          child: SingleChildScrollView(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
@@ -60,10 +58,9 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                     icon: Icons.create_new_folder_outlined,
                     title: createDatabaseTitle,
                     subtitle: createDatabaseSubtitle,
-                    onTap:
-                        () => Navigator.of(
-                          context,
-                        ).pop(AddToLibraryChoice.createDatabase),
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop(AddToLibraryChoice.createDatabase),
                   ),
                   Divider(
                     height: 1,
@@ -76,10 +73,8 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                     icon: Icons.content_paste_go_rounded,
                     title: 'Import PGN',
                     subtitle: 'Paste one or more games from clipboard',
-                    onTap:
-                        () => Navigator.of(
-                          context,
-                        ).pop(AddToLibraryChoice.importPgn),
+                    onTap: () =>
+                        Navigator.of(context).pop(AddToLibraryChoice.importPgn),
                   ),
                   Divider(
                     height: 1,
@@ -90,18 +85,18 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                     icon: Icons.folder_open_rounded,
                     title: 'Import PGN file',
                     subtitle: 'Choose a .pgn file from your device',
-                    onTap:
-                        () => Navigator.of(
-                          context,
-                        ).pop(AddToLibraryChoice.pickPgnFile),
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop(AddToLibraryChoice.pickPgnFile),
                   ),
                 ],
                 SizedBox(height: 8.h),
               ],
             ),
-            ),
           ),
         ),
+      ),
+    ),
   );
 }
 

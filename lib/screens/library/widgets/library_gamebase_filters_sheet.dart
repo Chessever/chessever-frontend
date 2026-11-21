@@ -5,6 +5,8 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -19,34 +21,31 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
     final searchAsync = ref.watch(gamebaseDatabaseSearchProvider);
 
     return searchAsync.when(
+      // The sheet's surface is the popups' glass, rounded at the top and
+      // running to the screen's edge under the home indicator; the content
+      // keeps its safe-area inset and its padding on it.
       loading:
-          () => SafeArea(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(16.br),
-                ),
-              ),
-              padding: EdgeInsets.symmetric(vertical: 32.h),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: context.colors.textPrimary,
+          () => GlassSheet(
+            radius: 16.br,
+            child: SafeArea(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 32.h),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
               ),
             ),
           ),
       error:
-          (error, _) => SafeArea(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(16.br),
-                ),
+          (error, _) => GlassSheet(
+            radius: 16.br,
+            child: SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+                child: _InlineError(message: userFacingError(error)),
               ),
-              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
-              child: _InlineError(message: userFacingError(error)),
             ),
           ),
       data: (state) {
@@ -62,108 +61,107 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
         final defaultOp =
             defaultOperators.isNotEmpty ? defaultOperators.first : 'eq';
 
-        return SafeArea(
-          child: Container(
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-            ),
-            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42.w,
-                  height: 4.h,
-                  decoration: BoxDecoration(
-                    color: context.colors.textPrimary.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(10.br),
+        return GlassSheet(
+          radius: 16.br,
+          child: SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: context.colors.textPrimary.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(10.br),
+                    ),
                   ),
-                ),
-                SizedBox(height: 14.h),
-                Row(
-                  children: [
-                    Text(
-                      'Filters',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
+                  SizedBox(height: 14.h),
+                  Row(
+                    children: [
+                      Text(
+                        'Filters',
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: context.colors.textPrimary,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    _SmallTextButton(
-                      label: 'Clear',
-                      onTap:
-                          () =>
-                              ref
-                                  .read(gamebaseDatabaseSearchProvider.notifier)
-                                  .clearFilters(),
-                      color: context.colors.danger,
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-                Row(
-                  children: [
-                    Text(
-                      'Match',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.7),
+                      const Spacer(),
+                      _SmallTextButton(
+                        label: 'Clear',
+                        onTap:
+                            () =>
+                                ref
+                                    .read(gamebaseDatabaseSearchProvider.notifier)
+                                    .clearFilters(),
+                        color: context.colors.danger,
                       ),
-                    ),
-                    SizedBox(width: 10.w),
-                    _SegmentedControl<GamebaseFilterGroupMode>(
-                      value: state.filterMode,
-                      values: const [
-                        GamebaseFilterGroupMode.and,
-                        GamebaseFilterGroupMode.or,
-                      ],
-                      labels: const ['All', 'Any'],
-                      onChanged:
-                          ref
-                              .read(gamebaseDatabaseSearchProvider.notifier)
-                              .setFilterMode,
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: state.filters.length,
-                    separatorBuilder: (_, __) => SizedBox(height: 10.h),
-                    itemBuilder: (context, index) {
-                      return _FilterRuleCard(
-                        key: ValueKey('library-filter-$index'),
-                        state: state,
-                        rule: state.filters[index],
+                    ],
+                  ),
+                  SizedBox(height: 12.h),
+                  Row(
+                    children: [
+                      Text(
+                        'Match',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.textPrimary.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      _SegmentedControl<GamebaseFilterGroupMode>(
+                        value: state.filterMode,
+                        values: const [
+                          GamebaseFilterGroupMode.and,
+                          GamebaseFilterGroupMode.or,
+                        ],
+                        labels: const ['All', 'Any'],
                         onChanged:
-                            (rule) => ref
+                            ref
                                 .read(gamebaseDatabaseSearchProvider.notifier)
-                                .updateFilterRule(index, rule),
-                        onRemove:
-                            () => ref
-                                .read(gamebaseDatabaseSearchProvider.notifier)
-                                .removeFilterRule(index),
-                      );
+                                .setFilterMode,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12.h),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: state.filters.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 10.h),
+                      itemBuilder: (context, index) {
+                        return _FilterRuleCard(
+                          key: ValueKey('library-filter-$index'),
+                          state: state,
+                          rule: state.filters[index],
+                          onChanged:
+                              (rule) => ref
+                                  .read(gamebaseDatabaseSearchProvider.notifier)
+                                  .updateFilterRule(index, rule),
+                          onRemove:
+                              () => ref
+                                  .read(gamebaseDatabaseSearchProvider.notifier)
+                                  .removeFilterRule(index),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(height: 12.h),
+                  _PrimaryButton(
+                    label: 'Add Filter',
+                    onTap: () {
+                      ref
+                          .read(gamebaseDatabaseSearchProvider.notifier)
+                          .addFilterRule(
+                            GamebaseFilterRule(
+                              field: defaultField,
+                              op: defaultOp,
+                            ),
+                          );
                     },
                   ),
-                ),
-                SizedBox(height: 12.h),
-                _PrimaryButton(
-                  label: 'Add Filter',
-                  onTap: () {
-                    ref
-                        .read(gamebaseDatabaseSearchProvider.notifier)
-                        .addFilterRule(
-                          GamebaseFilterRule(
-                            field: defaultField,
-                            op: defaultOp,
-                          ),
-                        );
-                  },
-                ),
-                SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
-              ],
+                  SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
+                ],
+              ),
             ),
           ),
         );
@@ -510,7 +508,7 @@ class _Dropdown<T> extends StatelessWidget {
         border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
+        child: GlassDropdown<T>(
           value: value,
           isExpanded: true,
           dropdownColor: context.colors.surface,

@@ -12,13 +12,11 @@ import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
-import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
 import 'package:chessever2/screens/feed/widgets/feed_bars_on_tap.dart';
 import 'package:chessever2/screens/feed/widgets/feed_centred_between_bars.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_deck.dart';
-import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
@@ -48,20 +46,21 @@ import 'package:motor/motor.dart';
 ///
 /// Swipe for the next page, pull down on the first one for a fresh draw;
 /// everything else happens on the board (see [FeedClip] for the gesture
-/// set). The title answers a tap: back to the first post from anywhere down
-/// the feed, and a fresh draw (the pull, run for you) when already there. As
-/// the Feed tab, re-tapping the tab takes the viewer back to the first post
-/// with the bars in view, as every root's re-tap takes its page back to the
-/// top, but never draws afresh.
+/// set). Paging is silent: no sound marks a page turn. As the Feed tab,
+/// re-tapping the tab takes the viewer back to the first post with the bars
+/// in view, as every root's re-tap takes its page back to the top, but never
+/// draws afresh.
 ///
-/// As the Feed tab its top bar steps away and the dock draws in to its
-/// compact capsule as the reader pages on; both come back the moment they
-/// page back ([ScrollChromeRegion.paged]), when a post is tapped
-/// ([FeedBarsOnTap]), and when the reader returns from a page opened here.
-/// Each page is the whole screen with one framed post laid out clear of the
-/// bars as they stand when shown, so a post never changes size and is never
-/// under a bar at rest. As the bars move, the post is moved, never laid out
-/// again, so it stays centred in the room they leave, on the bars' own
+/// As the Feed tab it has no top bar of its own: no title and no controls,
+/// so each post starts right under the status bar's strip, its own header
+/// line first, and uses the height a bar would have taken. The dock leaves
+/// as the reader pages on and comes back the moment they page back
+/// ([ScrollChromeRegion.paged]), when a post is tapped ([FeedBarsOnTap]),
+/// and when the reader returns from a page opened here. Each page is the
+/// whole screen with one framed post laid out clear of the bars as they
+/// stand when shown, keeping [FeedLayout.footGap] over the dock, so a post
+/// never changes size and is never under a bar at rest. As the dock moves, the post is moved, never laid out
+/// again, so it stays centred in the room it leaves, on the bars' own
 /// spring value ([FeedCentredBetweenBars]).
 ///
 /// Under the pages one still deck ([FeedBottomDeck]) rises from the board
@@ -70,8 +69,8 @@ import 'package:motor/motor.dart';
 ///
 /// A page pushed from For You › Discovery: it follows the app theme (light
 /// or dark surfaces, status bar icons to match) and wears the home bar's
-/// geometry with a back button where the tabs keep the avatar. The board
-/// stays the focus. Playback runs only while Feed is actually seen: the app
+/// geometry holding only a back button where the tabs keep the avatar. The
+/// board stays the focus. Playback runs only while Feed is actually seen: the app
 /// is in the foreground, no route or menu sits on top, and the viewer is
 /// not on their way out (Back, a back swipe). Leaving stops every Feed sound
 /// at once ([FeedSeen]), not when the page has finished animating away.
@@ -132,16 +131,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   late final PageController _pages;
   int _index = 0;
 
-  /// The pull to refresh, so the title can run it.
-  final GlobalKey<FeedPullRefreshState> _refresh =
-      GlobalKey<FeedPullRefreshState>();
-
-  /// The title is taking the viewer back to the first post: the pages it
-  /// passes on the way are not visits (no swipe sound, nothing marked seen,
+  /// A re-tap of the Feed tab is taking the viewer back to the first post:
+  /// the pages it passes on the way are not visits (nothing marked seen,
   /// nothing loaded for them).
   bool _homing = false;
 
-  /// The title's ride made the first post current but was taken over by a
+  /// The ride home made the first post current but was taken over by a
   /// touch before it got there: the first post is reported as reached when
   /// the page comes to rest on it (or a swipe reports another).
   bool _homeUnreported = false;
@@ -335,8 +330,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   bool _feedReady(AsyncValue<List<FeedItem>> feed) =>
       feed.hasValue && !feed.isLoading;
 
-  /// Loads the classification and swipe sounds, only for a viewer who will
-  /// hear them. Warming up also makes the audio service reload those clips on
+  /// Loads the classification sounds, only for a viewer who will hear
+  /// them. Warming up also makes the audio service reload those clips on
   /// every re-init (each return to the foreground), which a silent Feed must
   /// not pay for. Mirrors the board's own warm-up gate.
   void _warmUpSoundsIfAudible() {
@@ -524,8 +519,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _index = index;
       _scrollLocked = false;
     });
+    // No sound for a page turn: the move sounds of the post landed on are
+    // Feed's only voice. What the last post still had waiting is dropped.
+    feedSfxSafely(_sfx.pageTurned);
     _remember(index, pages);
-    if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
     _reportVisible(index, pages);
   }
 
@@ -603,7 +600,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   /// A scroll came to rest: the page it rests on is the current one. Page
   /// changes are normally reported mid-swipe; this catches the one a swipe
-  /// that interrupted the title's ride home could leave unreported.
+  /// that interrupted the ride home could leave unreported.
   bool _onScrollEnd(ScrollEndNotification end, List<FeedEntry> entries) {
     if (end.depth != 0 || _homing || !_pages.hasClients) return false;
     final page = _pages.page;
@@ -618,7 +615,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     return false;
   }
 
-  /// The first post, reached at last after the title's ride was held up
+  /// The first post, reached at last after the ride home was held up
   /// ([_homeUnreported]).
   void _reportHomeIfPending(int index, List<FeedEntry> entries) {
     if (!_homeUnreported || index != 0) return;
@@ -736,34 +733,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     );
   }
 
-  // ----------------------------------------------------------------- title
-
-  /// The title: back to the first post from anywhere down the feed; on the
-  /// first post already, the pull to refresh, run for the viewer (its rank
-  /// shown, a real fresh draw).
-  void _onTitleTap() {
-    if (!mounted || !_pages.hasClients || _homing) return;
-    final entries = _currentPages();
-    if (entries.isEmpty) return;
-    final page = _pages.page ?? _index.toDouble();
-    final onFirst = _index == 0 && page.abs() < 0.01;
-    if (onFirst) {
-      final pull = _refresh.currentState;
-      if (pull == null || pull.isRefreshing || _scrollLocked) return;
-      // On Watch's lead, Feed's own first page has to be in first.
-      if (_lead != null && !_feedReady(ref.read(feedProvider))) return;
-      HapticFeedbackService.selection();
-      unawaited(pull.show());
-      return;
-    }
-    HapticFeedbackService.navigation();
-    unawaited(_rideHome(entries, from: page));
-  }
+  // -------------------------------------------------------------- re-tap
 
   /// The Feed tab re-tapped in the bottom bar: the bars come back and, from
   /// further down, the first post with them. On the first post already
-  /// there is nothing more to do; the refresh stays the pull's and the
-  /// title's. The bar already gave the tap its haptic.
+  /// there is nothing more to do; the refresh stays the pull's. The bar
+  /// already gave the tap its haptic.
   void _onNavReTap() {
     if (!mounted) return;
     ScrollChromeScope.maybeOf(context)?.show();
@@ -790,7 +765,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _scrollLocked = false;
     });
     _remember(0, entries);
-    if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
+    feedSfxSafely(_sfx.pageTurned);
     try {
       if (MediaQuery.disableAnimationsOf(context)) {
         _pages.jumpToPage(0);
@@ -888,34 +863,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     unawaited(_loadMore());
   }
 
-  /// The speaker. With the board's Sound setting off every Feed sound is
-  /// silent whatever the speaker says, so the tap offers to turn that setting
-  /// on instead of flipping a mute nobody would hear.
-  void _toggleSound({required bool boardSoundOn}) {
-    HapticFeedbackService.toggle();
-    if (!boardSoundOn) {
-      showAppSnack(
-        context,
-        _boardSoundOffHint,
-        actionLabel: 'Turn on',
-        onAction: _turnOnBoardSound,
-      );
-      return;
-    }
-    final sfx = ref.read(feedSfxProvider);
-    setState(() => sfx.muted = !sfx.muted);
-    _warmUpSoundsIfAudible();
-  }
-
-  static const String _boardSoundOffHint = 'Sound is off in board settings';
-
-  Future<void> _turnOnBoardSound() async {
-    if (!mounted) return;
-    setState(() => ref.read(feedSfxProvider).muted = false);
-    // The settings listener in initState warms the sounds up once it lands.
-    await ref.read(boardSettingsProviderNew.notifier).toggleSound(true);
-  }
-
   /// Page [i]: a post or an ad, then the tail ([FeedTail]).
   Widget _page(
     int i, {
@@ -996,18 +943,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       _endedUnder = _pageKeyOf(entries.last);
     }
 
-    // What the speaker shows is what the viewer will hear: the board's Sound
-    // setting silences Feed too. Until the setting loads, the last value Feed
-    // was told about stands in.
-    final sfx = ref.read(feedSfxProvider);
-    final boardSoundOn =
-        ref.watch(
-          boardSettingsProviderNew.select(
-            (settings) => settings.valueOrNull?.soundEnabled,
-          ),
-        ) ??
-        sfx.boardSoundEnabled;
-
     // Feed's first page is in. Under Watch's lead there is a page before
     // that, so it is the load that is waited for, empty or not.
     final firstPageIn = _lead == null ? entries.isNotEmpty : _feedReady(feed);
@@ -1021,20 +956,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       });
     }
 
-    // In the home shell the bars stand over the pages instead of above them:
-    // every page is the whole screen, laid out clear of the bars as they
-    // stand when shown, so nothing of a post is ever under them at rest, and
-    // moved to the middle of what they leave as they go. Pages flow edge to
-    // edge as they turn. Elsewhere (Feed pushed over another page) the bar
-    // stands above the pages, as on any page.
+    // In the home shell Feed has no top bar: the pages run under the status
+    // bar's strip and the dock, every page the whole screen, laid out clear
+    // of the strip and the dock as it stands when shown, so nothing of a
+    // post is ever under them at rest, and moved to the middle of what they
+    // leave as the dock goes. Pages flow edge to edge as they turn.
+    // Elsewhere (Feed pushed over another page) the bar with its back
+    // button stands above the pages, as on any page.
     final chrome = ScrollChromeScope.maybeOf(context);
+    final dock = HomeNavScope.maybeOf(context);
     final EdgeInsets clear = chrome == null
         ? EdgeInsets.zero
         : EdgeInsets.only(
-            top: HomeTopBarMetrics.headerExtent(context),
+            top: MediaQuery.viewPaddingOf(context).top,
             // The shell's dock keeps one slot in the layout and the page
-            // runs under it, so this is the slot's whole height.
-            bottom: MediaQuery.paddingOf(context).bottom,
+            // runs under it: the post is laid out clear of the dock as it
+            // stands shown, its capsule's top at the slot's top, whatever
+            // the dock is doing now (the post keeps [FeedLayout.footGap]
+            // over it). Read from the dock's own metrics so a dock moving
+            // away never lays the page out again.
+            bottom: math.max(
+              dock?.extent ?? 0,
+              MediaQuery.paddingOf(context).bottom,
+            ),
           );
     // The system's own insets, read from the window: the shell spends the
     // home indicator's on its dock before the page sees it.
@@ -1044,15 +988,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final centring = FeedCentredBetweenBars.travelFor(
       shown: clear,
       away: EdgeInsets.only(
-        // The status bar's strip stays when the bars are away. The dock
-        // never leaves: it draws in to its compact capsule, which the post
-        // keeps clear of; with no dock (a tablet's rail) the home indicator
-        // still sits over the foot of the screen.
+        // The status bar's strip is all there is at the top, bars shown or
+        // not. Reading on, the dock leaves whole: only the system's own
+        // strip (the home indicator, the gesture bar, the three buttons)
+        // still covers the foot, as with no dock (a tablet's rail).
         top: math.min(system.top, clear.top),
-        bottom: math.min(
-          HomeNavScope.maybeOf(context)?.compactExtent ?? system.bottom,
-          clear.bottom,
-        ),
+        bottom: math.min(dock?.awayExtent ?? system.bottom, clear.bottom),
       ),
     );
     Widget clearOfBars(Widget page) {
@@ -1074,13 +1015,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final Widget body;
     if (entries.isNotEmpty) {
       body = FeedPullRefresh(
-        key: _refresh,
         onRefresh: _refreshFeed,
         // Never while a clip holds the pages (a piece or the scrub bar
         // under the finger), nor on Watch's lead before Feed's own first
         // page is in: a fresh draw needs the draw it replaces.
         enabled: !_scrollLocked && (_lead == null || _feedReady(feed)),
-        // The pull opens a gap under the bar, not under the status bar.
+        // The pull opens a gap under the status bar's strip.
         indicatorInset: clear.top,
         child: NotificationListener<ScrollEndNotification>(
           onNotification: (end) => _onScrollEnd(end, entries),
@@ -1140,16 +1080,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
 
     final colors = context.colors;
-    // Outside the page's text cap: the home bar grows with the system text
-    // size exactly as it does on the other tabs, and caps its own chrome
-    // (the title included) at the same scale.
-    final header = _FeedHeader(
-      showBack: !widget.embedded,
-      soundOn: boardSoundOn && !sfx.muted,
-      soundHint: boardSoundOn ? null : _boardSoundOffHint,
-      onToggleSound: () => _toggleSound(boardSoundOn: boardSoundOn),
-      onTitleTap: _onTitleTap,
-    );
     final pages = MediaQuery.withClampedTextScaling(
       maxScaleFactor: HomeTopBarMetrics.maxTextScale,
       child: FeedSeen(
@@ -1175,14 +1105,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         resizeToAvoidBottomInset: false,
         body: chrome == null
             // The top inset belongs to the home bar's frame, the same one
-            // every main tab uses. With no bottom nav under it, the page
-            // clears the home indicator itself.
+            // every pushed page uses, holding the back button. With no
+            // bottom nav under it, the page clears the home indicator
+            // itself.
             ? SafeArea(
                 top: false,
                 bottom: !widget.embedded,
                 child: Column(
                   children: [
-                    header,
+                    _FeedBackBar(showBack: !widget.embedded),
                     Expanded(child: pages),
                   ],
                 ),
@@ -1198,14 +1129,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                     removeBottom: true,
                     child: pages,
                   ),
-                  // The bar paints the page's own ground, so pages turning
-                  // under it pass behind it; its band steps away with the
-                  // shell's chrome and the status bar's strip stays.
+                  // The status bar's strip, in the page's own ground, so
+                  // pages turning under it pass behind it and the clock and
+                  // battery never sit on a post.
                   Positioned(
+                    key: const ValueKey('feed_status_strip'),
                     top: 0,
                     left: 0,
                     right: 0,
-                    child: ColoredBox(color: colors.background, child: header),
+                    height: clear.top,
+                    child: ColoredBox(color: colors.background),
                   ),
                 ],
               ),
@@ -1284,101 +1217,24 @@ class _FeedDeckUnder extends StatelessWidget {
   }
 }
 
-class _FeedHeader extends StatelessWidget {
-  const _FeedHeader({
-    required this.showBack,
-    required this.soundOn,
-    required this.onToggleSound,
-    required this.onTitleTap,
-    this.soundHint,
-  });
+/// A pushed Feed's bar: the home bar's frame, holding only the back
+/// chevron where the tabs keep the avatar. No title and no controls: the
+/// post's own header says what it is.
+class _FeedBackBar extends StatelessWidget {
+  const _FeedBackBar({required this.showBack});
 
-  /// A pushed Feed has a back chevron; the Feed tab has nowhere to go back
-  /// to.
+  /// A pushed Feed has a back chevron; an embedded one outside the shell
+  /// (a test host) has nowhere to go back to.
   final bool showBack;
-
-  /// Whether Feed will actually make a sound: its own speaker is on AND the
-  /// board's Sound setting is on.
-  final bool soundOn;
-  final VoidCallback onToggleSound;
-
-  /// Back to the first post, or a fresh draw when already there.
-  final VoidCallback onTitleTap;
-
-  /// Why the speaker reads off when Feed's own mute is not the reason.
-  final String? soundHint;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-
-    // Every root's bar: the title centred on the screen, the back chevron
-    // and the speaker on the gutters.
     return HomeTopBarFrame(
       child: HomeTopBarTitleRow(
         leading: showBack
             ? const PageBackButton(key: ValueKey('feed_back'))
             : null,
-        title: _FeedTitle(onTap: onTitleTap),
-        trailing: [
-          Semantics(
-            toggled: soundOn,
-            hint: soundHint,
-            child: FeedPressable(
-              key: const ValueKey('feed_sound_toggle'),
-              semanticsLabel: 'Move sounds',
-              onTap: onToggleSound,
-              // No taller than the avatar, so the shared row keeps its
-              // height. On a phone that draws it shorter than 44pt the
-              // bar's tap target still takes a full 44pt (see
-              // HomeTopBarTapTarget).
-              child: SizedBox(
-                width: 44,
-                height: HomeTopBarMetrics.controlExtent,
-                child: Center(
-                  child: FeedGlyph(
-                    soundOn ? FeedGlyphs.soundOn : FeedGlyphs.soundOff,
-                    width: 22,
-                    height: 22,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The page title, set as every root sets its name ([HomeTopBarTitle]). A
-/// tap takes the viewer back to the first post, or refreshes when they are
-/// already on it, as a tap on an app's status bar does: so it is a button as
-/// wide as its word and the full height of the bar, which gives a little
-/// under the finger.
-class _FeedTitle extends StatelessWidget {
-  const _FeedTitle({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // Drawn no taller than the avatar, so the shared row keeps its height;
-    // the bar's tap target still answers across a full 44pt.
-    return Semantics(
-      header: true,
-      child: HomeTopBarTapTarget(
-        child: FeedPressable(
-          key: const ValueKey('feed_title'),
-          semanticsLabel: 'Feed',
-          semanticsHint: 'Back to the first post, or refresh',
-          onTap: onTap,
-          child: SizedBox(
-            height: HomeTopBarMetrics.controlExtent,
-            child: const Center(widthFactor: 1, child: HomeTopBarTitle('Feed')),
-          ),
-        ),
+        title: const SizedBox.shrink(),
       ),
     );
   }

@@ -7,8 +7,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:motor/motor.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Shows a beautiful celebration overlay when user subscribes to premium.
@@ -18,12 +20,16 @@ Future<void> showPremiumCelebration(
   BuildContext context, {
   String? managementUrl,
 }) async {
-  await showGeneralDialog(
+  // The stage's black fades in on a spring; the celebration itself is on
+  // screen from the first frame (never under a fade), and it never blurs
+  // what is behind it.
+  await showGlassDialog<void>(
     context: context,
     barrierDismissible: false,
-    barrierColor: Colors.black.withValues(alpha: 0.85),
-    transitionDuration: const Duration(milliseconds: 400),
-    pageBuilder: (context, animation, secondaryAnimation) {
+    useSafeArea: false,
+    scaleIn: false,
+    scrim: Colors.black.withValues(alpha: 0.85),
+    builder: (context) {
       // The celebration is always a dark stage (a black 0.85 barrier), so
       // it renders with the dark theme: in light its textPrimary ink would
       // be ink on black.
@@ -31,9 +37,6 @@ Future<void> showPremiumCelebration(
         data: AppTheme.darkTheme,
         child: _PremiumCelebrationOverlay(managementUrl: managementUrl),
       );
-    },
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      return FadeTransition(opacity: animation, child: child);
     },
   );
 
@@ -96,10 +99,16 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    // Auto-dismiss after animation
+    // Auto-dismiss after animation: this celebration only, never a page
+    // pushed over it in the meantime.
     Future.delayed(const Duration(milliseconds: 3500), () {
-      if (mounted && Navigator.canPop(context)) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null || !route.isActive) return;
+      if (route.isCurrent) {
         Navigator.of(context).pop();
+      } else {
+        route.navigator?.removeRoute(route);
       }
     });
   }
@@ -217,87 +226,98 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   SizedBox(height: 32.h),
 
                   // Welcome text
-                  Text(
-                        'Welcome to Premium!',
-                        style: AppTypography.displaySmBold.copyWith(
-                          color: context.colors.textPrimary,
-                          fontSize: 28.f,
-                          letterSpacing: -0.5,
-                        ),
-                      )
-                      .animate()
-                      .fadeIn(delay: 300.ms, duration: 400.ms)
-                      .slideY(begin: 0.3, end: 0),
+                  // Readable from the first frame; only its place settles.
+                  _Rise(
+                    delay: 300.ms,
+                    child: Text(
+                      'Welcome to Premium!',
+                      style: AppTypography.displaySmBold.copyWith(
+                        color: context.colors.textPrimary,
+                        fontSize: 28.f,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
 
                   SizedBox(height: 12.h),
 
-                  Text(
-                        'You now have access to all features',
-                        style: AppTypography.textMdMedium.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.7),
+                  _Rise(
+                    delay: 500.ms,
+                    child: Text(
+                      'You now have access to all features',
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.7,
                         ),
-                      )
-                      .animate()
-                      .fadeIn(delay: 500.ms, duration: 400.ms)
-                      .slideY(begin: 0.3, end: 0),
+                      ),
+                    ),
+                  ),
 
                   SizedBox(height: 32.h),
 
                   // Manage subscription button
-                  GestureDetector(
-                        onTap: () async {
-                          HapticFeedbackService.buttonPress();
+                  _Rise(
+                    delay: 700.ms,
+                    child: GestureDetector(
+                      onTap: () async {
+                        HapticFeedbackService.buttonPress();
 
-                          final url = widget.managementUrl;
-                          if (url != null && url.isNotEmpty) {
-                            final uri = Uri.tryParse(url);
-                            if (uri != null && await canLaunchUrl(uri)) {
-                              await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                              return;
-                            }
+                        final url = widget.managementUrl;
+                        if (url != null && url.isNotEmpty) {
+                          final uri = Uri.tryParse(url);
+                          if (uri != null && await canLaunchUrl(uri)) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                            return;
                           }
-                          await AppSettings.openAppSettings(
-                            type: AppSettingsType.subscriptions,
-                          );
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 20.sp,
-                            vertical: 12.sp,
+                        }
+                        await AppSettings.openAppSettings(
+                          type: AppSettingsType.subscriptions,
+                        );
+                      },
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 20.sp,
+                          vertical: 12.sp,
+                        ),
+                        decoration: BoxDecoration(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.1,
                           ),
-                          decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8.br),
-                            border: Border.all(
-                              color: context.colors.textPrimary.withValues(alpha: 0.2),
-                              width: 1,
+                          borderRadius: BorderRadius.circular(8.br),
+                          border: Border.all(
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.2,
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.settings_outlined,
-                                color: context.colors.textPrimary.withValues(alpha: 0.8),
-                                size: 18.ic,
-                              ),
-                              SizedBox(width: 8.w),
-                              Text(
-                                'Manage subscription',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.textPrimary.withValues(alpha: 0.8),
-                                ),
-                              ),
-                            ],
+                            width: 1,
                           ),
                         ),
-                      )
-                      .animate()
-                      .fadeIn(delay: 700.ms, duration: 400.ms)
-                      .slideY(begin: 0.3, end: 0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.settings_outlined,
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.8,
+                              ),
+                              size: 18.ic,
+                            ),
+                            SizedBox(width: 8.w),
+                            Text(
+                              'Manage subscription',
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
 
                   SizedBox(height: 32.h),
 
@@ -308,12 +328,12 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                           color: context.textInk(0.4),
                         ),
                       )
+                      // On screen from the first frame; it only breathes
+                      // between full and half strength.
                       .animate(
-                        onPlay:
-                            (controller) => controller.repeat(reverse: true),
+                        onPlay: (controller) =>
+                            controller.repeat(reverse: true),
                       )
-                      .fadeIn(delay: 1500.ms, duration: 800.ms)
-                      .then()
                       .fade(begin: 1.0, end: 0.5, duration: 800.ms),
                 ],
               ),
@@ -321,6 +341,51 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Rises the last few pixels into place after [delay]. It is on screen and
+/// at full strength the whole time: only its position moves, on a spring,
+/// and under reduced motion it starts in place.
+class _Rise extends StatefulWidget {
+  const _Rise({required this.delay, required this.child});
+
+  final Duration delay;
+  final Widget child;
+
+  @override
+  State<_Rise> createState() => _RiseState();
+}
+
+class _RiseState extends State<_Rise> {
+  Timer? _start;
+  bool _up = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = Timer(widget.delay, () {
+      if (mounted) setState(() => _up = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _start?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.smooth(),
+      value: _up || still ? 0.0 : 0.3,
+      active: !still,
+      builder: (context, drop, child) =>
+          FractionalTranslation(translation: Offset(0, drop), child: child),
+      child: widget.child,
     );
   }
 }
@@ -372,12 +437,11 @@ class _ConfettiPainter extends CustomPainter {
       // Skip if below screen
       if (currentY > 1.2) continue;
 
-      final paint =
-          Paint()
-            ..color = particle.color.withValues(
-              alpha: (1.0 - progress * 0.5).clamp(0.0, 1.0),
-            )
-            ..style = PaintingStyle.fill;
+      final paint = Paint()
+        ..color = particle.color.withValues(
+          alpha: (1.0 - progress * 0.5).clamp(0.0, 1.0),
+        )
+        ..style = PaintingStyle.fill;
 
       final offset = Offset(currentX * size.width, currentY * size.height);
 

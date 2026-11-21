@@ -5,11 +5,13 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The shared long-press focus menu: the page blurs, the card lifts where it
-/// sits, and the actions open against the edge of the card with room for them.
+/// The shared long-press focus menu: the page dims, the card lifts where it
+/// sits, and the actions open on glass against the edge of the card with
+/// room for them.
 void main() {
   const cardKey = ValueKey('card');
   const previewKey = ValueKey('preview');
@@ -92,36 +94,48 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// The opaque surface a label is painted on.
+  /// The glass panel a label is drawn on.
+  Finder glassBehind(Finder text) =>
+      find.ancestor(of: text, matching: find.byType(PopupGlass)).first;
+
+  /// The tone the panel's glass averages to over the veiled page: the
+  /// surface a label reads against.
   Color surfaceBehind(WidgetTester tester, Finder text) {
-    final boxes = tester.widgetList<DecoratedBox>(
-      find.ancestor(of: text, matching: find.byType(DecoratedBox)),
-    );
-    for (final box in boxes) {
-      final decoration = box.decoration;
-      if (decoration is BoxDecoration &&
-          decoration.color != null &&
-          decoration.color!.a == 1.0) {
-        return decoration.color!;
-      }
-    }
-    fail('no opaque surface behind the label');
+    final tone = tester.widget<PopupGlass>(glassBehind(text)).tone;
+    if (tone == null) fail('the panel names no tone');
+    return tone;
   }
 
-  Rect surfaceRectBehind(WidgetTester tester, Finder text) {
-    final elements = find
-        .ancestor(of: text, matching: find.byType(DecoratedBox))
-        .evaluate();
-    for (final element in elements) {
-      final decoration = (element.widget as DecoratedBox).decoration;
-      if (decoration is BoxDecoration &&
-          decoration.color != null &&
-          decoration.color!.a == 1.0) {
-        final box = element.renderObject! as RenderBox;
-        return box.localToGlobal(Offset.zero) & box.size;
-      }
+  Rect surfaceRectBehind(WidgetTester tester, Finder text) =>
+      tester.getRect(glassBehind(text));
+
+  Color veilColor(WidgetTester tester) =>
+      tester.widget<ColoredBox>(find.byKey(kFocusMenuVeilKey)).color;
+
+  /// The menu reads the page under it once: one backdrop filter, the panel
+  /// block's own ([PopupGlassCluster]), no bigger than the block, so
+  /// nothing blurs the page as a whole; the panels in it carry none.
+  void expectOnlyPanelBlurs(WidgetTester tester) {
+    final filters = find.byType(BackdropFilter);
+    expect(filters, findsOneWidget);
+    final cluster = find.ancestor(
+      of: filters,
+      matching: find.byType(PopupGlassCluster),
+    );
+    expect(cluster, findsOneWidget);
+    final size = tester.getSize(filters);
+    expect(size.width, lessThanOrEqualTo(tester.getSize(cluster).width));
+    expect(size.height, lessThanOrEqualTo(tester.getSize(cluster).height));
+    expect(size.width, lessThan(phone.width));
+    for (final element in find.byType(PopupGlass).evaluate()) {
+      expect(
+        find.descendant(
+          of: find.byElementPredicate((e) => identical(e, element)),
+          matching: find.byType(BackdropFilter),
+        ),
+        findsNothing,
+      );
     }
-    fail('no opaque surface behind the label');
   }
 
   double luminance(Color c) => c.computeLuminance();
@@ -332,17 +346,31 @@ void main() {
     expect(find.byKey(cardKey), findsOneWidget);
   });
 
-  testWidgets('the page behind is blurred while the menu is up', (
-    tester,
-  ) async {
+  testWidgets('the page behind is dimmed, never blurred; the panels are '
+      'glass', (tester) async {
     usePhone(tester);
     await tester.pumpWidget(
       host(card: const Rect.fromLTWH(16, 100, 361, 120), actions: rows(2)),
     );
-    await open(tester);
-
-    final backdrop = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
-    expect(backdrop.enabled, isTrue);
+    await tester.longPress(find.byKey(cardKey));
+    // Every frame of the open: the dim only grows, and no blur covers more
+    // than a panel.
+    var last = -1.0;
+    for (var frame = 0; frame < 30; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final alpha = veilColor(tester).a;
+      expect(alpha, greaterThanOrEqualTo(last));
+      last = alpha;
+      expectOnlyPanelBlurs(tester);
+    }
+    await tester.pumpAndSettle();
+    final context = tester.element(find.byKey(kFocusMenuVeilKey));
+    expect(
+      veilColor(tester).a,
+      closeTo(PopupGlassStyle.of(context).scrim, 0.001),
+    );
+    expect(find.byType(PopupGlass), findsOneWidget);
+    expectOnlyPanelBlurs(tester);
   });
 
   group('prominent actions', () {
@@ -571,15 +599,9 @@ void main() {
 
         // The panel stands off the veiled page (a surface-toned card does
         // too). Light: paper against a dimmed page. Dark: a tonal step, with
-        // the lip drawing the edge, so only a floor is guarded there.
-        final veil = tester
-            .widget<ColoredBox>(
-              find.descendant(
-                of: find.byType(BackdropFilter),
-                matching: find.byType(ColoredBox),
-              ),
-            )
-            .color;
+        // the glass's lit rim drawing the edge, so only a floor is guarded
+        // there.
+        final veil = veilColor(tester);
         final veiledPage = Color.alphaBlend(veil, colors.background);
         final panel = surfaceBehind(tester, find.text('Copy PGN'));
         expect(
@@ -590,7 +612,7 @@ void main() {
     }
   });
 
-  testWidgets('reduced motion: no lift or scale, the blur still arrives', (
+  testWidgets('reduced motion: no lift or scale, the dim still arrives', (
     tester,
   ) async {
     usePhone(tester);
@@ -606,8 +628,8 @@ void main() {
     expect(tester.getRect(find.byKey(previewKey)), card);
     await tester.pumpAndSettle();
     expect(tester.getRect(find.byKey(previewKey)), card);
-    final backdrop = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
-    expect(backdrop.enabled, isTrue);
+    expect(veilColor(tester).a, greaterThan(0.2));
+    expectOnlyPanelBlurs(tester);
     expect(find.text('Copy PGN'), findsOneWidget);
     // Nothing on the panel is scaled either.
     final label = tester.getRect(find.text('Copy PGN'));

@@ -67,19 +67,20 @@ class FeedHeaderPart {
   final String? id;
 }
 
-/// The one-line header above a Feed post: what kind of game, why it is here,
-/// where it was played and what was played, in a single 44pt row.
+/// The one-line header at the top of a Feed post: what kind of game, why it
+/// is here, where it was played and what was played, in a single 44pt row.
 ///
 /// Parts are separated by a quiet " · ". When the line would not fit it
 /// compacts instead of wrapping, in this order: the parts in [compactOrder]
-/// take their short forms one by one, then the parts in [shrinkOrder] give up
-/// width one by one (down to [minPartWidth]), ellipsizing their last words,
-/// then the parts in [dropOrder] leave the line, and only then do shrinkable
-/// parts go below [minPartWidth]. It never takes a second line, and never
-/// runs past its edge, at any width or text size.
+/// take their short forms one by one, then the parts in [yieldOrder] leave
+/// the line whole, then the parts in [shrinkOrder] give up width one by one
+/// (down to [minPartWidth]), ellipsizing their last words, then the parts in
+/// [dropOrder] leave the line, and only then do shrinkable parts go below
+/// [minPartWidth]. It never takes a second line, and never runs past its
+/// edge, at any width or text size.
 ///
 /// Tappable parts get the whole row height as their target, and at least
-/// [minTapWidth] across even when their text is a bare code like "C65"; they
+/// [minTapWidth] across even when their text is a single short word; they
 /// dim while pressed; no underline, no chip.
 class FeedPostHeader extends StatelessWidget {
   const FeedPostHeader({
@@ -89,6 +90,7 @@ class FeedPostHeader extends StatelessWidget {
     this.leadingWidth = 0,
     this.trailing,
     this.compactOrder = const [],
+    this.yieldOrder = const [],
     this.shrinkOrder = const [],
     this.dropOrder = const [],
     super.key,
@@ -108,6 +110,11 @@ class FeedPostHeader extends StatelessWidget {
   /// Indexes into [parts], in the order they take their [FeedHeaderPart.compact]
   /// form.
   final List<int> compactOrder;
+
+  /// Indexes into [parts], in the order they leave the line before any part
+  /// gives up width: a part that is worth showing whole or not at all, so a
+  /// more important one keeps its words (the opening yields to the event).
+  final List<int> yieldOrder;
 
   /// Indexes into [parts], in the order they give up width.
   final List<int> shrinkOrder;
@@ -233,10 +240,14 @@ class FeedPostHeader extends StatelessWidget {
             useCompact[i] = true;
             widths[i] = compactWidth;
           }
+          for (final i in yieldOrder) {
+            if (total() <= max) break;
+            kept[i] = false;
+          }
           for (final i in shrinkOrder) {
             final over = total() - max;
             if (over <= 0) break;
-            if (!parts[i].shrinkable) continue;
+            if (!kept[i] || !parts[i].shrinkable) continue;
             final next = math.max(minPartWidth, widths[i] - over);
             if (next < widths[i]) {
               widths[i] = next;

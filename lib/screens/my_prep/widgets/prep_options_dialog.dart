@@ -7,6 +7,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 
 /// Which games to download for one account: its clocks and how far back.
@@ -187,12 +188,37 @@ class PrepScopeFields extends StatelessWidget {
   );
 
   Future<void> _pickDate(BuildContext context, bool start) async {
-    final picked = await showDatePicker(
+    // Material's own date picker, on the popups' glass: the dialog draws no
+    // surface of its own and the glass is laid under its card. It opens as
+    // every glass dialog does (the scrim fades, the card scales up on a
+    // spring), with no route fade that would drop the frost.
+    final picked = await showGlassDialog<DateTime>(
       context: context,
-      initialDate: (start ? value.fromDate : value.toDate) ?? DateTime.now(),
-      firstDate: DateTime(1800),
-      lastDate: DateTime.now(),
-      helpText: start ? 'First game date' : 'Last game date',
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return Theme(
+          data: theme.copyWith(
+            datePickerTheme: theme.datePickerTheme.copyWith(
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              elevation: 0,
+            ),
+          ),
+          child: GlassAlertFrame(
+            // Material 3's date picker card.
+            borderRadius: BorderRadius.circular(28),
+            tone: dialogContext.colors.popup,
+            child: DatePickerDialog(
+              initialDate:
+                  (start ? value.fromDate : value.toDate) ?? DateTime.now(),
+              firstDate: DateTime(1800),
+              lastDate: DateTime.now(),
+              helpText: start ? 'First game date' : 'Last game date',
+            ),
+          ),
+        );
+      },
     );
     if (picked == null || !context.mounted) return;
     final date = DateTime.utc(picked.year, picked.month, picked.day);

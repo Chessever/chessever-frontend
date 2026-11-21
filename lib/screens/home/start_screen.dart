@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -20,25 +21,30 @@ class StartPage {
 StartPage forYouStartPage(ForYouTab tab) =>
     StartPage(label: tab.label, save: () => writeDefaultForYouTab(tab));
 
-/// The page [section] is on now: the tab its strip highlights. Only Home has
-/// pages; the other sections open as they are.
+StartPage collectionsStartPage(CollectionsTab tab) =>
+    StartPage(label: tab.label, save: () => writeDefaultCollectionsTab(tab));
+
+/// The page [section] is on now: the tab its bar highlights. Home and
+/// Collections have pages; the other sections open as they are.
 StartPage? currentStartPage(WidgetRef ref, BottomNavBarItem section) {
   switch (section) {
     case BottomNavBarItem.forYou:
       return forYouStartPage(ref.read(selectedForYouTabProvider));
+    case BottomNavBarItem.collections:
+      return collectionsStartPage(ref.read(selectedCollectionsTabProvider));
     case BottomNavBarItem.feed:
     case BottomNavBarItem.botvinnik:
-    case BottomNavBarItem.search:
     case BottomNavBarItem.profile:
       return null;
   }
 }
 
 /// "Home → Discovery": the section, then the tab inside it. A section with
-/// no pages is just its name.
+/// no pages is just its name, and so is one on the page that shares its name
+/// (Collections on its Collections page), never "Collections → Collections".
 String startScreenName(BottomNavBarItem section, StartPage? page) {
   final name = namesBottomNavBarIcons[section]!;
-  return page == null ? name : '$name → ${page.label}';
+  return page == null || page.label == name ? name : '$name → ${page.label}';
 }
 
 /// What assistive technology announces for holding a nav slot or tab title.

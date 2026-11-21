@@ -193,9 +193,8 @@ void main() {
       findsOneWidget,
     );
     expect(feed.visible, isEmpty);
-    // Nothing to replace yet: the title's refresh waits for the feed.
-    await tester.tap(_title);
-    await _settle(tester);
+    // Nothing to replace yet: the pull's refresh waits for the feed.
+    await _pull(tester);
     expect(feed.refreshes, 0);
 
     first.complete([_post('g0'), _post('g1')]);
@@ -207,8 +206,7 @@ void main() {
     expect(feed.visible, [-1]);
     expect(tester.widget<FeedClip>(_lead('w1')).isCurrent, isTrue);
 
-    await tester.tap(_title);
-    await _settle(tester);
+    await _pull(tester);
     expect(feed.refreshes, 1);
     expect(_lead('w1'), findsNothing);
     expect(tester.widget<FeedClip>(_page('fresh0')).isCurrent, isTrue);
@@ -254,8 +252,7 @@ void main() {
     await _settle(tester);
     expect(tester.widget<FeedClip>(_lead('w1')).isCurrent, isTrue);
 
-    await tester.tap(_title.last);
-    await _settle(tester);
+    await _pull(tester);
     expect(feed.refreshes, 1);
 
     navigator.pop();
@@ -345,8 +342,7 @@ void main() {
     expect(leadPage, findsOneWidget);
     final leadState = tester.state(leadPage);
 
-    await tester.tap(_title);
-    await _settle(tester);
+    await _pull(tester);
     expect(feed.refreshes, 1);
     expect(leadPage, findsNothing);
     final post = tester.widget<FeedClip>(_page('w1'));
@@ -480,8 +476,7 @@ void main() {
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
     unawaited(FeedScreen.watch(navigator.context, _post('w1')));
     await _settle(tester);
-    await tester.tap(_title);
-    await _settle(tester);
+    await _pull(tester);
     expect(feed.refreshes, 1);
     expect(tester.widget<FeedClip>(_page('w1')).isCurrent, isTrue);
 
@@ -520,7 +515,6 @@ void main() {
 // --------------------------------------------------------------- harness
 
 final Finder _pages = find.byKey(const ValueKey('feed_pages'));
-final Finder _title = find.byKey(const ValueKey('feed_title'));
 
 Finder _page(String id) =>
     find.byKey(ValueKey('game:$id'), skipOffstage: false);
@@ -545,6 +539,20 @@ Future<void> _settle(WidgetTester tester) async {
 
 Future<void> _fling(WidgetTester tester, {required bool up}) async {
   await tester.fling(_pages.last, Offset(0, up ? -400 : 400), 1500);
+  await _settle(tester);
+}
+
+/// A long pull down on the top Feed's first post, from above its board:
+/// the refresh the viewer asks for.
+Future<void> _pull(WidgetTester tester) async {
+  final gesture = await tester.startGesture(
+    tester.getRect(_pages.last).topCenter + const Offset(0, 12),
+  );
+  for (var i = 0; i < 20; i++) {
+    await gesture.moveBy(const Offset(0, 20));
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await gesture.up();
   await _settle(tester);
 }
 
@@ -701,9 +709,6 @@ class _QuietSfx implements FeedSfx {
 
   @override
   Future<void> warmUp() async {}
-
-  @override
-  void playSwipe() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

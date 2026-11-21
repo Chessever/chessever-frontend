@@ -1,6 +1,7 @@
 import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
@@ -34,7 +35,9 @@ Future<void> showReportsShareMenu(
   if (box == null || overlay == null) return;
   final origin = box.localToGlobal(Offset.zero) & box.size;
   HapticFeedbackService.medium();
-  final selected = await showMenu<bool>(
+  // The one glass popup menu (tablet-safe against the phantom tap that
+  // follows a long-press).
+  final selected = await showTabletSafeMenu<bool>(
     context: context,
     position: RelativeRect.fromRect(origin, Offset.zero & overlay.size),
     items: const [PopupMenuItem(value: true, child: Text('Share'))],

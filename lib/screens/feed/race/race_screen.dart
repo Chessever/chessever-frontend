@@ -14,6 +14,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -37,15 +38,19 @@ Future<bool> confirmRaceStop(
   required bool others,
 }) async {
   unawaited(HapticFeedbackService.buttonPress());
-  final result = await showDialog<bool>(
+  // The glass dialog route: no fade (the glass keeps its frost from the
+  // first frame), a plain scrim, the race's square-cornered panel.
+  final result = await showGlassDialog<bool>(
     context: context,
-    barrierColor: context.colors.scrim,
     builder: (dialogContext) {
       final colors = dialogContext.colors;
-      return Dialog(
-        backgroundColor: colors.surface,
+      return GlassDialog(
+        tone: colors.surface,
+        // Its grey line reads 5.3:1 on the old card; over a race board's
+        // light squares the default glass would let it drop under 4.5.
+        cover: dialogContext.isLightTheme ? null : 0.92,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        borderRadius: BorderRadius.circular(4),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
           child: Column(
@@ -994,7 +999,12 @@ class _Opponents extends StatelessWidget {
           Text('done', maxLines: 1, style: styles.quiet),
         ] else if (left != null && lives != null && lives > 0) ...[
           const SizedBox(width: _innerGap),
-          RaceHearts(total: lives, left: left, size: _heartSize, gap: _heartGap),
+          RaceHearts(
+            total: lives,
+            left: left,
+            size: _heartSize,
+            gap: _heartGap,
+          ),
         ],
       ],
     );

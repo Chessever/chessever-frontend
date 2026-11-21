@@ -4,6 +4,7 @@ import 'package:chessever2/screens/chessboard/widgets/discovery_likes_teaching.d
 
 import 'package:chessever2/screens/chessboard/utils/board_feature_teaching_tracker.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -74,7 +75,7 @@ class _BoardFeatureTeachingHostState
   bool _routeCurrent = true;
   Timer? _checkTimer;
   Timer? _dismissTimer;
-  DialogRoute<void>? _dialog;
+  GlassDialogRoute<void>? _dialog;
 
   @override
   void initState() {
@@ -144,8 +145,11 @@ class _BoardFeatureTeachingHostState
   void _show(BoardTeachingFeature feature) {
     final navigator = Navigator.of(context, rootNavigator: true);
     final tracker = ref.read(boardFeatureTeachingTrackerProvider);
-    final route = DialogRoute<void>(
+    // No fade: the lesson's glass keeps its frost from the first frame, and
+    // the board under it is only dimmed, never re-blurred.
+    final route = GlassDialogRoute<void>(
       context: context,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
       barrierDismissible: true,
       builder: (_) => BoardFeatureTeachingDialog(
         feature: feature,
@@ -252,6 +256,7 @@ class _BoardFeatureTeachingHostState
 
 /// Native dialog primitives provide focus, semantics, wrapping and scrolling.
 /// Copy is visible from the first frame; only the instructional glyph moves.
+/// The dialog is drawn on the popups' frosted glass, cut to its old card.
 class BoardFeatureTeachingDialog extends StatefulWidget {
   const BoardFeatureTeachingDialog({
     super.key,
@@ -297,11 +302,15 @@ class _BoardFeatureTeachingDialogState extends State<BoardFeatureTeachingDialog>
   Widget build(BuildContext context) {
     final like = widget.feature == BoardTeachingFeature.like;
     final colors = context.colors;
-    return AlertDialog(
-      backgroundColor: colors.surfaceElevated,
+    // Reduced motion holds the glyph still, in the middle.
+    final still = MediaQuery.disableAnimationsOf(context);
+    final radius = BorderRadius.circular(12);
+    final dialog = AlertDialog(
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: radius),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       scrollable: true,
       title: Text(
@@ -316,33 +325,36 @@ class _BoardFeatureTeachingDialogState extends State<BoardFeatureTeachingDialog>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ExcludeSemantics(
-            child: SizedBox(
-              height: 56,
-              width: double.infinity,
-              child: AnimatedBuilder(
-                animation: _demo,
-                builder: (_, __) {
-                  final phase = _demo.value;
-                  final pulse = phase < 0.4
-                      ? 1 - 0.15 * math.sin(phase * 5 * math.pi).abs()
-                      : 1.0;
-                  return Center(
-                    child: Transform.translate(
-                      offset: Offset(
-                        like ? 0 : 36 - 72 * Curves.easeInOut.transform(phase),
-                        0,
-                      ),
-                      child: Transform.scale(
-                        scale: like ? pulse : 1,
-                        child: Icon(
-                          like ? Icons.favorite_border : Icons.swipe,
-                          size: 32,
-                          color: colors.iconPrimary,
+            // The glyph repaints alone; the copy around it stays put.
+            child: RepaintBoundary(
+              child: SizedBox(
+                height: 56,
+                width: double.infinity,
+                child: AnimatedBuilder(
+                  animation: _demo,
+                  builder: (_, __) {
+                    final phase = _demo.value;
+                    final pulse = phase < 0.4
+                        ? 1 - 0.15 * math.sin(phase * 5 * math.pi).abs()
+                        : 1.0;
+                    return Center(
+                      child: Transform.translate(
+                        offset: Offset(
+                          like || still ? 0 : 36 - 72 * _swipe(phase),
+                          0,
+                        ),
+                        child: Transform.scale(
+                          scale: like ? pulse : 1,
+                          child: Icon(
+                            like ? Icons.favorite_border : Icons.swipe,
+                            size: 32,
+                            color: colors.iconPrimary,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -377,5 +389,20 @@ class _BoardFeatureTeachingDialogState extends State<BoardFeatureTeachingDialog>
         ),
       ],
     );
+    return GlassAlertFrame(
+      tone: colors.surfaceElevated,
+      borderRadius: radius,
+      child: dialog,
+    );
+  }
+
+  /// How far across the swipe glyph is at [phase] of a pass: a critically
+  /// damped spring's answer to a step (from rest, no overshoot), settled
+  /// before the pass ends so the glyph rests a beat on the far side.
+  static double _swipe(double phase) {
+    const stiffness = 9.0;
+    final t = stiffness * phase;
+    final end = 1 - (1 + stiffness) * math.exp(-stiffness);
+    return (1 - (1 + t) * math.exp(-t)) / end;
   }
 }

@@ -44,9 +44,21 @@ void main() {
       final seed = await seedBaselineData($);
 
       try {
-        // Home opens on For You. Events lives on Profile; Collections
-        // (Discovery, Search) and Library open as their own pushed routes.
+        // Home opens on For You. Events lives on Profile; Collections has
+        // the dock's tab (and opens pushed from Discovery and Search);
+        // Library opens as its own pushed route.
         await expectVisible($, E2eIds.forYouRoot);
+
+        await tapBottomNavRoot(
+          $,
+          navId: E2eIds.navCollections,
+          expectedRoot: E2eIds.collectionsRoot,
+        );
+        await tapBottomNavRoot(
+          $,
+          navId: E2eIds.navForYou,
+          expectedRoot: E2eIds.forYouRoot,
+        );
 
         await pushWidgetRoute($, const CollectionsScreen());
         await expectVisible($, E2eIds.collectionsRoot);

@@ -11,6 +11,7 @@ import 'package:chessever2/screens/my_prep/widgets/prep_source_dialog.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
@@ -44,7 +45,8 @@ class PrepSourcesScreen extends ConsumerWidget {
         title: const PageTitle('Sources'),
         actions: [
           if (profile != null)
-            PopupMenuButton<PrepSource>(
+            // The one glass popup menu, as a drop-in for PopupMenuButton.
+            GlassPopupMenuButton<PrepSource>(
               key: const ValueKey('prep_add_source'),
               tooltip: 'Add source',
               icon: const Icon(Icons.add_rounded),

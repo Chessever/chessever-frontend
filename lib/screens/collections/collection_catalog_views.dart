@@ -29,10 +29,16 @@ class CollectionBooksCatalog extends ConsumerWidget {
     super.key,
     required this.query,
     this.bottomPadding = 0,
+    this.topPadding,
     this.onClear,
   });
   final CollectionSearchQuery query;
   final double bottomPadding;
+
+  /// Where the first card starts in the list: 12 under a pushed page's
+  /// tabs by default; the dock's Collections tab passes the roots' one
+  /// lead-in (`HomeTopBarMetrics.contentGap`).
+  final double? topPadding;
 
   /// Clears what leaves the catalog empty ([CollectionCatalogList.onClear]).
   final VoidCallback? onClear;
@@ -59,7 +65,7 @@ class CollectionBooksCatalog extends ConsumerWidget {
           : null,
       padding: EdgeInsets.fromLTRB(
         16.sp,
-        12.sp,
+        topPadding ?? 12.sp,
         16.sp,
         24.sp + MediaQuery.viewPaddingOf(context).bottom + bottomPadding,
       ),
@@ -78,10 +84,16 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
     super.key,
     required this.query,
     this.bottomPadding = 0,
+    this.topPadding,
     this.onClear,
   });
   final CollectionSearchQuery query;
   final double bottomPadding;
+
+  /// Where the first author starts in the list: 8 under a pushed page's
+  /// tabs by default; the dock's Collections tab passes the roots' one
+  /// lead-in (`HomeTopBarMetrics.contentGap`).
+  final double? topPadding;
 
   /// Clears what leaves the catalog empty ([CollectionCatalogList.onClear]).
   final VoidCallback? onClear;
@@ -98,7 +110,7 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
       identity: (author) => author.id,
       padding: EdgeInsets.fromLTRB(
         ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
-        8.sp,
+        topPadding ?? 8.sp,
         ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
         24.sp + MediaQuery.viewPaddingOf(context).bottom + bottomPadding,
       ),

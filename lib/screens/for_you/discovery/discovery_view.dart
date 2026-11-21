@@ -9,7 +9,10 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/todays_miniatures_section.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
+    show BottomNavBarItem, openHomeSection;
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
@@ -142,7 +145,8 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                         ),
                       ),
                       // The catalog's books and collections, one tap from
-                      // Discovery as from Profile and Search.
+                      // Discovery as from Search: the dock's Collections
+                      // tab, never a second copy pushed over Home.
                       right: DiscoveryTileShare(
                         component: DiscoveryShareDestination.collections,
                         child: HubTile(
@@ -153,7 +157,18 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                           artwork: const HubSceneBackdrop(
                             scene: HubScene.collections,
                           ),
-                          onTap: () => CollectionsScreen.open(context),
+                          onTap: () {
+                            if (openHomeSection(
+                              context,
+                              BottomNavBarItem.collections,
+                              navigationType: 'discovery',
+                            )) {
+                              HapticFeedbackService.cardTap();
+                              return;
+                            }
+                            // No dock under Discovery: the pushed page.
+                            CollectionsScreen.open(context);
+                          },
                         ),
                       ),
                     ),

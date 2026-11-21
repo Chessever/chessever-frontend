@@ -33,11 +33,12 @@ import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
-import 'package:chessever2/widgets/flag_pole_scene.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -719,72 +720,67 @@ class _RunStrip extends StatelessWidget {
   }
 }
 
+/// The pinned federation: its flag at full strength over the top of the
+/// plate, dissolving into it, and its name below. A media card, so one
+/// design in both themes: the dark plate and the flag as dark mode draws
+/// them ([MediaTheme]).
 class _CountrymenTile extends StatelessWidget {
   const _CountrymenTile({required this.shortcut});
 
   final SpaceShortcut shortcut;
 
   @override
-  Widget build(BuildContext context) {
-    final code = shortcut.targetId;
-    final hasFlag = FederationFlag.hasVisibleFlag(code);
+  Widget build(BuildContext context) =>
+      MediaTheme(child: Builder(builder: _face));
+
+  Widget _face(BuildContext context) {
+    // The vector flag, crisp at the tile's size, for any way the pin names
+    // its federation (an ISO code, a FIDE code from an older pin, England,
+    // Scotland, Wales): the small raster flags blur and stair-step when
+    // stretched over the plate. A federation with no flag leaves the plate.
+    final flag = MediaFlagBackdrop.ofFederation(shortcut.targetId);
     final width = SpaceMetrics.narrow;
     final flagHeight = 112.w;
-    return DecoratedBox(
-      decoration: _plate(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4.w),
+    final plate = _plate(context);
+    // The plate and the flag are composed first and cut by one rounded clip
+    // after, so the corner is smoothed once. Clipped draw by draw, the dark
+    // plate under the flag bleeds into the corner's edge pixels, a hairline
+    // that shows on a light page. That clip is the tile's one offscreen
+    // layer.
+    return ClipRRect(
+      borderRadius: plate.borderRadius!,
+      clipBehavior: Clip.antiAliasWithSaveLayer,
+      child: ColoredBox(
+        color: plate.color!,
         child: Stack(
           children: [
-            if (hasFlag && context.isLightTheme)
-              // Paper: the federation's real flag flying from the light
-              // scene's pole, whole and at full strength above the name.
-              // Only the drawing's mound eases into the plate.
+            if (flag != null)
               Positioned(
                 left: 0,
                 top: 0,
                 width: width,
                 height: flagHeight,
-                child: _CountrymenFlagScene(code: code, width: width),
-              )
-            else if (hasFlag)
-              Positioned(
-                left: 0,
-                top: 0,
-                width: width,
-                height: flagHeight,
-                // The flag dissolves into the plate over a long, many-stop
-                // fade so there is no seam where the image stops.
-                child: Opacity(
-                  opacity: 0.55,
-                  child: ShaderMask(
-                    blendMode: BlendMode.dstIn,
-                    shaderCallback: (rect) => const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: [0, 0.45, 0.58, 0.7, 0.8, 0.88, 0.95, 1],
-                      colors: [
-                        Color(0xFF000000),
-                        Color(0xFF000000),
-                        Color(0xCC000000),
-                        Color(0x99000000),
-                        Color(0x59000000),
-                        Color(0x33000000),
-                        Color(0x14000000),
-                        Color(0x00000000),
-                      ],
-                    ).createShader(rect),
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: FederationFlag(
-                        federation: code,
-                        width: width,
-                        height: width * 0.75,
-                        borderRadius: BorderRadius.zero,
+                // Whole and vivid over most of its height, then dissolving
+                // into the plate over a long, many-stop eased fade, so there
+                // is no seam where the flag stops. The words sit on the
+                // plate below it. The plate is one flat colour, so laying
+                // it over the flag's foot is the very same picture as
+                // fading the flag out over it, with no mask layer and no
+                // blend; it is opaque at the foot, so no edge pixel of the
+                // flag stands there.
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 1),
+                      child: flag,
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: _flagFoot(plate.color!),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             Positioned(
@@ -808,7 +804,7 @@ class _CountrymenTile extends StatelessWidget {
                   ),
                   SizedBox(height: 2.w),
                   Text(
-                    shortcut.subtitle ?? code.toUpperCase(),
+                    shortcut.subtitle ?? shortcut.targetId.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -829,30 +825,27 @@ class _CountrymenTile extends StatelessWidget {
       ),
     );
   }
-}
 
-/// Light: the pinned federation's flag flying from the light scene's pole,
-/// the pole and its flag centred in the tile's picture area: from the
-/// finial's left edge to the cloth's resting fly edge, at the flag's own
-/// proportions.
-class _CountrymenFlagScene extends StatelessWidget {
-  const _CountrymenFlagScene({required this.code, required this.width});
-
-  final String code;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    final clothMax = Size(68.w, 46.w);
-    return FlagPoleScene(
-      flagCode: flagClothCode(code),
-      footFade: 18.w,
-      layout: (aspect) => FlagPoleLayout.centred(
-        width: width,
-        bottom: 108.w,
-        height: 104.w,
-        cloth: FlagPoleLayout.fitCloth(clothMax, aspect),
-      ),
+  /// Opaque down to half the flag's height, then a smoothstep fade over the
+  /// rest (17 stops) to clear at its foot.
+  /// [plate] laid over the flag's foot: clear over its top half, then
+  /// rising to opaque at its foot on a many-stop smoothstep, so the flag
+  /// dissolves into the plate with no seam.
+  static LinearGradient _flagFoot(Color plate) {
+    const steps = 16;
+    const from = 0.5;
+    final colors = <Color>[plate.withValues(alpha: 0)];
+    final stops = <double>[0];
+    for (var i = 0; i <= steps; i++) {
+      final t = i / steps;
+      stops.add(from + (1 - from) * t);
+      colors.add(plate.withValues(alpha: plate.a * t * t * (3 - 2 * t)));
+    }
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: colors,
+      stops: stops,
     );
   }
 }
@@ -1092,20 +1085,24 @@ class _EventImage extends ConsumerWidget {
     return null;
   }
 
+  /// [country]'s flag filling the picture, from the vector flags so it
+  /// stays crisp at the tile's size (a small raster flag stretched this far
+  /// blurs and stair-steps); the plain plate when it names no flag.
   Widget _flagOrPlain(BuildContext context, String? country) {
-    if (country == null || !FederationFlag.hasVisibleFlag(country)) {
+    final code = MediaFlagBackdrop.flagCodeOf(country);
+    if (code == null) {
       return ColoredBox(color: context.colors.surfaceRecessed);
     }
     return ColoredBox(
       color: context.colors.surfaceRecessed,
-      child: FittedBox(
-        fit: BoxFit.cover,
-        clipBehavior: Clip.hardEdge,
-        child: FederationFlag(
-          federation: country,
-          width: SpaceMetrics.wide,
-          height: SpaceMetrics.wide * 0.75,
-          borderRadius: BorderRadius.zero,
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          clipBehavior: Clip.hardEdge,
+          child: CountryFlag.fromCountryCode(
+            code,
+            theme: const ImageTheme(width: 300, height: 200),
+          ),
         ),
       ),
     );

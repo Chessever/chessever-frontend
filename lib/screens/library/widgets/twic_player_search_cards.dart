@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -10,11 +9,9 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
-import 'package:chessever2/widgets/light_media_art.dart';
-import 'package:chessever2/widgets/player_initials_avatar.dart'
-    show getTitleBadgeColor, titleBadgeFill, titleBadgeInk;
+import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Maximum number of player cards to display
@@ -62,10 +59,14 @@ class TwicPlayerSearchCards extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 12.h),
-      child: _buildPlayerGrid(players),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05, end: 0);
+    // A short settle into place on a spring; the cards are fully visible
+    // from their first frame, never faded in from nothing.
+    return MediaCardsEntrance(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 12.h),
+        child: _buildPlayerGrid(players),
+      ),
+    );
   }
 
   Widget _buildPlayerGrid(List<GamebasePlayer> players) {
@@ -140,102 +141,52 @@ class _TwicPlayerCard extends ConsumerWidget {
     );
   }
 
+  /// A media card, one design in both themes (the dark one, [MediaTheme]),
+  /// as the home search cards draw it: the player's flag edge to edge in its
+  /// own colours, their photo whole at the right edge with its left side
+  /// fading into the flag, and the words bottom-left, their full name free
+  /// to run over the photo's faded edge, carried by one soft shade out of
+  /// that corner ([MediaTextScrim]).
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final countryCode = _getIso2CountryCode();
-    // Light: the player's photo at full strength with nothing laid over it
-    // and no flag behind it, as on the home search cards: whole at a
-    // full-width card's right edge, its left edge fading into the card and
-    // the words clear of it; an avatar above the name on a half-width card,
-    // so the name keeps the card's width. Room is made for the photo only
-    // once it is on hand; a player without one gets a plain card.
-    final light = context.isLightTheme;
+    // The vector flag, crisp at the card's size (the small raster flags
+    // blur and step when stretched across it), however TWIC writes the
+    // federation (a FIDE code, England, a country name); one with no flag
+    // of its own (FIDE's neutral players, "Unknown") leaves the card's
+    // plain ink.
+    final backdrop = MediaFlagBackdrop.ofFederation(player.fed);
     final height = (isCompact ? 108.sp : 120.sp) * context.textGrowth;
-    final photoUrl = light
-        ? ref
-              .watch(_twicPlayerPhotoUrlProvider(player.fideId.trim()))
-              .valueOrNull
-        : null;
     final inset = isCompact ? 12.sp : 14.sp;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _navigateToProfile(context),
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: light ? context.colors.surface : null,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: light
-                ? context.colors.textPrimary.withValues(alpha: 0.08)
-                : context.colors.divider,
-            width: 1,
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12.br),
-          child: Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              if (light && !isCompact)
-                Positioned.fill(
-                  child: LightPortraitCard(
-                    url: photoUrl,
-                    height: height,
-                    words: (context, photo) => _words(
-                      context,
-                      padding: photo
-                          ? EdgeInsets.fromLTRB(
-                              inset,
-                              inset,
-                              LightCardPortrait.wordsClearance(height),
-                              inset,
-                            )
-                          : EdgeInsets.all(inset),
-                    ),
+      child: MediaTheme(
+        child: Builder(
+          // The card fills the width it is given: its stack holds only
+          // positioned layers (and an empty slot while the photo loads), so
+          // nothing inside it sets a width of its own.
+          builder: (context) => Container(
+            width: double.infinity,
+            height: height,
+            decoration: BoxDecoration(
+              color: kHubTileInk,
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(color: context.colors.divider, width: 1),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12.br),
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  if (backdrop != null) Positioned.fill(child: backdrop),
+                  _PlayerPhotoOverlay(player: player, isCompact: isCompact),
+                  Positioned.fill(
+                    child: _words(context, padding: EdgeInsets.all(inset)),
                   ),
-                )
-              else if (light)
-                _words(
-                  context,
-                  padding: EdgeInsets.all(inset),
-                  avatar: photoUrl == null
-                      ? null
-                      : ConstrainedBox(
-                          constraints: BoxConstraints.loose(
-                            Size.square(LightAvatarPhoto.side(context)),
-                          ),
-                          child: AspectRatio(
-                            aspectRatio: 1,
-                            child: LightAvatarPhoto(url: photoUrl),
-                          ),
-                        ),
-                )
-              else ...[
-                if (countryCode != null)
-                  _FlagBackground(countryCode: countryCode),
-                _PlayerPhotoOverlay(player: player, isCompact: isCompact),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerRight,
-                        end: Alignment.centerLeft,
-                        colors: [
-                          Colors.transparent,
-                          context.colors.surface.withValues(alpha: 0.5),
-                          context.colors.surface.withValues(alpha: 0.85),
-                          context.colors.surface.withValues(alpha: 0.95),
-                        ],
-                        stops: const [0.0, 0.25, 0.55, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-                _words(context, padding: EdgeInsets.all(inset)),
-              ],
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -243,108 +194,73 @@ class _TwicPlayerCard extends ConsumerWidget {
   }
 
   /// The card's words, bottom-left: the title badge, the name, the rating
-  /// and federation. A light half-width card's [avatar] stands at the right
-  /// of the badge's row, its foot level with the badge's.
-  Widget _words(
-    BuildContext context, {
-    required EdgeInsets padding,
-    Widget? avatar,
-  }) {
-    final light = context.isLightTheme;
+  /// and federation, over the card's whole face and its one shade.
+  Widget _words(BuildContext context, {required EdgeInsets padding}) {
     final hasTitle = player.title != null && player.title!.isNotEmpty;
-    final badge = hasTitle
-        ? Container(
-            padding: EdgeInsets.symmetric(horizontal: 5.sp, vertical: 2.sp),
-            decoration: BoxDecoration(
-              color: titleBadgeFill(context, getTitleBadgeColor(player.title!)),
-              borderRadius: BorderRadius.circular(4.br),
-            ),
-            child: Text(
-              player.title!,
-              style: AppTypography.textXsBold.copyWith(
-                // Label picked against the (light-deepened)
-                // fill so it clears AA; dark stays white.
-                color: titleBadgeInk(
-                  context,
-                  titleBadgeFill(context, getTitleBadgeColor(player.title!)),
-                ),
-                fontSize: isCompact ? 9.sp : 10.sp,
-                letterSpacing: 0.5,
-              ),
-            ),
-          )
-        : null;
-    return Padding(
-      padding: padding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (avatar != null)
-            Flexible(
-              child: Padding(
+    final nameStyle =
+        (isCompact ? AppTypography.textMdBold : AppTypography.textLgBold)
+            .copyWith(
+              color: kMediaOnInk,
+              letterSpacing: 0.3,
+              shadows: kMediaTitleShadows,
+            );
+    return MediaTextScrim(
+      child: Padding(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            // The title badge, on its own fill with the label ink that reads
+            // on it.
+            if (hasTitle)
+              Padding(
                 padding: EdgeInsets.only(bottom: 4.sp),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [?badge, const Spacer(), avatar],
+                child: MediaTitleBadge(
+                  title: player.title!,
+                  compact: isCompact,
                 ),
               ),
-            )
-          else if (badge != null)
-            Padding(
-              padding: EdgeInsets.only(bottom: 4.sp),
-              child: badge,
-            ),
-          // Paper: a half-width card's name steps down to a form that fits
-          // ("M. Carlsen"), fading only as a last resort.
-          if (light && isCompact)
-            LightCardName(
-              name: player.displayName,
-              style: AppTypography.textMdBold.copyWith(
-                color: context.colors.textPrimary,
-                letterSpacing: 0.3,
+            // A half-width card's name runs the card's full width, over the
+            // photo's faded edge, stepping down to a shorter form
+            // ("M. Carlsen") only when the full one cannot fit.
+            if (isCompact)
+              MediaCardName(name: player.displayName, style: nameStyle)
+            else
+              Text(
+                player.displayName,
+                style: nameStyle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-            )
-          else
-            Text(
-              player.displayName,
-              style:
-                  (isCompact
-                          ? AppTypography.textMdBold
-                          : AppTypography.textLgBold)
-                      .copyWith(
-                        color: context.colors.textPrimary,
-                        letterSpacing: 0.3,
-                      ),
-              maxLines: isCompact ? 1 : 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          SizedBox(height: 2.sp),
-          Row(
-            children: [
-              if (player.fed.trim().isNotEmpty) ...[
-                FederationFlag(
-                  federation: player.fed,
-                  width: isCompact ? 14.sp : 16.sp,
-                  height: isCompact ? 10.sp : 12.sp,
-                  borderRadius: BorderRadius.circular(2.br),
-                ),
-                SizedBox(width: 5.sp),
-              ],
-              Expanded(
-                child: Text(
-                  _buildSubtitle(),
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
-                    fontSize: isCompact ? 10.sp : 11.sp,
+            SizedBox(height: 2.sp),
+            Row(
+              children: [
+                if (FederationFlag.hasVisibleFlag(player.fed)) ...[
+                  FederationFlag(
+                    federation: player.fed,
+                    width: isCompact ? 14.sp : 16.sp,
+                    height: isCompact ? 10.sp : 12.sp,
+                    borderRadius: BorderRadius.circular(2.br),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  SizedBox(width: 5.sp),
+                ],
+                Flexible(
+                  child: Text(
+                    _buildSubtitle(),
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kMediaOnInkQuiet,
+                      fontSize: isCompact ? 10.sp : 11.sp,
+                      shadows: kMediaCaptionShadows,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -365,60 +281,6 @@ class _TwicPlayerCard extends ConsumerWidget {
 
     return parts.join(' • ');
   }
-
-  String? _getIso2CountryCode() {
-    final fed = player.fed.trim();
-    if (fed.isEmpty) return null;
-    final lower = fed.toLowerCase();
-    // Treat TWIC's "Unknown" / sentinel feds as no flag.
-    if (const {
-      'unknown',
-      'none',
-      'unrated',
-      'n/a',
-      'na',
-      '?',
-      '-',
-    }.contains(lower)) {
-      return null;
-    }
-    // fed can be 2-letter ISO, 3-letter FIDE, or a country name (TWIC uses names).
-    final upper = fed.toUpperCase();
-    if (upper.length == 2) return upper;
-    if (upper.length == 3) {
-      final iso = CountryUtils.toIso2Code(upper);
-      return (iso.length == 2) ? iso : null;
-    }
-    final mapped = CountryUtils.countryNameToIso2(fed);
-    if (mapped.isNotEmpty) return mapped;
-    final fallback = CountryUtils.getCountryCode(fed);
-    return (fallback != null && fallback.length == 2) ? fallback : null;
-  }
-}
-
-/// Full background country flag with subtle opacity
-class _FlagBackground extends StatelessWidget {
-  const _FlagBackground({required this.countryCode});
-
-  final String countryCode;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: Opacity(
-        opacity: 0.20,
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: FederationFlag(
-            federation: countryCode,
-            width: 300,
-            height: 200,
-            borderRadius: BorderRadius.zero,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// FIDE photo cache provider — keyed by raw fideId string so empty/non-numeric
@@ -429,6 +291,7 @@ final _twicPlayerPhotoUrlProvider = FutureProvider.family
       return FidePhotoService.getPhotoUrlOrNull(fideId);
     });
 
+/// The player's photo ([MediaCardPortrait]), once its address is known.
 class _PlayerPhotoOverlay extends ConsumerWidget {
   const _PlayerPhotoOverlay({required this.player, this.isCompact = false});
 
@@ -437,71 +300,10 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final photoUrlAsync = ref.watch(
-      _twicPlayerPhotoUrlProvider(player.fideId.trim()),
-    );
-
-    return Positioned(
-      right: isCompact ? -15.sp : -20.sp,
-      top: isCompact ? -8.sp : -10.sp,
-      bottom: isCompact ? -8.sp : -10.sp,
-      child: photoUrlAsync.when(
-        data: (photoUrl) {
-          if (photoUrl == null) return _buildPlaceholder(context);
-          return AspectRatio(
-            aspectRatio: 0.8,
-            child: ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-                colors: [
-                  Colors.white,
-                  Colors.white.withValues(alpha: 0.85),
-                  Colors.white.withValues(alpha: 0.3),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.25, 0.55, 1.0],
-              ).createShader(bounds),
-              blendMode: BlendMode.dstIn,
-              child: CachedNetworkImage(
-                imageUrl: photoUrl,
-                fit: BoxFit.cover,
-                memCacheWidth: (200 * MediaQuery.devicePixelRatioOf(context))
-                    .toInt(),
-                placeholder: (_, _) => _buildPlaceholder(context),
-                errorWidget: (_, _, _) => _buildPlaceholder(context),
-              ),
-            ),
-          );
-        },
-        loading: () => _buildPlaceholder(context),
-        error: (_, _) => _buildPlaceholder(context),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 0.8,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              context.colors.divider.withValues(alpha: 0.6),
-              context.colors.divider.withValues(alpha: 0.2),
-            ],
-          ),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.person_rounded,
-            size: isCompact ? 32.sp : 48.sp,
-            color: context.colors.iconSecondary,
-          ),
-        ),
-      ),
-    );
+    final photoUrl = ref
+        .watch(_twicPlayerPhotoUrlProvider(player.fideId.trim()))
+        .valueOrNull;
+    if (photoUrl == null) return const SizedBox.shrink();
+    return MediaCardPortrait(url: photoUrl, compact: isCompact);
   }
 }

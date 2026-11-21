@@ -9,6 +9,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -132,8 +133,11 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                   )
                 else
                   DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
+                    child: GlassDropdown<String>(
                       value: selectedCountryCode,
+                      // Every item is a flag of one size: the button needs
+                      // only the selected one, not all of them.
+                      sizeToAllItems: false,
                       icon: Icon(Icons.keyboard_arrow_down, color: context.colors.textPrimary),
                       dropdownColor: context.colors.surface,
                       isDense: true,

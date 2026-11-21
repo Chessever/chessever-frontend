@@ -2,17 +2,33 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionScreen;
-import 'package:chessever2/screens/collections/open_collection_game.dart';
+import 'package:chessever2/screens/collections/open_collection_game.dart'
+    show resolvePlayableCollectionGames;
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart'
+    show reportsGameTypeProvider;
+import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart'
+    show openDiscoveryGame;
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
+import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/paywall/game_report_access.dart';
+import 'package:chessever2/widgets/paywall/past_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -47,12 +63,125 @@ Future<void> openCollectionStories(
 }
 
 /// The page a story's collection opens on: the collection's own screen, as
-/// its card opens it. Tests hand in a page of their own.
+/// its card opens it; for Missed chances, Reports on its Missed Chance
+/// topic. Tests hand in a page of their own.
 final storyCollectionPageProvider =
     Provider<Widget Function(Collection collection)>(
       (ref) =>
-          (collection) => CollectionScreen(collection: collection),
+          (collection) => isMissedChances(collection)
+          ? ProviderScope(
+              overrides: [
+                reportsGameTypeProvider.overrideWith(
+                  (ref) => ReportGameType.missedChance,
+                ),
+              ],
+              child: const ReportsScreen(),
+            )
+          : CollectionScreen(collection: collection),
     );
+
+/// Opens a story's game on the board at a move ([moveIndex], the board's
+/// own count: -1 is the start), through the gate its source asks: a
+/// collection's access, as its page opens a game; a report's, as Reports
+/// opens one. Tests hand in their own.
+typedef StoryGameOpener =
+    Future<void> Function(
+      BuildContext context,
+      WidgetRef ref, {
+      required Collection collection,
+      required StoryBatch batch,
+      required StoryGame story,
+      required int moveIndex,
+    });
+
+final storyGameOpenerProvider = Provider<StoryGameOpener>(
+  (ref) => openStoryGame,
+);
+
+/// The app's [StoryGameOpener].
+Future<void> openStoryGame(
+  BuildContext context,
+  WidgetRef ref, {
+  required Collection collection,
+  required StoryBatch batch,
+  required StoryGame story,
+  required int moveIndex,
+}) async {
+  final moves = {story.id: moveIndex};
+  if (isMissedChances(collection)) {
+    // As Reports: the stories are for everyone, the game behind the gate.
+    if (!await ensureGameReportAccess(context) || !context.mounted) return;
+    final index = batch.orderedIndexOf(story.id);
+    if (index < 0) return;
+    openDiscoveryGame(
+      context,
+      ref,
+      batch.ordered,
+      index,
+      initialMoveIndexByGameId: moves,
+    );
+    return;
+  }
+  final previews = batch.ordered;
+  final index = batch.orderedIndexOf(story.id);
+  if (index < 0) return;
+  final owner = ref.read(currentUserProvider)?.id;
+  bool current() =>
+      context.mounted && ref.read(currentUserProvider)?.id == owner;
+  try {
+    final games = await resolvePlayableCollectionGames(
+      repository: ref.read(collectionsRepositoryProvider),
+      slug: collection.slug,
+      visibleIds: [for (final game in previews) game.gameId],
+      requestAccess: (detail) => ensurePremiumGameAccess(
+        context,
+        featureId: collectionPaywallFeatureId(detail.kind),
+        returnTo: kCollectionPaywallReturnTo,
+      ),
+      stillCurrent: current,
+    );
+    if (games == null || !context.mounted || !current()) return;
+    if (!await ensurePastGameAccess(
+          context,
+          game: games[index],
+          publishedEventGame: true,
+        ) ||
+        !context.mounted ||
+        !current()) {
+      return;
+    }
+    final navigation = gameNavigationForAccess(
+      games: games,
+      index: index,
+      premium: ref.read(premiumAccessProvider),
+      publishedEventGame: true,
+    );
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.tour;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChessBoardScreenNew(
+          currentIndex: navigation.index,
+          games: navigation.games,
+          viewSource: ChessboardView.tour,
+          showGamebaseButton: false,
+          disableGamebaseOverlayByDefault: true,
+          allowGameExport: false,
+          initialMoveIndexByGameId: moves,
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted || !current()) return;
+    showAppSnack(
+      context,
+      error is CollectionsRequestException && error.isPremiumGate
+          ? "Couldn't confirm access to this game. Please try again."
+          : "Couldn't open this game. Please try again.",
+      tone: AppSnackTone.danger,
+    );
+  }
+}
 
 /// The viewer's route. It has no transition of its own: the viewer grows
 /// out of its circle and shrinks back into it on its own springs, over the
@@ -71,6 +200,16 @@ class StoryRoute extends ModalRoute<void> {
     : super(settings: const RouteSettings(name: 'collection_stories'));
 
   final Widget Function(StoryRoute route) builder;
+
+  /// Called when a page opened over the viewer is popped (an event opened
+  /// from a story through the app's links, which hands back no future).
+  VoidCallback? onUncovered;
+
+  @override
+  void didPopNext(Route<dynamic> nextRoute) {
+    super.didPopNext(nextRoute);
+    onUncovered?.call();
+  }
 
   bool _opaque = false;
 
@@ -151,7 +290,8 @@ class CollectionStoryViewer extends ConsumerStatefulWidget {
 }
 
 class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver
+    implements StoryPuzzleHost {
   /// Out of the circle: smooth, no overshoot, so the surface never swings
   /// past the screen's edges.
   static const Motion _openMotion = _StoryMotion(
@@ -194,7 +334,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     initialPage: widget.initialIndex,
   );
   late final AnimationController _progress =
-      AnimationController(vsync: this, duration: kStoryGameDuration)
+      AnimationController(vsync: this, duration: kStoryEmptyDuration)
         ..addStatusListener(_onProgressStatus)
         ..addListener(_onProgressTick);
   late final SingleMotionController _presence = SingleMotionController(
@@ -213,11 +353,11 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
 
   late int _active = widget.initialIndex;
 
-  /// The story each collection is on, once the reader has been there: its
-  /// place in the collection's stories as they are now ([_story]), and
-  /// which story it is ([_storyId], a game's id or [kStorySeeAllId]). A
-  /// re-read of the stories (new games ahead of it, a Premium unlock) moves
-  /// the place with the story, never the story under the reader.
+  /// The page each collection is on, once the reader has been there: its
+  /// place in the collection's pages as they are now ([_story]), and which
+  /// page it is ([_storyId], [StoryFrame.id]). A re-read of the stories
+  /// (new games ahead of it, a Premium unlock) moves the place with the
+  /// page, never the page under the reader.
   final Map<String, int> _story = {};
   final Map<String, String?> _storyId = {};
 
@@ -241,9 +381,9 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// The story already counted as seen: each counts once.
   Object? _countedFor;
 
-  /// A game story counts as seen once it has been on screen this long (or
-  /// its result has shown, or half of it has played, whichever comes
-  /// first), as a stories app counts a story once it has been shown.
+  /// A game story counts as seen once its last position has been on screen
+  /// this long (or half of it has played, whichever comes first), as a
+  /// stories app counts a story once it has been shown.
   static const Duration _seenBeat = Duration(milliseconds: 1200);
   static const double _watchedAt = 0.5;
 
@@ -355,7 +495,10 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _presence.dispose();
     _drag.dispose();
     _chrome.dispose();
+    _caughtUpHold.dispose();
     _flightOn.dispose();
+    zone.dispose();
+    widget.route?.onUncovered = null;
     super.dispose();
   }
 
@@ -377,6 +520,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       !_away &&
       !_background &&
       _settled &&
+      !_prompting &&
+      !_caughtUp &&
       _activeBatch != null;
 
   /// Runs the active story's bar when nothing holds it, stops it otherwise.
@@ -406,48 +551,46 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
   }
 
-  /// A game story on screen for a beat ([_seenBeat]) is seen: its
-  /// collection opens on the next story the reader has not seen, and its
-  /// ring goes quiet once every story is. A story the reader taps on past
-  /// is seen too ([_next]), however briefly it showed: skimming by taps
-  /// moves the place on. A reader who leaves mid-story keeps what they saw.
+  /// A game story whose last position has been on screen for a beat
+  /// ([_seenBeat]) is seen: its collection opens on the next story the
+  /// reader has not seen, and its ring goes quiet once every story is. A
+  /// story the reader taps on past from its last position is seen too
+  /// ([_next]), however briefly it showed. A reader who leaves mid-story
+  /// keeps what they saw.
   void _onProgressTick() {
     if (_quietProgress) return;
     final batch = _activeBatch;
     final index = _story[_activeSlug];
-    if (batch == null || index == null || index >= batch.games.length) return;
+    final frame = index == null ? null : batch?.frameAt(index);
+    if (frame == null || !frame.endsStory) return;
     if (_countedFor == _bound) return;
-    final story = batch.games[index];
-    final run = _progress.duration ?? kStoryGameDuration;
+    final run = _progress.duration ?? kStoryEmptyDuration;
     final beat = run.inMicroseconds <= 0
         ? 0.0
         : _seenBeat.inMicroseconds / run.inMicroseconds;
-    final seenAt = math.min(
-      math.min(beat, _watchedAt),
-      story.replay.revealShare,
-    );
-    if (_progress.value < seenAt) return;
+    if (_progress.value < math.min(beat, _watchedAt)) return;
     _countActive();
   }
 
-  /// Counts the game story on screen as seen, once.
+  /// Counts the game story on screen as seen, once, when it is on its last
+  /// position.
   void _countActive() {
     final batch = _activeBatch;
     final bound = _bound;
     final index = _story[_activeSlug];
     if (batch == null || bound == null || index == null) return;
-    if (index >= batch.games.length || _countedFor == bound) return;
+    final frame = batch.frameAt(index);
+    if (frame == null || !frame.endsStory || _countedFor == bound) return;
     _countedFor = bound;
-    _seen.markSeen(_activeCollection, batch, batch.games[index].id);
+    _seen.markSeen(_activeCollection, batch, frame.game.id);
   }
 
-  /// How long story [index] runs: an annotated game its own schedule.
-  Duration _durationOf(StoryBatch batch, int index) =>
-      batch.storyCount == 0 ? kStoryEmptyDuration : batch.durationOf(index);
+  /// How long page [index] runs: the time to read its words.
+  Duration _durationOf(StoryBatch batch, int index) => batch.durationOf(index);
 
-  /// The story [collection] is on in [batch]: the one the reader left it
-  /// on, wherever it stands now; else (never visited, or that game gone)
-  /// the first one they have not seen.
+  /// The page [collection] is on in [batch]: the one the reader left it on,
+  /// wherever it stands now; else (never visited, or that game gone) the
+  /// first page of the first story they have not seen.
   int _placeIn(Collection collection, StoryBatch batch) {
     final id = _storyId[collection.slug];
     final placed = id == null ? null : storyIndexOf(batch, id);
@@ -480,18 +623,20 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _placed[slug] = (id, duration);
     _progress.duration = duration;
     if (before != null && (before.$1 != id || before.$2 != duration)) {
-      // Another story under the reader (its game gone from a re-read), or
-      // the same game on another run (a Premium unlock turning a still into
-      // a replay): it starts from its beginning, never part way through a
-      // story they did not watch. The descendants it notifies build next.
+      // Another page under the reader (its game gone from a re-read), or
+      // the same page read again with other words: it starts from its
+      // beginning, never part way through a page they did not watch. The
+      // descendants it notifies build next.
       _progress.stop();
       _setProgress(0);
+      _releasePrompt();
     }
     final counted = !identical(_reconciled[slug], batch);
     _reconciled[slug] = batch;
     _afterFrame(() {
       // The collection's record keeps to the stories it shows now.
       if (counted) _seen.reconcile(collection, batch);
+      if (id != null) _seen.markAt(collection, id);
       _sync();
     });
   }
@@ -517,12 +662,94 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       _storyId[slug] = id;
     });
     _placed[slug] = (id, duration);
+    if (id != null) _seen.markAt(_activeCollection, id);
+    _releasePrompt();
     _progress
       ..stop()
       ..duration = duration
       ..value = 0;
     _bound = (slug, index, batch);
     _sync();
+  }
+
+  // ---------------------------------------------------------------- puzzles
+
+  /// How the reader answered each position that asked for a move, by
+  /// [StoryFrame.id]: going back to one shows its answer, not the question.
+  final Map<String, StoryPuzzleOutcome> _outcomes = {};
+
+  /// The page on screen waits for the reader's move: its bar holds.
+  bool _prompting = false;
+  String? _promptFor;
+
+  @override
+  final ValueNotifier<Rect?> zone = ValueNotifier<Rect?>(null);
+
+  /// The page on screen, as [StoryFrame.id].
+  String? get _activeFrameId {
+    final index = _story[_activeSlug];
+    final batch = _activeBatch;
+    return index == null || batch == null ? null : storyIdAt(batch, index);
+  }
+
+  @override
+  StoryPuzzleOutcome? outcomeOf(String frameId) => _outcomes[frameId];
+
+  @override
+  void prompting(String frameId, bool waiting) {
+    if (frameId != _activeFrameId) return;
+    if (_prompting == waiting && _promptFor == frameId) return;
+    _prompting = waiting;
+    _promptFor = waiting ? frameId : null;
+    if (waiting) _setProgress(0);
+    _sync();
+  }
+
+  @override
+  void settle(String frameId, StoryPuzzleOutcome outcome) {
+    _outcomes[frameId] = outcome;
+    if (frameId != _activeFrameId) return;
+    _prompting = false;
+    _promptFor = null;
+    _sync();
+  }
+
+  /// Another page: nothing waits until it says so.
+  void _releasePrompt() {
+    _prompting = false;
+    _promptFor = null;
+    zone.value = null;
+  }
+
+  /// The last finger came down on the board taking the reader's move: its
+  /// tap or hold is theirs, never the story's, even once the move it made
+  /// has answered the question (the board hears the finger first).
+  bool _downOnBoard = false;
+
+  // ------------------------------------------------------------- caught up
+
+  /// Every circle watched, the last story done: one quiet line, then out.
+  bool _caughtUp = false;
+
+  late final AnimationController _caughtUpHold = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..addStatusListener(_onCaughtUpStatus);
+
+  void _onCaughtUpStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) unawaited(_close());
+  }
+
+  /// Whether every circle the reader came from reads as watched.
+  bool get _allWatched => widget.collections.every(_seen.isSeen);
+
+  void _showCaughtUp() {
+    if (_caughtUp || _closing) return;
+    _progress.stop();
+    _releasePrompt();
+    setState(() => _caughtUp = true);
+    unawaited(_chrome.animateTo(0));
+    _caughtUpHold.forward(from: 0);
   }
 
   /// The next story; after a collection's last, the next collection; after
@@ -560,10 +787,16 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
   }
 
-  /// Turns the cube to collection [index], or closes past the last one.
+  /// Turns the cube to collection [index], or past the last one ends the
+  /// stories: with every circle watched on one quiet line ("You're all
+  /// caught up"), otherwise straight out.
   void _toCollection(int index) {
     if (index >= widget.collections.length) {
-      unawaited(_close());
+      if (_allWatched) {
+        _showCaughtUp();
+      } else {
+        unawaited(_close());
+      }
       return;
     }
     if (index < 0 || !_pages.hasClients) return;
@@ -588,6 +821,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _held[leaving] = _progress.value;
     setState(() => _active = index);
     _progress.stop();
+    _releasePrompt();
     final frame = _held.remove(_activeSlug) ?? 0;
     _restartAtRest = frame >= 1;
     _setProgress(frame);
@@ -693,6 +927,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// Records how the surface's own space stands to the screen's under a
   /// new finger ([_touchScale]).
   void _onPointerDown(PointerDownEvent event) {
+    _downOnBoard = zone.value?.contains(event.position) ?? false;
     final toLocal = event.transform;
     if (toLocal == null) {
       _touchScale = 1;
@@ -705,7 +940,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   }
 
   void _onTapDown(TapDownDetails details) {
-    if (!_takesTouches) return;
+    if (!_takesTouches || _downOnBoard) return;
     _pressing = true;
     _sync();
   }
@@ -718,6 +953,11 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       return;
     }
     _pressing = false;
+    if (_caughtUp) {
+      unawaited(_close());
+      return;
+    }
+    if (_downOnBoard) return;
     final x = details.localPosition.dx;
     final back = Directionality.of(context) == TextDirection.rtl
         ? x > _size.width * 2 / 3
@@ -747,7 +987,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// A finger that rests on the story holds it, even one that came down
   /// while the surface was still growing: the story waits under it.
   void _onHoldStart(LongPressStartDetails details) {
-    if (_closing || _away) return;
+    if (_closing || _away || _downOnBoard) return;
     _setHolding(true);
   }
 
@@ -827,14 +1067,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       return;
     }
     if (raw < 0 && (raw < -80.sp || velocity < -800)) {
-      // A swipe up is the story's action: the game, or See all.
-      final batch = _activeBatch;
-      final index = _story[_activeSlug] ?? 0;
-      if (batch != null && batch.isSeeAll(index)) {
-        unawaited(_openCollection());
-      } else {
-        unawaited(_openGame());
-      }
+      // A swipe up is the story's action: the game, at this position.
+      if (!_caughtUp) unawaited(_openGame());
     }
     _drag.animateTo(0, withVelocity: velocity).then((_) => _onSettled());
     _sync();
@@ -1037,24 +1271,30 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
 
   // ---------------------------------------------------------------- actions
 
-  /// Pauses, opens [StoryBatch]'s game the way the collection page does
-  /// (its access gate, its board), and resumes once the reader is back.
+  /// Pauses, opens the story's game on the board at the position on screen
+  /// (the one before it while a move is asked for), through its source's
+  /// gate, and resumes once the reader is back.
   Future<void> _openGame() async {
     final batch = _activeBatch;
     final index = _story[_activeSlug] ?? 0;
-    if (batch == null || _away || _closing) return;
-    if (index >= batch.games.length) return;
+    final frame = batch?.frameAt(index);
+    if (batch == null || frame == null || _away || _closing) return;
+    final segment = frame.position;
+    final asking = segment.puzzle != null && _outcomes[frame.id] == null;
     unawaited(HapticFeedbackService.buttonPress());
     setState(() => _away = true);
     _publishCover();
     _sync();
     try {
-      await openCollectionGame(
+      await ref.read(storyGameOpenerProvider)(
         context,
         ref,
-        slug: _activeSlug,
-        previews: batch.ordered,
-        index: index,
+        collection: _activeCollection,
+        batch: batch,
+        story: frame.game,
+        moveIndex: segment.isStill
+            ? -1
+            : segment.boardMoveIndex(before: asking),
       );
     } finally {
       if (mounted) {
@@ -1065,8 +1305,46 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
   }
 
-  /// The collection's own page (its header, View collection, See all) over
-  /// the stories, which wait where they are and play on once the reader is
+  /// The game's event, from a Missed chances story: the event page over the
+  /// stories, which wait until it is popped.
+  Future<void> _openEvent() async {
+    final batch = _activeBatch;
+    final index = _story[_activeSlug] ?? 0;
+    final frame = batch?.frameAt(index);
+    if (frame == null || _away || _closing || !_opened) return;
+    final game = frame.game.game;
+    unawaited(HapticFeedbackService.buttonPress());
+    setState(() => _away = true);
+    _publishCover();
+    _sync();
+    final route = widget.route;
+    void back() {
+      route?.onUncovered = null;
+      if (!mounted) return;
+      setState(() => _away = false);
+      _publishCover();
+      _sync();
+    }
+
+    route?.onUncovered = back;
+    final opened = await DeepLinkService.instance.openEventForShortcut(
+      tourId: game.tourId,
+      roundId: game.roundId,
+    );
+    if (!opened) {
+      back();
+      if (mounted) {
+        showAppSnack(
+          context,
+          "Couldn't open this event",
+          tone: AppSnackTone.danger,
+        );
+      }
+    }
+  }
+
+  /// The collection's own page (its header, View collection) over the
+  /// stories, which wait where they are and play on once the reader is
   /// back.
   Future<void> _openCollection() async {
     if (_away || _closing || !_opened) return;
@@ -1194,7 +1472,12 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
                 onClose: () => unawaited(_close()),
                 onOpenGame: () => unawaited(_openGame()),
                 onOpenCollection: () => unawaited(_openCollection()),
+                onOpenEvent: isMissedChances(collection)
+                    ? () => unawaited(_openEvent())
+                    : null,
                 onRetry: () => _retry(collection.slug),
+                active: active && !_away,
+                puzzles: this,
               ),
             ),
           );
@@ -1244,18 +1527,37 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
           },
           // Nothing inside takes a touch until the surface is in place, nor
           // on the way out.
-          child: IgnorePointer(ignoring: !_opened || _closing, child: pager),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              IgnorePointer(
+                ignoring: !_opened || _closing || _caughtUp,
+                child: pager,
+              ),
+              // The end: the last story done with every circle watched.
+              if (_caughtUp)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: backdrop,
+                    child: const StoryCaughtUp(),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
 
     final count = batch?.storyCount ?? 0;
-    final semanticsLabel = [
-      'Stories of ${_activeCollection.title}',
-      if (batch != null && count > 0 && story != null)
-        'story ${story + 1} of $count',
-      if (_holding) 'paused',
-    ].join(', ');
+    final semanticsLabel = _caughtUp
+        ? "You're all caught up"
+        : [
+            'Stories of ${_activeCollection.title}',
+            if (batch != null && count > 0 && story != null)
+              'story ${story + 1} of $count',
+            if (_prompting) 'your move',
+            if (_holding) 'paused',
+          ].join(', ');
 
     return PopScope(
       canPop: false,

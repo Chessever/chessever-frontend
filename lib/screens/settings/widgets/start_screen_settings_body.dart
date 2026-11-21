@@ -6,6 +6,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/home_customization_access.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -108,18 +109,13 @@ Future<T?> showStartScreenPicker<T extends Enum>({
   required String Function(T) label,
   required T selected,
 }) {
-  return showModalBottomSheet<T>(
+  return showGlassModalBottomSheet<T>(
     context: context,
-    backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder: (context) => Container(
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(16),
-          topRight: Radius.circular(16),
-        ),
-      ),
+    // Frosted glass toned to the page background it used to be.
+    builder: (context) => GlassSheet(
+      radius: 16,
+      tone: context.colors.background,
       padding: EdgeInsets.fromLTRB(
         20.sp,
         12.sp,

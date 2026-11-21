@@ -11,6 +11,8 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'
@@ -144,24 +146,50 @@ Future<void> showProfileAvatarEditor(BuildContext context) async {
     );
     if (!allowed || !context.mounted) return;
   }
-  await showGeneralDialog<void>(
+  // A lightbox on a plain scrim: nothing re-blurs the whole screen while it
+  // opens. The scrim fades and the stage scales up on a spring, visible from
+  // its first frame; an outside tap closes it unless a save is running.
+  await showGlassDialog<void>(
     context: context,
-    barrierDismissible: true,
+    useSafeArea: false,
     barrierLabel: 'Close profile photo',
-    barrierColor: Colors.transparent,
-    transitionDuration: MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 240),
-    pageBuilder: (_, __, ___) => const _ProfileAvatarEditor(),
-    // Content stays visible throughout the transition, including its first frame.
-    transitionBuilder: (_, animation, __, child) => ScaleTransition(
-      scale: Tween(
-        begin: 0.92,
-        end: 1.0,
-      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    scrim: ProfileAvatarLightbox.scrimOf(context),
+    builder: (_) => const _ProfileAvatarEditor(),
   );
+}
+
+/// The avatar lightbox's colours, in one place (and pinned by
+/// `test/dialogs_glass_contrast_test.dart`).
+///
+/// The stage is dark in both themes, as a photo viewer's is: the theme's
+/// scrim ink, dense enough that the page under it falls quiet (nothing
+/// blurs the page, so it is dimmed further than under a popup and only
+/// the photo holds the eye). The controls sit on dark glass a step lighter
+/// than that stage, so their white type reads at well over 7:1 in light as
+/// in dark, where the light theme used to leave a mid-grey slab at 4.8:1.
+abstract final class ProfileAvatarLightbox {
+  /// The scrim at rest, over the page.
+  static Color scrimOf(BuildContext context) =>
+      context.colors.scrim.withValues(alpha: context.isLightTheme ? 0.9 : 0.85);
+
+  /// The page as the stage leaves it: what the controls' glass stands on,
+  /// and is solved over.
+  static Color stageOf(BuildContext context) =>
+      Color.alphaBlend(scrimOf(context), context.colors.background);
+
+  /// The controls' glass: a step of white over the stage.
+  static Color controlsToneOf(BuildContext context) =>
+      Color.alphaBlend(Colors.white.withValues(alpha: 0.06), stageOf(context));
+
+  /// An error under the name, on that dark glass in both themes: the dark
+  /// theme's danger red (#F5453A) lifted halfway to white. The light
+  /// theme's red is drawn for paper and all but vanishes there, and the
+  /// dark one reads at under 3:1 on the light theme's teal-ink stage.
+  static const Color errorInk = Color(0xFFFAA29D);
+
+  /// The main action on that dark glass: the light theme's paper and ink.
+  static Color get actionFill => AppColors.light.surface;
+  static Color get actionInk => AppColors.light.textPrimary;
 }
 
 class _ProfileAvatarEditor extends ConsumerStatefulWidget {
@@ -245,69 +273,75 @@ class _ProfileAvatarEditorState extends ConsumerState<_ProfileAvatarEditor> {
       MediaQuery.sizeOf(context).width * 0.72,
       math.min(320.0, MediaQuery.sizeOf(context).height * 0.42),
     );
+    final ratio = MediaQuery.devicePixelRatioOf(context);
     return PopScope(
       canPop: !_busy,
+      // A see-through Material: taps that miss the controls reach the
+      // route's barrier, which closes the lightbox (asking PopScope first).
       child: Material(
-        color: Colors.transparent,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: GestureDetector(
-                  onTap: _busy ? null : () => Navigator.pop(context),
-                  child: ColoredBox(
-                    color: context.colors.scrim.withValues(alpha: 0.65),
-                  ),
+        type: MaterialType.transparency,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  tooltip: 'Close profile photo',
+                  onPressed: _busy ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
                 ),
               ),
-            ),
-            SafeArea(
-              child: Column(
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      tooltip: 'Close profile photo',
-                      onPressed: _busy ? null : () => Navigator.pop(context),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final diameter = math.min(size, constraints.maxHeight);
-                        return Center(
-                          child: SizedBox(
-                            width: diameter,
-                            height: diameter,
-                            child: _draft == null
-                                ? UserAvatar(
-                                    size: diameter / 1.w,
-                                    showPremiumBorder: false,
-                                    initialsStyle: TextStyle(
-                                      fontSize: diameter * 0.28,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  )
-                                : ClipOval(
-                                    child: Image.memory(
-                                      _draft!,
-                                      width: diameter,
-                                      height: diameter,
-                                      fit: BoxFit.cover,
-                                    ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final diameter = math.min(size, constraints.maxHeight);
+                    return Center(
+                      child: SizedBox(
+                        width: diameter,
+                        height: diameter,
+                        child: _draft == null
+                            ? UserAvatar(
+                                size: diameter / 1.w,
+                                showPremiumBorder: false,
+                                initialsStyle: TextStyle(
+                                  fontSize: diameter * 0.28,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              )
+                            : ClipOval(
+                                child: Image.memory(
+                                  _draft!,
+                                  width: diameter,
+                                  height: diameter,
+                                  fit: BoxFit.cover,
+                                  // Decoded at the size it is shown,
+                                  // never past the 512 px square.
+                                  cacheWidth: math.min(
+                                    512,
+                                    (diameter * ratio).ceil(),
                                   ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(24.sp, 12.sp, 24.sp, 24.sp),
+                                  gaplessPlayback: true,
+                                ),
+                              ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // The controls on the dark glass, a step lighter than the
+              // stage it is solved over, so its white type reads at well
+              // over 7:1 in both themes. The stage under it is flat, with
+              // nothing to frost, so it takes the material without the
+              // live blur. The panel's margin plus its padding put the
+              // controls where they always were.
+              Padding(
+                padding: EdgeInsets.fromLTRB(12.sp, 0, 12.sp, 12.sp),
+                child: PopupGlassNoFrost(
+                  child: FixedDarkPopupGlass(
+                    tone: ProfileAvatarLightbox.controlsToneOf(context),
+                    page: ProfileAvatarLightbox.stageOf(context),
+                    borderRadius: BorderRadius.circular(20.br),
+                    padding: EdgeInsets.all(12.sp),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -325,15 +359,20 @@ class _ProfileAvatarEditorState extends ConsumerState<_ProfileAvatarEditor> {
                             child: Text(
                               _error!,
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: context.colors.danger),
+                              style: const TextStyle(
+                                color: ProfileAvatarLightbox.errorInk,
+                              ),
                             ),
                           ),
                         SizedBox(height: 16.sp),
                         AppButton(
                           text: _draft == null ? 'Upload' : 'Save',
                           isLoading: _busy,
-                          backgroundColor: context.colors.surface,
-                          textColor: context.colors.textPrimary,
+                          // The paper button in both themes: the controls
+                          // are dark glass in both, and a dark button on
+                          // them all but vanished in the dark theme.
+                          backgroundColor: ProfileAvatarLightbox.actionFill,
+                          textColor: ProfileAvatarLightbox.actionInk,
                           onPressed: _draft == null ? _choose : _save,
                         ),
                         if (_draft != null)
@@ -356,10 +395,10 @@ class _ProfileAvatarEditorState extends ConsumerState<_ProfileAvatarEditor> {
                       ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

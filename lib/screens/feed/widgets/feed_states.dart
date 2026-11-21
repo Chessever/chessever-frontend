@@ -31,9 +31,10 @@ class FeedSkeleton extends StatelessWidget {
 }
 
 /// One post's skeleton, on the exact [FeedLayout] geometry of a real post:
-/// both player rows around the board, then the zone: the chart's move line,
-/// the scrub line and the caption on the left, the rail's four cells on the
-/// right.
+/// the header line at the top, both player rows around the board, then the
+/// zone: the chart's move line and the scrub line, and the rail's four
+/// cells over their right end, bare (no chart under them to frost), each
+/// glyph's place where the real rail's glyph will stand.
 ///
 /// The column left of the board is always drawn, as wide as the post's own:
 /// a game post always has its eval bar and a puzzle its rail, so the board
@@ -42,7 +43,7 @@ class FeedSkeletonPost extends StatelessWidget {
   const FeedSkeletonPost({this.puzzle = false, super.key});
 
   /// Lays out a puzzle post instead of a game: its status in the middle of
-  /// the zone's left column, and no chart or scrub line.
+  /// the zone beside the rail, and no chart or scrub line.
   final bool puzzle;
 
   /// The counter the skeleton keeps room for: a game's own counter is as
@@ -87,33 +88,29 @@ class FeedSkeletonPost extends StatelessWidget {
             ],
           ),
         );
-        // Each rail cell: the glyph over its word.
+        // Each rail cell: its glyph's place.
         Widget cell() => SizedBox(
           height: l.railCell,
           width: FeedLayout.railWidth,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              bar(FeedLayout.railGlyph, FeedLayout.railGlyph, radius: 6),
-              const SizedBox(height: FeedLayout.railGlyphGap + 3),
-              bar(32, 8),
-            ],
+          child: Center(
+            child: bar(FeedLayout.railGlyph, FeedLayout.railGlyph, radius: 6),
           ),
         );
-        // The caption's one line, at the zone's foot.
-        final caption = Positioned(
+        // The header's one line, at the top of the post.
+        final header = Positioned(
           left: l.contentLeft,
-          top: l.captionTop,
-          width: l.leftColumnWidth,
-          height: l.captionHeight,
+          top: l.headerTop,
+          width: l.contentWidth,
+          height: l.headerHeight,
           child: Align(
             alignment: Alignment.centerLeft,
-            child: bar(math.min(180, l.leftColumnWidth), 10),
+            child: bar(math.min(220, l.contentWidth), 10),
           ),
         );
 
         return Stack(
           children: [
+            header,
             Positioned(
               left: l.contentLeft,
               top: l.blackRowTop,
@@ -152,10 +149,11 @@ class FeedSkeletonPost extends StatelessWidget {
               child: playerRow(170),
             ),
             if (puzzle)
-              // The status line, centred above the caption.
+              // The status line beside the rail, level with the middle of
+              // its marks, where a puzzle's status stands.
               Positioned(
                 left: l.contentLeft,
-                top: l.zoneTop + (l.captionTop - l.zoneTop - l.infoHeight) / 2,
+                top: l.railCellsMiddle - l.infoHeight / 2,
                 width: l.leftColumnWidth,
                 height: l.infoHeight,
                 child: Align(
@@ -212,13 +210,15 @@ class FeedSkeletonPost extends StatelessWidget {
                 ),
               ),
             ],
-            caption,
             Positioned(
               left: l.railLeft,
               top: l.railTop,
               width: FeedLayout.railWidth,
               height: l.railHeight,
-              child: Column(
+              // Bare, as a puzzle's: the skeleton draws no chart for a
+              // backing to frost.
+              child: FeedRailColumn(
+                backing: false,
                 children: [
                   for (var i = 0; i < FeedLayout.railCells; i++) cell(),
                 ],

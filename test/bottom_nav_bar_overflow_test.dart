@@ -23,7 +23,7 @@ void main() {
       'Home',
       'Feed',
       if (botvinnik) 'Botvinnik',
-      'Search',
+      'Collections',
       'Profile',
     ];
 

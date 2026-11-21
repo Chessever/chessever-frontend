@@ -70,11 +70,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// board, laid out like the app's game cards (the same
 /// [PlayerFirstRowDetailWidget] rows over and under the board, the board
 /// screen's [EvaluationBarWidget] beside it), the board as large as the
-/// screen allows. Under it ([FeedLayout]) the evaluation chart, the scrub
-/// line and the one-line caption ([FeedPostHeader]) stand on the left, the
-/// action rail ([FeedActionRail]) on the right.
+/// screen allows. Over it ([FeedLayout]) the post's one-line header
+/// ([FeedPostHeader]); under it the evaluation chart, as wide as the eval
+/// bar and the board together, and the scrub line, with the action rail
+/// ([FeedActionRail]) on its frosted backing over the chart's right end.
 ///
-/// Gestures belong to the parts they sit on. The caption's event and
+/// Gestures belong to the parts they sit on. The header's event and
 /// opening open the event and the board editor; the player names open the
 /// scorecard (long-press: the player's focus menu). Over the board and its
 /// eval bar:
@@ -1817,8 +1818,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
     return _openingFenValue;
   }
 
-  /// The post's one line, under its chart: time control, the signal that
-  /// earned the game its place, the event and the opening (both tappable).
+  /// The post's one line, at its top: time control, the signal that earned
+  /// the game its place, the event and the opening's name (both tappable).
+  /// No ECO code: the opening is named in words or not at all. The event
+  /// keeps its words longest: the opening leaves the line whole before the
+  /// event gives up any of its width.
   Widget _buildHeader(FeedLayout l) {
     final game = _game;
     final parts = <FeedHeaderPart>[];
@@ -1854,31 +1858,17 @@ class _FeedClipState extends ConsumerState<FeedClip>
       );
     }
 
-    final code = feedEcoCode(game);
     final name = game.openingName?.trim() ?? '';
-    final hasOpening = code != null || name.isNotEmpty;
-    final openingAt = hasOpening ? parts.length : null;
-    if (hasOpening) {
+    final openingAt = name.isEmpty ? null : parts.length;
+    if (name.isNotEmpty) {
       final fen = _openingFen;
-      final title = [?code, if (name.isNotEmpty) name].join(' ');
       parts.add(
         FeedHeaderPart(
           id: 'opening',
-          pieces: [
-            if (code != null)
-              FeedHeaderPiece.text(code, tone: FeedHeaderTone.strong),
-            if (code != null && name.isNotEmpty) const FeedHeaderPiece.gap(5),
-            if (name.isNotEmpty)
-              FeedHeaderPiece.text(name, tone: FeedHeaderTone.secondary),
-          ],
-          compact: code != null && name.isNotEmpty
-              ? [FeedHeaderPiece.text(code, tone: FeedHeaderTone.strong)]
-              : null,
+          pieces: [FeedHeaderPiece.text(name, tone: FeedHeaderTone.secondary)],
           shrinkable: true,
           onTap: fen == null ? null : () => _openOpening(fen),
-          semanticsLabel: fen == null
-              ? title
-              : 'Open $title in the board editor',
+          semanticsLabel: fen == null ? name : 'Open $name in the board editor',
         ),
       );
     }
@@ -1886,7 +1876,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final timeControl = feedTimeControlOf(game, event);
     return FeedPostHeader(
       key: const ValueKey('feed_post_header'),
-      height: l.captionHeight,
+      height: l.headerHeight,
       // The app's shared time-control mark: light mode draws its baked
       // paper twins, dark the original art.
       leading: timeControl == null
@@ -1898,8 +1888,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
             ),
       leadingWidth: 16,
       parts: parts,
-      compactOrder: [?signalAt, ?openingAt],
-      shrinkOrder: [?eventAt, ?openingAt, ?signalAt],
+      compactOrder: [?signalAt],
+      yieldOrder: [?openingAt],
+      shrinkOrder: [?eventAt, ?signalAt],
       dropOrder: [?signalAt],
     );
   }
@@ -2376,12 +2367,19 @@ class _FeedClipState extends ConsumerState<FeedClip>
           ),
         );
 
-        // The post, placed on its geometry: the board block under the top
-        // bar, then the zone (the chart, the scrub line and the caption on
-        // the left, the rail on the right) over the deck that rises under
+        // The post, placed on its geometry: its header, the board block,
+        // then the zone (the chart across the column, the scrub line under
+        // it, the rail over their right end) on the deck that rises under
         // the pages ([FeedLayout.deckTop]).
         return Stack(
           children: [
+            Positioned(
+              left: l.contentLeft,
+              top: l.headerTop,
+              width: l.contentWidth,
+              height: l.headerHeight,
+              child: _buildHeader(l),
+            ),
             Positioned(
               left: l.contentLeft,
               top: l.blackRowTop,
@@ -2403,15 +2401,16 @@ class _FeedClipState extends ConsumerState<FeedClip>
               height: l.rowHeight,
               child: _playerRow(l, white: true, revealResult: revealResult),
             ),
-            // The graph, under the board block. While the viewer plays
-            // their own line, its move strip (steps, "Back to game") stands
-            // in the graph's slot: the game's curve says nothing about the
-            // line, and swapping within a fixed slot keeps the board and
-            // every row where they were.
+            // The graph, under the board block, as wide as the eval bar and
+            // the board: the rail stands over its right end. While the
+            // viewer plays their own line, its move strip (steps, "Back to
+            // game") stands in the graph's slot, beside the rail: the game's
+            // curve says nothing about the line, and swapping within a fixed
+            // slot keeps the board and every row where they were.
             Positioned(
-              left: stripLeft,
+              left: exploring ? stripLeft : l.contentLeft,
               top: l.graphTop,
-              width: l.leftColumnRight - stripLeft,
+              width: exploring ? l.leftColumnRight - stripLeft : l.contentWidth,
               height: l.graphHeight,
               child: FeedKeepsBars(
                 child: exploring
@@ -2421,6 +2420,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     : FeedEvaluationGraph(
                         item: _item,
                         ply: shown,
+                        height: l.graphHeight,
+                        runEndInset: l.railReserve,
                         onSeek: _onScrubTap,
                         onStart: _onScrubStart,
                         onUpdate: _onScrubUpdate,
@@ -2429,7 +2430,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
               ),
             ),
             // The timeline shares its row with the playback speed, the row
-            // running from the screen's edge (its target) to the rail.
+            // running from the screen's edge (its target) to the rail's gap.
             Positioned(
               left: 0,
               top: l.scrubTop,
@@ -2477,15 +2478,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 ),
               ),
             ),
-            // The caption: what the post is, its event and its opening, at
-            // the zone's foot beside Like.
-            Positioned(
-              left: l.contentLeft,
-              top: l.captionTop,
-              width: l.leftColumnWidth,
-              height: l.captionHeight,
-              child: _buildHeader(l),
-            ),
+            // The rail, over the chart's right end, from the zone's top to
+            // its foot.
             Positioned(
               left: l.railLeft,
               top: l.railTop,
@@ -2504,6 +2498,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
                   shownLikes: _likesShown(liked && !_heartInbound),
                   heartPop: _heartDocks,
                   saved: saved,
+                  // The backing frosts the chart under the marks; while the
+                  // viewer's line stands beside the rail in the chart's
+                  // place there is no chart under them to frost.
+                  backing: !exploring,
                   likeIconKey: _likeIconKey,
                   onLike: _item.likeable ? _likeFromButton : null,
                   onShare: _share,
@@ -2512,13 +2510,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 ),
               ),
             ),
-            // A like's tag picker stands beside Like, over the caption and
-            // the scrub line, so it can be answered or undone at once.
+            // A like's tag picker stands beside Like, over the scrub line,
+            // so it can be answered or undone at once.
             if (tagOffer != null)
               Positioned(
                 left: l.contentLeft,
                 width: math.max(0, l.leftColumnWidth - 4),
-                top: l.zoneBottom - l.railCell,
+                top: l.railLastCellTop,
                 height: l.railCell,
                 child: Align(
                   alignment: Alignment.centerRight,

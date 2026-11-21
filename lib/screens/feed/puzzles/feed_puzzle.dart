@@ -203,7 +203,8 @@ class FeedPuzzleSounds {
 final feedPuzzleSoundsProvider = Provider<FeedPuzzleSounds>(
   (ref) => FeedPuzzleSounds(
     isSilent: () {
-      // The Feed's speaker toggle, and the board's own Sound setting.
+      // The shared mute (the puzzle race's speaker), and the board's own
+      // Sound setting.
       final sfx = ref.read(feedSfxProvider);
       return sfx.muted || !sfx.boardSoundEnabled;
     },
@@ -741,13 +742,20 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
           ),
         );
 
-        // The zone, as on a game post: the status stands in the middle of
-        // the left column (a puzzle has no chart or scrub line), the
-        // caption at its foot, the actions down the rail.
-        final statusTop =
-            l.zoneTop + (l.captionTop - l.zoneTop - l.infoHeight) / 2;
+        // As on a game post: the header at the top, then the board block,
+        // then the zone, where the status stands beside the rail, level
+        // with the middle of its marks (a puzzle has no chart or scrub
+        // line).
+        final statusTop = l.railCellsMiddle - l.infoHeight / 2;
         return Stack(
           children: [
+            Positioned(
+              left: l.contentLeft,
+              top: l.headerTop,
+              width: l.contentWidth,
+              height: l.headerHeight,
+              child: _Meta(puzzle: puzzle, height: l.headerHeight),
+            ),
             Positioned(
               left: l.contentLeft,
               top: l.blackRowTop,
@@ -806,13 +814,6 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
               ),
             ),
             Positioned(
-              left: l.contentLeft,
-              top: l.captionTop,
-              width: l.leftColumnWidth,
-              height: l.captionHeight,
-              child: _Meta(puzzle: puzzle, height: l.captionHeight),
-            ),
-            Positioned(
               left: l.railLeft,
               top: l.railTop,
               width: FeedLayout.railWidth,
@@ -827,8 +828,9 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
   }
 
   /// Hint · Retry · Solution · Next, down the game posts' rail: the same
-  /// glyph-over-word cells at the same height, so a puzzle reads as one more
-  /// post in the stream, Next at the foot where Like is. All four always
+  /// bare glyphs in the same cells at the same height, so a puzzle reads as
+  /// one more post in the stream, Next at the foot where Like is. No
+  /// frosted backing: there is no chart under it to frost. All four always
   /// hold their place; one that does nothing right now is dimmed rather than
   /// removed, so nothing shifts under the thumb as the puzzle moves on.
   Widget _actions(double cellHeight) {
@@ -871,8 +873,10 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
       );
     }
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
+    // No backing: there is no chart under a puzzle's rail, only the page's
+    // own ground, so the marks stand bare in the game rail's places.
+    return FeedRailColumn(
+      backing: false,
       children: [
         action(
           key: 'feed_puzzle_hint',
@@ -907,7 +911,7 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
   }
 }
 
-/// The post's one line, in the game pages' caption slot: that this
+/// The post's one line, in the game pages' header slot at the top: that this
 /// is a puzzle, its rating, the opening it came from (or, for puzzles cached
 /// before the puzzle service, the source game's speed), and on the right the
 /// difficulty the viewer picked, which opens the difficulty sheet.

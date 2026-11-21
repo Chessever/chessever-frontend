@@ -28,7 +28,7 @@ stay separate: every submitted version must wait for a person to release it.
 | Input | Default | Effect |
 |---|---|---|
 | `android` | on | Build the App Bundle on `ubuntu-24.04` |
-| `ios` | on | Build the IPA on `macos-26` (Xcode 26.6) |
+| `ios` | on | Build the IPA on the `xcode-27` image (newest Xcode 27: App Store Connect requires the iOS 27 SDK; `macos-26` has only Xcode 26.x) |
 | `watch` | off | Also build the Apple Watch app with flutter-watchos and embed it in the IPA. Needs `ios` and the `FLUTTERWATCH_TOKEN` secret. Off, the IPA ships without the watch app |
 | `store` | `testing` | `testing`: upload the IPA to TestFlight and the AAB to the Play `internal` track, no review. `review`: submit Google Play `production` and App Store versions for review, held for manual release. `build-only`: upload nothing and keep the AAB/IPA as run artifacts |
 | `managed_publishing_confirmed` | off | `review` only. Confirm Managed publishing is ON in the production app's Play Console; required for Android submissions on every run |
@@ -64,7 +64,7 @@ does not block Android; two submissions for the same platform stay serialized.
 
 | Codemagic step | GitHub step |
 |---|---|
-| Flutter `stable`, Xcode `latest` (26.6), Java 17 | `subosito/flutter-action` (stable), `xcode-select` 26.6, `setup-java` 17 |
+| Flutter `stable`, Xcode 27 (newest on the image; ITMS-90725 requires the iOS 27 SDK), Java 17 | `subosito/flutter-action` (stable), `xcode-select` newest `Xcode_27*`, `setup-java` 17 |
 | Post-clone: decode `GOOGLE_SERVICES_JSON`, `GOOGLE_SERVICE_INFO_PLIST` | "Write Firebase config ..." steps |
 | Code signing: `app-store-connect fetch-signing-files com.chessever.app --type IOS_APP_STORE --create`, keystore | "Set up code signing" (same `codemagic-cli-tools` 0.70.0 command); keystore is written to the git-ignored `android/key.properties` that `build.gradle.kts` already reads |
 | Pre-build: NDK 27.0.12077973 + 28.2.13676358, required-variable check, `aps-environment` check, `xcode-project use-profiles` | "Install Android NDKs", the checks in each step, "Set up code signing" |

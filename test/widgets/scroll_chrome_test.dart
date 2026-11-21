@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
@@ -401,6 +402,7 @@ void main() {
   group('stability', stabilityTests);
   group('paged', pagedTests);
   group('dock', dockTests);
+  group('speed', speedTests);
 }
 
 /// [_Page] with a top bar whose height follows [barHeight].
@@ -1410,6 +1412,34 @@ void stabilityTests() {
     });
   }
 
+  testWidgets('the floating buttons fade their glass out with the chrome '
+      'and, once away, paint nothing', (tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    await tester.pump();
+    GlassFade fade() => tester.widget<GlassFade>(
+      find
+          .ancestor(
+            of: find.byType(SearchInkFab),
+            matching: find.byType(GlassFade),
+          )
+          .last,
+    );
+    expect(fade().opacity.value, 1);
+
+    chrome.hide(animate: false);
+    await tester.pump();
+    expect(fade().opacity.value, 0);
+    expect(find.byType(SlidingFabs), paintsNothing);
+
+    chrome.show(animate: false);
+    await tester.pump();
+    expect(fade().opacity.value, 1);
+    expect(find.byType(SlidingFabs), isNot(paintsNothing));
+  });
+
   testWidgets('a bar inside a CollapsingChrome knows it is enclosed', (
     tester,
   ) async {
@@ -2012,4 +2042,238 @@ class _BottomOnlyState extends State<_BottomOnly>
       ),
     );
   }
+}
+
+/// The reader's speed sets the chrome's spring: a flick snaps the bars, a
+/// slow drag eases them, and the app's own moves settle on the stock spring.
+void speedTests() {
+  test('the settle runs from gentle at a slow drag to brisk at a flick', () {
+    expect(
+      ScrollChromeController.settleForSpeed(0),
+      scrollChromeMotion.duration,
+    );
+    expect(
+      ScrollChromeController.settleForSpeed(50),
+      ScrollChromeController.gentleSettle,
+    );
+    expect(
+      ScrollChromeController.settleForSpeed(9000),
+      ScrollChromeController.briskSettle,
+    );
+    var last = ScrollChromeController.gentleSettle;
+    for (var speed = 400.0; speed <= 2800; speed += 400) {
+      final settle = ScrollChromeController.settleForSpeed(speed);
+      expect(settle, lessThan(last), reason: '$speed');
+      last = settle;
+    }
+  });
+
+  /// Hides the chrome over a list part-way down, then moves the finger
+  /// [step] down the screen (the reader heading back up) every [dtMs], for
+  /// [steps] steps (and lets go), pumping a frame between steps. Returns how
+  /// long, by the frames, the chrome took from first moving to fully back.
+  Future<Duration> returnTime(
+    WidgetTester tester, {
+    required double step,
+    required int dtMs,
+    required int steps,
+  }) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester.state<ScrollableState>(find.byType(Scrollable));
+    list.position.jumpTo(4000);
+    await tester.pump();
+    chrome.hide(animate: false);
+    await tester.pump();
+    expect(chrome.value, 0);
+
+    Duration? started;
+    Duration? back;
+    var elapsed = Duration.zero;
+    void note() {
+      if (started == null && chrome.value > 0) started = elapsed;
+      if (back == null && chrome.value >= 1) back = elapsed;
+    }
+
+    var t = Duration.zero;
+    final gesture = await tester.startGesture(const Offset(200, 300));
+    for (var i = 0; i < steps; i++) {
+      t += Duration(milliseconds: dtMs);
+      await gesture.moveBy(Offset(0, step), timeStamp: t);
+      await tester.pump(Duration(milliseconds: dtMs));
+      elapsed += Duration(milliseconds: dtMs);
+      note();
+    }
+    await gesture.up(timeStamp: t + Duration(milliseconds: dtMs));
+    for (var i = 0; i < 120 && back == null; i++) {
+      await tester.pump(const Duration(milliseconds: 8));
+      elapsed += const Duration(milliseconds: 8);
+      note();
+    }
+    expect(back, isNotNull);
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    return back! - started!;
+  }
+
+  /// How long the app's own [ScrollChromeController.show] takes, by the
+  /// same frames.
+  Future<Duration> showTime(WidgetTester tester) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    chrome.hide(animate: false);
+    await tester.pump();
+    chrome.show();
+    var elapsed = Duration.zero;
+    for (var i = 0; i < 120 && chrome.value < 1; i++) {
+      await tester.pump(const Duration(milliseconds: 8));
+      elapsed += const Duration(milliseconds: 8);
+    }
+    expect(chrome.value, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    return elapsed;
+  }
+
+  testWidgets('a flick up brings the bars back quicker than the app\'s own '
+      'move, and a slow drag up eases them back slower', (tester) async {
+    // A flick: 24 down the screen every 8ms (3000 a second).
+    final flick = await returnTime(tester, step: 24, dtMs: 8, steps: 6);
+    final stock = await showTime(tester);
+    // A slow drag: 2 every 20ms (100 a second), the whole way back.
+    final slow = await returnTime(tester, step: 2, dtMs: 20, steps: 60);
+    expect(flick, lessThan(stock));
+    expect(stock, lessThan(slow));
+    // The flick's momentum carries into the spring: well under its stock
+    // settle, and the drag well over it.
+    expect(flick.inMilliseconds, lessThan(stock.inMilliseconds * 0.7));
+    expect(slow.inMilliseconds, greaterThan(stock.inMilliseconds * 1.3));
+  });
+
+  testWidgets('a flick down sends the bars away quicker than a slow drag '
+      'down', (tester) async {
+    Future<Duration> awayTime({
+      required double step,
+      required int dtMs,
+      required int steps,
+    }) async {
+      late ScrollChromeController chrome;
+      await tester.pumpWidget(
+        _Shell(onController: (c) => chrome = c, body: _longList()),
+      );
+      final list = tester.state<ScrollableState>(find.byType(Scrollable));
+      list.position.jumpTo(2000);
+      await tester.pump();
+      Duration? started;
+      Duration? gone;
+      var elapsed = Duration.zero;
+      void note() {
+        if (started == null && chrome.value < 1) started = elapsed;
+        if (gone == null && chrome.value <= 0) gone = elapsed;
+      }
+
+      var t = Duration.zero;
+      final gesture = await tester.startGesture(const Offset(200, 500));
+      for (var i = 0; i < steps; i++) {
+        t += Duration(milliseconds: dtMs);
+        await gesture.moveBy(Offset(0, -step), timeStamp: t);
+        await tester.pump(Duration(milliseconds: dtMs));
+        elapsed += Duration(milliseconds: dtMs);
+        note();
+      }
+      await gesture.up(timeStamp: t + Duration(milliseconds: dtMs));
+      for (var i = 0; i < 120 && gone == null; i++) {
+        await tester.pump(const Duration(milliseconds: 8));
+        elapsed += const Duration(milliseconds: 8);
+        note();
+      }
+      expect(gone, isNotNull);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+      return gone! - started!;
+    }
+
+    final flick = await awayTime(step: 24, dtMs: 8, steps: 6);
+    final slow = await awayTime(step: 2, dtMs: 20, steps: 60);
+    expect(flick, lessThan(slow));
+  });
+
+  testWidgets('a drag that turns into a flick quickens the spring in flight', (
+    tester,
+  ) async {
+    /// Starts the bars back with a slow drag, then goes on [flick]ing or
+    /// slowly for as long; returns the chrome's value and the reader's
+    /// speed at the end.
+    Future<(double, double)> run({required bool flick}) async {
+      late ScrollChromeController chrome;
+      await tester.pumpWidget(
+        _Shell(onController: (c) => chrome = c, body: _longList()),
+      );
+      final list = tester.state<ScrollableState>(find.byType(Scrollable));
+      list.position.jumpTo(4000);
+      await tester.pump();
+      chrome.hide(animate: false);
+      await tester.pump();
+
+      var t = Duration.zero;
+      final gesture = await tester.startGesture(const Offset(200, 300));
+      // Slowly past the drag slop and the travel, until the bars start
+      // back, gently, and a little after.
+      var after = -1;
+      for (var i = 0; i < 40 && after < 2; i++) {
+        t += const Duration(milliseconds: 20);
+        await gesture.moveBy(const Offset(0, 2), timeStamp: t);
+        await tester.pump(const Duration(milliseconds: 20));
+        if (after >= 0 || chrome.value > 0) after++;
+      }
+      expect(chrome.value, inExclusiveRange(0, 0.5));
+      for (var i = 0; i < 4; i++) {
+        t += const Duration(milliseconds: 8);
+        await gesture.moveBy(Offset(0, flick ? 30 : 0.8), timeStamp: t);
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      final out = (chrome.value, chrome.speed);
+      await gesture.up(timeStamp: t + const Duration(milliseconds: 8));
+      await tester.pumpAndSettle();
+      expect(chrome.value, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      return out;
+    }
+
+    final (slowValue, slowSpeed) = await run(flick: false);
+    final (flickValue, flickSpeed) = await run(flick: true);
+    expect(slowSpeed, lessThan(ScrollChromeController.gentleSpeed));
+    expect(flickSpeed, greaterThan(ScrollChromeController.briskSpeed / 2));
+    // The bars never follow the finger: only a quicker spring (carrying the
+    // flick's momentum) puts them further along in the same time.
+    expect(flickValue, greaterThan(slowValue + 0.05));
+  });
+
+  testWidgets('the app\'s own moves never take the reader\'s speed', (
+    tester,
+  ) async {
+    late ScrollChromeController chrome;
+    await tester.pumpWidget(
+      _Shell(onController: (c) => chrome = c, body: _longList()),
+    );
+    final list = tester.state<ScrollableState>(find.byType(Scrollable));
+    list.position.jumpTo(3000);
+    await tester.pump();
+    chrome.hide(animate: false);
+    await tester.pump();
+    // An animated scroll to the top is the app's: home on the stock spring.
+    unawaited(
+      list.position.animateTo(
+        0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.linear,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(chrome.value, 1);
+    expect(chrome.speed, 0);
+  });
 }

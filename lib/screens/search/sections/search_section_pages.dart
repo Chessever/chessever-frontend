@@ -2,10 +2,10 @@ import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
+    show BottomNavBarItem, openHomeSection;
 import 'package:chessever2/screens/group_event/group_event_screen.dart'
     show GroupEventCategory, selectedGroupCategoryProvider;
-import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart'
-    show homeEventsLiveFirstProvider;
 import 'package:chessever2/screens/my_profile/profile_hub_screen.dart'
     show eventsScreenRoute;
 import 'package:chessever2/screens/my_space/actions/space_star_pin.dart'
@@ -28,7 +28,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// The sections of the Search tab's landing that open a page of their own,
 /// each named as its head reads and keyed by [slug] (`search-<slug>-…`).
 enum SearchSectionId {
-  liveNow('live', 'Live now'),
   topPlayers('top-players', 'Top players'),
   openings('openings', 'Openings'),
   smartEvents('smart', 'Smart events'),
@@ -46,14 +45,14 @@ enum SearchSectionId {
 /// there is one, the section's cards down a page of their own where there
 /// is not.
 ///
-/// * Live now: Events on Current, its live events first while the page is
-///   open ([_openLiveFirst]).
 /// * Top players: Rankings, as Profile opens it.
 /// * Openings: every opening as its smart event ([SearchOpeningsPage]);
 ///   [onOpening] opens one (the tab remembers the pick).
 /// * Smart events: every built-in smart event ([SearchSmartEventsPage]).
 /// * Coming up: Events on Upcoming.
-/// * Collections: the Collections page.
+/// * Collections: the dock's Collections tab, Search closing onto it
+///   ([openHomeSection]); the pushed Collections page only with no home
+///   shell under Search.
 /// * News: the News page.
 Future<void> openSearchSectionPage(
   BuildContext context,
@@ -67,10 +66,6 @@ Future<void> openSearchSectionPage(
   Future<void> push(Widget page) =>
       navigator.push(MaterialPageRoute<void>(builder: (_) => page));
   switch (section) {
-    case SearchSectionId.liveNow:
-      container.read(selectedGroupCategoryProvider.notifier).state =
-          GroupEventCategory.current;
-      return _openLiveFirst(container, navigator);
     case SearchSectionId.comingUp:
       container.read(selectedGroupCategoryProvider.notifier).state =
           GroupEventCategory.upcoming;
@@ -84,39 +79,18 @@ Future<void> openSearchSectionPage(
     case SearchSectionId.smartEvents:
       return push(const SearchSmartEventsPage());
     case SearchSectionId.collections:
+      // The dock holds Collections: Search closes onto its tab. Only with
+      // no home shell under Search is a page of its own pushed.
+      if (openHomeSection(
+        context,
+        BottomNavBarItem.collections,
+        navigationType: 'search',
+      )) {
+        return Future<void>.value();
+      }
       return push(const CollectionsScreen());
     case SearchSectionId.news:
       return NewsScreen.open(context);
-  }
-}
-
-/// Events on Current with its live events first, for as long as the page is
-/// open.
-///
-/// Live first is one flag for the session ([homeEventsLiveFirstProvider]),
-/// shared with Home's Today feed, so Search only borrows it: when the page
-/// closes it goes back to what it was, and Home is as the reader left it.
-/// Already on, it is left alone; pressed on the Events page (its own Live
-/// first capsule), it is the reader's and stays as they set it.
-Future<void> _openLiveFirst(
-  ProviderContainer container,
-  NavigatorState navigator,
-) async {
-  final flag = container.read(homeEventsLiveFirstProvider.notifier);
-  if (flag.state) return navigator.push<void>(eventsScreenRoute());
-  flag.state = true;
-  var pressed = false;
-  final watch = container.listen<bool>(
-    homeEventsLiveFirstProvider,
-    (_, __) => pressed = true,
-  );
-  try {
-    await navigator.push<void>(eventsScreenRoute());
-  } finally {
-    watch.close();
-    if (!pressed) {
-      container.read(homeEventsLiveFirstProvider.notifier).state = false;
-    }
   }
 }
 

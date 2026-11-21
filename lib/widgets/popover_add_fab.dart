@@ -3,8 +3,15 @@ import 'dart:math' as math;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/glass_anchored_route.dart'
+    show
+        GlassAnchoredTransition,
+        GlassFold,
+        GlassFoldTransition,
+        GlassScrimPainter;
 import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/ink_fab.dart' show InkFab, InkFabSize;
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
@@ -66,11 +73,15 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
     motion: const CupertinoMotion.snappy(snapToEnd: true),
     vsync: this,
   );
-  bool _open = false;
+
+  /// Whether the popover is up. Only the button's semantics read it, so a
+  /// toggle rebuilds that one node, not the button.
+  final ValueNotifier<bool> _open = ValueNotifier<bool>(false);
 
   @override
   void dispose() {
     _turn.dispose();
+    _open.dispose();
     super.dispose();
   }
 
@@ -83,7 +94,7 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
   }
 
   Future<void> _toggle() async {
-    if (_open) return;
+    if (_open.value) return;
     if (widget.onSave case final save?) {
       HapticFeedbackService.buttonPress();
       save();
@@ -101,7 +112,7 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
           ancestor: navigator.context.findRenderObject(),
         ) &
         box.size;
-    setState(() => _open = true);
+    _open.value = true;
     _setTurn(1);
     final picked = await navigator.push<T>(
       _PopoverRoute<T>(
@@ -111,7 +122,7 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
       ),
     );
     if (!mounted) return;
-    setState(() => _open = false);
+    _open.value = false;
     _setTurn(0);
     if (picked != null) widget.onPicked(picked);
   }
@@ -131,11 +142,15 @@ class _PopoverAddFabState<T> extends State<PopoverAddFab<T>>
     return Tooltip(
       message: label,
       excludeFromSemantics: true,
-      child: Semantics(
-        container: true,
-        button: true,
-        label: label,
-        expanded: saving ? null : _open,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _open,
+        builder: (context, open, child) => Semantics(
+          container: true,
+          button: true,
+          label: label,
+          expanded: saving ? null : open,
+          child: child,
+        ),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _toggle,
@@ -300,8 +315,11 @@ class _CheckPainter extends CustomPainter {
 }
 
 /// The popover as a route: back and the scrim both close it, and it sits
-/// over the whole page (bottom bar included) while it is open.
-class _PopoverRoute<T> extends PopupRoute<T> {
+/// over the whole page (bottom bar included) while it is open. It moves as
+/// every anchored glass surface does ([GlassAnchoredTransition]): it grows
+/// out of the button on the open spring and folds shut back into it on
+/// close, the pick handed over as the fold begins.
+class _PopoverRoute<T> extends PopupRoute<T> with GlassAnchoredTransition<T> {
   _PopoverRoute({
     required this.anchor,
     required this.title,
@@ -323,19 +341,21 @@ class _PopoverRoute<T> extends PopupRoute<T> {
   @override
   String? get barrierLabel => 'Close';
 
-  // The popover springs itself; the route adds no fade of its own.
-  @override
-  Duration get transitionDuration => Duration.zero;
-
-  @override
-  Duration get reverseTransitionDuration => Duration.zero;
-
   @override
   Widget buildPage(
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
-  ) => _Popover<T>(anchor: anchor, title: title, choices: choices);
+  ) {
+    readMotionPreference(context);
+    return _Popover<T>(
+      anchor: anchor,
+      title: title,
+      choices: choices,
+      progress: animation,
+      fold: fold,
+    );
+  }
 }
 
 class _Popover<T> extends StatefulWidget {
@@ -343,91 +363,61 @@ class _Popover<T> extends StatefulWidget {
     required this.anchor,
     required this.title,
     required this.choices,
+    required this.progress,
+    required this.fold,
   });
 
   final Rect anchor;
   final String title;
   final List<PopoverAddChoice<T>> choices;
 
+  /// The route's progress: the dim rides it.
+  final Animation<double> progress;
+
+  /// The panel's grow and fold, and its rows' opacity.
+  final GlassFold fold;
+
   @override
   State<_Popover<T>> createState() => _PopoverState<T>();
 }
 
-class _PopoverState<T> extends State<_Popover<T>>
-    with SingleTickerProviderStateMixin {
+class _PopoverState<T> extends State<_Popover<T>> {
   static const double _width = 236;
   static const double _pointerWidth = 18;
   static const double _pointerHeight = 9;
   static const double _gap = 10;
   static const double _radius = 16;
 
-  late final SingleMotionController _show = SingleMotionController(
-    motion: const CupertinoMotion.snappy(snapToEnd: true),
-    vsync: this,
-  );
-  bool _closing = false;
+  bool _closed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (MediaQuery.disableAnimationsOf(context)) {
-        _show.value = 1;
-      } else {
-        _show.animateTo(1);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _show.dispose();
-    super.dispose();
-  }
-
+  /// Pops at once with [picked]: the route folds the popover shut while the
+  /// pick (a row's sheet) already follows.
   void _close([T? picked]) {
-    if (_closing) return;
-    _closing = true;
+    if (_closed) return;
+    _closed = true;
     if (picked != null) HapticFeedbackService.selection();
-    void pop() {
-      if (mounted) Navigator.of(context).pop(picked);
-    }
-
-    if (MediaQuery.disableAnimationsOf(context) || _show.value <= 0.04) {
-      return pop();
-    }
-    // Let go the moment it has visibly gone, not when the spring's tail
-    // settles, so a picked row's sheet follows without a pause.
-    void watch() {
-      if (_show.value > 0.04) return;
-      _show.removeListener(watch);
-      pop();
-    }
-
-    _show.addListener(watch);
-    _show.animateTo(0);
+    Navigator.of(context).pop(picked);
   }
 
-  Widget _card(BuildContext context, Color surface, Color edge) {
+  Widget _card(BuildContext context, Color surface, double tipX) {
     final colors = context.colors;
-    final light = context.isLightTheme;
     final anchor = widget.anchor;
-    return Container(
+    // The popover's panel is the popups' frosted glass, averaging to the
+    // surface the opaque card was; its lit rim is the edge. The pointer is
+    // cut from the same glass: one silhouette, one frost, one rim, so the
+    // tip never reads as a separate piece.
+    return PopupGlass(
       width: _width,
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(_radius),
-        border: Border.all(color: edge),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: light ? 0.12 : 0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+      tone: surface,
+      page: AnchoredGlassDim.pageOf(context),
+      cover: AnchoredGlassDim.cover,
+      borderRadius: BorderRadius.circular(_radius),
       padding: const EdgeInsets.symmetric(vertical: 8),
+      pointer: PopupGlassPointer(
+        width: _pointerWidth,
+        height: _pointerHeight,
+        tipX: tipX,
+      ),
       constraints: BoxConstraints(
         maxHeight: math.max(
           44,
@@ -438,27 +428,31 @@ class _PopoverState<T> extends State<_Popover<T>>
               8,
         ),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-              child: Text(
-                widget.title,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: colors.textSecondary,
+      // The rows fade as it folds; the glass itself never does.
+      child: FadeTransition(
+        opacity: widget.fold,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                child: Text(
+                  widget.title,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
               ),
-            ),
-            for (final choice in widget.choices)
-              _PopoverRow(
-                leading: choice.leading,
-                label: choice.label,
-                onTap: () => _close(choice.value),
-              ),
-          ],
+              for (final choice in widget.choices)
+                _PopoverRow(
+                  leading: choice.leading,
+                  label: choice.label,
+                  onTap: () => _close(choice.value),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -488,21 +482,29 @@ class _PopoverState<T> extends State<_Popover<T>>
     final tipX = _width - tipFromRight;
     final origin = Alignment(tipX / _width * 2 - 1, 1);
     final surface = light ? colors.popup : colors.surface;
-    final edge = colors.textPrimary.withValues(alpha: light ? 0.08 : 0.1);
-    final card = _card(context, surface, edge);
+    final card = _card(context, surface, tipX);
     return Stack(
       children: [
-        // The scrim: a faint dim that springs in with the popover; a tap
-        // anywhere outside it closes the popover.
+        // The scrim: a plain dim that springs in with the popover, never a
+        // blur; a tap anywhere outside it closes the popover.
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _close,
-            child: AnimatedBuilder(
-              animation: _show,
-              builder: (context, _) => ColoredBox(
-                color: Colors.black.withValues(
-                  alpha: (light ? 0.08 : 0.22) * _show.value.clamp(0.0, 1.0),
+            child: CustomPaint(
+              size: Size.infinite,
+              // The anchored menus' dim, riding the popover's spring
+              // (repainted, never rebuilt). The button stays lit: it is the
+              // popover's close.
+              painter: GlassScrimPainter(
+                color: AnchoredGlassDim.colorOf(context),
+                progress: widget.progress,
+                hole: RRect.fromRectAndRadius(
+                  Rect.fromCircle(
+                    center: anchor.center,
+                    radius: InkFabSize.regular.disc / 2 + 1,
+                  ),
+                  Radius.circular(InkFabSize.regular.disc / 2 + 1),
                 ),
               ),
             ),
@@ -511,42 +513,20 @@ class _PopoverState<T> extends State<_Popover<T>>
         Positioned(
           right: right,
           bottom: bottom,
-          child: AnimatedBuilder(
-            animation: _show,
-            builder: (context, child) {
-              final t = _show.value;
-              return Opacity(
-                opacity: t.clamp(0.0, 1.0),
-                child: Transform.translate(
-                  offset: Offset(0, (1 - t) * 8),
-                  child: Transform.scale(
-                    scale: 0.88 + 0.12 * t,
-                    alignment: origin,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: Semantics(
-              scopesRoute: true,
-              namesRoute: true,
-              explicitChildNodes: true,
-              label: widget.title,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  card,
-                  Padding(
-                    padding: EdgeInsets.only(
-                      right: tipFromRight - _pointerWidth / 2,
-                    ),
-                    child: CustomPaint(
-                      size: const Size(_pointerWidth, _pointerHeight),
-                      painter: _PointerPainter(fill: surface, edge: edge),
-                    ),
-                  ),
-                ],
+          // Scaled, never faded: the panel is glass. It grows out of the
+          // pointer's tip and folds shut back into it. Under reduced motion
+          // it opens at full size and the route takes it away at once.
+          child: GlassFoldTransition(
+            fold: widget.fold,
+            alignment: origin,
+            includeOpen: !MediaQuery.disableAnimationsOf(context),
+            child: RepaintBoundary(
+              child: Semantics(
+                scopesRoute: true,
+                namesRoute: true,
+                explicitChildNodes: true,
+                label: widget.title,
+                child: card,
               ),
             ),
           ),
@@ -624,38 +604,4 @@ class _PopoverRowState extends State<_PopoverRow> {
       ),
     );
   }
-}
-
-/// The popover's pointer: a small triangle under the card aimed at the
-/// button, in the card's own fill with its edge on the two slanted sides.
-class _PointerPainter extends CustomPainter {
-  const _PointerPainter({required this.fill, required this.edge});
-
-  final Color fill;
-  final Color edge;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width, 0);
-    canvas.drawPath(path..close(), Paint()..color = fill);
-    final sides = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width, 0);
-    canvas.drawPath(
-      sides,
-      Paint()
-        ..color = edge
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_PointerPainter old) =>
-      old.fill != fill || old.edge != edge;
 }

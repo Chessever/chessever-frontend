@@ -624,12 +624,11 @@ void main() {
       final chart = tester.getRect(
         find.byKey(const ValueKey('feed_report_chart')),
       );
+      final x = _chartRun(chart);
       final gesture = await tester.startGesture(
         Offset(chart.left + 55, chart.center.dy),
       );
-      await gesture.moveTo(
-        Offset(chart.left + chart.width * 0.7, chart.center.dy),
-      );
+      await gesture.moveTo(Offset(x(0.7), chart.center.dy));
       await tester.pump();
       expect(
         tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
@@ -644,9 +643,7 @@ void main() {
       final heard = feed.sound.played.length;
       await tester.pump(const Duration(seconds: 1));
       expect(feed.sound.played.length, heard);
-      await gesture.moveTo(
-        Offset(chart.left + chart.width * 0.3, chart.center.dy),
-      );
+      await gesture.moveTo(Offset(x(0.3), chart.center.dy));
       await tester.pump();
       expect(
         tester
@@ -682,7 +679,7 @@ void main() {
           isTrue,
         );
         await gesture.moveBy(
-          Offset((chart.width - 2 * FeedScrubStrip.thumbInset) * 3 / 7, 12),
+          Offset((_chartRun(chart)(1) - _chartRun(chart)(0)) * 3 / 7, 12),
         );
         await tester.pump();
         expect(
@@ -769,21 +766,22 @@ void main() {
           counterWidest: '4/4',
         );
         expect(resting.left, closeTo(strip.left + run.trackLeft, 0.5));
-        // The chart ends where the rail begins, beside it: the board's
-        // right edge less the rail and its gap.
+        // The chart runs the whole column, to the board's right edge; the
+        // rail stands over its right end, on the same edge.
         final rail = tester.getRect(find.byType(FeedActionRail));
-        expect(resting.right, closeTo(rail.left - FeedLayout.railGap, 0.01));
-        expect(
-          rail.right,
-          closeTo(tester.getRect(find.byType(FeedLiveBoard)).right, 0.01),
-        );
+        final board = tester.getRect(find.byType(FeedLiveBoard));
+        expect(resting.right, closeTo(board.right, 0.01));
+        expect(rail.right, closeTo(board.right, 0.01));
+        expect(rail.left, lessThan(resting.right));
         expect(
           graph.top,
           greaterThanOrEqualTo(
             tester.getRect(find.byKey(const ValueKey('feed_row_white'))).bottom,
           ),
         );
-        expect(actions.left, greaterThanOrEqualTo(graph.right));
+        // Like stands over the chart's right end, still a target.
+        expect(actions.left, greaterThanOrEqualTo(graph.left));
+        expect(actions.right, closeTo(graph.right, 0.01));
         expect(graph.bottom, closeTo(strip.top, 0.5));
         final gesture = await tester.startGesture(
           Offset(trackLeft + 30, strip.top + 18),
@@ -816,11 +814,10 @@ void main() {
           tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
           isFalse,
         );
-        // The graph uses its full width; the timeline leaves room for its
-        // counter. Tapping the graph's end still chooses the final move.
-        await tester.tapAt(
-          Offset(resting.right - FeedScrubStrip.thumbInset, resting.center.dy),
-        );
+        // The graph's moves end at the rail's gap; the timeline leaves room
+        // for its counter. Tapping the run's end still chooses the final
+        // move.
+        await tester.tapAt(Offset(_chartRun(resting)(1), resting.center.dy));
         await tester.pump();
         expect(
           tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).progress,
@@ -1115,6 +1112,16 @@ Future<_Feed> _pump(
   await tester.pump();
   await tester.pump();
   return _Feed(feed, sound);
+}
+
+/// Where on the report chart [chart] (its plot, as laid out) a move [f] of
+/// the way through the game stands: the chart runs the post's column, its
+/// moves from the thumb's inset to the rail's gap at its right end.
+double Function(double f) _chartRun(Rect chart) {
+  const reserve = FeedLayout.railWidth + FeedLayout.railGap;
+  final left = chart.left + FeedScrubStrip.thumbInset;
+  final right = chart.right - FeedScrubStrip.thumbInset - reserve;
+  return (f) => left + (right - left) * f;
 }
 
 Future<void> _tearDown(WidgetTester tester) async {

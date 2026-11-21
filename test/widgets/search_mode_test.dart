@@ -341,8 +341,12 @@ double _discOpacity(WidgetTester tester) => tester
     .opacity;
 
 /// Live first, stepping back with the search (as glass: [GlassFade]).
+/// The stack's own fade for its siblings: the nearest one above the button
+/// (the buttons' leave-with-the-chrome fade sits further out).
 GlassFade _sibling(WidgetTester tester) => tester.widget<GlassFade>(
-  find.ancestor(of: find.byKey(_liveKey), matching: find.byType(GlassFade)),
+  find
+      .ancestor(of: find.byKey(_liveKey), matching: find.byType(GlassFade))
+      .first,
 );
 
 /// How strongly [finder]'s widget is painted: every opacity above it,
@@ -1050,7 +1054,11 @@ void main() {
         .descendant(of: liveFilter, matching: find.byType(ColoredBox))
         .first;
     final restingPlate = tester.widget<ColoredBox>(livePlate).color;
-    final gate = tester.renderObject(find.byType(GlassFade));
+    final gate = tester.renderObject(
+      find
+          .ancestor(of: find.byKey(_liveKey), matching: find.byType(GlassFade))
+          .first,
+    );
     expect(gate, isNot(paintsNothing));
 
     await tester.tap(find.byKey(_fabKey));

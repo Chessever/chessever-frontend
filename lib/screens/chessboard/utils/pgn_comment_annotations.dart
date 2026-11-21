@@ -76,6 +76,25 @@ final RegExp _space = RegExp(r'\s+');
 /// never words or an annotation.
 final RegExp _diagram = RegExp(r'\[#\]');
 
+/// The verdict lichess's computer analysis writes into an exported game
+/// (lila's `Advice`): `(0.25 → 1.20) Mistake. Nf3 was best.`, `(Mate in 3 →
+/// 0.15) Lost forced checkmate sequence. Qxf7# was best.`. Machine words,
+/// never a person's: the move's glyph carries the verdict. Only with
+/// lichess's evaluation in front or its "was best." after it: a person's
+/// own "Blunder." stays.
+final RegExp _engineVerdict = () {
+  const verdict =
+      r'(?:Inaccuracy|Mistake|Blunder|Checkmate is now unavoidable|'
+      r'Lost forced checkmate sequence|Not the best checkmate sequence)\.';
+  return RegExp(
+    r'\([^()]*→[^()]*\)\s*' +
+        verdict +
+        r'(?:\s*\S+ was best\.)?|\b' +
+        verdict +
+        r'\s*\S+ was best\.',
+  );
+}();
+
 /// The words a person wrote in a move's [comments], commands stripped and
 /// whitespace folded to single spaces; null when nothing human is left.
 String? pgnCommentProse(Iterable<String> comments) {
@@ -85,6 +104,7 @@ String? pgnCommentProse(Iterable<String> comments) {
           .replaceAll(_diagram, ' ')
           .replaceAll(_anyCommand, ' ')
           .replaceAll(_openCommand, ' ')
+          .replaceAll(_engineVerdict, ' ')
           .replaceAll(_space, ' ')
           .trim(),
   ]..removeWhere((part) => part.isEmpty);

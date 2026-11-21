@@ -19,6 +19,13 @@ import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.da
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/collections/collections_root.dart';
+import 'package:chessever2/screens/collections/collections_tab_provider.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/screens/home/home_screen.dart' show BottomNavBarView;
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/for_you/for_you_screen.dart'
+    show ForYouPageTabs;
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/collections/collection_explore.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -28,6 +35,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spo
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
+import 'package:chessever2/screens/tour_detail/widget/text_dropdown_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
@@ -2000,7 +2008,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('collection_round_r1')));
       await tester.pump();
       expect(find.byType(GameCard), findsOneWidget);
-      await tester.tap(find.byType(DropdownButton<String>));
+      // The round selector: whatever it draws inside (the glass drop-down
+      // since the popup sweep), the round picker is tapped.
+      await tester.tap(find.byType(TextDropDownWidget));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Round 1').last);
       await tester.pumpAndSettle();
@@ -2066,8 +2076,9 @@ void main() {
     (const Size(360, 780), 1.4),
     (const Size(360, 780), 2.0),
   ]) {
-    testWidgets('embedded Collections keeps home header geometry at '
-        '${size.width.toInt()}dp and ${textScale}x text', (tester) async {
+    testWidgets('the Collections tab is a root: the bar every root wears, its '
+        'pages as the bar\'s tabs, no way back, at ${size.width.toInt()}dp '
+        'and ${textScale}x text', (tester) async {
       final repo = _FakeCollections(
         detail: const Collection(
           id: 'header-book',
@@ -2083,37 +2094,200 @@ void main() {
         repo,
         size: size,
         textScale: textScale,
-        home: const Scaffold(
-          drawer: Drawer(child: Text('Sidebar')),
-          body: CollectionsScreen(embedded: true),
-        ),
+        home: const CollectionsScreen(embedded: true),
       );
 
+      expect(find.byType(CollectionsRoot), findsOneWidget);
       expect(find.byType(HomeTopBarFrame), findsOneWidget);
-      expect(find.byType(HomeTopBarAvatar), findsOneWidget);
       expect(find.byTooltip('Back'), findsNothing);
-      // Three tabs use the same switcher and shared main-route geometry.
-      expect(find.byType(SegmentedSwitcher), findsOneWidget);
+      expect(find.byType(PageBackButton), findsNothing);
+      // Home's composition: the pages are the bar's tabs, in the root
+      // title voice; no segmented strip under a title.
+      expect(find.byType(SegmentedSwitcher), findsNothing);
+      final tabs = tester.widget<ForYouPageTabs>(find.byType(ForYouPageTabs));
+      expect(tabs.labels, ['About', 'Collections', 'Authors']);
+      expect(tabs.selectedIndex, CollectionsTab.collections.index);
 
       final context = tester.element(find.byType(HomeTopBarFrame));
-      final row = tester.getRect(find.byType(HomeTopBarRow));
-      final pages = tester.getRect(find.byType(PageView));
-      expect(row.top, closeTo(HomeTopBarMetrics.topInset(context), 0.5));
+      final bar = tester.getRect(find.byType(ForYouPageTabs));
+      // On the centre line every root's title sits on, and the pages start
+      // where every root's page starts.
       expect(
-        pages.top - row.bottom,
+        bar.center.dy,
         closeTo(
-          16.h + 12.h + tester.getSize(find.byType(SegmentedSwitcher)).height,
+          HomeTopBarMetrics.topInset(context) +
+              HomeTopBarMetrics.rowExtent(context) / 2,
           0.5,
         ),
       );
+      expect(
+        tester.getTopLeft(find.byType(PageView)).dy,
+        closeTo(HomeTopBarMetrics.headerExtent(context), 0.5),
+      );
+      expect(bar.left, closeTo(HomeTopBarMetrics.horizontalPadding, 0.5));
+      expect(
+        bar.right,
+        closeTo(size.width - HomeTopBarMetrics.horizontalPadding, 0.5),
+      );
+      // The catalog's search floats over it.
+      expect(
+        find.byKey(const ValueKey('event_view_search_fab')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
-
-      await tester.tap(find.bySemanticsLabel('Open sidebar'));
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Sidebar'), findsOneWidget);
       await _teardown(tester);
     });
   }
+
+  testWidgets('the dock\'s Collections slot opens the Collections root', (
+    tester,
+  ) async {
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'dock-book',
+        slug: 'dock-book',
+        kind: CollectionKind.book,
+        title: 'Dock book',
+        access: CollectionAccess.free,
+      ),
+      games: const [],
+      list: const [
+        Collection(
+          id: 'dock-book',
+          slug: 'dock-book',
+          kind: CollectionKind.book,
+          title: 'Dock book',
+          access: CollectionAccess.free,
+        ),
+      ],
+    );
+    await _pump(
+      tester,
+      repo,
+      size: const Size(393, 852),
+      overrides: [
+        botvinnikTabAvailableProvider.overrideWithValue(false),
+        selectedBottomNavBarItemProvider.overrideWith(
+          (ref) => BottomNavBarItem.collections,
+        ),
+      ],
+      home: const Scaffold(body: BottomNavBarView()),
+    );
+    expect(find.byType(CollectionsRoot), findsOneWidget);
+    expect(find.byKey(e2eKey(E2eIds.collectionsRoot)), findsOneWidget);
+    expect(find.byTooltip('Back'), findsNothing);
+    expect(find.text('Dock book'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
+
+  testWidgets('re-tapping the Collections slot takes the open page back to '
+      'its top, bars and all', (tester) async {
+    final books = [
+      for (var i = 0; i < 25; i++)
+        Collection(
+          id: 'retap-$i',
+          slug: 'retap-$i',
+          kind: CollectionKind.book,
+          title: 'Re-tap studies $i',
+          access: CollectionAccess.free,
+        ),
+    ];
+    final repo = _FakeCollections(
+      detail: books.first,
+      games: const [],
+      list: books,
+    );
+    await _pump(
+      tester,
+      repo,
+      size: const Size(390, 844),
+      home: const CollectionsScreen(embedded: true),
+    );
+    final list = find.descendant(
+      of: find.byType(PageView),
+      matching: find.byType(ListView),
+    );
+    await tester.drag(list, const Offset(0, -700));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    final scroll = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position;
+    expect(scroll.pixels, greaterThan(200));
+    expect(find.text('About').hitTestable(), findsNothing);
+
+    ProviderScope.containerOf(tester.element(find.byType(CollectionsRoot)))
+        .read(bottomNavBarReTapRequestProvider.notifier)
+        .request(BottomNavBarItem.collections);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 32));
+    // On its way, not there in one frame.
+    expect(scroll.pixels, greaterThan(0));
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(scroll.pixels, moreOrLessEquals(0, epsilon: 0.5));
+    expect(find.text('About').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
+
+  testWidgets('the root\'s search opens in the bar\'s place, on its centre '
+      'line, and closes as the reader leaves the section', (tester) async {
+    const book = Collection(
+      id: 'root-search',
+      slug: 'root-search',
+      kind: CollectionKind.book,
+      title: 'Root search book',
+      access: CollectionAccess.free,
+    );
+    final repo = _FakeCollections(
+      detail: book,
+      games: const [],
+      list: const [book],
+    );
+    await _pump(
+      tester,
+      repo,
+      size: const Size(393, 852),
+      overrides: [
+        selectedBottomNavBarItemProvider.overrideWith(
+          (ref) => BottomNavBarItem.collections,
+        ),
+      ],
+      home: const CollectionsScreen(embedded: true),
+    );
+    final bar = tester.getRect(find.byType(ForYouPageTabs));
+    await _openSearch(tester);
+    final field = find.byKey(const ValueKey('collections_search'));
+    expect(field, findsOneWidget);
+    expect(
+      tester.getRect(find.byType(SimpleSearchBar)).center.dy,
+      closeTo(bar.center.dy, 1),
+    );
+    // The catalog's filters stand beside the field.
+    expect(find.byKey(const ValueKey('collections_filters')), findsOneWidget);
+    // The page under it did not move.
+    final context = tester.element(find.byType(CollectionsRoot));
+    expect(
+      tester.getTopLeft(find.byType(PageView)).dy,
+      closeTo(HomeTopBarMetrics.headerExtent(context), 1),
+    );
+
+    ProviderScope.containerOf(
+          context,
+        ).read(selectedBottomNavBarItemProvider.notifier).state =
+        BottomNavBarItem.forYou;
+    await tester.pumpAndSettle();
+    expect(field, findsNothing);
+    expect(find.byType(ForYouPageTabs).hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
 
   testWidgets('a large book mounts visible rows instead of a whole chapter', (
     tester,
@@ -2274,8 +2448,8 @@ void main() {
       expect(find.text('About'), findsOneWidget);
       expect(find.text('Openings'), findsNothing);
       expect(find.text('Authors'), findsOneWidget);
-      // The title and the tab.
-      expect(find.text('Collections'), findsNWidgets(2));
+      // The tab, on the bar: the root names itself by its pages.
+      expect(find.text('Collections'), findsOneWidget);
       expect(find.byType(CollectionCard), findsWidgets);
       final list = find.descendant(
         of: find.byType(PageView),

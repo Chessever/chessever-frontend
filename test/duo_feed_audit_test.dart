@@ -125,12 +125,17 @@ void main() {
           'game post fits ${window.name} at ${scale}x with actions hittable',
           (tester) async {
             _setWindow(tester, window);
-            final feed = await _pumpFeed(tester, scale: scale);
+            await _pumpFeed(tester, scale: scale);
             expect(tester.takeException(), isNull);
+            // The bar holds the back button alone: no title, no speaker.
             for (final key in ['feed_title', 'feed_sound_toggle']) {
-              _expectHittable(find.byKey(ValueKey(key)), key);
+              expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
             }
-            for (final key in ['feed_analyze_button', 'feed_share_button']) {
+            for (final key in [
+              'feed_analyze_button',
+              'feed_share_button',
+              'feed_like_button',
+            ]) {
               await _reach(tester, find.byKey(ValueKey(key)), key);
             }
             _expectHittable(find.byKey(const ValueKey('feed_back')), 'back');
@@ -139,11 +144,6 @@ void main() {
             expect(board.width, greaterThan(120));
             expect(board.bottom, lessThanOrEqualTo(window.size.height));
             expect(board.right, lessThanOrEqualTo(window.size.width));
-            // The speaker answers a tap.
-            final before = feed.sfx.muted;
-            await tester.tap(find.byKey(const ValueKey('feed_sound_toggle')));
-            await tester.pump();
-            expect(feed.sfx.muted, !before);
             expect(tester.takeException(), isNull);
             await _unmount(tester);
           },
@@ -821,9 +821,6 @@ class _SilentSfx implements FeedSfx {
 
   @override
   void playGameEnd(FeedItem item) {}
-
-  @override
-  void playSwipe() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

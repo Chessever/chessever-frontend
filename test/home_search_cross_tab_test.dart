@@ -84,7 +84,8 @@ import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show SearchHeaderMetrics;
 import 'package:chessever2/screens/search/search_tab_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -120,24 +121,13 @@ void main() {
 
   testWidgets('the Search tab opens with its field at rest: no cursor, no '
       'keyboard, no Cancel, the landing to read', (tester) async {
-    final app = await _pump(tester, live: [_liveEvent]);
+    final app = await _pump(tester);
     final field = find.byKey(const ValueKey('search_tab_field'));
     expect(field, findsOneWidget);
     expect(_fieldHasFocus(tester), isFalse);
     expect(tester.testTextInput.isVisible, isFalse);
     expect(find.byKey(const ValueKey('search_tab_cancel')), findsNothing);
     expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
-
-    // Arriving again (the tab re-selected) leaves the field alone too.
-    app.read(selectedBottomNavBarItemProvider.notifier).state =
-        BottomNavBarItem.forYou;
-    await tester.pump();
-    app.read(selectedBottomNavBarItemProvider.notifier).state =
-        BottomNavBarItem.search;
-    await tester.pump();
-    await tester.pump();
-    expect(_fieldHasFocus(tester), isFalse);
-    expect(tester.testTextInput.isVisible, isFalse);
 
     // The field takes the cursor only when tapped.
     await tester.tap(field);
@@ -146,37 +136,24 @@ void main() {
     await app.dispose();
   });
 
-  testWidgets('the field starts where every root tab\'s bar starts', (
-    tester,
-  ) async {
+  testWidgets('the way back and the field share one row, the back where '
+      'every pushed page\'s is; the page starts under the row', (tester) async {
     final app = await _pump(tester);
     final field = tester.getRect(find.byType(EnhancedRoundedSearchBar));
-    final context = tester.element(find.byType(SearchTabScreen));
-    expect(field.left, closeTo(HomeTopBarMetrics.horizontalPadding, 0.01));
-    // On the bar's one centre line, and the page starts where every root's
-    // page starts.
-    expect(
-      field.center.dy,
-      closeTo(
-        HomeTopBarMetrics.topInset(context) +
-            HomeTopBarMetrics.rowExtent(context) / 2,
-        0.5,
-      ),
-    );
+    final back = tester.getRect(find.byKey(const ValueKey('search_back')));
+    expect(back.left, closeTo(SearchHeaderMetrics.leadingInset, 0.01));
+    expect(field.left, greaterThanOrEqualTo(back.right - 0.01));
+    expect(field.center.dy, closeTo(back.center.dy, 0.5));
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('search_tab_page'))).dy,
-      closeTo(HomeTopBarMetrics.headerExtent(context), 0.5),
+      greaterThanOrEqualTo(math.max(field.bottom, back.bottom)),
     );
     await app.dispose();
   });
 
   testWidgets('one page: no drop-down, no placeholder copy, results in '
       'place as you type', (tester) async {
-    final app = await _pump(
-      tester,
-      live: [_liveEvent],
-      openings: _landingOpenings,
-    );
+    final app = await _pump(tester, openings: _landingOpenings);
     final page = find.byKey(const ValueKey('search_tab_page'));
     expect(page, findsOneWidget);
     // Nothing typed: the landing, real cards and no placeholder copy.
@@ -193,7 +170,7 @@ void main() {
     );
     // The results replace the landing.
     expect(find.byKey(const ValueKey('search_landing')), findsNothing);
-    expect(find.text('Live now'), findsNothing);
+    expect(find.text('Smart events'), findsNothing);
     expect(find.byType(SearchOverlay), findsNothing);
 
     // Keyboard down: the same page, the same results.
@@ -266,8 +243,8 @@ void main() {
 
   testWidgets('the bar holds while the field has the keyboard, and steps '
       'away with the page after', (tester) async {
-    final app = await _pump(tester, chrome: true);
-    final chrome = app.chrome!;
+    final app = await _pump(tester);
+    final chrome = _pageChrome(tester);
     // Arriving leaves the field at rest: the bar is free to step away.
     expect(chrome.held, isFalse);
 
@@ -278,58 +255,6 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pump();
     expect(chrome.held, isFalse);
-    await app.dispose();
-  });
-
-  testWidgets('a re-tap of the tab takes the page back to its top on a '
-      'spring and brings the bar back, leaving the field at rest', (
-    tester,
-  ) async {
-    final app = await _pump(
-      tester,
-      chrome: true,
-      live: [_liveEvent, _secondLiveEvent],
-      players: () async => _topPlayers,
-      openings: _landingOpenings,
-      upcoming: [_upcomingEvent],
-      collections: [_collection, _secondCollection],
-      news: [_story, _secondStory],
-    );
-    final chrome = app.chrome!;
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
-    final position = tester
-        .state<ScrollableState>(
-          find
-              .descendant(
-                of: find.byKey(const ValueKey('search_landing')),
-                matching: find.byType(Scrollable),
-              )
-              .first,
-        )
-        .position;
-    expect(position.maxScrollExtent, greaterThan(400));
-    position.jumpTo(400);
-    await tester.pump();
-    chrome.hide(animate: false);
-    await tester.pump();
-    expect(chrome.value, 0);
-
-    app
-        .read(bottomNavBarReTapRequestProvider.notifier)
-        .request(BottomNavBarItem.search);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 32));
-    // On its way, not there in one frame.
-    expect(position.pixels, inExclusiveRange(0, 400));
-    for (var i = 0; i < 60; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    expect(position.pixels, moreOrLessEquals(0, epsilon: 0.01));
-    expect(chrome.value, 1);
-    // No cursor and no keyboard: a re-tap is not a tap on the field.
-    expect(_fieldHasFocus(tester), isFalse);
-    expect(tester.testTextInput.isVisible, isFalse);
     await app.dispose();
   });
 
@@ -346,7 +271,7 @@ void main() {
     testWidgets('Cancel stands outside the field while it has the cursor or '
         'text, the field narrowing for it on a spring; no clear button in '
         'the field', (tester) async {
-      final app = await _pump(tester, live: [_liveEvent]);
+      final app = await _pump(tester);
       final bar = find.byType(EnhancedRoundedSearchBar);
       final rest = tester.getSize(bar).width;
       expect(cancel(), findsNothing);
@@ -393,7 +318,7 @@ void main() {
 
     testWidgets('Cancel clears the query, drops the keyboard and brings the '
         'landing back; the field widens again', (tester) async {
-      final app = await _pump(tester, live: [_liveEvent]);
+      final app = await _pump(tester);
       final bar = find.byType(EnhancedRoundedSearchBar);
       final rest = tester.getSize(bar).width;
       await _type(tester, const ValueKey('search_tab_field'), 'carlsen');
@@ -408,7 +333,7 @@ void main() {
       expect(app.read(searchQueryProvider), isEmpty);
       expect(app.read(debouncedSearchQueryProvider), isEmpty);
       expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
-      expect(find.text('Live now'), findsOneWidget);
+      expect(find.text('Smart events'), findsOneWidget);
       await _frames(tester);
       expect(cancel(), findsNothing);
       expect(tester.getSize(bar).width, closeTo(rest, 0.01));
@@ -608,7 +533,6 @@ void main() {
         tester,
         recents: [RecentSearchEntry.tournament(_event)],
         recentQueries: ['nakamura'],
-        live: [_liveEvent],
       );
       await tester.tap(field());
       await tester.pump();
@@ -618,7 +542,7 @@ void main() {
       await tester.pump();
       expect(app.read(searchRecentsProvider).isEmpty, isTrue);
       expect(find.text('Recent'), findsNothing);
-      expect(find.text('Live now'), findsOneWidget);
+      expect(find.text('Smart events'), findsOneWidget);
       // The cursor stays: the reader was about to type.
       expect(_fieldHasFocus(tester), isTrue);
       await tester.pump(const Duration(milliseconds: 400));
@@ -662,10 +586,12 @@ void main() {
         size: const Size(393, 3600),
         // Recent searches wait for the field's cursor: never on the landing.
         recents: [RecentSearchEntry.tournament(_event)],
-        live: [_liveEvent, _secondLiveEvent],
+        // Events in play: a search finds them; the landing has no section
+        // of its own for them.
+        liveIds: [_liveEvent.id, _secondLiveEvent.id],
         players: () async => _topPlayers,
         openings: _landingOpenings,
-        upcoming: [_upcomingEvent],
+        upcoming: [_upcomingEvent, _secondUpcomingEvent],
         collections: [_collection, _secondCollection],
         news: [_story, _secondStory],
       );
@@ -675,8 +601,9 @@ void main() {
 
       expect(find.text('Recent searches'), findsNothing);
       expect(find.text('Recent'), findsNothing);
+      expect(find.text('Live now'), findsNothing);
+      expect(find.byKey(const ValueKey('search-live-open')), findsNothing);
       final headings = [
-        'Live now',
         'Top players',
         'Openings',
         'Smart events',
@@ -699,10 +626,9 @@ void main() {
         );
       }
 
-      // Live events, and the events coming up: event cards.
+      // The events coming up: event cards, soonest first.
       for (final key in [
-        'search-live-${_liveEvent.id}',
-        'search-live-${_secondLiveEvent.id}',
+        'search-upcoming-${_secondUpcomingEvent.id}',
         'search-upcoming-${_upcomingEvent.id}',
       ]) {
         expect(
@@ -714,26 +640,18 @@ void main() {
           reason: key,
         );
       }
-      // The live card reads LIVE, as it does in the Events list.
-      expect(
-        find.descendant(
-          of: find.byKey(ValueKey('search-live-${_liveEvent.id}')),
-          matching: find.text('LIVE'),
-        ),
-        findsOneWidget,
+      // A row: the later event stands beside the sooner, peeking in past
+      // the screen's edge.
+      final soonest = tester.getRect(
+        find.byKey(ValueKey('search-upcoming-${_secondUpcomingEvent.id}')),
       );
-      // A row: the second live event stands beside the first, peeking in
-      // past the screen's edge.
-      final firstLive = tester.getRect(
-        find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+      final later = tester.getRect(
+        find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
       );
-      final secondLive = tester.getRect(
-        find.byKey(ValueKey('search-live-${_secondLiveEvent.id}')),
-      );
-      expect(secondLive.top, firstLive.top);
-      expect(secondLive.left, greaterThan(firstLive.right));
-      expect(secondLive.left, lessThan(393));
-      expect(secondLive.right, greaterThan(393));
+      expect(later.top, soonest.top);
+      expect(later.left, greaterThan(soonest.right));
+      expect(later.left, lessThan(393));
+      expect(later.right, greaterThan(393));
 
       // Top players: the Events page's player cards, two to a card's room.
       final pair = find.byKey(const ValueKey('search-top-players-0'));
@@ -746,7 +664,7 @@ void main() {
             .players,
         hasLength(2),
       );
-      expect(find.text('Magnus Carlsen'), findsOneWidget);
+      expect(_topCarlsen(), findsOneWidget);
 
       // Openings and the built-in smart events: smart event cards, the
       // row cards side by side.
@@ -840,7 +758,6 @@ void main() {
       final app = await _pump(
         tester,
         recents: [RecentSearchEntry.tournament(_event)],
-        live: [_liveEvent],
       );
       expect(find.text('Recent'), findsNothing);
       expect(find.byKey(const ValueKey('search_landing')), findsOneWidget);
@@ -903,7 +820,7 @@ void main() {
       pending.complete(_topPlayers);
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('Magnus Carlsen'), findsOneWidget);
+      expect(_topCarlsen(), findsOneWidget);
       expect(tester.getTopLeft(find.text('Openings')).dy, openings);
       await app.dispose();
     });
@@ -942,33 +859,34 @@ void main() {
     ) async {
       final app = await _pump(
         tester,
-        live: [_liveEvent],
         players: () async => _topPlayers,
         openings: _landingOpenings,
       );
       await _type(tester, const ValueKey('search_tab_field'), 'nakamura');
-      expect(find.text('Live now'), findsNothing);
+      expect(find.text('Smart events'), findsNothing);
       expect(find.text('Top players'), findsNothing);
 
       await _type(tester, const ValueKey('search_tab_field'), '');
-      expect(find.text('Live now'), findsOneWidget);
+      expect(find.text('Smart events'), findsOneWidget);
       expect(find.text('Top players'), findsOneWidget);
-      expect(find.text('Magnus Carlsen'), findsOneWidget);
+      expect(_topCarlsen(), findsOneWidget);
       await app.dispose();
     });
 
-    testWidgets('a live event card opens as a searched event does, with one '
-        'haptic', (tester) async {
+    testWidgets('an event card coming up opens as a searched event does, '
+        'with one haptic', (tester) async {
       final haptics = _Haptics(tester);
-      final app = await _pump(tester, live: [_liveEvent]);
+      final app = await _pump(tester, upcoming: [_upcomingEvent]);
       haptics.calls.clear();
-      await tester.tap(find.byKey(ValueKey('search-live-${_liveEvent.id}')));
+      await tester.tap(
+        find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
+      );
       await tester.pump();
 
       final navigation =
           app.read(tournamentNavigationProvider) as _RecordingNavigation;
       expect(navigation.opened, [
-        (_liveEvent.id, GroupEventCategory.search, 'forYouSearch'),
+        (_upcomingEvent.id, GroupEventCategory.search, 'forYouSearch'),
       ]);
       expect(haptics.calls, hasLength(1));
       await app.dispose();
@@ -981,7 +899,7 @@ void main() {
         players: () async => _topPlayers,
         observer: observer,
       );
-      await tester.tap(find.text('Magnus Carlsen'));
+      await tester.tap(_topCarlsen());
       await tester.pump();
 
       final profile = observer.lastPage(tester);
@@ -1062,13 +980,13 @@ void main() {
       final favorites = _RecordingFavoriteEvents();
       final app = await _pump(
         tester,
-        live: [_liveEvent],
+        upcoming: [_upcomingEvent],
         favorites: () => favorites,
       );
-      final key = eventSpaceDraft(_liveEvent).key;
+      final key = eventSpaceDraft(_upcomingEvent).key;
       expect(app.read(spaceShortcutExistsProvider(key)), isFalse);
       final star = find.descendant(
-        of: find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+        of: find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
         matching: find.bySemanticsLabel('Favorite Icon'),
       );
       expect(star, findsOneWidget);
@@ -1076,14 +994,14 @@ void main() {
       await tester.tap(star);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
-      expect(favorites.toggles, [_liveEvent.id]);
+      expect(favorites.toggles, [_upcomingEvent.id]);
       expect(app.read(spaceShortcutExistsProvider(key)), isTrue);
       expect(find.text('Added to My Space'), findsOneWidget);
 
       await tester.tap(star);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
-      expect(favorites.toggles, [_liveEvent.id, _liveEvent.id]);
+      expect(favorites.toggles, [_upcomingEvent.id, _upcomingEvent.id]);
       expect(app.read(spaceShortcutExistsProvider(key)), isTrue);
       await app.dispose();
     });
@@ -1093,16 +1011,17 @@ void main() {
       for (final (name, row, check)
           in <(String, Finder Function(), void Function(RecentSearchEntry))>[
             (
-              'a live event',
-              () => find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+              'an event coming up',
+              () =>
+                  find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
               (entry) {
                 expect(entry.kind, RecentSearchKind.tournament);
-                expect(entry.targetId, _liveEvent.id);
+                expect(entry.targetId, _upcomingEvent.id);
               },
             ),
             (
               'a top player',
-              () => find.text('Magnus Carlsen'),
+              () => _topCarlsen(),
               (entry) {
                 expect(entry.kind, RecentSearchKind.player);
                 expect(entry.targetId, 'fide:1503014');
@@ -1123,7 +1042,9 @@ void main() {
         testWidgets(name, (tester) async {
           final app = await _pump(
             tester,
-            live: [_liveEvent],
+            // Every row on screen at once, Coming up included.
+            size: const Size(393, 2400),
+            upcoming: [_upcomingEvent],
             players: () async => _topPlayers,
             openings: _landingOpenings,
             observer: _PushObserver(),
@@ -1154,9 +1075,9 @@ void main() {
       testWidgets('an event card: its event menu, with My Space', (
         tester,
       ) async {
-        final app = await _pump(tester, live: [_liveEvent]);
+        final app = await _pump(tester, upcoming: [_upcomingEvent]);
         await tester.longPress(
-          find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+          find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
         );
         await tester.pumpAndSettle();
         expect(find.text('Open event'), findsOneWidget);
@@ -1164,7 +1085,7 @@ void main() {
         await tester.pumpAndSettle();
         final saved = app.read(spaceShortcutsProvider).requireValue.single;
         expect(saved.kind, SpaceShortcutKind.event);
-        expect(saved.targetId, _liveEvent.id);
+        expect(saved.targetId, _upcomingEvent.id);
         await app.dispose();
       });
 
@@ -1186,7 +1107,7 @@ void main() {
 
       testWidgets('a player card: the shared player menu', (tester) async {
         final app = await _pump(tester, players: () async => _topPlayers);
-        await tester.longPress(find.text('Magnus Carlsen'));
+        await tester.longPress(_topCarlsen());
         await tester.pumpAndSettle();
         expect(find.text('Open profile'), findsOneWidget);
         expect(find.text('Share profile'), findsOneWidget);
@@ -1195,120 +1116,78 @@ void main() {
     });
 
     testWidgets('typing starts no landing work, and clearing asks for '
-        'nothing again', (tester) async {
+        'nothing again; events in play are never looked up', (tester) async {
       final builds = _Builds();
       final repo = _Broadcasts();
       final app = await _pump(
         tester,
         builds: builds,
-        liveSource: _realLive(
-          live: [_liveEvent.id, _secondLiveEvent.id],
-          feed: [_liveEvent],
-          repo: repo,
-          builds: builds,
-        ),
+        // In play, and in no list Search holds: Search lists no events in
+        // play of its own, so it asks for none of them.
+        liveIds: [_liveEvent.id, _secondLiveEvent.id],
+        broadcasts: repo,
         players: () async => _topPlayers,
         openings: _landingOpenings,
       );
-      expect(
-        (builds.live, builds.players, builds.openings, builds.upcoming),
-        (1, 1, 1, 1),
-      );
-      expect(repo.calls, [
-        [_secondLiveEvent.id],
-      ]);
-      repo.answer([_secondLiveBroadcast]);
-      await tester.pump();
+      expect((builds.players, builds.openings, builds.upcoming), (1, 1, 1));
 
       await _type(tester, const ValueKey('search_tab_field'), 'nakamura');
       expect(find.byKey(const ValueKey('search_landing')), findsNothing);
       await _type(tester, const ValueKey('search_tab_field'), '');
-      expect(find.text(_secondLiveEvent.title), findsOneWidget);
+      expect(_topCarlsen(), findsOneWidget);
 
-      expect(
-        (builds.live, builds.players, builds.openings, builds.upcoming),
-        (1, 1, 1, 1),
-      );
-      expect(repo.calls, hasLength(1));
-      await app.dispose();
-    });
-
-    testWidgets('live events found late land in room already held: the '
-        'cards on screen and the sections below do not move', (tester) async {
-      final repo = _Broadcasts();
-      final app = await _pump(
-        tester,
-        liveSource: _realLive(
-          live: [_liveEvent.id, _secondLiveEvent.id],
-          feed: [_liveEvent],
-          repo: repo,
-        ),
-        players: () async => _topPlayers,
-        openings: _landingOpenings,
-      );
-      // The feed's event is listed at once, before the lookup answers.
-      expect(find.text(_liveEvent.title), findsOneWidget);
-      final pendingSlot = find.byKey(const ValueKey('search-live-pending'));
-      expect(pendingSlot, findsOneWidget);
-      double top(Finder finder) => tester.getTopLeft(finder).dy;
-      final listed = top(find.text(_liveEvent.title));
-      final held = tester.getSize(pendingSlot).height;
-      final players = top(find.text('Top players'));
-
-      repo.answer([_secondLiveBroadcast]);
-      await tester.pump();
-      final landed = find.byKey(ValueKey('search-live-${_secondLiveEvent.id}'));
-      expect(landed, findsOneWidget);
-      expect(pendingSlot, findsNothing);
-      expect(tester.getSize(landed).height, closeTo(held, 0.01));
-      expect(top(find.text(_liveEvent.title)), listed);
-      expect(top(find.text('Top players')), players);
-      _expectNoPlaceholderCopy();
+      expect((builds.players, builds.openings, builds.upcoming), (1, 1, 1));
+      expect(repo.calls, isEmpty);
       await app.dispose();
     });
 
     for (final size in const [Size(393, 852), Size(375, 667)]) {
       testWidgets('${size.width.round()}x${size.height.round()}: headings '
-          'and cards start and end on the field\'s gutter', (tester) async {
+          'and cards start and end on the page\'s gutter', (tester) async {
         final app = await _pump(
           tester,
           size: Size(size.width, 2400),
           recents: [RecentSearchEntry.tournament(_event)],
-          live: [_liveEvent],
           players: () async => _topPlayers,
           openings: _landingOpenings,
+          upcoming: [_upcomingEvent],
         );
-        final field = tester.getRect(find.byType(EnhancedRoundedSearchBar));
-        expect(field.left, closeTo(HomeTopBarMetrics.horizontalPadding, 0.01));
+        final gutter = HomeTopBarMetrics.horizontalPadding;
+        final end = size.width - gutter;
+        // The field ends on the same gutter.
+        expect(
+          tester.getRect(find.byType(EnhancedRoundedSearchBar)).right,
+          closeTo(end, 0.01),
+        );
         for (final heading in [
-          'Live now',
           'Top players',
           'Openings',
           'Smart events',
+          'Coming up',
         ]) {
           expect(
             tester.getTopLeft(find.text(heading)).dx,
-            closeTo(field.left, 0.01),
+            closeTo(gutter, 0.01),
             reason: heading,
           );
         }
         // A row's first card starts on the gutter, nine tenths of the
-        // row wide: the next card peeks in past the field's end.
-        final row = field.width;
+        // row wide: the next card peeks in past the gutter's end.
+        final row = end - gutter;
         for (final card in [
-          find.byKey(ValueKey('search-live-${_liveEvent.id}')),
           find.byKey(const ValueKey('search-top-players-0')),
           find.byKey(ValueKey('opening-result-${_landingOpenings[0].id}')),
+          find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
         ]) {
           final rect = tester.getRect(card);
-          expect(rect.left, closeTo(field.left, 0.01));
+          expect(rect.left, closeTo(gutter, 0.01));
           expect(
             rect.width,
             closeTo((row + searchCardGap) / 1.1 - searchCardGap, 0.01),
           );
         }
         // Cards of a row side by side, a card's gap apart, tops and
-        // bottoms in line, the second past the field's end.
+        // bottoms in line, the second past the gutter's end.
         final a = tester.getRect(
           find.byKey(ValueKey('opening-result-${_landingOpenings[0].id}')),
         );
@@ -1316,14 +1195,14 @@ void main() {
           find.byKey(ValueKey('opening-result-${_landingOpenings[1].id}')),
         );
         expect(b.left, closeTo(a.right + searchCardGap, 0.01));
-        expect(b.right, greaterThan(field.right));
+        expect(b.right, greaterThan(end));
         expect(a.top, b.top);
         expect(a.height, closeTo(b.height, 0.01));
 
         await _type(tester, const ValueKey('search_tab_field'), 'qqqq');
         expect(
           tester.getTopLeft(find.textContaining('No matches')).dx,
-          closeTo(field.left, 0.01),
+          closeTo(gutter, 0.01),
         );
         await app.dispose();
       });
@@ -1335,18 +1214,17 @@ void main() {
         tester,
         size: const Size(1024, 2600),
         recents: [RecentSearchEntry.tournament(_event)],
-        live: [_liveEvent, _secondLiveEvent],
         players: () async => _topPlayers,
         openings: _landingOpenings,
-        upcoming: [_upcomingEvent],
+        upcoming: [_upcomingEvent, _secondUpcomingEvent],
       );
       expect(ResponsiveHelper.isTablet, isTrue);
       expect(tester.takeException(), isNull);
       final a = tester.getRect(
-        find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+        find.byKey(ValueKey('search-upcoming-${_secondUpcomingEvent.id}')),
       );
       final b = tester.getRect(
-        find.byKey(ValueKey('search-live-${_secondLiveEvent.id}')),
+        find.byKey(ValueKey('search-upcoming-${_upcomingEvent.id}')),
       );
       expect(a.top, b.top);
       expect(a.right, lessThan(b.left));
@@ -1372,7 +1250,6 @@ void main() {
           RecentSearchEntry.player(_topPlayers[1]),
           RecentSearchEntry.openingSelection(najdorf.selection),
         ],
-        live: [_liveEvent],
         players: () async => _topPlayers,
         openings: _landingOpenings,
         upcoming: [_upcomingEvent],
@@ -1415,10 +1292,9 @@ void main() {
           tester,
           theme: theme,
           recents: [RecentSearchEntry.tournament(_event)],
-          live: [_liveEvent],
           players: () async => _topPlayers,
         );
-        for (final text in ['Live now', 'Top players']) {
+        for (final text in ['Top players', 'Smart events']) {
           final ink = tester.widget<Text>(find.text(text)).style!.color!;
           expect(
             _contrast(ink, colors.background),
@@ -1444,29 +1320,33 @@ void main() {
   });
 
   group('the results (typing)', () {
-    testWidgets('every landing section answers a search: events in play and '
-        'coming up from the landing\'s own lists, under their own headings', (
-      tester,
-    ) async {
+    testWidgets('an event in play is found under Events, at its head and '
+        'LIVE on its card, with no Live now heading; one coming up under '
+        'Coming up, from the landing\'s own list', (tester) async {
       final app = await _pump(
         tester,
         size: const Size(393, 2400),
-        live: [_liveEvent, _secondLiveEvent],
+        liveIds: [_liveEvent.id, _secondLiveEvent.id],
         upcoming: [_upcomingEvent, _secondUpcomingEvent],
       );
       await _type(tester, const ValueKey('search_tab_field'), 'tata');
       final results = find.byKey(const ValueKey('search_results'));
       expect(results, findsOneWidget);
       final live = find.byKey(ValueKey('search-event-${_liveEvent.id}'));
+      final past = find.byKey(ValueKey('search-event-${_pastTataEvent.id}'));
       final upcoming = find.byKey(
         ValueKey('search-event-${_secondUpcomingEvent.id}'),
       );
+      for (final card in [live, past, upcoming]) {
+        expect(
+          find.descendant(of: card, matching: find.byType(EventCard)),
+          findsOneWidget,
+        );
+      }
+      // The search found it as a running event; the live set makes its
+      // card read LIVE, as the Events list draws it.
       expect(
-        find.descendant(of: live, matching: find.byType(EventCard)),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: upcoming, matching: find.byType(EventCard)),
+        find.descendant(of: live, matching: find.text('LIVE')),
         findsOneWidget,
       );
       // Only what the words name.
@@ -1478,24 +1358,28 @@ void main() {
         find.byKey(ValueKey('search-event-${_upcomingEvent.id}')),
         findsNothing,
       );
-      final liveHeading = find.descendant(
-        of: results,
-        matching: find.text('Live now'),
+      expect(
+        find.descendant(of: results, matching: find.text('Live now')),
+        findsNothing,
       );
       final upcomingHeading = find.descendant(
         of: results,
         matching: find.text('Coming up'),
       );
-      expect(liveHeading, findsOneWidget);
+      final eventsHeading = find.descendant(
+        of: results,
+        matching: find.text('Events'),
+      );
       expect(upcomingHeading, findsOneWidget);
-      expect(
-        tester.getTopLeft(liveHeading).dy,
-        lessThan(tester.getTopLeft(live).dy),
-      );
-      expect(
-        tester.getTopLeft(live).dy,
-        lessThan(tester.getTopLeft(upcomingHeading).dy),
-      );
+      expect(eventsHeading, findsOneWidget);
+      double top(Finder finder) => tester.getTopLeft(finder).dy;
+      // Coming up, then Events, the event in play first though the search
+      // found it second.
+      expect(top(upcomingHeading), lessThan(top(upcoming)));
+      expect(top(upcoming), lessThan(top(eventsHeading)));
+      expect(top(eventsHeading), lessThan(top(live)));
+      expect(top(live), lessThan(top(past)));
+
       await tester.tap(live);
       await tester.pump();
       final navigation =
@@ -1812,13 +1696,11 @@ void main() {
       Size size = const Size(393, 3600),
       NavigatorObserver? observer,
       bool reduceMotion = false,
-      bool chrome = false,
       EdgeInsets padding = EdgeInsets.zero,
       _Ranking? ranking,
     }) => _pump(
       tester,
       size: size,
-      live: [_liveEvent, _secondLiveEvent],
       players: () async => _topPlayers,
       openings: _landingOpenings,
       upcoming: [_upcomingEvent, _secondUpcomingEvent],
@@ -1826,7 +1708,6 @@ void main() {
       news: [_story, _secondStory],
       observer: observer,
       reduceMotion: reduceMotion,
-      chrome: chrome,
       padding: padding,
       ranking: ranking,
     );
@@ -1840,7 +1721,6 @@ void main() {
         tester,
         size: const Size(393, 3600),
         recents: [RecentSearchEntry.tournament(_event)],
-        live: [_liveEvent],
         players: () async => _topPlayers,
         openings: _landingOpenings,
         upcoming: [_upcomingEvent],
@@ -1890,17 +1770,6 @@ void main() {
 
     for (final (section, check)
         in <(SearchSectionId, void Function(_App, Route<dynamic>, Widget))>[
-          (
-            SearchSectionId.liveNow,
-            (app, route, page) {
-              expect(page, isA<GroupEventScreen>());
-              expect(
-                app.read(selectedGroupCategoryProvider),
-                GroupEventCategory.current,
-              );
-              expect(app.read(homeEventsLiveFirstProvider), isTrue);
-            },
-          ),
           (
             SearchSectionId.topPlayers,
             (app, route, page) {
@@ -1958,42 +1827,6 @@ void main() {
         await app.dispose();
       });
     }
-
-    testWidgets('Live now lists live events first on its Events page only: '
-        'closed, Live first is as it was (Home\'s Today too), unless the '
-        'reader pressed it there', (tester) async {
-      final observer = _PushObserver();
-      final app = await pumpAll(tester, observer: observer);
-      final navigator = tester.state<NavigatorState>(
-        find.byType(Navigator).first,
-      );
-      final flag = app.read(homeEventsLiveFirstProvider.notifier);
-      final title = find.byKey(const ValueKey('search-live-open'));
-      // Closed without pushing the destination's own backends: removed.
-      Future<void> close() async {
-        navigator.removeRoute(observer.pushed.last);
-        await tester.pump();
-      }
-
-      await tester.tap(title);
-      expect(flag.state, isTrue);
-      await close();
-      expect(flag.state, isFalse);
-
-      // Pressed off and on again on the Events page: the reader's now.
-      await tester.tap(title);
-      flag.state = false;
-      flag.state = true;
-      await close();
-      expect(flag.state, isTrue);
-
-      // Already on when the page opened: left on.
-      await tester.tap(title);
-      expect(flag.state, isTrue);
-      await close();
-      expect(flag.state, isTrue);
-      await app.dispose();
-    });
 
     testWidgets('Top players never draws a player alone while more of the '
         'ranking is coming; once it is spent, a last player alone stands '
@@ -2068,13 +1901,14 @@ void main() {
         'rotation, split view)', (tester) async {
       final app = await pumpAll(tester, size: const Size(393, 3600));
       final physics =
-          _rowPosition(tester, 'live').physics as SearchCarouselPhysics;
+          _rowPosition(tester, 'upcoming').physics as SearchCarouselPhysics;
       final before = physics.slot;
       tester.view.physicalSize = const Size(430, 3600) * 2;
       await tester.pump();
       await tester.pump();
       expect(
-        (_rowPosition(tester, 'live').physics as SearchCarouselPhysics).slot,
+        (_rowPosition(tester, 'upcoming').physics as SearchCarouselPhysics)
+            .slot,
         greaterThan(before),
       );
       expect(physics.slot, greaterThan(before));
@@ -2237,21 +2071,17 @@ void main() {
 
     testWidgets('a row scrolled sideways never moves the bars; the page '
         'scrolled down does', (tester) async {
-      final app = await pumpAll(
-        tester,
-        size: const Size(393, 852),
-        chrome: true,
-      );
+      final app = await pumpAll(tester, size: const Size(393, 852));
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
-      final chrome = app.chrome!;
+      final chrome = _pageChrome(tester);
       expect(chrome.value, 1);
       await tester.drag(
-        find.byKey(ValueKey('search-live-${_liveEvent.id}')),
+        find.byKey(const ValueKey('search-top-players-0')),
         const Offset(-260, 0),
       );
       await _frames(tester);
-      expect(_rowPosition(tester, 'live').pixels, greaterThan(0));
+      expect(_rowPosition(tester, 'top-players').pixels, greaterThan(0));
       expect(chrome.value, 1);
 
       await tester.drag(find.text('Top players'), const Offset(0, -300));
@@ -2272,13 +2102,8 @@ void main() {
     };
     final menus = <(String, Finder Function(), Set<String>)>[
       (
-        'live',
-        () => find.byKey(ValueKey('search-live-${_liveEvent.id}')),
-        eventMenu,
-      ),
-      (
         'top-players',
-        () => find.text('Magnus Carlsen'),
+        () => _topCarlsen(),
         const {'Open profile', 'Share profile'},
       ),
       (
@@ -2674,12 +2499,11 @@ class _RecordingNavigation extends TournamentNavigationController {
 enum _Page { search, events }
 
 class _App {
-  _App(this._tester, this._container, this.page, this.chrome);
+  _App(this._tester, this._container, this.page);
 
   final WidgetTester _tester;
   final ProviderContainer _container;
   final ValueNotifier<_Page> page;
-  final ScrollChromeController? chrome;
 
   T read<T>(ProviderListenable<T> provider) => _container.read(provider);
 
@@ -2690,13 +2514,12 @@ class _App {
   }
 }
 
-/// The Search tab under test. The landing's sources are fixtures: nothing
-/// live, no ranking, no openings and nothing coming up unless a test passes
-/// them.
+/// The Search tab under test. The landing's sources are fixtures: no
+/// ranking, no openings and nothing coming up unless a test passes them.
 ///
-/// [liveSource] runs the real Live now instead ([_realLive]); [builds]
-/// counts how often each landing source is built. [chrome] puts the tab
-/// under a scroll chrome, as the home shell does.
+/// [liveIds] is the live set (nothing in play by default); [broadcasts]
+/// answers the group broadcast reads. [builds] counts how often each
+/// landing source is built.
 Future<_App> _pump(
   WidgetTester tester, {
   ThemeData? theme,
@@ -2704,15 +2527,14 @@ Future<_App> _pump(
   List<RecentSearchEntry> recents = const [],
   List<SearchRecentPick> recentPicks = const [],
   List<String> recentQueries = const [],
-  List<GroupEventCardModel> live = const [],
-  List<Override>? liveSource,
+  List<String> liveIds = const [],
+  _Broadcasts? broadcasts,
   Future<List<SearchPlayer>> Function()? players,
   List<OpeningSearchSuggestion> openings = const [],
   Future<List<OpeningSearchSuggestion>>? openingsLater,
   List<GroupEventCardModel> upcoming = const [],
   NavigatorObserver? observer,
   _Builds? builds,
-  bool chrome = false,
   (String, Completer<EnhancedSearchResult>)? slowQuery,
   FavoriteEventsNotifier Function()? favorites,
   List<Collection> collections = const [],
@@ -2727,25 +2549,15 @@ Future<_App> _pump(
   tester.view.physicalSize = size * 2;
   addTearDown(tester.view.reset);
   final page = ValueNotifier(_Page.search);
-  final chromeController = chrome
-      ? ScrollChromeController(vsync: const TestVSync())
-      : null;
-  if (chromeController != null) addTearDown(chromeController.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        ...liveSource ??
-            [
-              searchLiveNowProvider.overrideWith(
-                () => _FixedLiveNow(SearchLiveNow(events: live), builds),
-              ),
-              liveGroupBroadcastIdsProvider.overrideWith(
-                (ref) => Stream.value(const <String>[]),
-              ),
-              groupBroadcastRepositoryProvider.overrideWith(
-                (ref) => _Broadcasts(),
-              ),
-            ],
+        liveGroupBroadcastIdsProvider.overrideWith(
+          (ref) => Stream.value(liveIds),
+        ),
+        groupBroadcastRepositoryProvider.overrideWith(
+          (ref) => broadcasts ?? _Broadcasts(),
+        ),
         searchTopPlayersProvider.overrideWith((ref) {
           builds?.players++;
           return players == null ? <SearchPlayer>[] : players();
@@ -2782,9 +2594,6 @@ Future<_App> _pump(
         ),
         playerPhotoProvider.overrideWith((ref, id) async => null),
         tournamentNavigationProvider.overrideWith(_RecordingNavigation.new),
-        selectedBottomNavBarItemProvider.overrideWith(
-          (ref) => BottomNavBarItem.search,
-        ),
         recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
         searchRecentsStorageProvider.overrideWithValue(
           recentsStorage ?? _MemorySearchRecents(),
@@ -2819,13 +2628,7 @@ Future<_App> _pump(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            Widget tab = const SearchTabScreen();
-            if (chromeController != null) {
-              tab = ScrollChromeRegion(
-                controller: chromeController,
-                child: tab,
-              );
-            }
+            const tab = SearchTabScreen();
             return Scaffold(
               resizeToAvoidBottomInset: false,
               body: ValueListenableBuilder(
@@ -2861,8 +2664,27 @@ Future<_App> _pump(
   }
   await tester.pump();
   await tester.pump();
-  return _App(tester, container, page, chromeController);
+  return _App(tester, container, page);
 }
+
+/// Magnus Carlsen's name on the first Top players card, in whichever form
+/// the card's width allows (the full name, "M. Carlsen", the surname).
+Finder _topCarlsen() => find.descendant(
+  of: find.byKey(const ValueKey('search-top-players-0')),
+  matching: find.textContaining('Carlsen'),
+);
+
+/// Search's own bars: its field's row steps away with the page and back.
+ScrollChromeController _pageChrome(WidgetTester tester) => tester
+    .widget<CollapsingChrome>(
+      find
+          .descendant(
+            of: find.byType(SearchTabScreen),
+            matching: find.byType(CollapsingChrome),
+          )
+          .first,
+    )
+    .controller;
 
 /// Whether the Search tab's field has the cursor.
 bool _fieldHasFocus(WidgetTester tester) => tester
@@ -3203,71 +3025,22 @@ const _topPlayers = [
 
 /// How often each landing source was built.
 class _Builds {
-  int live = 0;
   int players = 0;
   int openings = 0;
   int upcoming = 0;
 }
 
-/// Live now pinned to [value].
-class _FixedLiveNow extends SearchLiveNowNotifier {
-  _FixedLiveNow(this.value, this.builds);
-
-  final SearchLiveNow value;
-  final _Builds? builds;
-
-  @override
-  SearchLiveNow build() {
-    builds?.live++;
-    return value;
-  }
-}
-
-/// The real Live now, counted.
-class _CountingLiveNow extends SearchLiveNowNotifier {
-  _CountingLiveNow(this.builds);
-
-  final _Builds? builds;
-
-  @override
-  SearchLiveNow build() {
-    builds?.live++;
-    return super.build();
-  }
-}
-
-/// The real Live now over the live set [live], the Today feed [feed] and
-/// the by-id lookup [repo].
-List<Override> _realLive({
-  required List<String> live,
-  required List<GroupEventCardModel> feed,
-  required _Broadcasts repo,
-  _Builds? builds,
-}) => [
-  // The strict stream has not answered, so its mirror is the live set.
-  liveGroupBroadcastIdsProvider.overrideWith(
-    (ref) => const Stream<List<String>>.empty(),
-  ),
-  liveBroadcastIdsProvider.overrideWith((ref) => live),
-  searchLandingFeedEventsProvider.overrideWith((ref) => feed),
-  groupBroadcastRepositoryProvider.overrideWith((ref) => repo),
-  searchLiveNowProvider.overrideWith(() => _CountingLiveNow(builds)),
-];
-
-/// A by-id lookup the test answers; the tours behind any event card's
-/// long-press answer at once.
+/// Group broadcast reads: a by-id lookup recorded (and never answered),
+/// and the tours behind any event card's long-press, answered at once.
 class _Broadcasts implements GroupBroadcastRepository {
   final calls = <List<String>>[];
-  Completer<List<GroupBroadcast>>? pending;
-
-  void answer(List<GroupBroadcast> broadcasts) => pending!.complete(broadcasts);
 
   @override
   Future<List<GroupBroadcast>> getGroupBroadcastsByIdsOrNames(
     List<String> identifiers,
   ) {
     calls.add(List.of(identifiers));
-    return (pending = Completer<List<GroupBroadcast>>()).future;
+    return Completer<List<GroupBroadcast>>().future;
   }
 
   @override
@@ -3295,18 +3068,6 @@ class _Broadcasts implements GroupBroadcastRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// [_secondLiveEvent] as the lookup returns it.
-final _secondLiveBroadcast = GroupBroadcast(
-  id: _secondLiveEvent.id,
-  createdAt: DateTime.utc(2026, 12),
-  name: _secondLiveEvent.title,
-  search: const [],
-  maxAvgElo: _secondLiveEvent.maxAvgElo,
-  timeControl: 'standard',
-  dateStart: _secondLiveEvent.startDate,
-  dateEnd: _secondLiveEvent.endDate,
-);
-
 /// The landing's openings, resolved by the opening search as the app does.
 final _landingOpenings = resolveSearchLandingOpenings(
   searchLandingOpeningQueries,
@@ -3316,7 +3077,50 @@ final _resultsByQuery = {
   'carlsen': _playerResults('Carlsen, Magnus', 1503014),
   'nakamura': _playerResults('Nakamura, Hikaru', 2016192),
   'najdorf': _najdorfResults(),
+  'tata': _eventResults([_pastTataEvent, _liveEventAsFound]),
 };
+
+/// The app-wide search's answer of [events], in that order.
+EnhancedSearchResult _eventResults(List<GroupEventCardModel> events) =>
+    EnhancedSearchResult(
+      tournamentResults: [
+        for (final event in events)
+          SearchResult(
+            tournament: event,
+            score: 1,
+            matchedText: event.title,
+            type: SearchResultType.tournament,
+          ),
+      ],
+      playerResults: const [],
+    );
+
+/// Last year's edition: found by the search, finished.
+final _pastTataEvent = GroupEventCardModel(
+  id: 'tata-2026',
+  title: 'Tata Steel Masters 2026',
+  dates: 'Jan 16 - Feb 1, 2026',
+  maxAvgElo: 2740,
+  timeUntilStart: '',
+  tourEventCategory: TourEventCategory.completed,
+  timeControl: 'Standard',
+  startDate: DateTime.utc(2026, 1, 16),
+  endDate: DateTime.utc(2026, 2, 1),
+);
+
+/// [_liveEvent] as the app-wide search returns it, nothing on it to say it
+/// is live: the live set does.
+final _liveEventAsFound = GroupEventCardModel(
+  id: _liveEvent.id,
+  title: _liveEvent.title,
+  dates: _liveEvent.dates,
+  maxAvgElo: _liveEvent.maxAvgElo,
+  timeUntilStart: '',
+  tourEventCategory: TourEventCategory.ongoing,
+  timeControl: _liveEvent.timeControl,
+  startDate: _liveEvent.startDate,
+  endDate: _liveEvent.endDate,
+);
 
 /// Collections fixed at [items], the whole catalog in one page.
 class _FixedCollections extends SearchCollectionsFeed {

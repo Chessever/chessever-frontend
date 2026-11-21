@@ -419,8 +419,8 @@ void main() {
       await _tap(tester, find.text('Dark'));
       expect(container.read(themeModeProvider), ThemeMode.dark);
       await _tap(tester, find.text('Start section'));
-      await _tap(tester, find.text('Search'));
-      expect(readDefaultBottomTab(), BottomNavBarItem.search);
+      await _tap(tester, find.text('Collections'));
+      expect(readDefaultBottomTab(), BottomNavBarItem.collections);
       await _tap(tester, find.text('Home page'));
       await _tap(tester, find.text('My Space'));
       expect(readDefaultForYouTab(), ForYouTab.mySpace);
@@ -428,6 +428,30 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('a start section saved as Search reads, and opens, as Home', (
+    tester,
+  ) async {
+    // Search left the dock for Today's button; Collections took its slot.
+    await SharedPreferencesService.instance.prefsOrNull!.setString(
+      defaultBottomTabPrefsKey,
+      'search',
+    );
+    await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+    );
+    final row = find.ancestor(
+      of: find.text('Start section'),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      find.descendant(of: row.first, matching: find.text('Home')),
+      findsOneWidget,
+    );
+    expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('start section offers only the sections on the bar', (
     tester,
@@ -450,7 +474,7 @@ void main() {
     );
     await _tap(tester, find.text('Start section'));
     final sheet = find.byType(BottomSheet);
-    for (final title in ['Home', 'Feed', 'Search', 'Profile']) {
+    for (final title in ['Home', 'Feed', 'Collections', 'Profile']) {
       expect(
         find.descendant(of: sheet, matching: find.text(title)),
         findsOneWidget,
@@ -496,7 +520,7 @@ void main() {
   });
 
   testWidgets('Collection stories sits in Customization beside Start screen, '
-      'and its choice is kept on the device', (tester) async {
+      'On or Off, and its choice is kept on the device', (tester) async {
     final container = await _pumpSettings(
       tester,
       initiallyExpanded: SettingsSection.customization,
@@ -504,9 +528,19 @@ void main() {
     final start = tester.getRect(find.byType(StartScreenSettingsBody));
     final stories = tester.getRect(find.text('Collection stories'));
     expect(stories.top, greaterThan(start.bottom));
-    expect(find.text('When new'), findsOneWidget);
+    // On by default.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_story_row')),
+        matching: find.text('On'),
+      ),
+      findsOneWidget,
+    );
     await _tap(tester, find.text('Collection stories'));
-    expect(find.text("When there's something new"), findsOneWidget);
+    // Two choices, no more: the old "When there's something new" and
+    // "Always" are both On now.
+    expect(find.text("When there's something new"), findsNothing);
+    expect(find.text('Always'), findsNothing);
     // The sheet's row, the last laid out.
     await tester.tap(find.text('Off').last);
     await tester.pumpAndSettle();
@@ -528,5 +562,28 @@ void main() {
       StoryRowMode.off,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  test('a choice saved by 39.1.0 and older reads as On: "When there\'s '
+      'something new" and "Always" alike; Off stays Off', () {
+    for (final (wire, mode) in [
+      ('new', StoryRowMode.on),
+      ('always', StoryRowMode.on),
+      ('on', StoryRowMode.on),
+      ('off', StoryRowMode.off),
+    ]) {
+      expect(
+        StoryRowPrefs.decodeLocal('{"m":"$wire","u":5}').mode,
+        mode,
+        reason: wire,
+      );
+      expect(StoryRowPrefs.fromAccountJson({'m': wire}).mode, mode);
+    }
+    // Written as "on", which builds before the change read as their own
+    // default (When new), never as Off.
+    expect(
+      const StoryRowPrefs(mode: StoryRowMode.on).toAccountJson()['m'],
+      'on',
+    );
   });
 }

@@ -4,8 +4,11 @@ import 'package:chessever2/services/discovery_dots/discovery_dot.dart';
 import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// A real dialog owns focus, outside dismissal and the entire message stack.
 /// It is mounted above the destination rather than owned by the tapped tile.
@@ -25,10 +28,13 @@ Future<void> showDiscoveryNudgeTooltip(
       ? null
       : overlayBox.globalToLocal(target.topLeft) & target.size;
   final originalSize = MediaQuery.sizeOf(context);
-  await showDialog<void>(
+  // No scrim and no route fade: the tooltip is there, frosted, from its
+  // first frame, and only its size settles.
+  await showGlassDialog<void>(
     context: context,
     useSafeArea: false,
-    barrierColor: Colors.transparent,
+    scrim: Colors.transparent,
+    scaleIn: false,
     builder: (dialogContext) => SafeArea(
       child: CustomSingleChildLayout(
         delegate: _TooltipLayout(
@@ -104,103 +110,131 @@ class DiscoveryNudgeTooltip extends StatefulWidget {
 }
 
 class _DiscoveryNudgeTooltipState extends State<DiscoveryNudgeTooltip> {
+  static const _settle = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 260),
+  );
+
   int _index = 0;
+
+  // Fully readable from the first frame; only its size settles, as the
+  // discovery bubble's does.
+  bool _settled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _settled = true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final message = widget.messages[_index];
     final ink = context.colors.textPrimary;
-    return Material(
-      color: context.colors.popup,
+    final panel = PopupGlass(
+      tone: context.colors.popup,
       borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Semantics(
-                    label: 'Message ${_index + 1} of ${widget.messages.length}',
-                    liveRegion: true,
-                    excludeSemantics: true,
-                    child: Text(
-                      '${_index + 1}/${widget.messages.length}',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: ink,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+      child: Material(
+        type: MaterialType.transparency,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Semantics(
+                      label:
+                          'Message ${_index + 1} of ${widget.messages.length}',
+                      liveRegion: true,
+                      excludeSemantics: true,
+                      child: Text(
+                        '${_index + 1}/${widget.messages.length}',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: ink,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Close message',
-                  onPressed: widget.onDismiss,
-                  icon: const Icon(Icons.close, size: 18),
-                  constraints: const BoxConstraints(
-                    minWidth: 44,
-                    minHeight: 44,
-                  ),
-                ),
-              ],
-            ),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    message.body,
-                    key: ValueKey(_index),
-                    style: AppTypography.textSmMedium.copyWith(color: ink),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                if (message.actionUrl case final uri?)
-                  TextButton.icon(
-                    onPressed: () => widget.onSee(uri),
-                    style: TextButton.styleFrom(
-                      foregroundColor: ink,
-                      minimumSize: const Size(44, 44),
-                    ),
-                    icon: const Icon(Icons.north_east_rounded, size: 16),
-                    label: const Text('See'),
-                  ),
-                const Spacer(),
-                if (widget.messages.length > 1) ...[
                   IconButton(
-                    tooltip: 'Previous message',
-                    onPressed: _index == 0
-                        ? null
-                        : () => setState(() => _index--),
-                    icon: const Icon(Icons.chevron_left),
-                    constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Next message',
-                    onPressed: _index == widget.messages.length - 1
-                        ? null
-                        : () => setState(() => _index++),
-                    icon: const Icon(Icons.chevron_right),
+                    tooltip: 'Close message',
+                    onPressed: widget.onDismiss,
+                    icon: const Icon(Icons.close, size: 18),
                     constraints: const BoxConstraints(
                       minWidth: 44,
                       minHeight: 44,
                     ),
                   ),
                 ],
-              ],
-            ),
-          ],
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      message.body,
+                      key: ValueKey(_index),
+                      style: AppTypography.textSmMedium.copyWith(color: ink),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (message.actionUrl case final uri?)
+                    TextButton.icon(
+                      onPressed: () => widget.onSee(uri),
+                      style: TextButton.styleFrom(
+                        foregroundColor: ink,
+                        minimumSize: const Size(44, 44),
+                      ),
+                      icon: const Icon(Icons.north_east_rounded, size: 16),
+                      label: const Text('See'),
+                    ),
+                  const Spacer(),
+                  if (widget.messages.length > 1) ...[
+                    IconButton(
+                      tooltip: 'Previous message',
+                      onPressed: _index == 0
+                          ? null
+                          : () => setState(() => _index--),
+                      icon: const Icon(Icons.chevron_left),
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Next message',
+                      onPressed: _index == widget.messages.length - 1
+                          ? null
+                          : () => setState(() => _index++),
+                      icon: const Icon(Icons.chevron_right),
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
+    );
+    return SingleMotionBuilder(
+      motion: _settle,
+      value: _settled ? 1.0 : 0.94,
+      active: !MediaQuery.disableAnimationsOf(context),
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: panel,
     );
   }
 }

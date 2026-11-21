@@ -47,8 +47,10 @@ import 'fixtures/duo_window_matrix.dart';
 /// Every Feed post type starts and ends cleanly on a small, a common and a
 /// tall phone, in both themes, at the default and a large text size: nothing
 /// thrown, nothing cropped at the page edges, no text touching the sides,
-/// the board block whole, and under it the chart, the scrub line and the
-/// one-line caption beside the action rail, nothing over the board.
+/// the one-line header at the top, the board block whole, and under it the
+/// chart as wide as the eval bar and the board, the scrub line under it, and
+/// the action rail on its frosted backing over their right end, nothing
+/// over the board.
 ///
 /// On-device checks this cannot make (for the report): the status bar icons
 /// flip with the theme; the bottom nav sits below the scrub line with no
@@ -291,7 +293,7 @@ void main() {
             graph.right,
             lessThanOrEqualTo(page.right - FeedLayout.boardGutter),
           );
-          final caption = tester.getRect(
+          final header = tester.getRect(
             find.byKey(const ValueKey('feed_post_header')),
           );
           final top = tester.getRect(
@@ -306,34 +308,53 @@ void main() {
           );
           final scrub = tester.getRect(find.byType(FeedScrubStrip));
           final rail = tester.getRect(find.byType(FeedActionRail));
+          final glass = tester.getRect(
+            find.byKey(const ValueKey('feed_rail_glass')),
+          );
           final speed = tester.getRect(
             find.byKey(const ValueKey('feed_speed_button')),
           );
           final evalBar = tester.getRect(
             find.byKey(const ValueKey('feed_eval_bar')),
           );
+          final graphSlot = tester.getRect(find.byType(FeedEvaluationGraph));
 
-          // The caption: one 44pt line at the zone's foot, beside Like.
-          expect(caption.height, closeTo(44, 0.01));
-          expect(caption.bottom, closeTo(like.bottom, 0.5));
-          expect(caption.top, greaterThanOrEqualTo(scrub.bottom - 0.5));
-          expect(caption.right, lessThanOrEqualTo(rail.left + 0.01));
+          // The header: one 44pt line at the top of the post, over the
+          // board block, on the column's left edge, as wide as the column.
+          expect(header.height, closeTo(44, 0.01));
+          expect(header.bottom, closeTo(top.top, 0.5));
+          expect(header.left, closeTo(evalBar.left, 0.01));
+          expect(header.right, closeTo(board.right, 0.01));
+          expect(header.top, greaterThanOrEqualTo(page.top - 0.5));
           expect(board.width, closeTo(board.height, 0.01));
           // The board column: eval bar and board, the rows over and under
-          // it, the zone under it all on the same left edge, the rail on
-          // the board's right edge.
+          // it on the same left edge.
           expect(bottom.right, closeTo(board.right, 0.01));
           expect(top.left, closeTo(evalBar.left, 0.01));
           expect(bottom.left, closeTo(evalBar.left, 0.01));
+          // The chart is exactly the eval bar and the board side to side:
+          // its left edge on the bar's, its right edge on the board's.
           expect(graph.left, closeTo(evalBar.left, 0.01));
-          expect(caption.left, closeTo(evalBar.left, 0.01));
+          expect(graph.right, closeTo(board.right, 0.01));
+          expect(graph.width, closeTo(evalBar.width + board.width, 0.01));
+          expect(graphSlot.left, closeTo(evalBar.left, 0.01));
+          expect(graphSlot.right, closeTo(board.right, 0.01));
+          // The rail stands over the chart's right end: on the board's
+          // right edge, from the chart's top to the scrub line's foot, its
+          // backing hugging the cells.
           expect(rail.right, closeTo(board.right, 0.01));
           expect(rail.width, closeTo(FeedLayout.railWidth, 0.01));
-          expect(graph.right + FeedLayout.railGap, closeTo(rail.left, 0.01));
+          expect(rail.left, greaterThan(graph.left));
+          expect(rail.left, lessThan(graph.right));
+          expect(rail.top, closeTo(graphSlot.top, 0.5));
+          expect(rail.bottom, closeTo(scrub.bottom, 0.5));
+          expect(glass, rail);
+          // The scrub line and the speed button keep the rail's gap.
           expect(speed.right + FeedLayout.railGap, closeTo(rail.left, 0.01));
-          // The rail's cells, glyph over word, stacked to its foot: Analyze,
+          expect(scrub.right, lessThanOrEqualTo(speed.left + 0.01));
+          // The rail's cells, bare glyphs stacked to its foot: Analyze,
           // Share, Save, Like, Like nearest the thumb. Each is a full
-          // target, its word centred under its glyph.
+          // target, its glyph a step smaller than the old 30pt mark.
           final cells = [
             for (final key in [
               'feed_analyze_button',
@@ -345,39 +366,63 @@ void main() {
           ];
           for (var i = 0; i < cells.length; i++) {
             expect(cells[i].width, closeTo(FeedLayout.railWidth, 0.01));
-            expect(cells[i].height, greaterThanOrEqualTo(44));
+            expect(cells[i].width, greaterThanOrEqualTo(44 - 1e-6));
+            expect(cells[i].height, greaterThanOrEqualTo(44 - 1e-6));
+            expect(cells[i].left, closeTo(rail.left, 0.01));
             if (i > 0) expect(cells[i].top, closeTo(cells[i - 1].bottom, 0.01));
           }
-          expect(like.bottom, closeTo(rail.bottom, 0.01));
-          for (final label in tester.widgetList<FeedActionLabel>(
+          expect(
+            cells.first.top,
+            closeTo(rail.top + FeedLayout.railInsetTop, 0.01),
+          );
+          expect(
+            like.bottom,
+            closeTo(rail.bottom - FeedLayout.railInsetBottom, 0.01),
+          );
+          // At rest the chart is under the rail, so its backing stands.
+          expect(
+            tester.widget<FeedRailGlass>(find.byType(FeedRailGlass)).shown,
+            isTrue,
+          );
+          expect(FeedLayout.railGlyph, lessThan(30));
+          for (final mark in tester.widgetList<FeedRailMark>(
             find.descendant(
               of: find.byType(FeedActionRail),
-              matching: find.byType(FeedActionLabel),
+              matching: find.byType(FeedRailMark),
             ),
           )) {
-            final word = tester.getRect(
-              find.descendant(
-                of: find.byWidget(label),
-                matching: find.byType(Text),
-              ),
-            );
-            final glyph = tester.getRect(find.byWidget(label.icon));
-            expect(word.center.dx, closeTo(glyph.center.dx, 0.01));
-            expect(word.left, greaterThanOrEqualTo(rail.left));
-            expect(word.right, lessThanOrEqualTo(rail.right));
+            final glyph = tester.getRect(find.byWidget(mark.icon));
+            expect(glyph.center.dx, closeTo(rail.center.dx, 0.01));
+            expect(glyph.width, lessThanOrEqualTo(FeedLayout.railGlyph + 0.01));
           }
-          // Row, board, row: in order, tight, no stretch between. Nothing
-          // of the zone stands over the board: ranks 1 and 2 and the
-          // h-file stay clear.
+          // The like count stays inside the backing, clear of its round
+          // end, and whole.
+          final count = find.descendant(
+            of: find.byType(FeedActionRail),
+            matching: find.byKey(const ValueKey('feed_rail_count')),
+          );
+          // (The rim itself, for every count and text size, is
+          // feed_rail_count_test.dart's.)
+          if (count.evaluate().isNotEmpty) {
+            final rect = tester.getRect(count);
+            expect(rect.bottom, lessThanOrEqualTo(glass.bottom - 4));
+            expect(rect.left, greaterThanOrEqualTo(glass.left));
+            expect(rect.right, lessThanOrEqualTo(glass.right));
+          }
+          // Header, row, board, row: in order, tight, no stretch between.
+          // Nothing of the zone stands over the board: ranks 1 and 2 and
+          // the h-file stay clear.
           expect(board.top, greaterThanOrEqualTo(top.bottom));
           expect(board.top - top.bottom, lessThanOrEqualTo(4.01));
           expect(bottom.top, greaterThanOrEqualTo(board.bottom));
           expect(rail.top, greaterThanOrEqualTo(bottom.bottom));
-          final graphSlot = tester.getRect(find.byType(FeedEvaluationGraph));
           expect(graphSlot.top, greaterThanOrEqualTo(bottom.bottom));
           expect(graphSlot.bottom, closeTo(scrub.top, 0.5));
-          expect(caption.bottom, lessThanOrEqualTo(page.bottom + 0.5));
-          expect(top.top, greaterThanOrEqualTo(page.top));
+          expect(scrub.bottom, lessThanOrEqualTo(page.bottom + 0.5));
+          // No ECO code anywhere on the post: the opening is named in
+          // words or not at all.
+          expect(find.text('C65'), findsNothing);
+          expect(find.textContaining('C65'), findsNothing);
           _expectTextInside(tester, page, margin: FeedLayout.boardGutter);
           await _tearDown(tester);
         });
@@ -392,18 +437,39 @@ void main() {
           final board = tester.getRect(
             find.byKey(const ValueKey('feed_puzzle_board')),
           );
-          // The caption, under the board beside the rail, as on a game
-          // post; the board on the game posts' geometry.
+          // The header at the top of the post, as on a game post, as wide
+          // as the progress rail and the board; the board on the game
+          // posts' geometry.
           expect(header.height, closeTo(44, 0.01));
-          expect(header.top, greaterThan(board.bottom));
-          expect(header.bottom, lessThanOrEqualTo(page.bottom + 0.5));
+          expect(header.bottom, lessThan(board.top));
+          expect(header.top, greaterThanOrEqualTo(page.top - 0.5));
+          expect(header.right, closeTo(board.right, 0.01));
           expect(board.width, closeTo(board.height, 0.01));
+          // The actions in the game posts' rail cells, in the same places,
+          // but bare: no chart under them, so no frosted backing.
           final next = tester.getRect(
             find.byKey(const ValueKey('feed_puzzle_next')),
           );
-          expect(next.bottom, closeTo(header.bottom, 0.5));
+          final glass = tester.getRect(
+            find.byKey(const ValueKey('feed_rail_glass')),
+          );
+          expect(
+            tester.widget<FeedRailGlass>(find.byType(FeedRailGlass)).shown,
+            isFalse,
+          );
           expect(next.right, closeTo(board.right, 0.01));
-          expect(next.left, greaterThanOrEqualTo(header.right));
+          expect(next.width, greaterThanOrEqualTo(44 - 1e-6));
+          expect(next.height, greaterThanOrEqualTo(44 - 1e-6));
+          expect(next.top, greaterThan(board.bottom));
+          expect(
+            next.bottom,
+            closeTo(glass.bottom - FeedLayout.railInsetBottom, 0.5),
+          );
+          // The rail never reaches the page's foot: the dock's air stays.
+          expect(
+            glass.bottom,
+            lessThanOrEqualTo(page.bottom - FeedLayout.footGap + 0.5),
+          );
           expect(
             find.byKey(const ValueKey('feed_header_difficulty')),
             findsOneWidget,
@@ -431,6 +497,18 @@ void main() {
           await _pump(tester, size.value, light, scale, _Kind.loading);
           expect(tester.takeException(), isNull);
           expect(find.bySemanticsLabel('Loading Feed'), findsOneWidget);
+          // The skeleton draws no chart, so its rail stands bare, in the
+          // real rail's places, clear of the dock.
+          expect(
+            tester.widget<FeedRailGlass>(find.byType(FeedRailGlass)).shown,
+            isFalse,
+          );
+          expect(
+            tester.getRect(find.byType(FeedRailGlass)).bottom,
+            lessThanOrEqualTo(
+              _pageRect(tester).bottom - FeedLayout.footGap + 0.5,
+            ),
+          );
           await _tearDown(tester);
         });
       }
@@ -830,9 +908,6 @@ class _SilentSfx implements FeedSfx {
 
   @override
   void playGameEnd(FeedItem item) {}
-
-  @override
-  void playSwipe() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

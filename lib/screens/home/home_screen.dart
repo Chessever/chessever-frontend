@@ -5,6 +5,7 @@ import 'package:chessever2/chat/chat_screen.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/my_profile/profile_hub_screen.dart';
@@ -19,7 +20,8 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/screens/search/search_tab_screen.dart';
+import 'package:chessever2/screens/search/search_tab_screen.dart'
+    show keepSearchLandingWarm;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -32,6 +34,7 @@ import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'widget/bottom_nav_bar.dart';
@@ -63,16 +66,21 @@ void forgetForYouPageForLaunch() {
 }
 
 /// The app's home: five sections over one dock (Home, Feed, Botvinnik,
-/// Search, Profile). There is no sidebar; what it held lives on Profile.
+/// Collections, Profile). There is no sidebar; what it held lives on
+/// Profile. Search is a page of its own, opened from Today's floating
+/// button.
 ///
 /// Every section wears the same top bar ([HomeTopBarFrame]): one inset, one
 /// height, one gutter, one centre line, and the page under it starting at
 /// the same line ([HomeTopBarMetrics.headerExtent]). On a phone the sections
-/// run under a frosted dock ([HomeNavDock]) that never leaves: as the reader
-/// scrolls down a list the top bar steps away and the dock draws in to a
-/// compact capsule, on one value; scrolling back up brings both back. Feed's
-/// follow the posts a page at a time ([ScrollChromeRegion]). Botvinnik is a
-/// conversation with its composer under it: its bars stay, full.
+/// run under a frosted dock ([HomeNavDock]): as the reader scrolls down a
+/// list the top bar steps away and the dock leaves whole, sliding past the
+/// screen's edge and fading out, on one value; scrolling back up brings both
+/// back, at the pace the reader's own scroll sets (the chrome's spring takes
+/// its speed). The floating buttons ride down to where a page with no dock
+/// stands them, and back. Feed's follow the posts a page at a time
+/// ([ScrollChromeRegion]). Botvinnik is a conversation with its composer
+/// under it: its bars stay.
 ///
 /// Android's back on a section first brings hidden bars back, then goes to
 /// Home, and only on Home with its bars in view closes the app.
@@ -92,7 +100,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   final GlobalKey _sectionKey = GlobalKey(debugLabel: 'home-section');
   static const int _favoritePromptThreshold = 5;
 
-  /// Each section's own chrome state: Search can sit with its field
+  /// Each section's own chrome state: Collections can sit with its tabs
   /// scrolled away while Home's strip is in view.
   final Map<BottomNavBarItem, ScrollChromeController> _chromes = {};
 
@@ -103,6 +111,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   void initState() {
     super.initState();
     forgetForYouPageForLaunch();
+    // The Collections mark is not in the app's SVG warm-up: read it now, so
+    // the dock never shows an empty slot while it loads.
+    final loader = const SvgAssetLoader(collectionsNavIcon);
+    svg.cache.putIfAbsent(loader.cacheKey(null), () => loader.loadBytes(null));
     if (!E2eConfig.suppressInterruptivePrompts) {
       unawaited(ReviewPromptService.instance.incrementSessionCount());
     }
@@ -137,8 +149,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     });
   }
 
+  /// The route the shell stands on, for pages over it that go back to one
+  /// of its sections ([openHomeSection]).
+  ModalRoute<Object?>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (!identical(route, _route)) {
+      unregisterHomeShellRoute(_route);
+      _route = route;
+    }
+    registerHomeShellRoute(route);
+  }
+
   @override
   void dispose() {
+    unregisterHomeShellRoute(_route);
     for (final chrome in _chromes.values) {
       chrome.dispose();
     }
@@ -229,6 +257,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     ref.watch(prepCloudSyncProvider);
     // Start account-scoped Inbox sync early: the Profile tab wears its dot.
     ref.watch(inboxHasUnreadProvider);
+    // Once Search has been opened (Today's button), its landing stays read
+    // between visits, as the dock's Search tab kept it.
+    keepSearchLandingWarm(ref);
 
     // A new section opens with its bars in view, from its first frame: the
     // bottom bar follows the section's own chrome, and one left away there
@@ -289,8 +320,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Phone layout: the dock. Every section but Botvinnik runs under it
     // ([Scaffold.extendBody]): its lists pad their end by the dock's slot
     // ([MediaQuery.paddingOf]) and scroll on under the frosted capsule. The
-    // slot keeps one height whatever the capsule's shape, so the capsule
-    // drawing in never lays the page out again.
+    // slot keeps one height whether the capsule is there or not, so the
+    // capsule leaving and coming back never lays the page out again (a
+    // list's last row clears it when it is shown, and nothing jumps).
     //
     // Botvinnik's composer rides the keyboard: the shell lifts the page
     // over it (the keyboard covers the dock anyway), and the chat page does
@@ -305,14 +337,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       child: Scaffold(
         resizeToAvoidBottomInset: section == BottomNavBarItem.botvinnik,
         extendBody: underDock,
-        // The buttons ride down with the capsule's top as it draws in,
-        // keeping their distance from it, and never leave.
+        // The buttons leave with the dock and come back with it: they slide
+        // off and fade on the same spring and the same speed (PM,
+        // 2026-11-21), resting above the dock's slot while it is shown.
         floatingActionButton: SlidingFabs(
           controller: chrome,
-          ride: metrics.ride,
           child: const _HomeFab(),
         ),
-        floatingActionButtonLocation: RidingFabLocation(metrics.ride),
         bottomNavigationBar: HomeNavDock(
           chrome: chrome,
           // Feed lays its own deck under the dock.
@@ -513,20 +544,20 @@ extension on BottomNavBarItem {
   bool get scrollsChrome => this != BottomNavBarItem.botvinnik;
 
   /// Feed pages through whole posts rather than scrolling a list
-  /// ([ScrollChromeRegion.paged]): its top bar leaves and its dock draws in
-  /// as the reader pages on, both come back as they page back, and each
-  /// post moves to stay centred in the room they leave, never changing size
-  /// (see `FeedScreen`).
+  /// ([ScrollChromeRegion.paged]): the dock leaves as the reader pages on
+  /// and comes back as they page back, and each post moves to stay centred
+  /// in the room it leaves, never changing size (see `FeedScreen`).
   bool get pagesChrome => this == BottomNavBarItem.feed;
 }
 
 /// The selected section, switched in place. No scale or fade on a switch:
 /// the section is simply there, and nothing is ever drawn from nothing.
 ///
-/// Botvinnik and Search stay alive once visited, out of sight: a
-/// conversation mid-answer or a half-typed search must survive a look at
-/// another tab. The others are built fresh, as before, so a section the
-/// reader is not on costs nothing (Feed's playback above all).
+/// Botvinnik and Collections stay alive once visited, out of sight: a
+/// conversation mid-answer, or the catalog page, tab and place the reader
+/// left, must survive a look at another tab. The others are built fresh, as
+/// before, so a section the reader is not on costs nothing (Feed's playback
+/// above all).
 class BottomNavBarView extends HookConsumerWidget {
   const BottomNavBarView({super.key, this.chromeFor});
 
@@ -534,7 +565,10 @@ class BottomNavBarView extends HookConsumerWidget {
   /// leaves the bars where they are.
   final ScrollChromeController Function(BottomNavBarItem item)? chromeFor;
 
-  static const _kept = {BottomNavBarItem.botvinnik, BottomNavBarItem.search};
+  static const _kept = {
+    BottomNavBarItem.botvinnik,
+    BottomNavBarItem.collections,
+  };
 
   Widget _buildScreen(BottomNavBarItem item) {
     final chrome = chromeFor?.call(item);
@@ -559,8 +593,10 @@ class BottomNavBarView extends HookConsumerWidget {
           embedded: true,
           screenContext: ChatScreenContext(screen: 'home'),
         );
-      case BottomNavBarItem.search:
-        return const SearchTabScreen();
+      case BottomNavBarItem.collections:
+        // The root: the bar every root wears, no way back ([CollectionsScreen
+        // .open] is the pushed copy, with its back).
+        return const CollectionsScreen(embedded: true);
       case BottomNavBarItem.profile:
         return const ProfileHubScreen();
     }
@@ -607,10 +643,11 @@ class BottomNavBarView extends HookConsumerWidget {
 }
 
 /// The floating buttons of the section in view: My Space keeps its add
-/// menu; Today keeps its event filter, always, with Live first over it while
-/// an event is in play or while it is on, so a flag left on can always be
-/// turned off ([ForYouTodayFabs]). Discovery has none. Botvinnik has a tab
-/// now; it no longer floats over Home.
+/// menu; Today has Search, always, with Live first over it while an event is
+/// in play or while it is on, so a flag left on can always be turned off
+/// ([ForYouTodayFabs]). Discovery has none. Botvinnik has a tab now; it no
+/// longer floats over Home. Collections floats its own catalog search, on
+/// its own page ([CollectionsScreen]).
 ///
 /// Every set stands in an [InkFabStack], as the event screen's do: one
 /// right edge, one step, the main button in the corner.

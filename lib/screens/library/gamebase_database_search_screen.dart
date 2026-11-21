@@ -13,6 +13,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -142,10 +143,11 @@ class _GamebaseDatabaseSearchScreenState
 
   Future<void> _openFilters() async {
     HapticFeedbackService.buttonPress();
-    await showModalBottomSheet<void>(
+    // A transparent route over the glass scrim: the sheet draws its own
+    // surface.
+    await showGlassModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (_) => const LibraryGamebaseFiltersSheet(),
     );

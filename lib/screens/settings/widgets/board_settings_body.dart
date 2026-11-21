@@ -8,6 +8,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -525,10 +526,9 @@ class _BoardThemePickerCard extends StatelessWidget {
     final isAuthenticated = await requireFullAuthGuard(context);
     if (!isAuthenticated || !context.mounted) return;
 
-    showModalBottomSheet(
+    showGlassModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (context) => _BoardThemeGallerySheet(
         currentIndex: currentIndex,
@@ -566,14 +566,13 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
-      ),
+    // Frosted glass toned to the surface it used to be painted on.
+    return GlassSheet(
+      height: MediaQuery.sizeOf(context).height * 0.75,
+      radius: 24.br,
+      tone: context.colors.surface,
       child: Column(
         children: [
           Container(
@@ -962,10 +961,9 @@ class _PieceSetPickerCard extends StatelessWidget {
     final isAuthenticated = await requireFullAuthGuard(context);
     if (!isAuthenticated || !context.mounted) return;
 
-    showModalBottomSheet(
+    showGlassModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (context) => _PieceSetGallerySheet(
         currentIndex: currentIndex,
@@ -1002,14 +1000,13 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
-      ),
+    // Frosted glass toned to the surface it used to be painted on.
+    return GlassSheet(
+      height: MediaQuery.sizeOf(context).height * 0.8,
+      radius: 24.br,
+      tone: context.colors.surface,
       child: Column(
         children: [
           Container(

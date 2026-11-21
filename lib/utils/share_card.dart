@@ -5,6 +5,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card_palette.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -203,22 +204,25 @@ Future<void> showShareImagePreview(
   required Future<void> Function() onShareImage,
   Future<void> Function()? onShareLink,
 }) async {
-  await showModalBottomSheet<void>(
+  // The sheet's surface is the popups' frosted glass, toned to the surface
+  // it used to be painted on; the scrim under it is a plain tint.
+  await showGlassModalBottomSheet<void>(
     context: context,
-    backgroundColor: context.colors.surface,
     isScrollControlled: true,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-    ),
     constraints: BoxConstraints(
       maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
-      maxHeight: MediaQuery.of(context).size.height * 0.85,
+      maxHeight: MediaQuery.sizeOf(context).height * 0.85,
     ),
     builder:
-        (_) => SharePreviewSheet(
-          imageBytes: imageBytes,
-          onShareImage: onShareImage,
-          onShareLink: onShareLink,
+        (sheetContext) => GlassSheet(
+          radius: 16.br,
+          tone: sheetContext.colors.surface,
+          inkSurface: true,
+          child: SharePreviewSheet(
+            imageBytes: imageBytes,
+            onShareImage: onShareImage,
+            onShareLink: onShareLink,
+          ),
         ),
   );
 }
@@ -292,10 +296,28 @@ class SharePreviewSheet extends StatelessWidget {
                       : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12.br),
-                child: Image.memory(
-                  imageBytes,
-                  fit: BoxFit.fitWidth,
-                  width: double.infinity,
+                // Decoded at the size it is shown (never above the render's
+                // own), not at the full share render's. The box is reserved
+                // from the image's header, so the sheet opens at its final
+                // height rather than growing once the picture decodes.
+                child: _ReservedAspect(
+                  aspectRatio: shareImageAspectRatio(imageBytes),
+                  child: LayoutBuilder(
+                    builder:
+                        (context, constraints) => Image.memory(
+                          imageBytes,
+                          fit: BoxFit.fitWidth,
+                          width: double.infinity,
+                          cacheWidth:
+                              constraints.maxWidth.isFinite
+                                  ? (constraints.maxWidth *
+                                          MediaQuery.devicePixelRatioOf(
+                                            context,
+                                          ))
+                                      .ceil()
+                                  : null,
+                        ),
+                  ),
                 ),
               ),
             ),
@@ -367,5 +389,63 @@ class SharePreviewSheet extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Width over height of an encoded share image, read from its header
+/// without decoding it: a PNG's IHDR (every share render is one), else a
+/// JPEG's first start-of-frame. Null when neither header is readable.
+///
+/// The share preview reserves this box before the image decodes, so the
+/// sheet opens at its final height instead of growing under the reader's
+/// eyes once the picture lands.
+double? shareImageAspectRatio(Uint8List bytes) {
+  int u16(int at) => (bytes[at] << 8) | bytes[at + 1];
+  int u32(int at) =>
+      (bytes[at] << 24) |
+      (bytes[at + 1] << 16) |
+      (bytes[at + 2] << 8) |
+      bytes[at + 3];
+  double? ratio(int width, int height) =>
+      width > 0 && height > 0 ? width / height : null;
+
+  const png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+  if (bytes.length >= 24 &&
+      List.generate(8, (i) => bytes[i] == png[i]).every((same) => same)) {
+    // Signature, then the IHDR chunk: length, type, width, height.
+    return ratio(u32(16), u32(20));
+  }
+  if (bytes.length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xD8) {
+    var at = 2;
+    while (at + 9 < bytes.length) {
+      if (bytes[at] != 0xFF) return null;
+      final marker = bytes[at + 1];
+      // Start of frame (baseline, progressive, ...), not DHT/JPG/DAC.
+      if (marker >= 0xC0 &&
+          marker <= 0xCF &&
+          marker != 0xC4 &&
+          marker != 0xC8 &&
+          marker != 0xCC) {
+        return ratio(u16(at + 7), u16(at + 5));
+      }
+      at += 2 + u16(at + 2);
+    }
+  }
+  return null;
+}
+
+/// [child] in a box of [aspectRatio], or as it lays itself out when that is
+/// unknown.
+class _ReservedAspect extends StatelessWidget {
+  const _ReservedAspect({required this.aspectRatio, required this.child});
+
+  final double? aspectRatio;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = aspectRatio;
+    if (ratio == null) return child;
+    return AspectRatio(aspectRatio: ratio, child: child);
   }
 }

@@ -446,8 +446,5 @@ class _SilentSfx implements FeedSfx {
   void playGameEnd(FeedItem item) {}
 
   @override
-  void playSwipe() {}
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }

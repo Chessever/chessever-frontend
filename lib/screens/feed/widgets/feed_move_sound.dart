@@ -13,7 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// PGN's verdict or Feed's eval-swing judgement ([FeedPly.effectiveClass]) —
 /// so a report's best / book / missed-win moves sound as themselves too.
 ///
-/// Silent while the Feed speaker is off ([FeedSfx.muted]) or the board's
+/// Silent while Feed's sounds are muted ([FeedSfx.muted]) or the board's
 /// Sound setting is anything but on (loading counts as off, as on the board).
 /// While scrubbing only classified moves sound, so a drag across forty moves
 /// is not forty clicks. Every call stays fire-and-forget.

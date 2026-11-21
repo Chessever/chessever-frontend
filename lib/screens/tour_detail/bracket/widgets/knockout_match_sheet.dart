@@ -12,6 +12,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -20,15 +22,10 @@ Future<void> showKnockoutMatchSheet({
   required KnockoutMatch match,
   required ValueChanged<Games> onGameTap,
 }) async {
-  await showModalBottomSheet<void>(
+  await showGlassModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor:
-        context.isLightTheme
-            ? context.colors.scrim
-            : Colors.black.withValues(alpha: 0.6),
     builder:
         (sheetContext) => _KnockoutMatchSheet(
           match: match,
@@ -56,144 +53,138 @@ class _KnockoutMatchSheet extends StatelessWidget {
 
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
-      child: Container(
-        key: const ValueKey('knockout-match-sheet'),
-        margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-        decoration: BoxDecoration(
-          color: colors.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        // A floating card of the popups' frosted glass: its lit rim is the
+        // edge, its one tight contact shadow the lift.
+        child: PopupGlass(
+          key: const ValueKey('knockout-match-sheet'),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: colors.divider),
-          boxShadow: [
-            BoxShadow(
-              color: colors.shadow,
-              blurRadius: 28,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.textPrimary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(2),
+          tone: colors.surface,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colors.textPrimary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Match details',
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Match details',
+                        style: TextStyle(
+                          fontFamily: 'InterDisplay',
+                          color: colors.textPrimary,
+                          fontSize: 18,
+                          height: 1.2,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                      color: colors.iconSecondary,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                child: _AggregateCard(match: match),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Games',
                       style: TextStyle(
                         fontFamily: 'InterDisplay',
                         color: colors.textPrimary,
-                        fontSize: 18,
-                        height: 1.2,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                    color: colors.iconSecondary,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: _AggregateCard(match: match),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
-              child: Row(
-                children: [
-                  Text(
-                    'Games',
-                    style: TextStyle(
-                      fontFamily: 'InterDisplay',
-                      color: colors.textPrimary,
-                      fontSize: 13,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${match.games.length}',
-                      style: TextStyle(
-                        fontFamily: 'InterDisplay',
-                        color: colors.textSecondary,
-                        fontSize: 10,
+                        fontSize: 13,
                         height: 1,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                itemCount: match.games.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final game = match.games[index];
-                  void open() {
-                    HapticFeedbackService.navigation();
-                    onGameTap(game);
-                  }
-
-                  final tile = _LegTile(
-                    game: game,
-                    label: _legLabel(match.games, index),
-                    isLive: game.id == liveGameId,
-                    onTap: open,
-                  );
-                  // Long-press lifts the leg into the same game menu every
-                  // other game card raises: open, share, My Space.
-                  return Consumer(
-                    builder:
-                        (context, ref, _) => CardContextMenu(
-                          onPreviewTap: open,
-                          actions:
-                              (tileContext) =>
-                                  _legMenuActions(tileContext, ref, game, open),
-                          // The leg's fill is translucent over the sheet; a
-                          // plate of the sheet's colour keeps its lifted copy
-                          // reading the same over the menu scrim.
-                          child: MenuPreviewSurface(
-                            color: context.colors.surface,
-                            outset: EdgeInsets.zero,
-                            borderRadius: BorderRadius.circular(12),
-                            child: tile,
-                          ),
+                    const SizedBox(width: 7),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceRecessed,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${match.games.length}',
+                        style: TextStyle(
+                          fontFamily: 'InterDisplay',
+                          color: colors.textSecondary,
+                          fontSize: 10,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
                         ),
-                  );
-                },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+                  itemCount: match.games.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final game = match.games[index];
+                    void open() {
+                      HapticFeedbackService.navigation();
+                      onGameTap(game);
+                    }
+
+                    final tile = _LegTile(
+                      game: game,
+                      label: _legLabel(match.games, index),
+                      isLive: game.id == liveGameId,
+                      onTap: open,
+                    );
+                    // Long-press lifts the leg into the same game menu every
+                    // other game card raises: open, share, My Space.
+                    return Consumer(
+                      builder:
+                          (context, ref, _) => CardContextMenu(
+                            onPreviewTap: open,
+                            actions:
+                                (tileContext) =>
+                                    _legMenuActions(tileContext, ref, game, open),
+                            // The leg's fill is translucent over the sheet; a
+                            // plate of the sheet's colour keeps its lifted copy
+                            // reading the same over the menu scrim.
+                            child: MenuPreviewSurface(
+                              color: context.colors.surface,
+                              outset: EdgeInsets.zero,
+                              borderRadius: BorderRadius.circular(12),
+                              child: tile,
+                            ),
+                          ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

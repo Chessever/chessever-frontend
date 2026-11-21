@@ -1,4 +1,9 @@
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
+import 'package:chessever2/screens/collections/collections_root.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show HomeTopBarMetrics;
+import 'package:chessever2/screens/home/start_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
+    show BottomNavBarItem;
 import 'package:chessever2/screens/collections/opening_event_card.dart'
     show collectionOpeningName;
 import 'package:chessever2/screens/collections/collection_catalog_views.dart';
@@ -66,9 +71,15 @@ import 'package:intl/intl.dart';
 
 /// The primary Collections destination: About, published collections and
 /// authors in the established event-card language.
+///
+/// Two ways in: the dock's Collections tab ([embedded], a root:
+/// [CollectionsRoot], the bar every root wears with the pages as its tabs,
+/// no way back) and [open] (a page pushed over another, from Discovery's
+/// tile or Search: back and a centred title over the page tabs).
 class CollectionsScreen extends ConsumerStatefulWidget {
   const CollectionsScreen({super.key, this.embedded = false});
 
+  /// The dock's Collections tab: a root page in the home shell.
   final bool embedded;
 
   static Future<void> open(BuildContext context) {
@@ -136,95 +147,154 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     return CollectionCountsRefresher(child: _shell(context, query));
   }
 
+  /// The catalog's search: its floating button over Collections and Authors
+  /// opens it in the header's place; About has nothing to search. Its
+  /// filters stand beside the field.
+  EventViewSearch _catalogSearch() => EventViewSearch(
+    controller: _search,
+    label: 'Search collections',
+    hintText: 'Search collections',
+    textFieldKey: const ValueKey('collections_search'),
+    filterKey: const ValueKey('collections_filters'),
+    tabs: {CollectionsTab.collections.index, CollectionsTab.authors.index},
+    badgeCount: _query.filterCount,
+    onFilters: _filters,
+    onQuery: _searchFor,
+    // An emptied field empties the query at once, words the filter sheet
+    // took early included.
+    onChanged: (text) {
+      if (text.trim().isEmpty) _searchFor('');
+    },
+    // Filters stay, counted on their glyph.
+    onClose: () => _searchFor(''),
+  );
+
+  /// Page [index]. As the dock's tab ([root]) every page opens on the
+  /// roots' one lead-in under the bar ([HomeTopBarMetrics.contentGap]), so
+  /// its first card starts on the line Home's, Botvinnik's and Profile's
+  /// first content does; pushed, under the page tabs, the catalogs keep
+  /// their own tighter lead-ins.
+  Widget _page(
+    BuildContext context,
+    CollectionSearchQuery query,
+    int index, {
+    double bottomPadding = 0,
+    bool root = false,
+  }) {
+    final top = root ? HomeTopBarMetrics.contentGap : null;
+    return switch (index) {
+      // 0 => CollectionOpeningCatalog(query: query, bottomPadding: ...),
+      0 => _CollectionsAboutPage(bottomPadding: bottomPadding, topPadding: top),
+      // Each catalog is searched in place, and ends clear of the floating
+      // search button while it is there (CollectionCatalogList; the root
+      // hands the button's room in [bottomPadding]).
+      1 => CollectionBooksCatalog(
+        query: query,
+        onClear: _clearNarrowing,
+        bottomPadding: bottomPadding,
+        topPadding: top,
+      ),
+      _ => CollectionAuthorsCatalog(
+        query: query,
+        onClear: _clearNarrowing,
+        bottomPadding: bottomPadding,
+        topPadding: top,
+      ),
+    };
+  }
+
+  /// The dock's tab: the root composition, remembering its page for the
+  /// session, a held tab title making it the start screen's page.
+  Widget _root(BuildContext context, CollectionSearchQuery query) {
+    StartPage page(int index) =>
+        collectionsStartPage(CollectionsTab.values[index]);
+    return CollectionsRoot(
+      tabs: [for (final tab in CollectionsTab.values) tab.label],
+      initialTab: ref.read(selectedCollectionsTabProvider).index,
+      onTabChanged: _rememberTab,
+      onHoldTab: (index) => unawaited(
+        makeStartScreenDefault(
+          context,
+          ref,
+          section: BottomNavBarItem.collections,
+          page: page(index),
+        ),
+      ),
+      holdHint: (index) =>
+          startScreenHint(BottomNavBarItem.collections, page(index)),
+      search: _catalogSearch(),
+      pageBuilder: (context, index, bottomPadding) => _page(
+        context,
+        query,
+        index,
+        bottomPadding: bottomPadding,
+        root: true,
+      ),
+    );
+  }
+
   Widget _shell(BuildContext context, CollectionSearchQuery query) {
+    if (embedded) return _root(context, query);
     return EventViewShell(
       dotScope: 'collections.tab',
       key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
       // The catalog's search floats over Collections and Authors and opens
-      // in the header's place; About has nothing to search. Its filters
-      // stand beside the field, and in the header with the search closed.
-      search: EventViewSearch(
-        controller: _search,
-        label: 'Search collections',
-        hintText: 'Search collections',
-        textFieldKey: const ValueKey('collections_search'),
-        filterKey: const ValueKey('collections_filters'),
-        tabs: {CollectionsTab.collections.index, CollectionsTab.authors.index},
-        badgeCount: _query.filterCount,
-        onFilters: _filters,
-        onQuery: _searchFor,
-        // An emptied field empties the query at once, words the filter
-        // sheet took early included.
-        onChanged: (text) {
-          if (text.trim().isEmpty) _searchFor('');
-        },
-        // Filters stay, counted on their glyph.
-        onClose: () => _searchFor(''),
-      ),
+      // in the header's place; its filters stand in the header too, with
+      // the search closed.
+      search: _catalogSearch(),
       // Opening discovery is paused; retain its catalog and wiring below.
       // tabs: const ['Openings', 'Collections', 'Authors'],
       tabs: [for (final tab in CollectionsTab.values) tab.label],
-      // Only the Collections destination remembers its page; a pushed copy
-      // always opens on the catalog.
-      initialTab: embedded
-          ? ref.read(selectedCollectionsTabProvider).index
-          : CollectionsTab.collections.index,
-      onTabChanged: embedded ? _rememberTab : null,
-      showBackButton: !embedded,
-      homeTab: embedded,
-      onOpenSidebar: embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
-          ? () => Scaffold.maybeOf(context)?.openDrawer()
-          : null,
-      pageBuilder: (context, index) => switch (index) {
-        // 0 => CollectionOpeningCatalog(
-        //   query: query,
-        //   bottomPadding: embedded ? 72 : 0,
-        // ),
-        0 => _CollectionsAboutPage(bottomPadding: embedded ? 72 : 0),
-        // Each catalog is searched in place, and ends clear of the floating
-        // search button while it is there (CollectionCatalogList).
-        1 => CollectionBooksCatalog(query: query, onClear: _clearNarrowing),
-        _ => CollectionAuthorsCatalog(query: query, onClear: _clearNarrowing),
-      },
+      // Only the dock's tab remembers its page; a pushed copy always opens
+      // on the catalog.
+      initialTab: CollectionsTab.collections.index,
+      pageBuilder: (context, index) => _page(context, query, index),
     );
   }
 }
 
 class _CollectionsAboutPage extends StatelessWidget {
-  const _CollectionsAboutPage({this.bottomPadding = 0});
+  const _CollectionsAboutPage({this.bottomPadding = 0, this.topPadding});
 
   final double bottomPadding;
 
+  /// Where the heading starts: the tab lists' own lead-in unless given.
+  final double? topPadding;
+
   @override
-  Widget build(BuildContext context) => ListView(
-    key: const PageStorageKey('collections_about'),
-    padding: _tabListPadding(
-      context,
-    ).add(EdgeInsets.only(bottom: bottomPadding)),
-    children: [
-      Text('About collections', style: _aboutHeadingStyle(context)),
-      SizedBox(height: 12.sp),
-      Text(
-        'Explore curated chess games with their original PGN annotations '
-        'and variations.',
-        style: AppTypography.textSmRegular.copyWith(
-          color: context.colors.textPrimary,
-          height: 1.5,
-        ),
+  Widget build(BuildContext context) {
+    final list = _tabListPadding(context);
+    return ListView(
+      key: const PageStorageKey('collections_about'),
+      padding: list.copyWith(
+        top: topPadding ?? list.top,
+        bottom: list.bottom + bottomPadding,
       ),
-      SizedBox(height: 16.sp),
-      Text(
-        'Open a collection to read about it, replay its games, or browse its '
-        'players. Search and filters help you find games; Authors lets you '
-        'explore each author\'s collections.',
-        style: AppTypography.textSmRegular.copyWith(
-          color: context.colors.textSecondary,
-          height: 1.5,
+      children: [
+        Text('About collections', style: _aboutHeadingStyle(context)),
+        SizedBox(height: 12.sp),
+        Text(
+          'Explore curated chess games with their original PGN annotations '
+          'and variations.',
+          style: AppTypography.textSmRegular.copyWith(
+            color: context.colors.textPrimary,
+            height: 1.5,
+          ),
         ),
-      ),
-    ],
-  );
+        SizedBox(height: 16.sp),
+        Text(
+          'Open a collection to read about it, replay its games, or browse its '
+          'players. Search and filters help you find games; Authors lets you '
+          'explore each author\'s collections.',
+          style: AppTypography.textSmRegular.copyWith(
+            color: context.colors.textSecondary,
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// The favorites identity of a collection. A starred collection is a plain

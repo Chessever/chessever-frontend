@@ -12,6 +12,7 @@ import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
@@ -65,21 +66,32 @@ void main() {
       expect(sub.read(), BottomNavBarItem.forYou);
     });
 
-    test('the icon bar names Home, Feed, Botvinnik, Search, Profile', () {
+    test('the icon bar names Home, Feed, Botvinnik, Collections, Profile: '
+        'Collections took Search\'s slot', () {
       expect(bottomNavBarOrder.map((item) => item.name), [
         'forYou',
         'feed',
         'botvinnik',
-        'search',
+        'collections',
         'profile',
       ]);
       expect(bottomNavBarOrder.map((item) => namesBottomNavBarIcons[item]), [
         'Home',
         'Feed',
         'Botvinnik',
-        'Search',
+        'Collections',
         'Profile',
       ]);
+      // Analytics and the discovery dots name it as its tab did before.
+      expect(BottomNavBarItem.collections.name, 'collections');
+      expect(
+        bottomNavBarDotIds[BottomNavBarItem.collections],
+        'home.nav.collections',
+      );
+      expect(
+        bottomNavBarItemKey(BottomNavBarItem.collections),
+        e2eKey(E2eIds.navCollections),
+      );
     });
 
     test('Botvinnik switched off leaves four tabs', () {
@@ -90,7 +102,7 @@ void main() {
       expect(container.read(visibleBottomNavItemsProvider), [
         BottomNavBarItem.forYou,
         BottomNavBarItem.feed,
-        BottomNavBarItem.search,
+        BottomNavBarItem.collections,
         BottomNavBarItem.profile,
       ]);
     });
@@ -205,6 +217,10 @@ void main() {
             );
             expect(icon.colorFilter, ColorFilter.mode(ink, BlendMode.srcIn));
             expect(icon.width, icon.height, reason: 'square icon box');
+            if (item == BottomNavBarItem.collections) {
+              // The stacked plates, drawn in the dock's line weight.
+              expect(icon.path, collectionsNavIcon);
+            }
           }
         }
       });
@@ -221,8 +237,8 @@ void main() {
         isSemantics(label: 'Home', isButton: true, isSelected: true),
       );
       expect(
-        tester.getSemantics(find.byKey(e2eKey(E2eIds.navSearch))),
-        isSemantics(label: 'Search', isButton: true, isSelected: false),
+        tester.getSemantics(find.byKey(e2eKey(E2eIds.navCollections))),
+        isSemantics(label: 'Collections', isButton: true, isSelected: false),
       );
       expect(
         tester.getSemantics(find.byKey(e2eKey(E2eIds.navProfile))),
@@ -235,7 +251,7 @@ void main() {
       'a press takes the slot down under the finger and springs it back',
       (tester) async {
         await pumpBar(tester, theme: AppTheme.darkTheme);
-        final slot = find.byKey(e2eKey(E2eIds.navSearch));
+        final slot = find.byKey(e2eKey(E2eIds.navCollections));
 
         double scale() {
           final transform = tester.widget<Transform>(
@@ -290,7 +306,7 @@ void main() {
         E2eIds.navForYou,
         E2eIds.navFeed,
         E2eIds.navBotvinnik,
-        E2eIds.navSearch,
+        E2eIds.navCollections,
         E2eIds.navProfile,
       ]) {
         final size = tester.getSize(find.byKey(e2eKey(id)));
@@ -363,8 +379,39 @@ void main() {
     final capsule = find.byKey(const ValueKey('home-nav-capsule'));
     final dock = find.byKey(const ValueKey('home-nav-dock'));
 
+    /// How much of the capsule's glass is there: the fade its own material
+    /// takes ([GlassFade]), never an opacity over the frost.
+    double glass(WidgetTester tester) => tester
+        .widget<GlassFade>(
+          find.ancestor(of: capsule, matching: find.byType(GlassFade)),
+        )
+        .opacity
+        .value;
+
+    /// The opacity the marks are drawn at.
+    double marks(WidgetTester tester) => tester
+        .widget<FadeTransition>(
+          find
+              .ancestor(
+                of: find.byKey(bottomNavBarItemKey(BottomNavBarItem.forYou)),
+                matching: find.byType(FadeTransition),
+              )
+              .first,
+        )
+        .opacity
+        .value;
+
+    /// Whether a tap at [point] would reach the dock.
+    bool hitsDock(WidgetTester tester, Offset point) {
+      final result = tester.hitTestOnBinding(point);
+      final box = tester.renderObject(dock);
+      return result.path.any((entry) => entry.target == box);
+    }
+
     testWidgets('iPhone: a full capsule over the page, 22 above the edge; '
-        'drawn in to 44 tall as wide as its marks, never gone', (tester) async {
+        'reading on it slides wholly past the screen\'s edge and fades out, '
+        'the slot never changing', (tester) async {
+      final semantics = tester.ensureSemantics();
       final chrome = ValueNotifier<double>(1);
       addTearDown(chrome.dispose);
       await pumpDock(tester, chrome: chrome);
@@ -377,37 +424,119 @@ void main() {
       expect(full.size, const Size(361, 56));
       expect(full.bottom, closeTo(852 - 22, 0.01));
       expect(full.center.dx, closeTo(393 / 2, 0.01));
+      expect(glass(tester), 1);
+      expect(marks(tester), 1);
+
+      // Halfway, it is halfway down and half there: one value drives both.
+      chrome.value = 0.5;
+      await tester.pump();
+      const slide = 22 + 56 + HomeNavMetrics.shadowReach;
+      final mid = tester.getRect(capsule);
+      expect(mid.size, full.size);
+      expect(mid.top, closeTo(full.top + slide / 2, 0.01));
+      expect(glass(tester), closeTo(0.5, 1e-9));
+      expect(marks(tester), closeTo(0.5, 1e-9));
 
       chrome.value = 0;
       await tester.pump();
-      final compact = tester.getRect(capsule);
-      // 5 targets of 44, 6 apart, inside 10 at either end.
-      expect(compact.size, const Size(5 * 44 + 4 * 6 + 20, 44));
-      expect(compact.bottom, closeTo(852 - 22, 0.01));
-      expect(compact.center.dx, closeTo(393 / 2, 0.01));
+      final gone = tester.getRect(capsule);
+      // Wholly past the screen's edge, its shadow with it, and faded out.
+      expect(gone.top, greaterThanOrEqualTo(852 + 0.01));
+      expect(gone.top, closeTo(full.top + slide, 0.01));
+      expect(glass(tester), 0);
+      expect(marks(tester), 0);
       // The slot never changes height, so the page is never laid out again.
       expect(tester.getSize(dock).height, 78);
       expect(find.text('pad 78.0'), findsOneWidget);
+      // Out of the semantics tree: no section is announced.
       for (final item in bottomNavBarOrder) {
-        final slot = tester.getRect(find.byKey(bottomNavBarItemKey(item)));
-        expect(slot.width, greaterThanOrEqualTo(44), reason: item.name);
-        // Each target runs from the capsule's top to the screen's edge.
-        expect(slot.top, closeTo(compact.top, 0.01));
-        expect(slot.bottom, closeTo(852, 0.01));
-        expect(slot.left, greaterThanOrEqualTo(compact.left));
-        expect(slot.right, lessThanOrEqualTo(compact.right));
+        expect(
+          find.semantics.byLabel(namesBottomNavBarIcons[item]!),
+          findsNothing,
+          reason: item.name,
+        );
       }
 
-      // Halfway, it is halfway: one value drives the shape.
-      chrome.value = 0.5;
+      chrome.value = 1;
       await tester.pump();
-      expect(tester.getSize(capsule).height, closeTo(50, 0.01));
+      expect(tester.getRect(capsule), full);
+      expect(find.semantics.byLabel('Home'), findsOne);
+      semantics.dispose();
     });
 
-    testWidgets('the marks draw in with the capsule and stay centred in it', (
+    testWidgets('gone, the dock paints nothing and takes no tap: the page '
+        'under it does', (tester) async {
+      final chrome = ValueNotifier<double>(1);
+      addTearDown(chrome.dispose);
+      await pumpDock(tester, chrome: chrome);
+      final collections = tester.getRect(
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+      );
+      final point = collections.center;
+      expect(hitsDock(tester, point), isTrue);
+
+      chrome.value = 0;
+      await tester.pump();
+      expect(hitsDock(tester, point), isFalse);
+      // Its strip to the screen's edge is the page's again too.
+      expect(hitsDock(tester, Offset(point.dx, 852 - 4)), isFalse);
+      expect(
+        tester
+            .hitTestOnBinding(point)
+            .path
+            .any(
+              (entry) =>
+                  entry.target ==
+                  tester.renderObject(find.byKey(const ValueKey('page'))),
+            ),
+        isTrue,
+      );
+      // Nothing of it is painted.
+      final slide = find.ancestor(
+        of: capsule,
+        matching: find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_DockSlide',
+        ),
+      );
+      expect(slide, paintsNothing);
+
+      // Mostly gone (on its way out, or only just arriving): no taps yet.
+      chrome.value = HomeNavDock.tapFloor - 0.01;
+      await tester.pump();
+      final low = tester.getRect(
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+      );
+      expect(hitsDock(tester, Offset(low.center.dx, low.top + 4)), isFalse);
+      chrome.value = HomeNavDock.tapFloor + 0.01;
+      await tester.pump();
+      final high = tester.getRect(
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+      );
+      // Where it is drawn (its top, still on the screen), it takes the
+      // tap.
+      expect(hitsDock(tester, Offset(high.center.dx, high.top + 4)), isTrue);
+    });
+
+    testWidgets('the scrim leaves with the dock', (tester) async {
+      final chrome = ValueNotifier<double>(1);
+      addTearDown(chrome.dispose);
+      await pumpDock(tester, chrome: chrome);
+      final scrim = find.descendant(
+        of: dock,
+        matching: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter != null,
+        ),
+      );
+      expect(scrim, paints..rect());
+      chrome.value = 0;
+      await tester.pump();
+      expect(scrim, paintsNothing);
+    });
+
+    testWidgets('the marks stay centred in the capsule, at one size', (
       tester,
     ) async {
-      final chrome = ValueNotifier<double>(0);
+      final chrome = ValueNotifier<double>(1);
       addTearDown(chrome.dispose);
       await pumpDock(tester, chrome: chrome);
       final box = tester.getRect(capsule);
@@ -417,9 +546,12 @@ void main() {
       );
       final mark = tester.getRect(home);
       expect(mark.center.dy, closeTo(box.center.dy, 0.5));
-      // 22 of 28: the compact mark.
-      final full = BottomNavBarWidget.iconSide + 4;
-      expect(mark.height, closeTo(full * 22 / 28, 0.5));
+      // Sliding away, the mark rides with the capsule, never shrinking.
+      chrome.value = 0.6;
+      await tester.pump();
+      final moved = tester.getRect(home);
+      expect(moved.size, mark.size);
+      expect(moved.center.dy, closeTo(tester.getRect(capsule).center.dy, 0.5));
     });
 
     testWidgets('Android: the capsule stays wholly above the system bar', (
@@ -438,35 +570,39 @@ void main() {
       expect(tester.getSize(dock).height, 48 + 56);
     });
 
-    testWidgets('a tap on a mark selects its section, at either size', (
-      tester,
-    ) async {
-      final chrome = ValueNotifier<double>(0);
+    testWidgets('a tap on a mark selects its section', (tester) async {
+      final chrome = ValueNotifier<double>(1);
       addTearDown(chrome.dispose);
       await pumpDock(tester, chrome: chrome);
       final container = ProviderScope.containerOf(tester.element(dock));
       // Under the capsule, in the strip to the screen's edge: still a tap.
-      final search = tester.getRect(
-        find.byKey(bottomNavBarItemKey(BottomNavBarItem.search)),
+      final collections = tester.getRect(
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
       );
-      await tester.tapAt(Offset(search.center.dx, search.bottom - 4));
+      await tester.tapAt(Offset(collections.center.dx, collections.bottom - 4));
       await tester.pumpAndSettle();
       expect(
         container.read(selectedBottomNavBarItemProvider),
-        BottomNavBarItem.search,
+        BottomNavBarItem.collections,
       );
     });
 
-    test('metrics: one slot, two shapes', () {
-      const m = HomeNavMetrics(gap: 22, count: 4, screenWidth: 393);
+    test('metrics: one slot; the dock leaves whole', () {
+      const m = HomeNavMetrics(gap: 22, count: 4, screenWidth: 393, inset: 34);
       expect(m.extent, 78);
-      expect(m.compactExtent, 66);
-      expect(m.ride, 12);
+      // Gone, only the home indicator's strip covers the page's foot.
+      expect(m.awayExtent, 34);
+      expect(m.compactExtent, m.awayExtent);
+      // The buttons come down from over the capsule to over the strip.
+      expect(m.ride, 78 - 34);
+      // Past the screen's edge, its contact shadow included.
+      expect(m.slide, 22 + 56 + HomeNavMetrics.shadowReach);
       expect(m.normalWidth, 361);
-      expect(m.compactWidth, 4 * 44 + 3 * 6 + 20);
-      expect(m.widthAt(1), m.normalWidth);
-      expect(m.widthAt(0), m.compactWidth);
-      expect(m.markScaleAt(0), closeTo(22 / 28, 1e-9));
+      // An SE (no strip): the buttons come down the whole slot.
+      expect(
+        const HomeNavMetrics(gap: 12, count: 5, screenWidth: 375).ride,
+        12 + 56,
+      );
       // A landscape phone: never wider than 440.
       expect(
         const HomeNavMetrics(gap: 12, count: 5, screenWidth: 852).normalWidth,

@@ -3,6 +3,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -58,6 +59,9 @@ class SwitchViewsTutorialOverlay extends StatefulWidget {
 
 class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
     with SingleTickerProviderStateMixin {
+  /// The teaching stage: the page all but gone under it.
+  static const Color _scrim = Color(0xCC000000);
+
   double _opacityTarget = 0.0;
   bool _isExiting = false;
   late AnimationController _timerController;
@@ -133,7 +137,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
               child: Container(
                 height: MediaQuery.sizeOf(context).height,
                 width: MediaQuery.sizeOf(context).width,
-                color: kBlackColor.withValues(alpha: 0.8),
+                color: _scrim,
                 // Scrolls only when the copy outgrows the screen (large text),
                 // so the dismissal controls stay reachable.
                 child: BoardCoachmarkViewport(
@@ -157,30 +161,19 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                     strokeWidth: 3.0,
                                     borderRadius: 28.br,
                                   ),
-                                  child: Container(
+                                  // Card sits on the dim scrim in both
+                                  // themes: white glass keeps the black text
+                                  // legible.
+                                  child: TeachingCardGlass(
+                                    stage: _scrim,
                                     padding: EdgeInsets.fromLTRB(
                                       24.w,
                                       36.h,
                                       24.w,
                                       24.h,
                                     ),
-                                    decoration: BoxDecoration(
-                                      // Card sits on the dim scrim in both
-                                      // themes — keep the surface white so
-                                      // black text remains legible.
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(
-                                        28.br,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                          blurRadius: 30,
-                                          offset: const Offset(0, 12),
-                                        ),
-                                      ],
+                                    borderRadius: BorderRadius.circular(
+                                      28.br,
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,

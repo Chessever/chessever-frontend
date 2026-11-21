@@ -62,8 +62,8 @@ const CupertinoMotion _scrollTopMotion = CupertinoMotion.smooth(
 final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
 
 /// The Profile tab: the reader, then everything the sidebar used to hold
-/// and Events, which left the bottom bar. Collections (Discovery, Search)
-/// and Botvinnik (the bar) have homes of their own and no row here.
+/// and Events, which left the bottom bar. Collections and Botvinnik (while
+/// it is on) have tabs of their own on the dock and no row here.
 ///
 /// One quiet page in My Profile's language under the bar every root wears
 /// ([HomeTopBarFrame], its name set as every root's is): the reader at the

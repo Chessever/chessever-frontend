@@ -223,7 +223,7 @@ void main() {
 
     // Muted, Feed asks for nothing, so there is nothing to cut.
     sfx.muted = true;
-    sfx.playSwipe();
+    sfx.playForPly(game.plies[1]);
     sfx.hush();
     expect(stops, hasLength(2));
   });
@@ -422,9 +422,6 @@ class _SilentSfx implements FeedSfx {
 
   @override
   void playGameEnd(FeedItem item) => gameEnds++;
-
-  @override
-  void playSwipe() {}
 
   @override
   void hush() => hushes++;

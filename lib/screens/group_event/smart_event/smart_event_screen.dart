@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/window_metrics_dismissal.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -63,6 +64,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/search_no_matches.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -1155,29 +1157,22 @@ class _TitleSelector extends StatefulWidget {
 
 class _TitleSelectorState extends State<_TitleSelector>
     with TickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 220),
-  );
-  late final Animation<double> _animation = CurvedAnimation(
-    parent: _controller,
-    curve: Curves.easeOutCubic,
-    reverseCurve: Curves.easeInCubic,
-  );
   late final AnimationController _shimmerController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3000),
   )..repeat();
 
-  OverlayEntry? _overlay;
+  _TierPanel? _panel;
+
+  /// Panels folding shut after a close: each takes itself away when its
+  /// fold is done, or with the chip if the chip leaves first.
+  final Set<_TierPanel> _folding = <_TierPanel>{};
   bool _isOpen = false;
 
   @override
   void dispose() {
-    _overlay?.remove();
-    _overlay = null;
+    _removeOverlay();
     _shimmerController.dispose();
-    _controller.dispose();
     super.dispose();
   }
 
@@ -1185,66 +1180,87 @@ class _TitleSelectorState extends State<_TitleSelector>
     for (final tier in kSmartEventTiers) tier.name,
   ];
 
-  void _open() {
-    if (_isOpen) return;
-    HapticFeedbackService.selection();
-    setState(() => _isOpen = true);
-    _shimmerController.stop();
-    _controller.forward();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final overlayState = Overlay.of(context);
-      final renderBox = context.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
-      final triggerSize = renderBox.size;
-      final overlayBox = overlayState.context.findRenderObject() as RenderBox;
-      final triggerOffset = overlayBox.globalToLocal(
-        renderBox.localToGlobal(Offset.zero),
-      );
-      final screenSize = MediaQuery.of(context).size;
-
-      _overlay = OverlayEntry(
-        builder: (_) => WindowMetricsDismissal(
-          onChanged: _close,
-          child: _TierOverlay(
-            triggerSize: triggerSize,
-            triggerOffset: triggerOffset,
-            screenWidth: screenSize.width,
-            animation: _animation,
-            options: _tierOptions,
-            currentTier: widget.selectedTier,
-            onDismiss: _close,
-            onSelect: _onSelect,
-          ),
-        ),
-      );
-      overlayState.insert(_overlay!);
-    });
+  /// Takes every panel away now, folding or not.
+  void _removeOverlay() {
+    _panel?.dispose();
+    _panel = null;
+    for (final panel in _folding) {
+      panel.dispose();
+    }
+    _folding.clear();
   }
 
-  void _close() {
+  void _dropFolded(_TierPanel panel) {
+    _folding.remove(panel);
+    panel.dispose();
+  }
+
+  void _open() {
+    if (_isOpen) return;
+    // The chip is laid out, so the panel goes in now, in the frame the chip
+    // turns open, rather than one frame later.
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+    HapticFeedbackService.selection();
+    final overlayState = Overlay.of(context);
+    final triggerSize = renderBox.size;
+    final overlayBox = overlayState.context.findRenderObject() as RenderBox;
+    final triggerOffset = overlayBox.globalToLocal(
+      renderBox.localToGlobal(Offset.zero),
+    );
+    final screenSize = MediaQuery.of(context).size;
+    // A panel still folding from the last close gives way to the new one.
+    _removeOverlay();
+
+    final closing = ValueNotifier<bool>(false);
+    late final _TierPanel panel;
+    final entry = OverlayEntry(
+      builder: (_) => WindowMetricsDismissal(
+        // The window changed: the panel no longer hangs from the chip.
+        onChanged: () => _close(instant: true),
+        child: _TierOverlay(
+          closing: closing,
+          onFolded: () => _dropFolded(panel),
+          triggerSize: triggerSize,
+          triggerOffset: triggerOffset,
+          screenWidth: screenSize.width,
+          options: _tierOptions,
+          currentTier: widget.selectedTier,
+          onDismiss: _close,
+          onSelect: _onSelect,
+        ),
+      ),
+    );
+    panel = _panel = _TierPanel(entry, closing);
+    overlayState.insert(entry);
+    _shimmerController.stop();
+    setState(() => _isOpen = true);
+  }
+
+  /// Folds the panel shut into the chip, like every anchored menu
+  /// ([GlassFold]); the chip turns closed at once and the page under the
+  /// folding panel already takes taps. [instant] takes it away now.
+  void _close({bool instant = false}) {
     if (!_isOpen) return;
-    _controller.reverse().then((_) {
-      if (!mounted) return;
-      _overlay?.remove();
-      _overlay = null;
-      if (mounted) {
-        setState(() => _isOpen = false);
-        _shimmerController.repeat();
+    final panel = _panel;
+    _panel = null;
+    if (panel != null) {
+      if (instant) {
+        panel.dispose();
+      } else {
+        _folding.add(panel);
+        panel.fold();
       }
-    });
+    }
+    if (!mounted) return;
+    setState(() => _isOpen = false);
+    _shimmerController.repeat();
   }
 
   void _onSelect(String next) {
     HapticFeedbackService.selection();
-    _controller.reverse().then((_) {
-      if (!mounted) return;
-      _overlay?.remove();
-      _overlay = null;
-      if (mounted) setState(() => _isOpen = false);
-      if (next != widget.selectedTier) widget.onSelected(next);
-    });
+    _close();
+    if (next != widget.selectedTier) widget.onSelected(next);
   }
 
   String _triggerLabel() {
@@ -1325,24 +1341,54 @@ class _TitleSelectorState extends State<_TitleSelector>
   }
 }
 
-/// Floating panel anchored under [_TitleSelector]'s chip. Scale + fade in
-/// from the top, surface bg, kPrimary check mark on the active tier.
+/// An open tier panel: its overlay entry and the switch that folds it.
+class _TierPanel {
+  _TierPanel(this.entry, this._closing);
+
+  final OverlayEntry entry;
+  final ValueNotifier<bool> _closing;
+  bool _disposed = false;
+
+  /// Folds the panel shut; it is dropped once the fold is done.
+  void fold() {
+    if (!_disposed) _closing.value = true;
+  }
+
+  /// Takes the panel away now (safe from a dispose: removing during a frame
+  /// defers the overlay's rebuild to the end of it).
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    entry.remove();
+    entry.dispose();
+    _closing.dispose();
+  }
+}
+
+/// Floating panel anchored under [_TitleSelector]'s chip: the popover
+/// glass ([GlassPopoverLayer]), scaled in from the top on the anchored
+/// menus' spring with every row drawn from the first frame and folded shut
+/// back into the chip on close, over their dim with the chip left lit,
+/// kPrimary check mark on the active tier.
 class _TierOverlay extends StatelessWidget {
   const _TierOverlay({
+    required this.closing,
+    required this.onFolded,
     required this.triggerSize,
     required this.triggerOffset,
     required this.screenWidth,
-    required this.animation,
     required this.options,
     required this.currentTier,
     required this.onDismiss,
     required this.onSelect,
   });
 
+  /// Turns true to fold the panel shut; [onFolded] once it has.
+  final ValueListenable<bool> closing;
+  final VoidCallback onFolded;
   final Size triggerSize;
   final Offset triggerOffset;
   final double screenWidth;
-  final Animation<double> animation;
   final List<String> options;
   final String currentTier;
   final VoidCallback onDismiss;
@@ -1354,97 +1400,55 @@ class _TierOverlay extends StatelessWidget {
     final leftOffset = (screenWidth - panelWidth) / 2;
     final topOffset = triggerOffset.dy + triggerSize.height + 8.sp;
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: onDismiss,
+    return GlassPopoverLayer(
+      left: leftOffset,
+      top: topOffset,
+      onDismiss: onDismiss,
+      closing: closing,
+      onClosed: onFolded,
+      // The chip stays lit, readable as what the panel hangs from.
+      hole: RRect.fromRectAndRadius(
+        triggerOffset & triggerSize,
+        Radius.circular(14.br),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: GlassPopoverPanel(
+          width: panelWidth,
+          constraints: BoxConstraints(
+            maxHeight:
+                (MediaQuery.sizeOf(context).height -
+                        MediaQuery.paddingOf(context).bottom -
+                        topOffset -
+                        12)
+                    .clamp(0.0, double.infinity),
           ),
-        ),
-        Positioned(
-          left: leftOffset,
-          top: topOffset,
-          child: Material(
-            type: MaterialType.transparency,
-            child: AnimatedBuilder(
-              animation: animation,
-              builder: (context, child) {
-                final progress = animation.value.clamp(0.0, 1.0);
-                return Transform.scale(
-                  scale: 0.94 + (progress * 0.06),
-                  alignment: Alignment.topCenter,
-                  child: Opacity(opacity: progress, child: child),
-                );
-              },
-              child: GestureDetector(
-                onTap: () {},
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  width: panelWidth,
-                  constraints: BoxConstraints(
-                    maxHeight:
-                        (MediaQuery.sizeOf(context).height -
-                                MediaQuery.paddingOf(context).bottom -
-                                topOffset -
-                                12)
-                            .clamp(0.0, double.infinity),
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(16.br),
-                    border: Border.all(
-                      color: context.colors.textPrimary.withValues(alpha: 0.08),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: context.isLightTheme
-                            ? context.colors.shadow
-                            : Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 24,
-                        spreadRadius: -6,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16.br),
-                    child: ListView(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.symmetric(vertical: 6.sp),
-                      children: [
-                        for (var i = 0; i < options.length; i++)
-                          _TierOptionRow(
-                            index: i,
-                            animation: animation,
-                            tier: options[i],
-                            isSelected: options[i] == currentTier,
-                            onTap: () => onSelect(options[i]),
-                          ),
-                      ],
-                    ),
-                  ),
+          borderRadius: BorderRadius.circular(16.br),
+          child: ListView(
+            shrinkWrap: true,
+            padding: EdgeInsets.symmetric(vertical: 6.sp),
+            children: [
+              for (var i = 0; i < options.length; i++)
+                _TierOptionRow(
+                  tier: options[i],
+                  isSelected: options[i] == currentTier,
+                  onTap: () => onSelect(options[i]),
                 ),
-              ),
-            ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
 class _TierOptionRow extends StatelessWidget {
   const _TierOptionRow({
-    required this.index,
-    required this.animation,
     required this.tier,
     required this.isSelected,
     required this.onTap,
   });
 
-  final int index;
-  final Animation<double> animation;
   final String tier;
   final bool isSelected;
   final VoidCallback onTap;
@@ -1453,55 +1457,35 @@ class _TierOptionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stagger = (index * 0.06).clamp(0.0, 0.4);
-    final itemAnimation = CurvedAnimation(
-      parent: animation,
-      curve: Interval(
-        stagger,
-        (stagger + 0.5).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic,
-      ),
-    );
-
-    return AnimatedBuilder(
-      animation: itemAnimation,
-      builder: (context, child) {
-        final v = itemAnimation.value.clamp(0.0, 1.0);
-        return Transform.translate(
-          offset: Offset(0, 10 * (1 - v)),
-          child: Opacity(opacity: v, child: child),
-        );
-      },
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
-          color: isSelected
-              ? kPrimaryColor.withValues(alpha: 0.10)
-              : Colors.transparent,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _displayLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: isSelected
-                        ? context.colors.accentText
-                        : context.colors.textPrimary,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  ),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+        color: isSelected
+            ? kPrimaryColor.withValues(alpha: 0.10)
+            : Colors.transparent,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _displayLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: isSelected
+                      ? context.colors.accentText
+                      : context.colors.textPrimary,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
-              if (isSelected)
-                Icon(
-                  Icons.check_rounded,
-                  size: 18.ic,
-                  color: context.colors.accentText,
-                ),
-            ],
-          ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_rounded,
+                size: 18.ic,
+                color: context.colors.accentText,
+              ),
+          ],
         ),
       ),
     );

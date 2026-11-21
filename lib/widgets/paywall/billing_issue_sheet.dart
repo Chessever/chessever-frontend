@@ -5,6 +5,7 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -32,12 +33,11 @@ final Uri _kAccountUrl = Uri.https('chessever.com', '/account');
 /// management URL live from [subscriptionProvider]. Returns `true` if the
 /// user tapped through to fix their payment method, `false` otherwise.
 Future<bool> showBillingIssueSheet({required BuildContext context}) async {
-  final result = await showModalBottomSheet<bool>(
+  final result = await showGlassModalBottomSheet<bool>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => const _BillingIssueSheet(),
   );
@@ -109,15 +109,14 @@ class _BillingIssueSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(subscriptionProvider);
     final isStripe = state.provider == 'stripe';
-    final topPadding = MediaQuery.of(context).padding.top;
+    final topPadding = MediaQuery.paddingOf(context).top;
 
     return Padding(
       padding: EdgeInsets.only(top: topPadding + 80.h),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colors.surface.withValues(alpha: 0.98),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-        ),
+      // Frosted glass toned to the surface it was painted on (at 98%).
+      child: GlassSheet(
+        radius: 28.sp,
+        tone: context.colors.surface,
         child: SafeArea(
           top: false,
           child: Padding(

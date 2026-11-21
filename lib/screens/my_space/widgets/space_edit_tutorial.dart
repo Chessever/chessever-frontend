@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 
 // Edit's tips: the first time a reader opens Edit on a My Space page (a See
 // all, My Prep's Openings), one card walks them through it a step at a time,
@@ -317,6 +318,9 @@ class SpaceEditTutorial extends StatefulWidget {
 
 class _SpaceEditTutorialState extends State<SpaceEditTutorial>
     with TickerProviderStateMixin {
+  /// The teaching stage: the page all but gone under it.
+  static const Color _scrim = Color(0xCC000000);
+
   late final AnimationController _clock =
       AnimationController(vsync: this, duration: SpaceEditTutorial.stepTime)
         ..addStatusListener((status) {
@@ -437,7 +441,7 @@ class _SpaceEditTutorialState extends State<SpaceEditTutorial>
               excludeFromSemantics: true,
               onTap: _next,
               child: ColoredBox(
-                color: kBlackColor.withValues(alpha: 0.8),
+                color: _scrim,
                 child: SafeArea(
                   child: CustomMultiChildLayout(
                     delegate: _TipsLayout(
@@ -518,21 +522,12 @@ class _SpaceEditTutorialState extends State<SpaceEditTutorial>
               ),
               child: card,
             ),
-            child: Container(
+            // White glass with black text on the dim scrim in both themes,
+            // as every teaching card.
+            child: TeachingCardGlass(
+              stage: _scrim,
               padding: EdgeInsets.fromLTRB(24.w, 36.h, 24.w, 24.h),
-              decoration: BoxDecoration(
-                // White with black text on the dim scrim in both themes,
-                // as every teaching card.
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28.br),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 30,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
+              borderRadius: BorderRadius.circular(28.br),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

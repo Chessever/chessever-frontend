@@ -24,6 +24,7 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -51,20 +52,106 @@ Color explorerSheetSurface(BuildContext context) =>
         ? context.colors.background
         : context.colors.surfaceRecessed;
 
+/// The explorer sheets' surface: the popups' frosted glass ([GlassSheet])
+/// toned to [explorerSheetSurface].
+///
+/// Dark is the one tone the popups' plate cannot carry as it is. Secondary
+/// text reads 4.7:1 on the opaque recessed tone, and the brightest board
+/// behind the frost lifted the plate enough to pull it to 3.9:1. Its glass
+/// is solved a step deeper (40% of the way to the surface) and a little
+/// denser, so over a busy page it averages out to the recessed tone again,
+/// and no board behind ever brings secondary text under 4.5:1. A solid
+/// sheet has no frost to lift it: it is the recessed tone itself.
+class ExplorerSheetGlass extends StatelessWidget {
+  const ExplorerSheetGlass({
+    super.key,
+    required this.child,
+    required this.radius,
+    this.padding,
+    this.inkSurface = false,
+    this.solid = false,
+  });
+
+  final Widget child;
+
+  /// The top corners' radius.
+  final double radius;
+  final EdgeInsetsGeometry? padding;
+
+  /// See [GlassSheet.inkSurface].
+  final bool inkSurface;
+
+  /// See [GlassSheet.solid].
+  final bool solid;
+
+  /// How much of the backdrop the dark glass covers, and how far toward the
+  /// surface its tone is solved; both measured over live boards in
+  /// test/sheets_glass_preview_test.dart.
+  static const double darkCover = 0.9;
+  static const double darkDeepen = 0.4;
+
+  @override
+  Widget build(BuildContext context) {
+    final light = context.isLightTheme;
+    final colors = context.colors;
+    return GlassSheet(
+      radius: radius,
+      padding: padding,
+      inkSurface: inkSurface,
+      tone:
+          light || solid
+              ? explorerSheetSurface(context)
+              : Color.lerp(colors.surfaceRecessed, colors.surface, darkDeepen),
+      cover: light ? null : darkCover,
+      solid: solid,
+      child: child,
+    );
+  }
+}
+
+/// Opens the games sheet for a position (the explorer's move rows, its
+/// position total, the strip's "All games"): a solid glass sheet up to 88%
+/// of the screen tall over the glass scrim.
+Future<void> showPositionGamesSheet(
+  BuildContext context, {
+  required String fen,
+  required String title,
+  String? uci,
+  List<String> moves = const <String>[],
+  GamebaseFilters filters = const GamebaseFilters(),
+  bool useFenEndpoint = false,
+}) {
+  return showGlassModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+    ),
+    builder:
+        (_) => PositionGamesSheet(
+          fen: fen,
+          moves: moves,
+          uci: uci,
+          filters: filters,
+          useFenEndpoint: useFenEndpoint,
+          title: title,
+        ),
+  );
+}
+
 Future<void> showGamebaseSortOptions({
   required BuildContext context,
   required GamebaseSortField sortBy,
   required GamebaseSortDirection sortDirection,
   required GamebaseSortChanged onChanged,
 }) {
-  return showModalBottomSheet(
+  return showGlassModalBottomSheet(
     context: context,
-    backgroundColor: Colors.transparent,
     isScrollControlled: true,
     builder:
         (ctx) => StatefulBuilder(
           builder: (context, setModalState) {
-            final bottomPadding = MediaQuery.of(ctx).padding.bottom;
+            final bottomPadding = MediaQuery.paddingOf(ctx).bottom;
             void handleTap(GamebaseSortField field) {
               final nextDirection =
                   sortBy == field
@@ -77,13 +164,8 @@ Future<void> showGamebaseSortOptions({
               onChanged(field, nextDirection);
             }
 
-            return Container(
-              decoration: BoxDecoration(
-                color: explorerSheetSurface(context),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(20.br),
-                ),
-              ),
+            return ExplorerSheetGlass(
+              radius: 20.br,
               padding: EdgeInsets.fromLTRB(
                 16.w,
                 24.h,
@@ -618,13 +700,14 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: explorerSheetSurface(context),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-      ),
+    // Solid glass: the game cards cover nearly all of it, so a live blur
+    // would show only in the gaps between them while it is paid on every
+    // frame the list scrolls.
+    return ExplorerSheetGlass(
+      radius: 16.br,
+      solid: true,
       child: ConstrainedBox(
         constraints:
             ResponsiveHelper.bottomSheetConstraints ?? const BoxConstraints(),

@@ -13,7 +13,6 @@ import 'package:chessever2/screens/group_event/providers/supabase_combined_searc
     show isSearchableQuery;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/search/search_cancel_button.dart';
@@ -28,29 +27,73 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:chessever2/widgets/page_spring.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton, SearchHeaderMetrics;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The Search tab: the app-wide search (players, events, openings, smart
-/// events, collections, news) as one page, behaving as X's search does.
+/// Search's route, for the screen views analytics records by route name.
+const String searchRouteName = '/search_screen';
+
+/// Whether Search has been opened this session. From then on the home shell
+/// keeps its landing's sources warm ([keepSearchLandingWarm]), as the dock's
+/// Search tab did once visited, so every later visit opens on a landing
+/// already read.
+final searchOpenedProvider = StateProvider<bool>((ref) => false);
+
+/// When Search's Coming up was last read: a visit after it has grown old
+/// ([searchUpcomingMaxAge]) reads it again. Lives across visits with the
+/// read it times.
+final searchUpcomingReadAtProvider = StateProvider<DateTime?>((ref) => null);
+
+/// Keeps Search's landing sources alive for the session once Search has
+/// been opened ([searchOpenedProvider]): a later visit opens on a landing
+/// already read, with nothing asked for again. Each source is fetched once
+/// and then only follows the live set. Call from the build of a widget that
+/// outlives every visit (the home shell).
+void keepSearchLandingWarm(WidgetRef ref) {
+  if (!ref.watch(searchOpenedProvider)) return;
+  ref.listen(searchTopPlayersProvider, (_, __) {});
+  ref.listen(searchLandingOpeningsProvider, (_, __) {});
+  ref.listen(searchUpcomingProvider, (_, __) {});
+  // The sections' pages read on from those heads, and the two read from
+  // their first page; a row read far on is still there next visit.
+  ref.listen(searchTopPlayersFeedProvider, (_, __) {});
+  ref.listen(searchOpeningsFeedProvider, (_, __) {});
+  ref.listen(searchComingUpFeedProvider, (_, __) {});
+  ref.listen(searchCollectionsFeedProvider, (_, __) {});
+  ref.listen(searchNewsFeedProvider, (_, __) {});
+}
+
+/// Search: the app-wide search (players, events, openings, smart events,
+/// collections, news) as one page, behaving as X's search does. It opens
+/// over Home from Today's floating button ([open]); it left the dock, whose
+/// slot Collections holds now.
 ///
-/// The field sits in the home bar's frame ([HomeTopBarFrame]), where every
-/// root tab starts; everything under it is the page. Arriving never puts
-/// the cursor in the field: the landing is there to read (the events in
-/// play, the top players, the main openings and the built-in smart events,
+/// A pushed page in the pushed pages' language: the way back
+/// ([PageBackButton], where every pushed page's chevron is) and the field
+/// on one row under the status bar, the iOS back swipe and Android's back
+/// leaving it. The row steps away as the page is read down and back (the
+/// page's own scroll chrome), and the floating back ([PageBackFloat]) keeps
+/// a way out in reach while it is away. Everything under the row is the
+/// page.
+///
+/// Arriving never puts the cursor in the field: the landing is there to
+/// read (the top players, the main openings and the built-in smart events,
 /// the events coming up, the collections and the news), and the field takes
-/// the cursor only when the reader taps it. With the cursor in an empty
-/// field the page is the recent searches ([SearchRecentsView]): the things
-/// last opened from Search, then the queries last searched. Typing turns it
-/// into the results, every landing section that holds a match under its own
-/// heading. Every one is drawn in the card the app already draws it in,
-/// with that card's own tap and long-press.
+/// the cursor only when the reader taps it. With
+/// the cursor in an empty field the page is the recent searches
+/// ([SearchRecentsView]): the things last opened from Search, then the
+/// queries last searched. Typing turns it into the results, every landing
+/// section that holds a match under its own heading. Every one is drawn in
+/// the card the app already draws it in, with that card's own tap and
+/// long-press.
 ///
 /// While the field has the cursor or holds text, Cancel stands at the end
 /// of the row, outside the field ([SearchCancelButton]): it clears the
@@ -59,14 +102,30 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class SearchTabScreen extends HookConsumerWidget {
   const SearchTabScreen({super.key});
 
+  /// Opens Search over the page [context] is on. The caller's button gives
+  /// the press its haptic.
+  static Future<void> open(BuildContext context) {
+    final container = ProviderScope.containerOf(context, listen: false);
+    container.read(searchOpenedProvider.notifier).state = true;
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: searchRouteName),
+        builder: (_) => const SearchTabScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = useTextEditingController();
     final focusNode = useFocusNode();
+    // The page's own bars: the field's row steps away as the page is read
+    // down, and back.
+    final chrome = useScrollChromeController();
 
     // The field writes the app-wide search providers the page reads, which
-    // the Events page's field (on Profile) shares. Coming back to this tab,
-    // the page must show this field's query again, not that one's.
+    // the Events page's field (on Profile) shares. Arriving, the page must
+    // show this field's query (none yet), not that one's.
     void reclaimSharedQuery() {
       final text = controller.text.trim();
       if (ref.read(searchQueryProvider) != text) {
@@ -77,30 +136,26 @@ class SearchTabScreen extends HookConsumerWidget {
       }
     }
 
-    // The landing's sources live as long as the tab does, not only while the
-    // landing is on screen: a search typed and cleared brings the landing
-    // back at once, with nothing asked for again. Each is fetched once and
-    // then only follows the live set.
-    ref.listen(searchLiveNowProvider, (_, __) {});
+    // The landing's sources live as long as the page does, and the home
+    // shell holds them between visits ([keepSearchLandingWarm]): a search
+    // typed and cleared brings the landing back at once, with nothing asked
+    // for again.
     ref.listen(searchTopPlayersProvider, (_, __) {});
     ref.listen(searchLandingOpeningsProvider, (_, __) {});
     ref.listen(searchUpcomingProvider, (_, __) {});
-    // The sections' pages read on from those heads, and the two read from
-    // their first page; they last as long as the tab, so a row read far on
-    // is still there after a search.
     ref.listen(searchTopPlayersFeedProvider, (_, __) {});
     ref.listen(searchOpeningsFeedProvider, (_, __) {});
     ref.listen(searchComingUpFeedProvider, (_, __) {});
     ref.listen(searchCollectionsFeedProvider, (_, __) {});
     ref.listen(searchNewsFeedProvider, (_, __) {});
 
-    // Coming up is one read, read again while the tab lives: when one of
-    // its events starts (it has moved to Live now; the read's spare events
-    // fill in at once, the new read restocks them) and on arriving after
-    // the read has grown old. The last read stays on screen meanwhile.
-    final upcomingReadAt = useRef(DateTime.now());
+    // Coming up is one read, read again while the page is open when one of
+    // its events starts (it is no longer coming up: it leaves the section,
+    // the read's spare events fill in at once and the new read restocks
+    // them), and on arriving after the read has grown old. The last read
+    // stays on screen meanwhile.
     void readUpcomingAgain() {
-      upcomingReadAt.value = DateTime.now();
+      ref.read(searchUpcomingReadAtProvider.notifier).state = DateTime.now();
       ref.invalidate(searchUpcomingProvider);
     }
 
@@ -116,62 +171,44 @@ class SearchTabScreen extends HookConsumerWidget {
       }
     });
 
-    // Arriving on the tab (it stays alive once visited): a read or live
-    // lookup that failed earlier gets another go. The field is left as it
-    // was: arriving never takes the cursor or raises the keyboard.
-    ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (_, next) {
-      if (next != BottomNavBarItem.search) return;
-      if (ref.read(searchTopPlayersProvider).hasError) {
-        ref.invalidate(searchTopPlayersProvider);
-      }
-      if (ref.read(searchUpcomingProvider).hasError ||
-          DateTime.now().difference(upcomingReadAt.value) >
-              searchUpcomingMaxAge) {
-        readUpcomingAgain();
-      }
-      if (ref.read(searchLiveNowProvider.notifier).lookupFailed) {
-        ref.invalidate(searchLiveNowProvider);
-      }
-      // A section whose first page failed is not shown: arriving reads it
-      // again.
-      if (searchFeedFirstPageFailed(ref.read(searchCollectionsFeedProvider))) {
-        ref.invalidate(searchCollectionsFeedProvider);
-      }
-      if (searchFeedFirstPageFailed(ref.read(searchNewsFeedProvider))) {
-        ref.invalidate(searchNewsFeedProvider);
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        reclaimSharedQuery();
-      });
-    });
-    final scroll = useScrollController();
-    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
-      previous,
-      next,
-    ) {
-      if (next.item != BottomNavBarItem.search) return;
-      if (previous != null && previous.sequence == next.sequence) return;
-      ScrollChromeScope.maybeOf(context)?.show();
-      // As every root does on a re-tap: the page goes back to its top (the
-      // landing or the results, whichever is on screen), on the tabs'
-      // spring. The field is left alone: a re-tap never raises the keyboard.
-      if (scroll.hasClients) scroll.springToOffset(0, context: context);
-    });
+    // Arriving: a read that failed on an earlier visit gets another go, and
+    // an old Coming up is read again. The field is left at
+    // rest: arriving never takes the cursor or raises the keyboard.
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
         reclaimSharedQuery();
+        if (ref.read(searchTopPlayersProvider).hasError) {
+          ref.invalidate(searchTopPlayersProvider);
+        }
+        final readAt = ref.read(searchUpcomingReadAtProvider);
+        if (readAt == null) {
+          // The first read is the one this visit started.
+          ref.read(searchUpcomingReadAtProvider.notifier).state =
+              DateTime.now();
+        } else if (ref.read(searchUpcomingProvider).hasError ||
+            DateTime.now().difference(readAt) > searchUpcomingMaxAge) {
+          readUpcomingAgain();
+        }
+        // A section whose first page failed is not shown: arriving reads it
+        // again.
+        if (searchFeedFirstPageFailed(
+          ref.read(searchCollectionsFeedProvider),
+        )) {
+          ref.invalidate(searchCollectionsFeedProvider);
+        }
+        if (searchFeedFirstPageFailed(ref.read(searchNewsFeedProvider))) {
+          ref.invalidate(searchNewsFeedProvider);
+        }
       });
       return null;
     }, const []);
+    final scroll = useScrollController();
 
-    // While the field has the keyboard the bar holds still; reading results,
+    // While the field has the keyboard the row holds still; reading results,
     // it steps away with them. Set from the focus change itself, never from
     // a build.
-    final chrome = ScrollChromeScope.maybeOf(context);
     useEffect(() {
-      if (chrome == null) return null;
       void hold() => chrome.held = focusNode.hasFocus;
       focusNode.addListener(hold);
       return () {
@@ -321,77 +358,103 @@ class SearchTabScreen extends HookConsumerWidget {
       dismissSoftwareKeyboard(focusNode: focusNode);
     }
 
-    // The one root bar ([HomeTopBarFrame]): the status bar's inset, then the
-    // band with the field and its Cancel as its row and the standard gap
-    // under it, so the field and the page under it land exactly where every
-    // root's do. In the home shell the band steps away with the page and
-    // back (X-style).
-    final header = HomeTopBarFrame(
-      child: Row(
-        children: [
-          Expanded(
-            child: EnhancedRoundedSearchBar(
+    // The pushed pages' search row ([SearchModeHeader]'s geometry): the
+    // way back at [SearchHeaderMetrics.leadingInset], where every pushed
+    // page's chevron is, the field after it, and Cancel ending on the
+    // gutter. It sits right under the status bar's inset, as every pushed
+    // page's back row does.
+    final header = Padding(
+      padding: EdgeInsetsDirectional.fromSTEB(
+        SearchHeaderMetrics.leadingInset,
+        0,
+        SearchHeaderMetrics.gutter,
+        HomeTopBarMetrics.bottomGap,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: SearchHeaderMetrics.rowHeight,
+        ),
+        child: Row(
+          children: [
+            const PageBackButton(key: ValueKey('search_back')),
+            Expanded(
+              child: EnhancedRoundedSearchBar(
+                controller: controller,
+                focusNode: focusNode,
+                showProfile: false,
+                // The page under the field is the results; no drop-down over
+                // it, and no filter: the event filter belongs to Events.
+                dropdown: false,
+                showFilter: false,
+                // Cancel, beside the field, clears it.
+                showClear: false,
+                textInputAction: TextInputAction.search,
+                onSubmitted: submitted,
+                textFieldKey: const ValueKey('search_tab_field'),
+                hintText: 'Search',
+                rotatingHints: const [
+                  'player',
+                  'tournament',
+                  'openings',
+                  'FIDE country',
+                ],
+              ),
+            ),
+            SearchCancelButton(
               controller: controller,
               focusNode: focusNode,
-              showProfile: false,
-              // The page under the field is the results; no drop-down over
-              // it, and no filter: the event filter narrows Today, not a
-              // search.
-              dropdown: false,
-              showFilter: false,
-              // Cancel, beside the field, clears it.
-              showClear: false,
-              textInputAction: TextInputAction.search,
-              onSubmitted: submitted,
-              textFieldKey: const ValueKey('search_tab_field'),
-              hintText: 'Search',
-              rotatingHints: const [
-                'player',
-                'tournament',
-                'openings',
-                'FIDE country',
-              ],
+              onCancel: cancel,
             ),
-          ),
-          SearchCancelButton(
-            controller: controller,
-            focusNode: focusNode,
-            onCancel: cancel,
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
-    return Material(
+    final page = Column(
+      children: [
+        // The status bar's inset stays put: the row folds up to it, never
+        // into it.
+        SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+        CollapsingChrome(controller: chrome, child: header),
+        Expanded(
+          child: ScrollChromeRegion(
+            controller: chrome,
+            // The landing and the results scroll on it, so the page's own
+            // spring can take either back to its top.
+            child: PrimaryScrollController(
+              controller: scroll,
+              // A star on this page (an event's, a smart event's) also
+              // keeps it in My Space; an unstar leaves My Space alone.
+              child: SpaceStarPins(
+                child: SearchTabPage(
+                  key: const ValueKey('search_tab_page'),
+                  picks: picks,
+                  controller: controller,
+                  focusNode: focusNode,
+                  onRunQuery: runQuery,
+                  onFillQuery: fillQuery,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return Scaffold(
       key: e2eKey(E2eIds.searchRoot),
-      color: context.colors.background,
-      child: Center(
+      backgroundColor: context.colors.background,
+      body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: ResponsiveHelper.contentMaxWidth,
           ),
-          child: Column(
+          // The row's way back stays in reach while the row is folded away.
+          child: Stack(
+            fit: StackFit.passthrough,
             children: [
-              header,
-              Expanded(
-                // The landing and the results scroll on it, so a re-tap of
-                // the tab can take either back to its top.
-                child: PrimaryScrollController(
-                  controller: scroll,
-                  // A star on this page (an event's, a smart event's) also
-                  // keeps it in My Space; an unstar leaves My Space alone.
-                  child: SpaceStarPins(
-                    child: SearchTabPage(
-                      key: const ValueKey('search_tab_page'),
-                      picks: picks,
-                      controller: controller,
-                      focusNode: focusNode,
-                      onRunQuery: runQuery,
-                      onFillQuery: fillQuery,
-                    ),
-                  ),
-                ),
-              ),
+              page,
+              PageBackFloat(controller: chrome),
             ],
           ),
         ),
@@ -400,7 +463,7 @@ class SearchTabScreen extends HookConsumerWidget {
   }
 }
 
-/// The page under the Search tab's field, one of three:
+/// The page under Search's field, one of three:
 ///
 /// * a query that can be searched (two letters or more): its results
 ///   ([SearchPageResultsLoader]), the last ones held while the next load;

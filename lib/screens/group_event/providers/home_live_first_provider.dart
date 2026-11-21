@@ -176,8 +176,9 @@ bool pressHomeEventsLiveFirst({
 ///
 /// The same flag as the Events bar ([homeEventsLiveFirstProvider]), with the
 /// same rules over the Today feed: off always works; on needs an event in
-/// play that the feed's filters let through, else it stays off and a snack
-/// says which of the two is missing ([noLiveEventsMessage]). The feed pages
+/// play, else it stays off and a snack says there is none
+/// ([noLiveEventsMessage]; Today is never filtered, [todayFeedFilters], so
+/// it never blames a filter). The feed pages
 /// its events in, so one in play can sit below the loaded pages; when no
 /// loaded event is live but some event is, the feed fetches those first
 /// ([ForYouNotifier.hasLiveEvent]) and the press waits for that answer.
@@ -201,7 +202,9 @@ Future<bool> pressForYouLiveFirst({
           strict: ref.read(liveGroupBroadcastIdsProvider).valueOrNull,
           mirror: ref.read(liveBroadcastIdsProvider),
         ),
-        filters: ref.read(forYouAppliedFilterProvider),
+        // Today is never filtered ([todayFeedFilters]): nothing live is
+        // ever kept out by a filter there.
+        filters: todayFeedFilters,
       ),
     );
     return false;
@@ -275,8 +278,9 @@ final eventsLiveEventCountProvider = Provider.autoDispose<int?>((ref) {
 });
 
 /// How many events Today's Live first lifts: the loaded events in play and
-/// the ones in play below the loaded pages that Today's filters let through
-/// ([ForYouState.liveEventIds]), less any whose section hides itself for
+/// the ones in play below the loaded pages (Today is never filtered,
+/// whatever the Events page is: [todayFeedFilters]) ([ForYouState
+/// .liveEventIds]), less any whose section hides itself for
 /// want of boards, so the count is what a press brings into view. 0 with
 /// nothing in play; null while the feed does not know yet ("See live").
 final todayLiveEventCountProvider = Provider.autoDispose<int?>((ref) {

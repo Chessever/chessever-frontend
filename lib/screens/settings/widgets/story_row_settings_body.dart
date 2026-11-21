@@ -6,9 +6,9 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Settings › Customization: when the collection stories row sits at the
-/// top of Today. The choice follows the reader's account; Today springs the
-/// row in or out the moment it changes.
+/// Settings › Customization: whether the collection stories row sits at
+/// the top of Today, On (the default) or Off. The choice follows the
+/// reader's account; Today springs the row in or out the moment it changes.
 class StoryRowSettingsBody extends ConsumerWidget {
   const StoryRowSettingsBody({super.key});
 
@@ -19,7 +19,7 @@ class StoryRowSettingsBody extends ConsumerWidget {
       key: const ValueKey('settings_story_row'),
       child: SettingsPickerRow(
         title: 'Collection stories',
-        caption: 'The circles at the top of Today',
+        caption: 'Key moments from collections, at the top of Today',
         value: mode.shortLabel,
         onTap: () async {
           final picked = await showStartScreenPicker<StoryRowMode>(

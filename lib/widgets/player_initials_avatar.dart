@@ -614,10 +614,34 @@ Color get _titleBadgeDarkInk => AppColors.light.textPrimary;
 /// bronze, pink and gray read 2-3.5:1 with white, so on paper they take the
 /// ink.
 Color titleBadgeInk(BuildContext context, Color fill) {
+  if (!context.isLightTheme) return const Color(0xFFFFFFFF);
+  return titleBadgeLegibleInk(fill);
+}
+
+/// The title label ink that reads best on [fill], whatever the theme: white
+/// on deep fills, the paper ink on bright ones (GM's green, IM's gold).
+/// Media cards, one design in both themes, use it with
+/// [titleBadgeLegibleFill] so their badge reads at AA on its own fill.
+Color titleBadgeLegibleInk(Color fill) {
   const white = Color(0xFFFFFFFF);
-  if (!context.isLightTheme) return white;
   final ink = _titleBadgeDarkInk;
   return wcagContrast(white, fill) >= wcagContrast(ink, fill) ? white : ink;
+}
+
+/// [hue], unless neither a white nor an ink label reaches AA on it (violet,
+/// indigo, purple): then deepened toward ink just enough for a white label
+/// to clear 4.5:1. Theme-free; [titleBadgeFill] uses it in light.
+Color titleBadgeLegibleFill(Color hue) {
+  const white = Color(0xFFFFFFFF);
+  final ink = _titleBadgeDarkInk;
+  if (wcagContrast(white, hue) >= 4.5 || wcagContrast(ink, hue) >= 4.5) {
+    return hue;
+  }
+  for (var step = 1; step <= 20; step++) {
+    final deeper = Color.lerp(hue, ink, step / 20)!;
+    if (wcagContrast(white, deeper) >= 4.5) return deeper;
+  }
+  return ink;
 }
 
 /// A title badge's fill.
@@ -629,16 +653,7 @@ Color titleBadgeInk(BuildContext context, Color fill) {
 /// [titleBadgeInk] on the returned fill.
 Color titleBadgeFill(BuildContext context, Color hue) {
   if (!context.isLightTheme) return hue;
-  const white = Color(0xFFFFFFFF);
-  final ink = _titleBadgeDarkInk;
-  if (wcagContrast(white, hue) >= 4.5 || wcagContrast(ink, hue) >= 4.5) {
-    return hue;
-  }
-  for (var step = 1; step <= 20; step++) {
-    final deeper = Color.lerp(hue, ink, step / 20)!;
-    if (wcagContrast(white, deeper) >= 4.5) return deeper;
-  }
-  return ink;
+  return titleBadgeLegibleFill(hue);
 }
 
 /// Returns the appropriate badge color for a chess title.

@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -27,12 +28,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// overlay for management, which auto-dismissed and dumped Stripe users into
 /// an empty native subscriptions screen ("nothing happens").
 Future<void> showManageSubscriptionSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+  return showGlassModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => const _ManageSubscriptionSheet(),
   );
@@ -50,16 +50,15 @@ class _ManageSubscriptionSheet extends ConsumerWidget {
     final state = ref.watch(subscriptionProvider);
     final isStripe = state.provider == 'stripe';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: context.colors.popup,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
-      ),
+    // Frosted glass toned to the popup surface it used to be painted on.
+    return GlassSheet(
+      radius: 24.br,
+      tone: context.colors.popup,
       padding: EdgeInsets.fromLTRB(
         20.sp,
         12.sp,
         20.sp,
-        20.sp + MediaQuery.of(context).padding.bottom,
+        20.sp + MediaQuery.paddingOf(context).bottom,
       ),
       child: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,

@@ -254,8 +254,9 @@ void main() {
       );
     });
 
-    test('events: found and listed ones once each, in play under Live now, '
-        'not started under Coming up, the rest under Events', () {
+    test('events: found and listed ones once each, not started under Coming '
+        'up, the rest under Events with the ones in play first, reading '
+        'LIVE; no group of their own', () {
       final now = DateTime.utc(2026, 11, 20);
       final found = [
         _event('past', title: 'Tata Steel 2026'),
@@ -268,13 +269,6 @@ void main() {
       final groups = searchEventGroups(
         'tata',
         found: found,
-        liveNow: [
-          _event(
-            'live',
-            title: 'Tata Steel Masters 2027',
-            category: TourEventCategory.ongoing,
-          ),
-        ],
         comingUp: [
           _event(
             'next',
@@ -287,10 +281,30 @@ void main() {
         liveIds: const ['live'],
         now: now,
       );
-      expect(groups.live.map((e) => e.id), ['live']);
-      expect(groups.live.single.tourEventCategory, TourEventCategory.live);
       expect(groups.upcoming.map((e) => e.id), ['next']);
-      expect(groups.other.map((e) => e.id), ['past']);
+      // In play leads Events, though the search found it second.
+      expect(groups.events.map((e) => e.id), ['live', 'past']);
+      expect(groups.events.first.tourEventCategory, TourEventCategory.live);
+      expect(groups.events.last.tourEventCategory, TourEventCategory.completed);
+    });
+
+    test('events: before the live set is known, an event\'s own LIVE '
+        'category puts it at the head of Events', () {
+      final groups = searchEventGroups(
+        'tata',
+        found: [
+          _event('past', title: 'Tata Steel 2026'),
+          _event(
+            'live',
+            title: 'Tata Steel Masters 2027',
+            category: TourEventCategory.live,
+          ),
+        ],
+        now: DateTime.utc(2026, 11, 20),
+      );
+      expect(groups.upcoming, isEmpty);
+      expect(groups.events.map((e) => e.id), ['live', 'past']);
+      expect(groups.events.first.tourEventCategory, TourEventCategory.live);
     });
 
     test('news: a title that names the words first, then a summary, eight at '

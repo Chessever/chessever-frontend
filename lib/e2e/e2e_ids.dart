@@ -17,8 +17,10 @@ class E2eIds {
   static const navForYou = 'e2e_nav_for_you';
   static const navFeed = 'e2e_nav_feed';
   static const navBotvinnik = 'e2e_nav_botvinnik';
-  static const navSearch = 'e2e_nav_search';
   static const navProfile = 'e2e_nav_profile';
+
+  /// The dock's Collections slot, where Search's stood (Search opens from
+  /// Today's floating button, [forYouSearchButton]).
   static const navCollections = 'e2e_nav_collections';
   static const navLibrary = navCollections;
 
@@ -62,7 +64,9 @@ class E2eIds {
   static const eventsSearchField = 'e2e_events_search_field';
   static const eventsFilterButton = 'e2e_events_filter_button';
   static const forYouSearchField = 'e2e_for_you_search_field';
-  static const forYouFilterButton = 'e2e_for_you_filter_button';
+
+  /// Today's main floating button: it opens Search over Home.
+  static const forYouSearchButton = 'e2e_for_you_search_button';
   static const calendarSearchField = 'e2e_calendar_search_field';
   static const playersSearchField = 'e2e_players_search_field';
   static const playerSelectionSearchField = 'e2e_player_selection_search_field';

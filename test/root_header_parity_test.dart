@@ -4,15 +4,25 @@
 // gutter, its title, tabs or field on the same centre line, the same ground
 // under it, its page starting at the same y and, on every root that is a
 // page to read down, its first content on the same line under that
-// (HomeTopBarMetrics.contentGap). This pumps Home, Feed, Botvinnik and
-// Profile as the home shell holds them (in a ScrollChromeRegion over a
-// bottom bar) and measures each, on three phones, light and dark: the
-// geometry from the layout, the colours from the pixels actually drawn.
-// Search, which lives in another file, is held to the same numbers in
-// root_header_search_parity_test.dart.
+// (HomeTopBarMetrics.contentGap). This pumps Home, Feed, Botvinnik,
+// Collections and Profile as the home shell holds them (in a
+// ScrollChromeRegion over a bottom bar) and measures each, on three phones,
+// light and dark: the geometry from the layout, the colours from the pixels
+// actually drawn. Search is no root any more: it opens over Home from
+// Today's button, a pushed page with the pushed pages' back row.
 //
-// Feed's first content is its own: a post is one framed page composed by
-// FeedLayout, not a list, so only its page start is held to the line.
+// Collections wears Home's composition (its pages as the bar's tabs). Its
+// bar trades places with its catalog search, so the status bar's strip is
+// laid outside the band that folds rather than inside the frame: it is
+// measured from the screen's top all the same, and its band is held to
+// start exactly at the status bar. It is the real page (CollectionsScreen as
+// the dock's tab holds it, its catalog answered by a fake repository), and
+// each of its pages is measured: the catalog it opens on, Authors and About
+// all start their first content on the roots' one line.
+//
+// Feed wears no bar at all: no title and no controls, its posts start under
+// the status bar's strip (the page's own ground), so it is held to that
+// instead of the band, and has no title to share the type.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -29,6 +39,13 @@ import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/collections/collections_screen.dart';
+import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
@@ -53,6 +70,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -255,11 +274,21 @@ Future<_Measure> _measure(
   required Finder label,
   required Finder page,
   Finder? firstContent,
+  double? statusBarOutside,
 }) async {
-  final frame = tester.getRect(find.byType(HomeTopBarFrame).first);
-  final status = MediaQuery.viewPaddingOf(
+  var frame = tester.getRect(find.byType(HomeTopBarFrame).first);
+  var status = MediaQuery.viewPaddingOf(
     tester.element(find.byType(HomeTopBarFrame).first),
   ).top;
+  // A root that keeps the status bar's strip outside the band (Collections):
+  // the band must start exactly under the strip, and the bar is measured
+  // from the screen's top like every other root's.
+  if (statusBarOutside != null) {
+    expect(status, 0, reason: name);
+    expect(frame.top, closeTo(statusBarOutside, 0.5), reason: name);
+    status = statusBarOutside;
+    frame = Rect.fromLTRB(frame.left, 0, frame.right, frame.bottom);
+  }
   final shot = await _capture(tester);
   // On the start gutter, clear of every control: the first two points.
   const x = 2.0;
@@ -299,6 +328,70 @@ Widget _fakePage(BuildContext context, ForYouTab tab, ScrollController c) {
   );
 }
 
+/// The catalog the real Collections root reads: a few books and authors,
+/// answered at once, with no network.
+class _Catalog extends CollectionsRepository {
+  _Catalog() : super(GamebaseRepository(Dio(), apiKey: 'test'));
+
+  static const _books = [
+    Collection(
+      id: 'zurich-1953',
+      slug: 'zurich-1953',
+      kind: CollectionKind.event,
+      title: 'Zurich 1953',
+      location: 'Zurich',
+      access: CollectionAccess.free,
+    ),
+    Collection(
+      id: 'my-60',
+      slug: 'my-60',
+      kind: CollectionKind.book,
+      title: 'My 60 Memorable Games',
+      author: 'Bobby Fischer',
+      access: CollectionAccess.free,
+    ),
+  ];
+
+  static const _authors = [
+    CollectionAuthor(id: 'fischer', name: 'Bobby Fischer', bookCount: 1),
+    CollectionAuthor(id: 'bronstein', name: 'David Bronstein', bookCount: 1),
+  ];
+
+  @override
+  Future<List<String>> fetchAuthors() async => const ['Bobby Fischer'];
+
+  @override
+  Future<CollectionsPage> searchBooks(
+    CollectionSearchQuery query,
+    int offset,
+  ) async => CollectionsPage(
+    items: offset == 0 ? _books : const [],
+    total: _books.length,
+    limit: 40,
+    offset: offset,
+  );
+
+  @override
+  Future<({List<CollectionAuthor> items, int total})> searchAuthors(
+    CollectionSearchQuery query,
+    int offset,
+  ) async => (
+    items: offset == 0 ? _authors : const <CollectionAuthor>[],
+    total: _authors.length,
+  );
+}
+
+class _NoFavoriteEvents extends FavoriteEventsNotifier {
+  @override
+  Future<List<FavoriteEvent>> build() async => const <FavoriteEvent>[];
+}
+
+/// The selected page tab of the Collections root's bar.
+Finder _collectionsTab(String label) => find.descendant(
+  of: find.byType(ForYouPageTabs),
+  matching: find.text(label),
+);
+
 /// Profile's first row: the reader.
 final Finder _profileFirst = find.byWidgetPredicate(
   (widget) => widget.runtimeType.toString() == '_ReaderHeader',
@@ -317,6 +410,27 @@ List<Override> _homeOverrides() => [
   selectedBottomNavBarItemProvider.overrideWith(
     (ref) => BottomNavBarItem.forYou,
   ),
+];
+
+List<Override> _collectionsOverrides() => [
+  recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
+  selectedBottomNavBarItemProvider.overrideWith(
+    (ref) => BottomNavBarItem.collections,
+  ),
+  selectedCollectionsTabProvider.overrideWith(
+    (ref) => CollectionsTab.collections,
+  ),
+  collectionsRepositoryProvider.overrideWithValue(_Catalog()),
+  favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new),
+  subscriptionProvider.overrideWith((ref) => _Subscription()),
+  currentUserProvider.overrideWith(
+    (ref) => AppUser(
+      id: inboxOwnerA,
+      createdAt: DateTime.utc(2026),
+      isAnonymous: true,
+    ),
+  ),
+  profileAvatarUrlProvider.overrideWithValue(null),
 ];
 
 class _LoadingFeed extends FeedNotifier {
@@ -356,9 +470,6 @@ class _SilentSfx implements FeedSfx {
 
   @override
   void playGameEnd(FeedItem item) {}
-
-  @override
-  void playSwipe() {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -462,24 +573,6 @@ Future<List<_Measure>> _measureRoots(
   );
   await _tearDown(tester);
 
-  await _pumpRoot(
-    tester,
-    root: const FeedScreen(embedded: true),
-    overrides: _feedOverrides(),
-    light: light,
-    phone: phone,
-    feed: true,
-  );
-  out.add(
-    await _measure(
-      tester,
-      'Feed',
-      label: find.text('Feed'),
-      page: find.byType(FeedSkeleton),
-    ),
-  );
-  await _tearDown(tester);
-
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   Supabase.instance.client.auth.stopAutoRefresh();
   await _pumpRoot(
@@ -501,6 +594,57 @@ Future<List<_Measure>> _measureRoots(
       page: find.byType(BotvinnikInboxTimeline),
       // A new conversation: its mark is the first thing on the page.
       firstContent: find.byType(BotvinnikAnimatedIcon),
+    ),
+  );
+  await _tearDown(tester);
+
+  await _pumpRoot(
+    tester,
+    root: const CollectionsScreen(embedded: true),
+    overrides: _collectionsOverrides(),
+    light: light,
+    phone: phone,
+  );
+  // The catalog it opens on: its first card.
+  out.add(
+    await _measure(
+      tester,
+      'Collections',
+      // Its selected tab, as Home's Today.
+      label: _collectionsTab('Collections'),
+      page: find.byType(PageView),
+      firstContent: find.byType(CollectionCard),
+      statusBarOutside: phone.statusBar,
+    ),
+  );
+  // Authors: its first author.
+  await tester.tap(_collectionsTab('Authors'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.pump(const Duration(milliseconds: 100));
+  out.add(
+    await _measure(
+      tester,
+      'Collections: Authors',
+      label: _collectionsTab('Authors'),
+      page: find.byType(PageView),
+      firstContent: find.byType(FigmaPlayerCard),
+      statusBarOutside: phone.statusBar,
+    ),
+  );
+  // About: its heading.
+  await tester.tap(_collectionsTab('About'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.pump(const Duration(milliseconds: 100));
+  out.add(
+    await _measure(
+      tester,
+      'Collections: About',
+      label: _collectionsTab('About'),
+      page: find.byType(PageView),
+      firstContent: find.text('About collections'),
+      statusBarOutside: phone.statusBar,
     ),
   );
   await _tearDown(tester);
@@ -603,20 +747,20 @@ void main() {
         expect(tester.takeException(), isNull);
         final want = await _wanted(tester, light: light, phone: phone);
 
-        expect(roots.map((r) => r.name), [
+        const names = [
           'Home',
-          'Feed',
           'Botvinnik',
+          'Collections',
+          'Collections: Authors',
+          'Collections: About',
           'Profile',
-        ]);
+        ];
+        expect(roots.map((r) => r.name), names);
         // Every root that is a page to read down states where it starts.
-        expect(
-          [
-            for (final root in roots)
-              if (root.firstContent != null) root.name,
-          ],
-          ['Home', 'Botvinnik', 'Profile'],
-        );
+        expect([
+          for (final root in roots)
+            if (root.firstContent != null) root.name,
+        ], names);
 
         for (final root in roots) {
           expect(root.frame.top, closeTo(0, 0.5), reason: '$root');
@@ -665,23 +809,53 @@ void main() {
     }
   }
 
+  for (final light in [false, true]) {
+    testWidgets('Feed wears no bar: no title, no speaker, its page under the '
+        'status bar\'s strip in the page\'s ground '
+        '(${light ? 'light' : 'dark'})', (tester) async {
+      await _pumpRoot(
+        tester,
+        root: const FeedScreen(embedded: true),
+        overrides: _feedOverrides(),
+        light: light,
+        feed: true,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byType(HomeTopBarFrame), findsNothing);
+      expect(find.text('Feed'), findsNothing);
+      expect(find.byKey(const ValueKey('feed_title')), findsNothing);
+      expect(find.byKey(const ValueKey('feed_sound_toggle')), findsNothing);
+      final context = tester.element(find.byType(FeedScreen));
+      final statusBar = MediaQueryData.fromView(View.of(context)).padding.top;
+      final strip = tester.getRect(
+        find.byKey(const ValueKey('feed_status_strip')),
+      );
+      expect(strip.top, closeTo(0, 0.5));
+      expect(strip.height, closeTo(statusBar, 0.5));
+      final strips = find.descendant(
+        of: find.byKey(const ValueKey('feed_status_strip')),
+        matching: find.byType(ColoredBox),
+      );
+      expect(
+        _sameColour(
+          tester.widget<ColoredBox>(strips.first).color,
+          context.colors.background,
+        ),
+        isTrue,
+      );
+      // The post (here its skeleton) starts under the strip, its header
+      // line first.
+      expect(
+        tester.getRect(find.byType(FeedSkeleton)).top,
+        closeTo(statusBar, 0.5),
+      );
+      await _tearDown(tester);
+    });
+  }
+
   testWidgets('the side controls sit on the bar\'s one gutter', (tester) async {
     const width = 393.0;
-    await _pumpRoot(
-      tester,
-      root: const FeedScreen(embedded: true),
-      overrides: _feedOverrides(),
-      light: false,
-      feed: true,
-    );
     final gutter = HomeTopBarMetrics.horizontalPadding;
-    expect(
-      tester.getRect(find.byKey(const ValueKey('feed_sound_toggle'))).right,
-      closeTo(width - gutter, 0.5),
-    );
-    // The title is centred on the screen, not between the controls.
-    expect(tester.getCenter(find.text('Feed')).dx, closeTo(width / 2, 0.5));
-    await _tearDown(tester);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     Supabase.instance.client.auth.stopAutoRefresh();
@@ -748,9 +922,31 @@ void main() {
       closeTo(width - gutter, 0.5),
     );
     await _tearDown(tester);
+
+    // Collections' pages run the bar's width on the same gutter as Home's.
+    await _pumpRoot(
+      tester,
+      root: const CollectionsScreen(embedded: true),
+      overrides: _collectionsOverrides(),
+      light: false,
+    );
+    expect(
+      tester.getTopLeft(find.byType(ForYouPageTabs)).dx,
+      closeTo(gutter, 0.5),
+    );
+    expect(
+      tester.getTopRight(find.byType(ForYouPageTabs)).dx,
+      closeTo(width - gutter, 0.5),
+    );
+    // The selected page sits on the screen's centre, as Home's Today does.
+    expect(
+      tester.getCenter(_collectionsTab('Collections')).dx,
+      closeTo(width / 2, 0.5),
+    );
+    await _tearDown(tester);
   });
 
-  testWidgets('the four titles wear one type: Home\'s selected tab', (
+  testWidgets('every root\'s title wears one type: Home\'s selected tab', (
     tester,
   ) async {
     TextStyle styleOf(String text) =>
@@ -763,15 +959,6 @@ void main() {
       light: true,
     );
     want['Today'] = styleOf('Today');
-    await _tearDown(tester);
-    await _pumpRoot(
-      tester,
-      root: const FeedScreen(embedded: true),
-      overrides: _feedOverrides(),
-      light: true,
-      feed: true,
-    );
-    want['Feed'] = styleOf('Feed');
     await _tearDown(tester);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     Supabase.instance.client.auth.stopAutoRefresh();
@@ -786,6 +973,16 @@ void main() {
       still: true,
     );
     want['Botvinnik'] = styleOf('Botvinnik');
+    await _tearDown(tester);
+    await _pumpRoot(
+      tester,
+      root: const CollectionsScreen(embedded: true),
+      overrides: _collectionsOverrides(),
+      light: true,
+    );
+    want['Collections'] = tester
+        .widget<Text>(_collectionsTab('Collections'))
+        .style!;
     await _tearDown(tester);
     await _pumpRoot(
       tester,

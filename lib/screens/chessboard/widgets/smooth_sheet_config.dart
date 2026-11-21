@@ -3,8 +3,11 @@
 library;
 
 import 'dart:math' as math;
-import 'package:chessever2/theme/app_colors.dart';
+
+import 'package:chessever2/widgets/glass_sheet.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:motor/motor.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 
@@ -138,67 +141,142 @@ class ChessSheetConfigs {
   }
 }
 
-/// Enhanced material decoration with refined styling
+/// The surface of every smooth_sheets sheet: the popups' frosted glass
+/// ([ChessSheetGlass]), rounded at the top.
 class ChessSheetDecoration {
   ChessSheetDecoration._();
 
-  /// Themed sheet with premium feel
-  /// Slightly transparent for depth, generous border radius for modern look
-  static MaterialSheetDecoration dark(
+  /// The sheet in [ChessSheetGlass], averaging out to the theme's surface.
+  ///
+  /// [alpha] is what the opaque sheet's surface used to be laid at. It is
+  /// kept so callers compile; the glass's density is [PopupGlassStyle]'s,
+  /// solved for legible text over the busiest page. [solid] is
+  /// [GlassSheet.solid].
+  static SheetDecoration dark(
     BuildContext context, {
     double alpha = 0.96,
     double borderRadius = 28.0,
+    bool solid = false,
   }) {
-    return MaterialSheetDecoration(
+    return SheetDecorationBuilder(
       size: SheetSize.stretch,
-      color: context.colors.surface.withValues(alpha: alpha),
-      borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
-      clipBehavior: Clip.antiAlias,
+      builder: (context, child) =>
+          ChessSheetGlass(radius: borderRadius, solid: solid, child: child),
     );
   }
 
-  /// Frosted glass effect for overlays
-  /// Combines blur and transparency for premium feel
-  static MaterialSheetDecoration frosted(
+  /// The same glass as [dark]: there is one sheet material.
+  static SheetDecoration frosted(
     BuildContext context, {
     double alpha = 0.92,
     double borderRadius = 28.0,
+    bool solid = false,
   }) {
-    return MaterialSheetDecoration(
-      size: SheetSize.stretch,
-      color: context.colors.surface.withValues(alpha: alpha),
-      borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
-      clipBehavior: Clip.antiAlias,
+    return dark(
+      context,
+      alpha: alpha,
+      borderRadius: borderRadius,
+      solid: solid,
     );
   }
 }
 
-/// Animated route that uses spring physics for transitions
-class SpringModalSheetRoute<T> extends ModalSheetRoute<T> {
-  SpringModalSheetRoute({
-    required super.builder,
-    Curve springCurve = ChessSheetCurves.snappy,
-    super.barrierDismissible = true,
-    super.swipeDismissible = true,
-    Color? barrierColor,
-    super.barrierLabel,
-    super.viewportPadding,
-    Duration? transitionDuration,
-    Duration? reverseTransitionDuration,
-  }) : super(
-         barrierColor: barrierColor ?? const Color(0xB3000000),
-         transitionCurve: springCurve,
-         transitionDuration:
-             transitionDuration ?? const Duration(milliseconds: 450),
-       );
+/// The smooth_sheets sheets' name for the one sheet glass ([GlassSheet]):
+/// rounded at 28 by default, on a transparent [Material] (ink and the
+/// default text style, as the opaque `MaterialSheetDecoration` gave them).
+/// It has no surface of its own: everything it draws is [GlassSheet]'s,
+/// frosted or solid by [GlassSheet]'s one rule.
+class ChessSheetGlass extends GlassSheet {
+  const ChessSheetGlass({
+    super.key,
+    required super.child,
+    super.radius = 28,
+    super.tone,
+    super.solid,
+  }) : super(inkSurface: true);
+
+  /// The barrier a glass sheet opens over: the theme's scrim at the
+  /// popups' strength, which the plate is solved over.
+  static Color barrierColor(BuildContext context) => glassSheetBarrier(context);
 }
 
-/// Modal sheet route whose slide is driven by a real spring simulation rather
-/// than by a [Curve] sampled over a fixed duration, and whose entrance is held
-/// back until its content has been built once.
+/// Where a 0-to-1 spring that moves a surface counts as at rest: within two
+/// thousandths of its travel (about a pixel for a full-height sheet, and it
+/// then lands exactly) and slower than four hundredths of it a second (under
+/// half a pixel a frame). The default tolerance waits for a thousandth of a
+/// unit a second, and a critically damped spring spends a third of its
+/// frames creeping sub-pixel to it, every one of them a redraw of the glass
+/// over the page.
+const Tolerance kSurfaceSpringTolerance = Tolerance(
+  distance: 2e-3,
+  velocity: 4e-2,
+);
+
+/// [motion]'s simulation from [start] to [end], at rest at
+/// [kSurfaceSpringTolerance] and landing exactly on [end].
+Simulation settlingSimulation(
+  Motion motion, {
+  required double start,
+  required double end,
+}) {
+  if (motion is SpringMotion) {
+    return SpringSimulation(
+      motion.description,
+      start,
+      end,
+      0,
+      tolerance: kSurfaceSpringTolerance,
+      snapToEnd: true,
+    );
+  }
+  return motion.createSimulation(start: start, end: end);
+}
+
+/// [spring] for a motion builder that moves a surface through 0 to 1 (a
+/// sheet's slide, its scrim): the same spring, at rest at
+/// [kSurfaceSpringTolerance] and landing exactly on its target, so the
+/// builder stops ticking once nothing moves by a pixel.
+@immutable
+class SurfaceSpring extends Motion {
+  const SurfaceSpring(this.spring) : super(tolerance: kSurfaceSpringTolerance);
+
+  final SpringMotion spring;
+
+  @override
+  bool get needsSettle => true;
+
+  @override
+  bool get unboundedWillSettle => false;
+
+  @override
+  Simulation createSimulation({
+    double start = 0,
+    double end = 1,
+    double velocity = 0,
+  }) => SpringSimulation(
+    spring.description,
+    start,
+    end,
+    velocity,
+    tolerance: tolerance,
+    snapToEnd: true,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is SurfaceSpring && other.spring == spring;
+
+  @override
+  int get hashCode => Object.hash(SurfaceSpring, spring);
+}
+
+/// A sheet route's slide on a spring: a real simulation for each direction
+/// ([createSimulation]) rather than a [Curve] sampled over a fixed duration,
+/// and an entrance held back until the sheet's content has been built once.
 ///
-/// Two problems with the curve-driven version ([SpringModalSheetRoute], and
-/// Material's own `showModalBottomSheet`) are fixed here:
+/// Two problems with a curve-driven sheet route (the old
+/// `SpringModalSheetRoute`, and Material's own `showModalBottomSheet`) are
+/// fixed here:
 ///
 ///  * **The entrance was skipped on heavy sheets.** A route starts its
 ///    transition clock the moment it is pushed, but the frame that follows the
@@ -213,42 +291,18 @@ class SpringModalSheetRoute<T> extends ModalSheetRoute<T> {
 ///    becomes a pause followed by a drop. A simulation is asked for each
 ///    direction separately ([createSimulation]), so the exit accelerates away
 ///    from rest exactly like the entrance accelerates towards it.
-class MotionSheetRoute<T> extends ModalSheetRoute<T> {
-  MotionSheetRoute({
-    required super.builder,
-    super.barrierColor,
-    super.barrierLabel,
-    super.barrierDismissible,
-    super.swipeDismissible = true,
-    super.viewportPadding,
-    super.swipeDismissSensitivity,
-    this.entranceMotion = const CupertinoMotion.smooth(
-      duration: Duration(milliseconds: 400),
-      snapToEnd: true,
-    ),
-    this.exitMotion = const CupertinoMotion.smooth(
-      duration: Duration(milliseconds: 320),
-      snapToEnd: true,
-    ),
-  }) : super(
-         // The simulation carries all of the easing, so the curve has to map
-         // it 1:1. It doubles as the curve smooth_sheets falls back to while a
-         // swipe is in progress, where linear is exactly what tracks a finger.
-         transitionCurve: Curves.linear,
-         // Ignored while a simulation drives the controller, but smooth_sheets
-         // still reads it to time the snap-back after a released swipe that
-         // did not dismiss.
-         transitionDuration: const Duration(milliseconds: 300),
-       );
-
+///
+/// The route's own curve must map 1:1 (linear): the simulation carries all
+/// of the easing.
+mixin SpringSheetTransition<T> on TransitionRoute<T> {
   /// Spring that carries the sheet up on push. Critically damped by default:
   /// a tall sheet that overshoots its rest position lifts its bottom edge off
   /// the screen and flashes the barrier underneath it.
-  final Motion entranceMotion;
+  Motion get entranceMotion;
 
   /// Spring that carries the sheet back down on pop. Shorter than
   /// [entranceMotion] so a dismissal feels decided rather than reluctant.
-  final Motion exitMotion;
+  Motion get exitMotion;
 
   /// Set between [didPush] and the post-frame callback that releases the
   /// entrance, so a route popped inside that window never starts moving up.
@@ -258,8 +312,8 @@ class MotionSheetRoute<T> extends ModalSheetRoute<T> {
   Simulation createSimulation({required bool forward}) {
     // Always start from where the sheet currently is: a pop can arrive
     // mid-entrance, or with the sheet already dragged part of the way down.
-    final motion = forward ? entranceMotion : exitMotion;
-    return motion.createSimulation(
+    return settlingSimulation(
+      forward ? entranceMotion : exitMotion,
       start: controller!.value,
       end: forward ? 1.0 : 0.0,
     );
@@ -299,6 +353,47 @@ class MotionSheetRoute<T> extends ModalSheetRoute<T> {
   }
 }
 
+/// The default springs of a sheet's slide.
+const Motion kSheetEntranceMotion = CupertinoMotion.smooth(
+  duration: Duration(milliseconds: 400),
+  snapToEnd: true,
+);
+const Motion kSheetExitMotion = CupertinoMotion.smooth(
+  duration: Duration(milliseconds: 320),
+  snapToEnd: true,
+);
+
+/// smooth_sheets' modal sheet route on [SpringSheetTransition]'s springs.
+class MotionSheetRoute<T> extends ModalSheetRoute<T>
+    with SpringSheetTransition<T> {
+  MotionSheetRoute({
+    required super.builder,
+    super.barrierColor,
+    super.barrierLabel,
+    super.barrierDismissible,
+    super.swipeDismissible = true,
+    super.viewportPadding,
+    super.swipeDismissSensitivity,
+    this.entranceMotion = kSheetEntranceMotion,
+    this.exitMotion = kSheetExitMotion,
+  }) : super(
+         // The simulation carries all of the easing, so the curve has to map
+         // it 1:1. It doubles as the curve smooth_sheets falls back to while a
+         // swipe is in progress, where linear is exactly what tracks a finger.
+         transitionCurve: Curves.linear,
+         // Ignored while a simulation drives the controller, but smooth_sheets
+         // still reads it to time the snap-back after a released swipe that
+         // did not dismiss.
+         transitionDuration: const Duration(milliseconds: 300),
+       );
+
+  @override
+  final Motion entranceMotion;
+
+  @override
+  final Motion exitMotion;
+}
+
 /// Page route for nested sheet navigation
 class SpringPagedSheetRoute extends PagedSheetRoute {
   SpringPagedSheetRoute({
@@ -311,59 +406,51 @@ class SpringPagedSheetRoute extends PagedSheetRoute {
   });
 }
 
-/// Helper to create smooth sheet routes with sensible defaults
+/// The modal sheets' routes: each slides on a spring ([MotionSheetRoute])
+/// over the plain scrim the sheet glass is solved over
+/// ([ChessSheetGlass.barrierColor]).
 class ChessSheetRoutes {
   ChessSheetRoutes._();
 
-  /// Action menu route - snappy and responsive
-  static SpringModalSheetRoute<void> actionMenu({
+  /// The barrier when no [BuildContext] is given: the dark scrim at the
+  /// popups' strength.
+  static const Color _fallbackBarrier = Color(0x9E000000);
+
+  static MotionSheetRoute<void> _route({
     required WidgetBuilder builder,
-    BuildContext? context,
+    required BuildContext? context,
+    required String label,
   }) {
-    final padding =
-        context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
-    return SpringModalSheetRoute<void>(
+    final padding = context != null
+        ? MediaQuery.viewPaddingOf(context)
+        : EdgeInsets.zero;
+    return MotionSheetRoute<void>(
       builder: builder,
-      springCurve: ChessSheetCurves.snappy,
-      barrierColor: context?.colors.scrim ?? const Color(0xB3000000),
-      barrierLabel: 'Close menu',
+      barrierColor: context != null
+          ? ChessSheetGlass.barrierColor(context)
+          : _fallbackBarrier,
+      barrierLabel: label,
+      barrierDismissible: true,
       // Only respect top padding; allow the sheet to cover the bottom safe area
       viewportPadding: EdgeInsets.only(top: padding.top),
     );
   }
 
-  /// Comment editor route - smooth and gentle
-  static SpringModalSheetRoute<void> commentEditor({
+  /// Action menu route (move, variation and line actions).
+  static MotionSheetRoute<void> actionMenu({
     required WidgetBuilder builder,
     BuildContext? context,
-  }) {
-    final padding =
-        context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
-    return SpringModalSheetRoute<void>(
-      builder: builder,
-      springCurve: ChessSheetCurves.smooth,
-      barrierColor: context?.colors.scrim ?? const Color(0xB3000000),
-      barrierLabel: 'Close editor',
-      // Only respect top padding; allow the sheet to cover the bottom safe area
-      viewportPadding: EdgeInsets.only(top: padding.top),
-    );
-  }
+  }) => _route(builder: builder, context: context, label: 'Close menu');
 
-  /// Preview route - bouncy and delightful
-  static SpringModalSheetRoute<void> preview({
+  /// Comment editor route, and the Library's save sheets.
+  static MotionSheetRoute<void> commentEditor({
     required WidgetBuilder builder,
     BuildContext? context,
-  }) {
-    final padding =
-        context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
-    return SpringModalSheetRoute<void>(
-      builder: builder,
-      springCurve: ChessSheetCurves.bouncy,
-      // Keep background visible while dimming slightly behind the sheet
-      barrierColor: context?.colors.scrim ?? const Color(0xB3000000),
-      barrierLabel: 'Close preview',
-      // Only respect top padding; allow the sheet to cover the bottom safe area
-      viewportPadding: EdgeInsets.only(top: padding.top),
-    );
-  }
+  }) => _route(builder: builder, context: context, label: 'Close editor');
+
+  /// Preview route.
+  static MotionSheetRoute<void> preview({
+    required WidgetBuilder builder,
+    BuildContext? context,
+  }) => _route(builder: builder, context: context, label: 'Close preview');
 }

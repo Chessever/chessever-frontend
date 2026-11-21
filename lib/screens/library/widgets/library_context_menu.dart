@@ -1,12 +1,18 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/tablet_safe_menu.dart' show TabletPopupState;
+import 'package:chessever2/utils/tablet_safe_menu.dart'
+    show
+        GlassAnchoredMotion,
+        GlassFold,
+        GlassFoldTransition,
+        TabletPopupState,
+        TransientOverlayRoute;
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show
@@ -86,17 +92,17 @@ class LibraryContextMenuHandle {
 /// Springs for every moving part. All of them snap onto their target when
 /// they settle, so nothing rests a hair off identity.
 abstract final class _FocusMotion {
-  /// Backdrop blur and dim, and the menu fade: they ride the route itself.
+  /// The page's dim and the rows' fade on close: they ride the route itself.
   static const open = CupertinoMotion.smooth(
     duration: Duration(milliseconds: 220),
     snapToEnd: true,
   );
 
-  /// Closing is quicker than opening: the user has already decided.
-  static const close = CupertinoMotion.smooth(
-    duration: Duration(milliseconds: 160),
-    snapToEnd: true,
-  );
+  /// The close: every anchored glass surface's fold spring
+  /// ([GlassAnchoredMotion.close]), quicker than the open (the reader has
+  /// already decided). The panels fold shut on it, the rows fade and the
+  /// dim clears with it.
+  static const close = GlassAnchoredMotion.close;
 
   /// The card rising off the page. A little give, never a wobble.
   static const lift = CupertinoMotion.bouncy(
@@ -116,7 +122,7 @@ abstract final class _FocusMotion {
     snapToEnd: true,
   );
 
-  /// Everything going home on close. Settles well inside [close]'s tail, so
+  /// The card going home on close. Settles well inside [close]'s tail, so
   /// the route never removes a card that is still travelling.
   static const settle = CupertinoMotion.smooth(
     duration: Duration(milliseconds: 150),
@@ -130,9 +136,12 @@ abstract final class _FocusMotion {
   );
 }
 
-/// The panel scales in from here, never from nothing.
-const double _kMenuFromScale = 0.96;
-const double _kMenuCloseScale = 0.97;
+/// The panels grow out of the card edge from here, at full strength from
+/// the first frame (glass is never faded: under an opacity it loses its
+/// frost). On close they fold shut into that edge, the whole glass to
+/// nothing, while their rows fade ([GlassFold]), so nothing is left on
+/// screen to vanish when the route goes.
+const double _kMenuFromScale = 0.9;
 const double _kRowPressedScale = 0.98;
 const double _kTilePressedScale = 0.97;
 
@@ -140,12 +149,6 @@ const double _kTilePressedScale = 0.97;
 /// tall card never balloons past the screen.
 const double _kMaxLift = 0.035;
 const double _kMaxLiftPoints = 18.0;
-
-/// The blur fades in over one Impeller downsample band (sigma 11.3 to 22.6
-/// all render at quarter resolution), so no frame of the fade blurs at full
-/// resolution and the sampling grid never switches mid-fade (which shimmers).
-const double _kBlurSigmaFrom = 12.0;
-const double _kBlurSigma = 20.0;
 
 /// A card taller than the room beside its menu shrinks to fit, down to this.
 /// Below it the copy stays put and the menu sits over it instead.
@@ -175,10 +178,13 @@ double _snapToOne(double value) => (value - 1).abs() < 0.0005 ? 1.0 : value;
 
 /// Long-press focus menu for any card.
 ///
-/// The page behind blurs and dims while the pressed card is lifted, crisp,
-/// at its exact on-screen rect; its actions open beside it. [previewBuilder]
-/// should rebuild the card that was pressed (it inherits the card's themes
-/// and provider scope). Without one, the menu anchors to [context]'s box.
+/// The page behind dims (a plain tint that fades in, never a full-screen
+/// blur) while the pressed card is lifted, crisp, at its exact on-screen
+/// rect; its actions open beside it on frosted glass ([PopupGlass]), the
+/// panels sharing one blur of what is behind the block
+/// ([PopupGlassCluster]). [previewBuilder] should
+/// rebuild the card that was pressed (it inherits the card's themes and
+/// provider scope). Without one, the menu anchors to [context]'s box.
 ///
 /// The menu prefers to sit below the card, flips above it when there is no
 /// room, and only moves the card when neither side fits (a card too tall for
@@ -189,10 +195,10 @@ double _snapToOne(double value) => (value - 1).abs() < 0.0005 ? 1.0 : value;
 /// [onPreviewLiftChanged] gets `true` just before the copy covers the card and
 /// `false` once the menu has fully closed. A host that hides its original
 /// while it is true owns the hiding. For every other host the layer covers the
-/// card's on-screen part with the surface the page paints behind it, so the
-/// blur never shows a halo of the card around its copy (see [_SourceSurface]).
-/// A copy with no fill of its own is set on that same surface, so its text
-/// never floats over the veil.
+/// card's on-screen part with the surface the page paints behind it, so a
+/// copy that travels clear of an edge never leaves a dimmed twin of the card
+/// behind (see [_SourceSurface]). A copy with no fill of its own is set on
+/// that same surface, so its text never floats over the veil.
 ///
 /// It is a real route: Android back and a tap on the backdrop dismiss it, and
 /// the selected action runs after the pop. It leaves a focused text field
@@ -382,13 +388,13 @@ bool _textInputHasFocus() {
 
 /// How the pressed card sits on its page, read once as the menu opens.
 ///
-/// The blur samples everything under the veil, the original card included, so
-/// a card left painted bleeds a soft halo of itself around its lifted copy.
-/// When the host does not hide its card, the layer paints [slotColor] (what
-/// the page paints behind the card) over [slot] (the part of the card that is
-/// on screen), under the veil. When that colour cannot be told for certain (a
-/// gradient, an image, a painter, something layered under the card) nothing
-/// is painted: the old halo beats a block of the wrong colour.
+/// The original card stays painted under the veil, so a copy that travels
+/// clear of a screen edge would leave a dimmed twin of the card where it
+/// was. When the host does not hide its card, the layer paints [slotColor]
+/// (what the page paints behind the card) over [slot] (the part of the card
+/// that is on screen), under the veil. When that colour cannot be told for
+/// certain (a gradient, an image, a painter, something layered under the
+/// card) nothing is painted: the twin beats a block of the wrong colour.
 ///
 /// A card with no opaque fill of its own gets a [plate] of that surface
 /// behind its copy, so it lifts the way it looks in place.
@@ -819,7 +825,10 @@ class _Plate {
 /// `minOpenDuration` showTabletSafeMenu uses against phantom taps.
 const Duration _kTabletDismissGuard = Duration(milliseconds: 600);
 
-class _FocusMenuRoute extends PopupRoute<LibraryMenuAction> {
+/// A [TransientOverlayRoute]: the page under the menu stays on screen and
+/// live (a board under it keeps its engine running).
+class _FocusMenuRoute extends PopupRoute<LibraryMenuAction>
+    implements TransientOverlayRoute {
   _FocusMenuRoute({
     required this.builder,
     required this.barrierLabel,
@@ -843,7 +852,7 @@ class _FocusMenuRoute extends PopupRoute<LibraryMenuAction> {
   /// Back and the action rows are never blocked.
   bool get dismissGuarded => _guarding;
 
-  /// The layer paints its own blurred veil; the barrier only catches taps.
+  /// The layer paints its own veil; the barrier only catches taps.
   /// While [dismissGuarded] it still swallows taps, it just does not close.
   @override
   Color? get barrierColor => null;
@@ -870,21 +879,26 @@ class _FocusMenuRoute extends PopupRoute<LibraryMenuAction> {
   }
 
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 220);
+  Duration get transitionDuration => _FocusMotion.open.duration;
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 160);
+  Duration get reverseTransitionDuration => _FocusMotion.close.duration;
 
-  /// The route's own progress is a spring, so the blur, dim and fade all move
-  /// on physics and a close mid-open reverses from where it is, with its
-  /// velocity.
+  /// The route's own progress is a spring, so the dim, the fold and the
+  /// rows' fade move on physics. A close begun mid-open folds from where
+  /// the panels are, on the anchored surfaces' fold spring, at rest when the
+  /// fold holds nothing a reader can see.
   @override
   Simulation createSimulation({required bool forward}) {
     final controller = this.controller;
-    final motion = forward ? _FocusMotion.open : _FocusMotion.close;
-    return motion.createSimulation(
-      start: controller?.value ?? (forward ? 0.0 : 1.0),
-      end: forward ? 1.0 : 0.0,
+    if (!forward) {
+      return GlassAnchoredMotion.closeSimulation(
+        from: controller?.value ?? 1.0,
+      );
+    }
+    return _FocusMotion.open.createSimulation(
+      start: controller?.value ?? 0.0,
+      end: 1.0,
       velocity: controller?.velocity ?? 0.0,
     );
   }
@@ -943,6 +957,10 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
   Widget? _preview;
   Size? _openedAt;
 
+  /// The panels' fold over the route's progress: whole while the menu opens
+  /// and rests, then shut as it closes. Its value is the rows' opacity.
+  late final GlassFold _fold = GlassFold(_animation);
+
   /// The card's slot stays covered until the original may show again.
   bool _covering = true;
 
@@ -984,6 +1002,7 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
       final uncover = _reduceMotion;
       if (uncover) widget.onLiftEnded();
       if (mounted && (!_closing || (uncover && _covering))) {
+        _fold.close();
         setState(() {
           _closing = true;
           if (uncover) _covering = false;
@@ -1105,6 +1124,7 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
             reduceMotion: reduceMotion,
             maxHeight: geometry.menuMaxHeight,
             onSelect: _select,
+            contentOpacity: _fold,
           );
 
           return Semantics(
@@ -1115,9 +1135,10 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Under the veil, so the blur samples the page's own surface
-                // where the card was instead of the card. Fixed for the life
-                // of the menu, so the children after it never shift.
+                // Under the veil, so a copy that travels leaves the page's own
+                // surface where the card was instead of a dimmed twin. Fixed
+                // for the life of the menu, so the children after it never
+                // shift.
                 if (slot != null && slotColor != null)
                   Positioned.fromRect(
                     rect: slot,
@@ -1154,6 +1175,11 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
                         Transform.translate(offset: offset, child: child),
                     child: Stack(
                       fit: StackFit.expand,
+                      // Never clipped: this frame travels. A card partly past
+                      // a screen edge overflows it, and a clip here would
+                      // slice the copy where that edge was once the group
+                      // has moved it into view.
+                      clipBehavior: Clip.none,
                       children: [
                         if (preview != null)
                           Positioned(
@@ -1175,24 +1201,29 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
                           left: geometry.menuRect.left,
                           top: geometry.menuRect.top,
                           width: geometry.menuRect.width,
-                          child: FadeTransition(
-                            opacity: _animation,
-                            child: SingleMotionBuilder(
-                              value: reduceMotion
-                                  ? 1.0
-                                  : (_closing ? _kMenuCloseScale : 1.0),
-                              from: reduceMotion ? null : _kMenuFromScale,
-                              motion: _closing
-                                  ? _FocusMotion.settle
-                                  : _FocusMotion.pop,
-                              active: !reduceMotion,
-                              builder: (context, scale, child) =>
-                                  Transform.scale(
-                                    scale: _snapToOne(scale),
-                                    alignment: geometry.menuOrigin,
-                                    child: child,
-                                  ),
-                              child: RepaintBoundary(child: menu),
+                          // Scaled, never faded: the panels are glass. They
+                          // grow out of the card edge, then fold shut into it.
+                          child: SingleMotionBuilder(
+                            value: 1.0,
+                            from: reduceMotion ? null : _kMenuFromScale,
+                            motion: _FocusMotion.pop,
+                            active: !reduceMotion,
+                            builder: (context, scale, child) => Transform.scale(
+                              scale: _snapToOne(scale),
+                              alignment: geometry.menuOrigin,
+                              child: child,
+                            ),
+                            child: GlassFoldTransition(
+                              fold: _fold,
+                              alignment: geometry.menuOrigin,
+                              includeOpen: false,
+                              // Under reduced motion nothing folds: the
+                              // panels leave as the close begins, while the
+                              // copy fades back into the page.
+                              child: Offstage(
+                                offstage: reduceMotion && _closing,
+                                child: RepaintBoundary(child: menu),
+                              ),
                             ),
                           ),
                         ),
@@ -1209,11 +1240,15 @@ class _FocusMenuLayerState extends State<_FocusMenuLayer> {
   }
 }
 
-/// Full-screen blur plus a theme-aware dim, both growing with the route.
-///
-/// The fade wraps the filter and nothing else, so the engine folds its alpha
-/// into the filter's own layer instead of giving the blur an empty layer to
-/// sample. Sigma grows inside a single downsample band while it fades.
+/// The focus menu's veil, for tests that look at the page's dim.
+@visibleForTesting
+const kFocusMenuVeilKey = ValueKey<String>('focus_menu_veil');
+
+/// The page's dim: a plain tint of the popups' scrim that fades in with the
+/// route. Never a backdrop blur: re-blurring the whole live page on every
+/// frame of the open and the close (and on every repaint of the page under
+/// it while the menu is up) is what made the menu cost a frame budget; the
+/// frost is the panels' own, over their area only.
 class _Veil extends StatelessWidget {
   const _Veil({required this.animation, required this.color});
 
@@ -1222,23 +1257,13 @@ class _Veil extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: animation,
-      child: AnimatedBuilder(
-        animation: animation,
-        child: ColoredBox(color: color),
-        builder: (context, child) {
-          final t = animation.value.clamp(0.0, 1.0);
-          final sigma = _kBlurSigmaFrom + (_kBlurSigma - _kBlurSigmaFrom) * t;
-          return BackdropFilter(
-            filter: ui.ImageFilter.blur(
-              sigmaX: sigma,
-              sigmaY: sigma,
-              tileMode: TileMode.clamp,
-            ),
-            child: child,
-          );
-        },
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) => ColoredBox(
+        key: kFocusMenuVeilKey,
+        color: color.withValues(
+          alpha: color.a * animation.value.clamp(0.0, 1.0),
+        ),
       ),
     );
   }
@@ -1286,7 +1311,7 @@ class _LiftedPreview extends StatelessWidget {
     );
 
     // Under reduced motion there is no lift or travel: the copy simply fades
-    // back into the page as the blur clears. A card shrunk to make room for
+    // back into the page as the dim clears. A card shrunk to make room for
     // its menu is layout, not motion, so it keeps that size (without easing).
     final double target;
     if (reduceMotion) {
@@ -1319,9 +1344,6 @@ class _FocusStyle {
   const _FocusStyle._({
     required this.veil,
     required this.panel,
-    required this.lipTop,
-    required this.lipBottom,
-    required this.shadow,
     required this.pressedFill,
     required this.label,
     required this.icon,
@@ -1333,24 +1355,10 @@ class _FocusStyle {
     final light = context.isLightTheme;
     final ink = colors.textPrimary;
     return _FocusStyle._(
-      // Dark: deep ink so the lifted card and panel read as the only lit
-      // things. Light: an ink veil deep enough to set the paper panel apart
-      // without turning the page grey.
-      veil: light
-          ? ink.withValues(alpha: 0.25)
-          : const Color(0xFF000000).withValues(alpha: 0.42),
+      // The centred popups' dim: the glass panels are solved against the
+      // page under exactly this tint, so they average to [panel] over it.
+      veil: colors.scrim.withValues(alpha: PopupGlassStyle.of(context).scrim),
       panel: colors.surface,
-      // A lip in the panel's own light: brighter on top where light lands.
-      // On paper a highlight would vanish; only the lower lip darkens.
-      lipTop: light
-          ? ink.withValues(alpha: 0.02)
-          : const Color(0xFFFFFFFF).withValues(alpha: 0.11),
-      lipBottom: light
-          ? ink.withValues(alpha: 0.11)
-          : const Color(0xFFFFFFFF).withValues(alpha: 0.03),
-      shadow: light
-          ? ink.withValues(alpha: 0.16)
-          : const Color(0xFF000000).withValues(alpha: 0.5),
       pressedFill: light
           ? ink.withValues(alpha: 0.07)
           : const Color(0xFFFFFFFF).withValues(alpha: 0.08),
@@ -1361,24 +1369,13 @@ class _FocusStyle {
   }
 
   final Color veil;
+
+  /// The tone the glass panels average to.
   final Color panel;
-  final Color lipTop;
-  final Color lipBottom;
-  final Color shadow;
   final Color pressedFill;
   final Color label;
   final Color icon;
   final Color danger;
-
-  /// One light source above: tight, cast downward, pulled in at the sides.
-  List<BoxShadow> get panelShadow => [
-    BoxShadow(
-      color: shadow,
-      blurRadius: 14,
-      offset: const Offset(0, 6),
-      spreadRadius: -4,
-    ),
-  ];
 }
 
 // ---------------------------------------------------------------- model
@@ -1751,6 +1748,7 @@ class _MenuBlock extends StatelessWidget {
     required this.reduceMotion,
     required this.maxHeight,
     required this.onSelect,
+    required this.contentOpacity,
   });
 
   final _MenuModel model;
@@ -1759,6 +1757,9 @@ class _MenuBlock extends StatelessWidget {
   final bool reduceMotion;
   final double? maxHeight;
   final ValueChanged<LibraryMenuAction> onSelect;
+
+  /// The rows on the glass: whole until the menu closes, then fading.
+  final Animation<double> contentOpacity;
 
   @override
   Widget build(BuildContext context) {
@@ -1776,6 +1777,7 @@ class _MenuBlock extends StatelessWidget {
               style: style,
               reduceMotion: reduceMotion,
               onSelect: onSelect,
+              contentOpacity: contentOpacity,
             ),
           ),
         );
@@ -1787,6 +1789,7 @@ class _MenuBlock extends StatelessWidget {
       return _Surface(
         style: style,
         radius: _panelRadius(),
+        contentOpacity: contentOpacity,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: _kPanelInset),
           child: Column(
@@ -1828,84 +1831,91 @@ class _MenuBlock extends StatelessWidget {
     );
 
     final limit = maxHeight;
-    if (limit == null) return column;
-    // Only when the actions outgrow the screen: scroll rather than overflow.
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: limit),
-      child: SingleChildScrollView(child: column),
+    final radius = BorderRadius.circular(_panelRadius());
+    // One frost for every panel: the page under the whole block is read and
+    // blurred once (not once per quick button, list and destructive group),
+    // and the gutters between the panels are frosted with it, so page text
+    // never shows sharp between two panels.
+    if (limit != null) {
+      // Only when the actions outgrow the screen: scroll rather than
+      // overflow. The panels move under the frost, so it fills the block.
+      return PopupGlassCluster(
+        borderRadius: radius,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: limit),
+          child: SingleChildScrollView(child: column),
+        ),
+      );
+    }
+    // The frost is cut to the panels and the gutters between them, so at
+    // the block's edge a gutter ends between two rounded corners instead of
+    // showing as a square slab of frost behind them.
+    return LayoutBuilder(
+      builder: (context, constraints) => PopupGlassCluster(
+        borderRadius: radius,
+        panels: _panelRects(constraints.maxWidth),
+        child: column,
+      ),
     );
+  }
+
+  /// Every panel's rect in the block, as [build] lays them out: the quick
+  /// buttons share the first row (equal widths, [_kGroupGap] apart), then
+  /// the list and the destructive group, each its rows' heights plus the
+  /// panel's inset, [_kGroupGap] below the one before.
+  List<Rect> _panelRects(double width) {
+    final rects = <Rect>[];
+    var top = 0.0;
+    void next(double height) => top += height + _kGroupGap;
+    final count = model.prominent.length;
+    if (count > 0) {
+      final tile = (width - (count - 1) * _kGroupGap) / count;
+      for (var i = 0; i < count; i++) {
+        rects.add(
+          Rect.fromLTWH(i * (tile + _kGroupGap), top, tile, metrics.tileHeight),
+        );
+      }
+      next(metrics.tileHeight);
+    }
+    for (final (actions, heights) in [
+      (model.regular, metrics.regularHeights),
+      (model.destructive, metrics.destructiveHeights),
+    ]) {
+      if (actions.isEmpty) continue;
+      final height = heights.fold(2 * _kPanelInset, (sum, h) => sum + h);
+      rects.add(Rect.fromLTWH(0, top, width, height));
+      next(height);
+    }
+    return rects;
   }
 }
 
-/// Opaque panel material: a tonal step above the veil, a lip in its own light
-/// and one tight shadow cast from above.
+/// A panel of the menu, cut from the popups' frosted glass ([PopupGlass]):
+/// a plate that averages to the panel's tone over the veil and a lit rim,
+/// over the frost the whole block shares ([PopupGlassCluster]: one backdrop
+/// filter and one tight shadow cast from above, for every panel).
 class _Surface extends StatelessWidget {
   const _Surface({
     required this.style,
     required this.radius,
+    required this.contentOpacity,
     required this.child,
   });
 
   final _FocusStyle style;
   final double radius;
+  final Animation<double> contentOpacity;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: style.panel,
-        borderRadius: BorderRadius.circular(radius),
-        boxShadow: style.panelShadow,
-      ),
-      child: CustomPaint(
-        foregroundPainter: _LipPainter(
-          radius: radius,
-          top: style.lipTop,
-          bottom: style.lipBottom,
-        ),
-        child: child,
-      ),
+    return PopupGlass(
+      borderRadius: BorderRadius.circular(radius),
+      tone: style.panel,
+      // The rows fade on close; the glass itself is never faded.
+      child: FadeTransition(opacity: contentOpacity, child: child),
     );
   }
-}
-
-class _LipPainter extends CustomPainter {
-  const _LipPainter({
-    required this.radius,
-    required this.top,
-    required this.bottom,
-  });
-
-  final double radius;
-  final Color top;
-  final Color bottom;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [top, bottom],
-      ).createShader(rect);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        rect.deflate(0.5),
-        Radius.circular(math.max(radius - 0.5, 0)),
-      ),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_LipPainter oldDelegate) =>
-      oldDelegate.radius != radius ||
-      oldDelegate.top != top ||
-      oldDelegate.bottom != bottom;
 }
 
 class _ActionRow extends StatelessWidget {
@@ -1984,6 +1994,7 @@ class _ActionTile extends StatelessWidget {
     required this.style,
     required this.reduceMotion,
     required this.onSelect,
+    required this.contentOpacity,
   });
 
   final LibraryMenuAction action;
@@ -1991,6 +2002,7 @@ class _ActionTile extends StatelessWidget {
   final _FocusStyle style;
   final bool reduceMotion;
   final ValueChanged<LibraryMenuAction> onSelect;
+  final Animation<double> contentOpacity;
 
   @override
   Widget build(BuildContext context) {
@@ -2014,6 +2026,7 @@ class _ActionTile extends StatelessWidget {
         child: _Surface(
           style: style,
           radius: radius,
+          contentOpacity: contentOpacity,
           child: SizedBox(
             height: height,
             child: Padding(

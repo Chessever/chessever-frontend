@@ -678,6 +678,13 @@ class _BubbleLayout extends SingleChildLayoutDelegate {
 /// has no recorded evaluations, which is stated explicitly instead of
 /// drawing a synthetic flat curve. The existing scrub strip remains the
 /// move control.
+///
+/// The plot runs the post's whole column, the eval bar's left edge to the
+/// board's right edge. The action rail stands over its right end
+/// ([runEndInset]): the move line, the curve's moves and the cursor stop
+/// short of it, and only the chart's ground (the fill, the final
+/// evaluation run on flat, the midline) carries on under the rail's frost,
+/// so the board block flows into one chart that ends where the board does.
 class FeedEvaluationGraph extends StatefulWidget {
   const FeedEvaluationGraph({
     required this.item,
@@ -686,6 +693,8 @@ class FeedEvaluationGraph extends StatefulWidget {
     required this.onStart,
     required this.onUpdate,
     required this.onEnd,
+    this.height,
+    this.runEndInset = 0,
     super.key,
   });
 
@@ -695,6 +704,15 @@ class FeedEvaluationGraph extends StatefulWidget {
   final ValueChanged<double> onStart;
   final ValueChanged<double> onUpdate;
   final VoidCallback onEnd;
+
+  /// The slot's height; null for its least ([heightFor]). Height past the
+  /// least goes to the plot.
+  final double? height;
+
+  /// What stands over the chart's right end (the rail and its gap): the
+  /// move line and the moves of the curve end this far before the right
+  /// edge.
+  final double runEndInset;
 
   /// The graph's slot: its move line, the plot and the air around it
   /// ([FeedLayout.graphHeightFor], which every post lays out by).
@@ -714,6 +732,10 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
   double get _cursorX =>
       FeedScrubStrip.thumbInset +
       _span * widget.ply / math.max(1, widget.item.plyCount);
+
+  /// The plot's moves run from [FeedScrubStrip.thumbInset] to this far in
+  /// from the plot's right edge.
+  double get _endInset => FeedScrubStrip.thumbInset + widget.runEndInset;
 
   bool _onCursor(Offset local) =>
       (local.dx - _cursorX).abs() <= FeedScrubStrip.thumbReach;
@@ -738,30 +760,40 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final hasCurve = widget.item.hasEvals;
+    final scaler = MediaQuery.textScalerOf(context);
+    final infoHeight = FeedReportOverlay.infoHeightFor(scaler);
+    final height = math.max(
+      widget.height ?? FeedEvaluationGraph.heightFor(scaler),
+      FeedEvaluationGraph.heightFor(scaler),
+    );
+    final plotHeight = height - infoHeight - FeedLayout.chartAir;
     return SizedBox(
       key: const ValueKey('feed_evaluation_graph'),
-      height: FeedEvaluationGraph.heightFor(MediaQuery.textScalerOf(context)),
+      height: height,
       child: Column(
         children: [
-          FeedMoveInfoRow(
-            item: widget.item,
-            ply: widget.ply,
-            trailing: hasCurve ? feedEvalText(widget.item, widget.ply) : '',
-            height: FeedReportOverlay.infoHeightFor(
-              MediaQuery.textScalerOf(context),
+          Padding(
+            padding: EdgeInsetsDirectional.only(end: widget.runEndInset),
+            child: FeedMoveInfoRow(
+              item: widget.item,
+              ply: widget.ply,
+              trailing: hasCurve ? feedEvalText(widget.item, widget.ply) : '',
+              height: infoHeight,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: FeedLayout.chartAirAbove),
           SizedBox(
             key: const ValueKey('feed_report_chart'),
-            height: FeedReportOverlay.chartHeight,
+            height: plotHeight,
             width: double.infinity,
             child: hasCurve
                 ? LayoutBuilder(
                     builder: (context, constraints) {
                       _span = math.max(
                         1.0,
-                        constraints.maxWidth - 2 * FeedScrubStrip.thumbInset,
+                        constraints.maxWidth -
+                            FeedScrubStrip.thumbInset -
+                            _endInset,
                       );
                       return Semantics(
                         label: 'Game evaluation graph',
@@ -860,6 +892,7 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
                                     item: widget.item,
                                     ply: widget.ply,
                                     inset: FeedScrubStrip.thumbInset,
+                                    endInset: _endInset,
                                     // Drawn straight on the deck, no box of
                                     // its own: the board's block flows into
                                     // the curve.
@@ -889,7 +922,9 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
                                               0.0,
                                               math.max(
                                                 0.0,
-                                                constraints.maxWidth - 17,
+                                                constraints.maxWidth -
+                                                    widget.runEndInset -
+                                                    17,
                                               ),
                                             ),
                                     top: 4,
@@ -927,17 +962,22 @@ class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
                       );
                     },
                   )
-                : Center(
-                    child: Text(
-                      'No recorded evaluation',
-                      textAlign: TextAlign.center,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: colors.textSecondary,
+                : Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      end: widget.runEndInset,
+                    ),
+                    child: Center(
+                      child: Text(
+                        'No recorded evaluation',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: colors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
           ),
-          const SizedBox(height: 9),
+          const SizedBox(height: FeedLayout.chartAirBelow),
         ],
       ),
     );
@@ -1040,11 +1080,12 @@ class _ReportChartPainter extends CustomPainter {
     required this.item,
     required this.ply,
     required this.inset,
+    double? endInset,
     required this.surface,
     required this.grid,
     required this.ink,
     required this.cursor,
-  });
+  }) : endInset = endInset ?? inset;
 
   final FeedItem item;
   final int ply;
@@ -1052,6 +1093,11 @@ class _ReportChartPainter extends CustomPainter {
   /// How far inside each end the curve starts and stops: the scrub thumb's
   /// own inset, so ply i sits right over the thumb at ply i.
   final double inset;
+
+  /// ... and how far inside the right end it stops, when something stands
+  /// over that end (the rail): the last move's evaluation runs on flat to
+  /// the edge under it.
+  final double endInset;
 
   /// The ground the chart is drawn on (it has no box of its own): its marks
   /// are kept readable against it.
@@ -1080,7 +1126,7 @@ class _ReportChartPainter extends CustomPainter {
 
     final n = item.plyCount;
     if (n > 0) {
-      final span = math.max(1.0, w - 2 * inset);
+      final span = math.max(1.0, w - inset - endInset);
       double x(int i) => inset + span * i / n;
       // The curve runs flat out to the chart's edges (the opening eval
       // before the first move, the final one after the last), so the fill
@@ -1099,8 +1145,9 @@ class _ReportChartPainter extends CustomPainter {
         ..lineTo(w, _y(n, h))
         ..lineTo(w, h)
         ..close();
-      // White's share, eased out toward the plot's foot so the fill has
-      // no hard floor on the deck.
+      // White's share, eased out to nothing at the plot's foot so the fill
+      // has no floor of its own: the chart dissolves into the deck it is
+      // drawn on.
       canvas.drawPath(
         area,
         Paint()
@@ -1109,10 +1156,11 @@ class _ReportChartPainter extends CustomPainter {
             end: Alignment.bottomCenter,
             colors: [
               ink.withValues(alpha: 0.10),
-              ink.withValues(alpha: 0.07),
-              ink.withValues(alpha: 0.03),
+              ink.withValues(alpha: 0.075),
+              ink.withValues(alpha: 0.035),
+              ink.withValues(alpha: 0),
             ],
-            stops: const [0, 0.6, 1],
+            stops: const [0, 0.45, 0.75, 1],
           ).createShader(Offset.zero & size),
       );
       canvas.drawPath(
@@ -1176,6 +1224,7 @@ class _ReportChartPainter extends CustomPainter {
       old.ply != ply ||
       old.item != item ||
       old.inset != inset ||
+      old.endInset != endInset ||
       old.surface != surface ||
       old.grid != grid ||
       old.ink != ink ||

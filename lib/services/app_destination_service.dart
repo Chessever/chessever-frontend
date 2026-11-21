@@ -116,10 +116,10 @@ Future<bool> openAppDestination(
     switch (destination.kind) {
       case AppDestinationKind.home:
       case AppDestinationKind.events:
+      // Collections has the dock's tab: it opens there, as Home does.
+      case AppDestinationKind.collections:
         if (!canOpen()) return true;
         _openHome(context, ref, destination);
-      case AppDestinationKind.collections:
-        push(const CollectionsScreen());
       case AppDestinationKind.collection:
         final repo = ref.read(collectionsRepositoryProvider);
         final release = repo.holdFreshAccess(destination.id!);
@@ -385,8 +385,11 @@ void _openHome(
   // this notification creates Home for the first time.
   final container = ProviderScope.containerOf(context, listen: false);
   final hold = container.listen(selectedBottomNavBarItemProvider, (_, _) {});
-  ref.read(selectedBottomNavBarItemProvider.notifier).state =
-      BottomNavBarItem.forYou;
+  ref
+      .read(selectedBottomNavBarItemProvider.notifier)
+      .state = destination.kind == AppDestinationKind.collections
+      ? BottomNavBarItem.collections
+      : BottomNavBarItem.forYou;
   if (destination.kind == AppDestinationKind.home) {
     ref.read(selectedForYouTabProvider.notifier).select(
       switch (destination.section) {

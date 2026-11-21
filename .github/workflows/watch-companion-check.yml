@@ -34,7 +34,8 @@ concurrency:
 jobs:
   watch:
     name: Watch app in a Simulator iPhone build
-    runs-on: macos-26
+    # Same image as the Mobile release iOS job (Xcode 27).
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - name: Check out
@@ -42,10 +43,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select Xcode 26.6
-        # The same Xcode as Mobile release.
+      - name: Select Xcode 27
+        # The same Xcode as Mobile release (the newest Xcode 27 on the image).
         run: |
-          sudo xcode-select --switch /Applications/Xcode_26.6.app
+          xcode=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$xcode" ]; then
+            echo "::error::No Xcode 27 on this runner; installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode"
           xcodebuild -version
           xcodebuild -showsdks | grep -i watch
 

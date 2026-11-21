@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart'
     show
@@ -16,14 +17,21 @@ import 'package:motor/motor.dart';
 
 /// Chrome that steps out of the way while the reader reads: reading down a
 /// list sends the bars away, heading back up brings them back, each time on
-/// one spring ([scrollChromeMotion]). The bars never follow the finger
-/// part-way; the direction of the reader's scroll decides, and the spring
-/// does the moving.
+/// one spring. The bars never follow the finger part-way; the direction of
+/// the reader's scroll decides, and the spring does the moving.
+///
+/// The reader's speed sets the spring ([motionForSpeed]): a slow drag
+/// moves the bars gently ([gentleSettle]), a flick snaps them
+/// ([briskSettle]), and the scroll's own momentum is handed to the spring as
+/// its starting velocity, so the bars leave (or arrive) at the pace the
+/// reader set. A move the app makes (a tab switch, a scroll to the top, a
+/// back) settles on [scrollChromeMotion].
 ///
 /// One controller per screen. A [ScrollChromeRegion] around the screen's
-/// scrolling content feeds it; [CollapsingChrome] (bars) and [SlidingFabs]
-/// (floating buttons) follow it, all on its one [value], so the top bar, the
-/// bottom bar and the buttons always move as one.
+/// scrolling content feeds it; [CollapsingChrome] (bars), [SlidingFabs]
+/// (floating buttons) and the home dock (which slides and fades itself)
+/// follow it, all on its one [value], so the top bar, the dock and the
+/// buttons always move as one.
 ///
 /// What moves it, and what never does:
 ///
@@ -95,6 +103,22 @@ class ScrollChromeController extends ChangeNotifier
     _lastValue = v;
     if (_carried != null && step != 0) _pendingStep += step;
     notifyListeners();
+    // A quicker spring the reader asked for takes over here, inside the
+    // spring's own step: redirected mid-frame, it carries on from this
+    // frame's value without holding a frame, at the reader's momentum when
+    // that is quicker than the spring's own.
+    final quicker = _quicker;
+    if (quicker != null) {
+      _quicker = null;
+      if (_motion.isAnimating) {
+        _tune(quicker);
+        final kick = _momentum(_quickerSpeed, _aim, quicker);
+        final now = _motion.velocity;
+        if (kick > 0 ? kick > now : kick < now) {
+          _motion.animateTo(_aim, withVelocity: kick);
+        }
+      }
+    }
   }
 
   /// Gives the spring's pending steps back to the list. Run from the top
@@ -313,6 +337,161 @@ class ScrollChromeController extends ChangeNotifier
   /// Settles snap instead of springing.
   bool reduceMotion = false;
 
+  /// The reader's scroll speed at or under which the chrome takes its
+  /// gentlest spring, in logical pixels a second: a slow, deliberate drag.
+  static const double gentleSpeed = 200;
+
+  /// The reader's scroll speed at or over which the chrome takes its
+  /// quickest spring: a flick.
+  static const double briskSpeed = 2800;
+
+  /// The spring's settle for a slow drag ([gentleSpeed] or slower).
+  static const Duration gentleSettle = Duration(milliseconds: 420);
+
+  /// The spring's settle for a flick ([briskSpeed] or faster).
+  static const Duration briskSettle = Duration(milliseconds: 180);
+
+  /// The distance a reader's speed is measured against when it is handed
+  /// to the spring: about what the chrome travels (a root's top bar, the
+  /// dock's slide past the screen's edge). A taller top bar measures by its
+  /// own height.
+  static const double momentumReach = 96;
+
+  /// The share of the spring's own pace a reader's momentum may start it
+  /// at: the spring is critically damped, and a start at or past its pace
+  /// would carry the bars past where they rest.
+  static const double _momentumCap = 0.9;
+
+  /// The settle of the spring for a reader's scroll at [speed] (logical
+  /// pixels a second): [gentleSettle] at [gentleSpeed] and under,
+  /// [briskSettle] at [briskSpeed] and over, and between them quickening
+  /// early (by the square root of the way), so a brisk scroll already feels
+  /// brisk. A speed of 0 (not known: the app's own move) settles on
+  /// [scrollChromeMotion].
+  static Duration settleForSpeed(double speed) {
+    if (!(speed > 0)) return scrollChromeMotion.duration;
+    final way = ((speed - gentleSpeed) / (briskSpeed - gentleSpeed)).clamp(
+      0.0,
+      1.0,
+    );
+    final gentle = gentleSettle.inMicroseconds;
+    final brisk = briskSettle.inMicroseconds;
+    return Duration(
+      microseconds: (gentle + (brisk - gentle) * math.sqrt(way)).round(),
+    );
+  }
+
+  /// The spring for a reader's scroll at [speed] ([settleForSpeed]).
+  static CupertinoMotion motionForSpeed(double speed) =>
+      CupertinoMotion.smooth(duration: settleForSpeed(speed), snapToEnd: true);
+
+  /// The settle of the spring the chrome is on now (or last moved on).
+  Duration _tuned = scrollChromeMotion.duration;
+
+  /// Puts the chrome's spring on [settle], redirecting a spring in flight
+  /// (motor keeps its velocity).
+  void _tune(Duration settle) {
+    if (settle == _tuned) return;
+    _tuned = settle;
+    _motion.motion = settle == scrollChromeMotion.duration
+        ? scrollChromeMotion
+        : CupertinoMotion.smooth(duration: settle, snapToEnd: true);
+  }
+
+  /// The velocity, in [value] a second toward [target], a reader's scroll
+  /// at [speed] starts the spring with: their own pace over the chrome's
+  /// travel ([momentumReach]), capped short of the spring's own pace for
+  /// [settle] ([_momentumCap]) so the bars never run past where they rest.
+  double _momentum(double speed, double target, Duration settle) {
+    final seconds = settle.inMicroseconds / Duration.microsecondsPerSecond;
+    final pace = 2 * math.pi / seconds;
+    final reach = math.max(momentumReach, _travel);
+    final v = math.min(speed / reach, _momentumCap * pace);
+    return target >= value ? v : -v;
+  }
+
+  /// A spring in flight toward where the reader is heading quickens when
+  /// the reader does (a drag that turns into a flick, the coast after it),
+  /// never slows: the bars keep up with them. The quicker spring takes over
+  /// at the spring's next step ([_onMotion]), never from a pointer event
+  /// between frames, where restarting the spring would hold it a frame.
+  void _quicken(double speed) {
+    if (!(speed > 0) || !_motion.isAnimating) return;
+    final settle = settleForSpeed(speed);
+    final from = _quicker ?? _tuned;
+    if (from - settle >= _quickenStep) {
+      _quicker = settle;
+      _quickerSpeed = speed;
+    }
+  }
+
+  /// A quicker settle waiting for the spring's next step ([_quicken]), and
+  /// the reader's speed that asked for it.
+  Duration? _quicker;
+  double _quickerSpeed = 0;
+
+  /// How much quicker a spring in flight must get before it is redirected.
+  static const Duration _quickenStep = Duration(milliseconds: 20);
+
+  /// The reader's scroll speed, in logical pixels a second, smoothed over
+  /// its last few steps (their drag, or the coast after it). 0 until a
+  /// scroll has moved over time.
+  double get speed => _speed;
+  double _speed = 0;
+
+  /// When [_speed] was last measured, on [_speedByPointer]'s clock.
+  Duration? _speedAt;
+
+  /// Whether [_speedAt] is a pointer's own time stamp (a finger) rather
+  /// than a frame's (a coast).
+  bool _speedByPointer = false;
+
+  /// Travel run at the instant of [_speedAt] (steps landing together).
+  double _speedRun = 0;
+
+  /// How quickly the smoothed speed follows the latest step: a step this
+  /// long carries about two thirds of the way.
+  static const double _speedWindow = 0.04;
+
+  /// Starts measuring a new scroll's speed.
+  void _resetSpeed() {
+    _speed = 0;
+    _speedAt = null;
+    _speedRun = 0;
+  }
+
+  /// Runs [delta] of the reader's travel into [_speed]. A finger's steps
+  /// are timed by its own pointer events ([pointerTime]), a coast's by the
+  /// frames that move it; the switch from one to the other (the finger
+  /// letting go) keeps the speed and restarts the timing.
+  void _noteSpeed(double delta, Duration? pointerTime) {
+    final byPointer = pointerTime != null;
+    final now =
+        pointerTime ?? SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    final last = _speedAt;
+    if (last == null || byPointer != _speedByPointer) {
+      _speedAt = now;
+      _speedByPointer = byPointer;
+      _speedRun = 0;
+      return;
+    }
+    final dt = (now - last).inMicroseconds / Duration.microsecondsPerSecond;
+    if (dt <= 0) {
+      // Steps landing at the same instant are one step.
+      _speedRun += delta.abs();
+      return;
+    }
+    final instant = (_speedRun + delta.abs()) / dt;
+    _speedRun = 0;
+    _speedAt = now;
+    if (dt >= 0.1 || _speed == 0) {
+      // A first step, or one after a pause: it is the speed.
+      _speed = instant;
+      return;
+    }
+    _speed += (instant - _speed) * (1 - math.exp(-dt / _speedWindow));
+  }
+
   void _reportExtent(
     VerticalDirection edge,
     double height, {
@@ -369,16 +548,21 @@ class ScrollChromeController extends ChangeNotifier
     // A finger (or the app) takes over from a spring carrying the list.
     _carried = null;
     _pendingStep = 0;
+    _quicker = null;
     if (_motion.isAnimating) _motion.stop(canceled: true);
     if ((_motion.value - next).abs() < 1e-6) return;
     // Notifies through the listener in the constructor.
     _motion.value = next;
   }
 
-  /// Springs the chrome to [target] on [scrollChromeMotion] (motor). With
-  /// [carry], each spring step that moves the top bar is given back to that
-  /// list (see [_carried]).
-  void _settleTo(double target, {ScrollPosition? carry}) {
+  /// Springs the chrome to [target] (motor). With [carry], each spring step
+  /// that moves the top bar is given back to that list (see [_carried]).
+  ///
+  /// [speed] is the reader's scroll speed that asked for the move (logical
+  /// pixels a second): it picks the spring ([motionForSpeed]) and starts it
+  /// with the scroll's momentum ([_momentum]). 0, the app's own move,
+  /// settles on [scrollChromeMotion] from wherever the chrome is going.
+  void _settleTo(double target, {ScrollPosition? carry, double speed = 0}) {
     if (reduceMotion) {
       final from = value;
       _setNow(target);
@@ -395,16 +579,26 @@ class ScrollChromeController extends ChangeNotifier
     // carrying, never to another.
     if (!identical(carry, _carried)) _pendingStep = 0;
     _carried = carry;
-    _motion.animateTo(target);
+    _quicker = null;
+    final settle = settleForSpeed(speed);
+    _tune(settle);
+    _motion.animateTo(
+      target,
+      withVelocity: speed > 0 ? _momentum(speed, target, settle) : null,
+    );
   }
 
   /// Springs the chrome to [target] unless it is already there or on its
   /// way: what a region asks for, frame after frame, as the reader scrolls
   /// or pages. Sending it away waits on [enabled] and [held] like [hide].
-  void _headFor(double target) {
+  /// On its way already, it quickens to the reader's [speed] ([_quicken]).
+  void _headFor(double target, {double speed = 0}) {
     if (target < 1 && (!_enabled || _holding)) return;
-    if (_aim == target && (_motion.isAnimating || value == target)) return;
-    _settleTo(target);
+    if (_aim == target && (_motion.isAnimating || value == target)) {
+      _quicken(speed);
+      return;
+    }
+    _settleTo(target, speed: speed);
   }
 
   /// Brings the chrome back (a tab switch, a scroll to the top).
@@ -419,11 +613,16 @@ class ScrollChromeController extends ChangeNotifier
   /// Springs the chrome to [target] over the list [notification] came from,
   /// carrying that list with it, unless it is already there or on its way:
   /// asked frame after frame as the reader scrolls, it never restarts the
-  /// spring.
+  /// spring, only quickens it as the reader speeds up ([_quicken]). The
+  /// spring and its start follow the reader's own speed ([speed]).
   void _settleOver(ScrollNotification notification, double target) {
     if (target < 1 && (!_enabled || _holding)) return;
-    if (_aim == target && (_motion.isAnimating || value == target)) return;
-    _settleTo(target, carry: _positionOf(notification));
+    final speed = _mover == _Mover.app ? 0.0 : _speed;
+    if (_aim == target && (_motion.isAnimating || value == target)) {
+      _quicken(speed);
+      return;
+    }
+    _settleTo(target, carry: _positionOf(notification), speed: speed);
   }
 
   bool _movable(ScrollMetrics metrics) {
@@ -618,6 +817,9 @@ class ScrollChromeController extends ChangeNotifier
     switch (notification) {
       case ScrollStartNotification(:final dragDetails):
         _begin(dragDetails != null ? _Mover.finger : _Mover.app, list);
+        // The finger's first step is timed from where the drag began.
+        final began = dragDetails?.sourceTimeStamp;
+        if (began != null) _noteSpeed(0, began);
       case ScrollUpdateNotification():
         _onUpdate(notification, metrics, list);
       case OverscrollNotification():
@@ -642,6 +844,7 @@ class ScrollChromeController extends ChangeNotifier
     _fingerWay = 0;
     _fingerBack = 0;
     _appTravel = 0;
+    _resetSpeed();
   }
 
   /// Runs [d] of the finger's own travel (positive down the list) into
@@ -685,6 +888,7 @@ class ScrollChromeController extends ChangeNotifier
       return;
     }
     if (!m.hasPixels || !m.hasContentDimensions) return;
+    _noteSpeed(delta, notification.dragDetails?.sourceTimeStamp);
     if (finger) _noteFinger(delta);
     if (_atTop(m)) {
       // At the top, or pulled past it, the bars are home: a coast arriving
@@ -725,6 +929,7 @@ class ScrollChromeController extends ChangeNotifier
     final finger = notification.dragDetails != null;
     if (!_byReader(finger, list)) return;
     final overscroll = notification.overscroll;
+    _noteSpeed(overscroll, notification.dragDetails?.sourceTimeStamp);
     if (finger) _noteFinger(overscroll);
     if (overscroll < 0) {
       // Against the top: home.
@@ -849,9 +1054,15 @@ class ScrollChromeController extends ChangeNotifier
         _peak = at;
         _trough = at;
         _heading = 0;
-      case OverscrollNotification(:final overscroll):
+        _resetSpeed();
+        final began = dragDetails?.sourceTimeStamp;
+        if (began != null) _noteSpeed(0, began);
+      case OverscrollNotification(:final overscroll, :final dragDetails):
         // A pull at the first page (its refresh) is at home already.
-        if (overscroll < 0) _headFor(1);
+        if (overscroll < 0) {
+          _noteSpeed(overscroll, dragDetails?.sourceTimeStamp);
+          _headFor(1, speed: _fromDrag ? _speed : 0);
+        }
       case ScrollEndNotification():
         // Settled on the first page, or on a page before the one the scroll
         // started on: home.
@@ -860,7 +1071,7 @@ class ScrollChromeController extends ChangeNotifier
         _heading = 0;
         _page = page;
         _fromPage = page;
-      case ScrollUpdateNotification(:final dragDetails):
+      case ScrollUpdateNotification(:final dragDetails, :final scrollDelta):
         if (dragDetails != null) _fromDrag = true;
         if (!_fromDrag) {
           // The app turning pages: back, or onto the first page, shows.
@@ -870,6 +1081,7 @@ class ScrollChromeController extends ChangeNotifier
           return;
         }
         _page = page;
+        _noteSpeed(scrollDelta ?? 0, dragDetails?.sourceTimeStamp);
         _follow(at, viewport, finger: dragDetails != null);
       default:
         break;
@@ -900,10 +1112,10 @@ class ScrollChromeController extends ChangeNotifier
       _trough = at;
     }
     if (_heading < 0 || turnedBack) {
-      _headFor(1);
+      _headFor(1, speed: _speed);
     } else if (_heading > 0 && at >= (_fromPage + pagedCommit) * viewport) {
       // On, and into the next page far enough that the page has turned.
-      _headFor(0);
+      _headFor(0, speed: _speed);
     }
   }
 
@@ -1197,8 +1409,9 @@ class CollapsingChrome extends StatelessWidget {
   /// no list makes room for it ([ScrollChromeController.minRange]). For an
   /// [overlay] bar over content that already keeps clear of it.
   ///
-  /// A bar that only changes shape with the chrome and never leaves (a
-  /// dock that shrinks) needs neither: it listens to the controller's
+  /// A bar that moves itself with the chrome over content laid out to stay
+  /// clear of it (the home dock, which slides past the screen's edge and
+  /// fades) needs neither: it listens to the controller's
   /// [ScrollChromeController.value] itself and reports nothing.
   final bool reportsExtent;
 
@@ -1259,12 +1472,15 @@ class _InsideCollapsingChrome extends InheritedWidget {
 }
 
 /// Floating buttons that slide down off the screen with the chrome and come
-/// back up with it. They keep their place in the layout, so nothing under
-/// them moves; while away they take no taps.
+/// back up with it, their glass fading in step (the home dock leaves the
+/// same way, on the same spring, so on Home they move as one; PM,
+/// 2026-11-21). They keep their place in the layout, so nothing under them
+/// moves; while away they take no taps and, fully gone, paint nothing.
 ///
 /// With [ride] they never leave: they ride down [ride] as the chrome goes
-/// (over a dock that shrinks by as much but stays) and back up as it comes,
-/// in view, tappable and announced the whole way.
+/// (over the home dock, which leaves: down to where a page with no dock
+/// stands them, over the system's own strip) and back up as it comes, in
+/// view, tappable and announced the whole way, on the chrome's own spring.
 class SlidingFabs extends StatelessWidget {
   const SlidingFabs({
     super.key,
@@ -1295,9 +1511,15 @@ class SlidingFabs extends StatelessWidget {
     // so a distance built from the inset stopped short and left the buttons
     // peeking at the rounded corner.
     final window = ride == null ? MediaQuery.sizeOf(context).height : 0.0;
+    // Leaving buttons fade their own glass with the chrome (never an
+    // opacity over a backdrop filter): [GlassFade] reaches each button's
+    // [GlassSurface], and a stack's own fades multiply with it.
+    final faded = ride == null
+        ? GlassFade(opacity: _ChromeShown(chrome), child: child)
+        : child;
     return AnimatedBuilder(
       animation: chrome,
-      child: child,
+      child: faded,
       builder: (context, child) {
         final shown = chrome.value;
         // One shape either way, so the buttons keep their state when a
@@ -1580,6 +1802,9 @@ class _RenderSlideDown extends RenderProxyBox {
   void paint(PaintingContext context, Offset offset) {
     final child = this.child;
     if (child == null) return;
+    // Fully away (not riding): nothing to draw, and no backdrop read for
+    // glass that is off the screen anyway.
+    if (_ride == null && _fraction >= 1) return;
     context.paintChild(child, offset.translate(0, _dy));
   }
 
@@ -1597,4 +1822,42 @@ class _RenderSlideDown extends RenderProxyBox {
   void applyPaintTransform(RenderBox child, Matrix4 transform) {
     transform.translateByDouble(0, _dy, 0, 1);
   }
+}
+
+/// The chrome's shown value (1 shown, 0 away) as an [Animation], for
+/// [GlassFade].
+class _ChromeShown extends Animation<double> {
+  _ChromeShown(this._chrome);
+
+  final ScrollChromeController _chrome;
+
+  @override
+  double get value => _chrome.value.clamp(0.0, 1.0);
+
+  @override
+  AnimationStatus get status => value >= 1
+      ? AnimationStatus.completed
+      : value <= 0
+      ? AnimationStatus.dismissed
+      : AnimationStatus.forward;
+
+  @override
+  void addListener(VoidCallback listener) => _chrome.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      _chrome.removeListener(listener);
+
+  @override
+  void addStatusListener(AnimationStatusListener listener) {}
+
+  @override
+  void removeStatusListener(AnimationStatusListener listener) {}
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ChromeShown && identical(other._chrome, _chrome);
+
+  @override
+  int get hashCode => identityHashCode(_chrome);
 }

@@ -184,9 +184,9 @@ class SearchPageResultsLoader extends HookConsumerWidget {
 ///
 /// * Players: the player cards for the strongest matches, then Rankings
 ///   rows (Top players is the head of the same ranking).
-/// * Live now, Coming up and Events: the events the search found, and the
-///   landing's own live and upcoming events that the words name, sorted as
-///   the landing sorts them ([searchEventGroups]).
+/// * Coming up and Events: the events the search found, and the landing's
+///   own upcoming events that the words name ([searchEventGroups]). There
+///   is no Live now group: an event in play leads Events, LIVE on its card.
 /// * Openings: as their smart events ([searchResultOpenings]: one row
 ///   beside players or events, the rest a Show all away).
 /// * Smart events: the built-in ones the words name (a level, a time
@@ -217,7 +217,6 @@ class SearchPageResults extends ConsumerWidget {
         for (final result in snapshot.result.tournamentResults)
           result.tournament,
       ],
-      liveNow: ref.watch(searchLiveNowProvider).events,
       comingUp: ref.watch(searchComingUpFeedProvider).items,
       liveIds: liveKey.isEmpty ? const <String>[] : liveKey.split('\n'),
     );
@@ -301,8 +300,6 @@ class SearchPageResults extends ConsumerWidget {
               ],
             ),
           ),
-        if (events.live.isNotEmpty)
-          eventSection(SearchSectionId.liveNow.title, events.live),
         if (openings.isNotEmpty)
           SearchOpeningResults(
             openings: openings,
@@ -331,7 +328,7 @@ class SearchPageResults extends ConsumerWidget {
           ),
         if (events.upcoming.isNotEmpty)
           eventSection(SearchSectionId.comingUp.title, events.upcoming),
-        if (events.other.isNotEmpty) eventSection('Events', events.other),
+        if (events.events.isNotEmpty) eventSection('Events', events.events),
         if (players.isEmpty && events.isEmpty && snapshot.remoteLoading)
           const SliverToBoxAdapter(child: SearchPageSpinner(top: 0)),
         if (players.isEmpty && events.isEmpty && snapshot.remoteMessage != null)

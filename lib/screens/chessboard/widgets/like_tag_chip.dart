@@ -7,8 +7,17 @@ import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/glass_anchored_route.dart'
+    show
+        GlassAnchoredMotion,
+        GlassFold,
+        GlassFoldIgnorePointer,
+        GlassFoldTransition,
+        GlassScrimPainter;
 import 'package:chessever2/utils/text_scale.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -40,18 +49,22 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   /// How long the chip lingers before self-dismissing untagged. Long enough to
   /// notice and reach for, short enough not to squat on the toolbar.
   static const Duration _countdownDuration = Duration(milliseconds: 5200);
-  static const Duration _menuDuration = Duration(milliseconds: 240);
 
   final GlobalKey _chipKey = GlobalKey();
 
   late final AnimationController _countdown;
-  late final SingleMotionController _menu;
+
+  /// The menu's open and close, on the anchored glass springs
+  /// ([GlassAnchoredMotion]): 0 shut, 1 open.
+  late final AnimationController _menu;
+
+  /// The open menu's grow and fold; a new one for every open.
+  GlassFold? _fold;
   OverlayEntry? _menuEntry;
   Timer? _confirmationTimer;
 
   bool _pressed = false;
   bool _menuOpen = false;
-  bool _menuClosing = false;
 
   // After a pick the chip flips to a confirmation face and the countdown stops;
   // the offer is closed after a short beat so the confirmation is seen.
@@ -71,10 +84,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
       // This is time to act, not decorative motion.
       animationBehavior: AnimationBehavior.preserve,
     )..addStatusListener(_onCountdownStatus);
-    _menu = SingleMotionController(
-      vsync: this,
-      motion: const CupertinoMotion.bouncy(duration: _menuDuration),
-    );
+    _menu = AnimationController(vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _countdown.forward();
     });
@@ -155,8 +165,11 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
     final overlayBox = overlay.context.findRenderObject() as RenderBox;
     if (_chipOverlayRect(overlayBox) == null) return;
     HapticFeedback.selectionClick();
+    // A menu still folding from the last close gives way to the new one.
+    _dropMenuEntry();
     _countdown.stop(); // pause: never time out with the menu open.
     setState(() => _menuOpen = true);
+    _fold = GlassFold(_menu);
     _menuEntry = OverlayEntry(
       builder: (ctx) {
         final rect = _chipOverlayRect(overlayBox);
@@ -167,35 +180,46 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
     if (MediaQuery.disableAnimationsOf(context)) {
       _menu.value = 1;
     } else {
-      unawaited(_menu.animateTo(1, from: 0));
+      _menu.value = 0;
+      _menu.animateWith(GlassAnchoredMotion.simulation(from: 0));
     }
   }
 
+  void _dropMenuEntry() {
+    _menuEntry?.remove();
+    _menuEntry?.dispose();
+    _menuEntry = null;
+  }
+
+  /// Folds the menu shut into the chip, like every anchored glass surface
+  /// ([GlassFold]): the chip turns closed at once, the page under the
+  /// folding menu already takes taps, and the entry goes once the fold
+  /// holds nothing (at once under reduced motion).
   void _closeMenu() {
-    if (!_menuOpen || _menuClosing) return;
-    _menuClosing = true;
+    if (!_menuOpen) return;
+    final entry = _menuEntry;
+    _fold?.close();
+    setState(() => _menuOpen = false);
+    // Closing the menu without Save never persists. Resume the countdown
+    // from where it paused so the chip still self-dismisses if ignored.
+    if (!_committed && _countdown.status != AnimationStatus.completed) {
+      _countdown.forward();
+    }
     void finish() {
-      if (!mounted) return;
-      _menuEntry?.remove();
-      _menuEntry?.dispose();
-      _menuEntry = null;
-      setState(() {
-        _menuOpen = false;
-        _menuClosing = false;
-      });
-      // Closing the menu without Save never persists. Resume the countdown
-      // from where it paused so the chip still self-dismisses if ignored.
-      if (!_committed && _countdown.status != AnimationStatus.completed) {
-        _countdown.forward();
-      }
+      if (identical(_menuEntry, entry)) _dropMenuEntry();
     }
 
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (MediaQuery.disableAnimationsOf(context) || _menu.value <= 0) {
       _menu.value = 0;
       finish();
-    } else {
-      unawaited(_menu.animateTo(0).then((_) => finish()));
+      return;
     }
+    _menu
+        .animateBackWith(GlassAnchoredMotion.closeSimulation(from: _menu.value))
+        .orCancel
+        .then((_) {
+          if (mounted) finish();
+        }, onError: (Object _) {});
   }
 
   void _commit(List<String> labels, {bool haptic = true}) {
@@ -468,6 +492,8 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
 
     return _TagDropdown(
       animation: _menu,
+      fold: _fold!,
+      chip: RRect.fromRectAndRadius(chipRect, Radius.circular(17.br)),
       top: opensUp ? null : chipRect.bottom + 8.h,
       bottom: opensUp ? media.size.height - chipRect.top + 8.h : null,
       right: right.toDouble(),
@@ -587,11 +613,16 @@ class _CountdownBorderPainter extends CustomPainter {
       old.radius != radius;
 }
 
-/// The dropping menu: a dismiss barrier plus an anchored, animated panel that
-/// reveals top-down (clip + fade + small drop) as [animation] runs forward.
+/// The dropping menu: a dimming dismiss barrier plus an anchored panel of
+/// frosted glass ([PopupGlass]) that grows out of the chip on the anchored
+/// glass spring (scaled, never faded: glass under an opacity loses its
+/// frost) as [animation] runs forward, and folds shut back into it as it
+/// closes ([fold]), its contents fading.
 class _TagDropdown extends StatefulWidget {
   const _TagDropdown({
     required this.animation,
+    required this.fold,
+    required this.chip,
     required this.top,
     required this.bottom,
     required this.right,
@@ -604,6 +635,10 @@ class _TagDropdown extends StatefulWidget {
   });
 
   final Animation<double> animation;
+  final GlassFold fold;
+
+  /// The chip that opened the menu: left lit under the dim.
+  final RRect chip;
   final double? top;
   final double? bottom;
   final double right;
@@ -685,42 +720,45 @@ class _TagDropdownState extends State<_TagDropdown> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onDismiss,
-          ),
-        ),
-        Positioned(
-          top: widget.top,
-          bottom: widget.bottom,
-          right: widget.right,
-          width: widget.width,
-          child: AnimatedBuilder(
-            animation: widget.animation,
-            builder: (context, child) {
-              final t = widget.animation.value;
-              final opensUp = widget.bottom != null;
-              // Pop from the trigger on a spring. Content is readable even
-              // at the first frame; an entrance never gates visibility.
-              final scale = 0.86 + 0.14 * t;
-              return Transform.translate(
-                offset: Offset(0, (1 - t) * (opensUp ? 8 : -8)),
-                child: Transform.scale(
-                  scale: scale,
-                  alignment: opensUp
-                      ? Alignment.bottomRight
-                      : Alignment.topRight,
-                  child: child,
+    final opensUp = widget.bottom != null;
+    return GlassFoldIgnorePointer(
+      fold: widget.fold,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onDismiss,
+              // The anchored menus' dim, riding the menu's spring (repainted,
+              // never rebuilt); never a blur. The chip stays lit.
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: GlassScrimPainter(
+                  color: AnchoredGlassDim.colorOf(context),
+                  hole: widget.chip,
+                  progress: widget.animation,
                 ),
-              );
-            },
-            child: _panel(colors),
+              ),
+            ),
           ),
-        ),
-      ],
+          Positioned(
+            top: widget.top,
+            bottom: widget.bottom,
+            right: widget.right,
+            width: widget.width,
+            // Grown out of the chip's corner and folded shut back into it.
+            // Content is readable even at the first frame; an entrance never
+            // gates visibility. Under reduced motion it opens at full size and
+            // goes at once.
+            child: GlassFoldTransition(
+              fold: widget.fold,
+              alignment: opensUp ? Alignment.bottomRight : Alignment.topRight,
+              includeOpen: !MediaQuery.disableAnimationsOf(context),
+              child: RepaintBoundary(child: _panel(colors)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -738,101 +776,109 @@ class _TagDropdownState extends State<_TagDropdown> {
         rowGap * (_visibleRows - 1) +
         padTop +
         padBottom;
-    return Material(
-      color: colors.surfaceElevated,
-      elevation: context.isLightTheme ? 4 : 12,
-      shadowColor: context.isLightTheme
-          ? colors.shadow
-          : Colors.black.withValues(alpha: 0.45),
+    // The popups' frosted glass, averaging to the raised surface the opaque
+    // panel was. Its lit rim is the edge, in the pixel the border held, so
+    // the contents keep their exact place.
+    return PopupGlass(
+      tone: colors.surfaceElevated,
+      // Solved over the page as the anchored dim leaves it.
+      page: AnchoredGlassDim.pageOf(context),
+      cover: AnchoredGlassDim.cover,
       borderRadius: BorderRadius.circular(16.br),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(
-            color: colors.dividerStrong.withValues(alpha: 0.55),
-          ),
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: widget.maxHeight),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(14.w, 11.h, 14.w, 7.h),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.sell_rounded,
-                      size: 14.sp,
-                      color: colors.textSecondary,
-                    ),
-                    SizedBox(width: 7.w),
-                    Expanded(
-                      child: Text(
-                        _selected.isEmpty
-                            ? 'Tag this game'
-                            : '${_selected.length} selected',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: colors.textSecondary,
-                          letterSpacing: 0.2,
+      padding: const EdgeInsets.all(1),
+      // The contents fade as the menu folds; the glass itself never does.
+      child: FadeTransition(
+        opacity: widget.fold,
+        child: Material(
+          type: MaterialType.transparency,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: widget.maxHeight),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(14.w, 11.h, 14.w, 7.h),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.sell_rounded,
+                        size: 14.sp,
+                        color: colors.textSecondary,
+                      ),
+                      SizedBox(width: 7.w),
+                      Expanded(
+                        child: Text(
+                          _selected.isEmpty
+                              ? 'Tag this game'
+                              : '${_selected.length} selected',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: colors.textSecondary,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
-                    ),
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _commit,
-                        borderRadius: BorderRadius.circular(8.br),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 10.w,
-                            vertical: 5.h,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.check_rounded,
-                                size: 15.sp,
-                                color: context.colors.accentText,
-                              ),
-                              SizedBox(width: 4.w),
-                              Text(
-                                'Save',
-                                style: AppTypography.textXsMedium.copyWith(
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _commit,
+                          borderRadius: BorderRadius.circular(8.br),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10.w,
+                              vertical: 5.h,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_rounded,
+                                  size: 15.sp,
                                   color: context.colors.accentText,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.2,
                                 ),
-                              ),
-                            ],
+                                SizedBox(width: 4.w),
+                                Text(
+                                  'Save',
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: context.colors.accentText,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(
-                height: 1,
-                thickness: 1,
-                color: colors.dividerStrong.withValues(alpha: 0.4),
-              ),
-              Flexible(
-                // Rows now scroll under the panel's bottom corners, so clip
-                // them to the border's inner radius — otherwise a square's
-                // corner paints outside the rounded edge on the way past.
-                child: ClipRRect(
-                  borderRadius: BorderRadius.vertical(
-                    bottom: Radius.circular(16.br - 1),
+                    ],
                   ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: gridHeight),
-                    child: Stack(
-                      children: [
-                        GridView.builder(
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: colors.dividerStrong.withValues(alpha: 0.4),
+                ),
+                Flexible(
+                  // Rows now scroll under the panel's bottom corners, so clip
+                  // them to the border's inner radius — otherwise a square's
+                  // corner paints outside the rounded edge on the way past.
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.vertical(
+                      bottom: Radius.circular(16.br - 1),
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: gridHeight),
+                      // A half-row at a scrolling edge melts into the glass:
+                      // the list's own alpha fades there (a mask, only while
+                      // rows run past that edge), so the frost under it is
+                      // never covered by an opaque band.
+                      child: _ScrollEdgeFade(
+                        top: _moreAbove,
+                        bottom: _moreBelow,
+                        topExtent: padTop + rowExtent * 0.34,
+                        bottomExtent: padBottom + rowExtent * 0.34,
+                        child: GridView.builder(
                           controller: _grid,
                           padding: EdgeInsets.fromLTRB(
                             10.w,
@@ -888,24 +934,12 @@ class _TagDropdownState extends State<_TagDropdown> {
                                 );
                           },
                         ),
-                        _ScrollEdgeFade(
-                          fromTop: true,
-                          visible: _moreAbove,
-                          surface: colors.surfaceElevated,
-                          height: padTop + rowExtent * 0.34,
-                        ),
-                        _ScrollEdgeFade(
-                          fromTop: false,
-                          visible: _moreBelow,
-                          surface: colors.surfaceElevated,
-                          height: padBottom + rowExtent * 0.34,
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -913,49 +947,157 @@ class _TagDropdownState extends State<_TagDropdown> {
   }
 }
 
-/// Softens the row at a scrolling edge into the panel surface, so a clipped
-/// half-row reads as "there is more" instead of as a botched cut. Same colour
-/// as the panel behind it, so there is no seam — and it only shows while
-/// content actually runs past that edge.
+/// Softens the rows at a scrolling edge, so a clipped half-row reads as
+/// "there is more" instead of as a botched cut, and only while content runs
+/// past that edge.
+///
+/// It fades the list's own alpha ([BlendMode.dstIn] over a gradient), so
+/// the glass behind shows through the fade as it does everywhere else on
+/// the panel: an opaque band of the panel's tone laid over translucent
+/// glass would read as a strip of a different material. Each edge eases in
+/// and out on a spring; with neither edge showing, the list is painted as
+/// is, with no mask layer.
 class _ScrollEdgeFade extends StatelessWidget {
   const _ScrollEdgeFade({
-    required this.fromTop,
-    required this.visible,
-    required this.surface,
-    required this.height,
+    required this.top,
+    required this.bottom,
+    required this.topExtent,
+    required this.bottomExtent,
+    required this.child,
   });
 
-  final bool fromTop;
-  final bool visible;
-  final Color surface;
-  final double height;
+  final bool top;
+  final bool bottom;
+  final double topExtent;
+  final double bottomExtent;
+  final Widget child;
+
+  static const _motion = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 160),
+    snapToEnd: true,
+  );
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: fromTop ? 0 : null,
-      bottom: fromTop ? null : 0,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          child: Container(
-            height: height,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: fromTop ? Alignment.topCenter : Alignment.bottomCenter,
-                end: fromTop ? Alignment.bottomCenter : Alignment.topCenter,
-                colors: [surface, surface.withValues(alpha: 0)],
-                stops: const [0.15, 1.0],
-              ),
-            ),
-          ),
+    final still = MediaQuery.disableAnimationsOf(context);
+    return SingleMotionBuilder(
+      motion: _motion,
+      value: top ? 1.0 : 0.0,
+      active: !still,
+      child: child,
+      builder: (context, topShown, child) => SingleMotionBuilder(
+        motion: _motion,
+        value: bottom ? 1.0 : 0.0,
+        active: !still,
+        child: child,
+        builder: (context, bottomShown, child) => _EdgeFadeMask(
+          top: topShown.clamp(0.0, 1.0),
+          bottom: bottomShown.clamp(0.0, 1.0),
+          topExtent: topExtent,
+          bottomExtent: bottomExtent,
+          child: child,
         ),
       ),
     );
+  }
+}
+
+class _EdgeFadeMask extends SingleChildRenderObjectWidget {
+  const _EdgeFadeMask({
+    required this.top,
+    required this.bottom,
+    required this.topExtent,
+    required this.bottomExtent,
+    super.child,
+  });
+
+  final double top;
+  final double bottom;
+  final double topExtent;
+  final double bottomExtent;
+
+  @override
+  _RenderEdgeFadeMask createRenderObject(BuildContext context) =>
+      _RenderEdgeFadeMask()
+        ..top = top
+        ..bottom = bottom
+        ..topExtent = topExtent
+        ..bottomExtent = bottomExtent;
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderEdgeFadeMask renderObject,
+  ) {
+    renderObject
+      ..top = top
+      ..bottom = bottom
+      ..topExtent = topExtent
+      ..bottomExtent = bottomExtent;
+  }
+}
+
+/// Paints its child through a vertical alpha mask: [top] and [bottom] (0
+/// none, 1 full) fade the child out over [topExtent] / [bottomExtent] at
+/// that edge (its first 15% fully gone, as the old fade's solid lip was).
+class _RenderEdgeFadeMask extends RenderProxyBox {
+  double _top = 0;
+  double _bottom = 0;
+  double _topExtent = 0;
+  double _bottomExtent = 0;
+
+  bool get _masking => _top > 0.001 || _bottom > 0.001;
+
+  set top(double value) => _set(value, _top, (v) => _top = v);
+  set bottom(double value) => _set(value, _bottom, (v) => _bottom = v);
+  set topExtent(double value) => _set(value, _topExtent, (v) => _topExtent = v);
+  set bottomExtent(double value) =>
+      _set(value, _bottomExtent, (v) => _bottomExtent = v);
+
+  void _set(double value, double old, void Function(double) write) {
+    if (value == old) return;
+    final masking = _masking;
+    write(value);
+    if (masking != _masking) markNeedsCompositingBitsUpdate();
+    markNeedsPaint();
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => child != null && _masking;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (child == null || !_masking || size.isEmpty) {
+      layer = null;
+      super.paint(context, offset);
+      return;
+    }
+    final height = size.height;
+    double at(double extent) => (extent / height).clamp(0.0, 0.5);
+    final top = at(_topExtent);
+    final bottom = at(_bottomExtent);
+    final topEdge = Colors.white.withValues(alpha: 1 - _top);
+    final bottomEdge = Colors.white.withValues(alpha: 1 - _bottom);
+    final shader = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        topEdge,
+        topEdge,
+        Colors.white,
+        Colors.white,
+        bottomEdge,
+        bottomEdge,
+      ],
+      stops: [0, top * 0.15, top, 1 - bottom, 1 - bottom * 0.15, 1],
+    ).createShader(Offset.zero & size);
+    final mask = (layer as ShaderMaskLayer?) ?? ShaderMaskLayer();
+    mask
+      ..shader = shader
+      ..maskRect = offset & size
+      ..blendMode = BlendMode.dstIn;
+    layer = mask;
+    context.pushLayer(mask, super.paint, offset);
   }
 }
 

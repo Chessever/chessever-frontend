@@ -4,6 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 import 'package:flutter/material.dart';
 
 /// A single, accessible entry point for filters in Games and Build Tree.
@@ -162,7 +163,7 @@ class PrepFilterSelect<T> extends StatelessWidget {
       child: Semantics(
         label: label,
         child: DropdownButtonHideUnderline(
-          child: DropdownButton<T>(
+          child: GlassDropdown<T>(
             value: value,
             items: items,
             isExpanded: true,

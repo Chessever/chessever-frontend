@@ -9,6 +9,7 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 import 'package:flutter/material.dart';
 
 Future<BookGamesFilter?> showBookGamesFilterDialog({
@@ -346,7 +347,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         border: Border.all(color: context.colors.divider),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
+        child: GlassDropdown<T>(
           value: value,
           isExpanded: true,
           dropdownColor: context.colors.surface,

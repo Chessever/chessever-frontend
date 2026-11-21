@@ -842,9 +842,6 @@ class _QuietSfx implements FeedSfx {
   Future<void> warmUp() async {}
 
   @override
-  void playSwipe() {}
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 

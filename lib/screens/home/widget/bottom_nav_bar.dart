@@ -19,23 +19,31 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The five main sections: Home, Feed, Botvinnik, Search, Profile.
+/// The five main sections: Home, Feed, Botvinnik, Collections, Profile.
 ///
-/// Events and Collections live on the Profile page with everything the
-/// sidebar used to hold; the sidebar itself is gone.
+/// Events lives on the Profile page with everything the sidebar used to
+/// hold; the sidebar itself is gone. Search left the bar for Home's floating
+/// button (Today), which opens it as a page of its own.
 ///
 /// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
-/// the name), never by index, so reordering the bar moves nothing else.
-enum BottomNavBarItem { forYou, feed, botvinnik, search, profile }
+/// the name, a launch reads it back), never by index, so reordering the bar
+/// moves nothing else. A name no longer here (`search`, saved as the start
+/// screen before Collections took its place) reads as Home
+/// ([readDefaultBottomTab]).
+enum BottomNavBarItem { forYou, feed, botvinnik, collections, profile }
 
 /// Keep enum identities stable for callers; presentation has its own order.
 const bottomNavBarOrder = [
   BottomNavBarItem.forYou,
   BottomNavBarItem.feed,
   BottomNavBarItem.botvinnik,
-  BottomNavBarItem.search,
+  BottomNavBarItem.collections,
   BottomNavBarItem.profile,
 ];
+
+/// The Collections slot's mark: three stacked plates, drawn in the dock's
+/// line weight (1.8 on 24, as Feed's and Botvinnik's).
+const String collectionsNavIcon = 'assets/svgs/collections_nav.svg';
 
 /// Whether Botvinnik has a tab: built in and not switched off in Settings.
 final botvinnikTabAvailableProvider = Provider<bool>((ref) {
@@ -91,7 +99,9 @@ const bottomNavBarDotIds = {
   BottomNavBarItem.forYou: 'home.nav.home',
   BottomNavBarItem.feed: 'home.nav.feed',
   BottomNavBarItem.botvinnik: 'home.nav.botvinnik',
-  BottomNavBarItem.search: 'home.nav.search',
+  // The id Collections wore when it last had a tab: dots published for it
+  // light it again.
+  BottomNavBarItem.collections: 'home.nav.collections',
   // Profile took over the side menu the avatar used to open, so it keeps the
   // avatar's id: published `drawer.*` dots trail through `home.menu`.
   BottomNavBarItem.profile: 'home.menu',
@@ -101,7 +111,7 @@ final namesBottomNavBarIcons = {
   BottomNavBarItem.forYou: 'Home',
   BottomNavBarItem.feed: 'Feed',
   BottomNavBarItem.botvinnik: 'Botvinnik',
-  BottomNavBarItem.search: 'Search',
+  BottomNavBarItem.collections: 'Collections',
   BottomNavBarItem.profile: 'Profile',
 };
 
@@ -110,7 +120,7 @@ Key bottomNavBarItemKey(BottomNavBarItem item) => e2eKey(switch (item) {
   BottomNavBarItem.forYou => E2eIds.navForYou,
   BottomNavBarItem.feed => E2eIds.navFeed,
   BottomNavBarItem.botvinnik => E2eIds.navBotvinnik,
-  BottomNavBarItem.search => E2eIds.navSearch,
+  BottomNavBarItem.collections => E2eIds.navCollections,
   BottomNavBarItem.profile => E2eIds.navProfile,
 });
 
@@ -136,7 +146,7 @@ Widget bottomNavBarGlyph(
     ),
     BottomNavBarItem.feed => svg(SvgAsset.feedNavIcon),
     BottomNavBarItem.botvinnik => svg(SvgAsset.botvinnikNavIcon),
-    BottomNavBarItem.search => svg(SvgAsset.searchNavIcon),
+    BottomNavBarItem.collections => svg(collectionsNavIcon),
     BottomNavBarItem.profile => _NavAvatar(
       side: side + 4,
       ink: ink,
@@ -325,9 +335,9 @@ final selectedBottomNavBarItemProvider =
     });
 
 /// The sections the store-update reminder may open over: pages to browse.
-/// Botvinnik (a chat), Feed (a clip playing) and Search (a query being typed)
-/// keep it waiting until the reader is back on one of these, as it waited
-/// for each of them when they were pages of their own.
+/// Botvinnik (a chat), Feed (a clip playing) and Collections (whose catalog
+/// search may hold a query being typed, as Search's tab did in its slot)
+/// keep it waiting until the reader is back on one of these.
 const updatePromptSections = {
   BottomNavBarItem.forYou,
   BottomNavBarItem.profile,
@@ -339,16 +349,68 @@ void selectBottomNavBarItem(
   WidgetRef ref,
   BottomNavBarItem item, {
   String navigationType = 'bar',
+}) => _selectSection(ref.read, item, navigationType: navigationType);
+
+/// The route the home shell stands on while it is mounted, so a page over
+/// it can take the reader back to one of its sections ([openHomeSection]).
+ModalRoute<Object?>? _homeShellRoute;
+
+/// The home shell standing on [route] (set as it mounts, and again if its
+/// route changes).
+void registerHomeShellRoute(ModalRoute<Object?>? route) {
+  _homeShellRoute = route;
+}
+
+/// The home shell on [route] leaving: forgotten, unless a newer shell
+/// already stands on another route.
+void unregisterHomeShellRoute(ModalRoute<Object?>? route) {
+  if (identical(_homeShellRoute, route)) _homeShellRoute = null;
+}
+
+/// Opens the dock's [item] as a tap on its slot would, from a page pushed
+/// over the home shell (Search's Collections section) or from inside it
+/// (Discovery's Collections tile), instead of pushing a second copy of a
+/// section the dock already holds: the section is selected (so the page
+/// closing over it reveals it) and every page over the shell closes.
+///
+/// Returns false, changing nothing, when no home shell stands under
+/// [context]'s navigator (a page reached with no Home under it, a page
+/// pumped alone in a test) or the section is not on the bar: the caller
+/// then pushes a page of its own.
+bool openHomeSection(
+  BuildContext context,
+  BottomNavBarItem item, {
+  String navigationType = 'link',
 }) {
-  final previous = ref.read(selectedBottomNavBarItemProvider);
+  final shell = _homeShellRoute;
+  if (shell == null || !shell.isActive) return false;
+  final navigator = Navigator.maybeOf(context);
+  if (navigator == null || !identical(shell.navigator, navigator)) {
+    return false;
+  }
+  final container = ProviderScope.containerOf(context, listen: false);
+  if (!container.read(visibleBottomNavItemsProvider).contains(item)) {
+    return false;
+  }
+  _selectSection(container.read, item, navigationType: navigationType);
+  if (!shell.isCurrent) navigator.popUntil((route) => route == shell);
+  return true;
+}
+
+void _selectSection(
+  T Function<T>(ProviderListenable<T> provider) read,
+  BottomNavBarItem item, {
+  required String navigationType,
+}) {
+  final previous = read(selectedBottomNavBarItemProvider);
   if (previous == item) {
     // Same tab re-tapped: signal screens to scroll their active list to top.
     // Selected subtab + data are preserved; no pull-to-refresh, no reload.
-    ref.read(bottomNavBarReTapRequestProvider.notifier).request(item);
+    read(bottomNavBarReTapRequestProvider.notifier).request(item);
     return;
   }
-  if (!ref.read(visibleBottomNavItemsProvider).contains(item)) return;
-  ref.read(selectedBottomNavBarItemProvider.notifier).state = item;
+  if (!read(visibleBottomNavItemsProvider).contains(item)) return;
+  read(selectedBottomNavBarItemProvider.notifier).state = item;
   unawaited(
     AnalyticsService.instance.trackEvent(
       'Bottom Nav Changed',
@@ -363,7 +425,9 @@ void selectBottomNavBarItem(
 
 /// The launch section a Premium viewer picked (long-press a tab, or Settings
 /// › Customization). Unset or unreadable means For You. Sections that are no
-/// longer on the bar (Events, Collections) fall back to For You.
+/// longer on the bar (Events, Search) fall back to For You: Search is a page
+/// opened from Home now, so a reader who launched on it lands on Home, one
+/// tap from it.
 const String defaultBottomTabPrefsKey = 'default_bottom_tab_v1';
 
 BottomNavBarItem readDefaultBottomTab() {

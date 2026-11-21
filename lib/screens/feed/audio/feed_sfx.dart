@@ -15,8 +15,13 @@ MoveClass? moveClassForFeedMoment(FeedMoment? moment) =>
 
 /// Sound design for Feed: exactly the board's own sounds for ordinary moves,
 /// the classification sound for classified moves ([ClassificationSfx] — it
-/// wins over the ordinary one, never both), the board's draw chime when a
-/// drawn game ends, and a soft swipe between games.
+/// wins over the ordinary one, never both), and the board's draw chime when
+/// a drawn game ends. Paging between posts makes no sound: a whoosh on every
+/// page turn wore on readers within a few swipes.
+///
+/// Feed has no speaker of its own. Its sounds follow the board's Sound
+/// setting ([boardSoundEnabled]), which the reader turns off in board
+/// settings, and [muted], which the puzzle race's speaker sets.
 ///
 /// Every call is fire-and-forget; this class only decides *which* sound and
 /// whether it should sound at all. The one thing it stops is Feed itself:
@@ -60,14 +65,15 @@ class FeedSfx {
   int? _lastPlayMs;
   int? _lastHeadlineMs;
 
-  /// When Feed last asked for a sound of any kind (a move, a stinger, the
-  /// swipe, a puzzle move); null once [hush] has cut them.
+  /// When Feed last asked for a sound of any kind (a move, a stinger, a
+  /// puzzle move); null once [hush] has cut them.
   int? _lastVoiceMs;
   final void Function(Duration fade) _stopVoices;
   Timer? _pendingResult;
   Future<void>? _warming;
 
-  /// Mutes/unmutes Feed sounds (the speaker toggle on the Feed screen).
+  /// Mutes/unmutes Feed's move sounds: the speaker on the puzzle race's bar,
+  /// which the race follows too. Feed itself has no speaker; in memory only.
   bool get muted => _muted;
   set muted(bool value) {
     _muted = value;
@@ -86,8 +92,8 @@ class FeedSfx {
 
   bool get _silent => _muted || !boardSoundEnabled;
 
-  /// Loads the classification and swipe sounds. Idempotent; call when the
-  /// Feed tab first shows.
+  /// Loads the classification sounds. Idempotent; call when the Feed tab
+  /// first shows.
   Future<void> warmUp() => _warming ??= ClassificationSfx.warmUp()
       .catchError((Object err) {
         debugPrint('⚠️ FeedSfx warm-up failed: $err');
@@ -186,14 +192,12 @@ class FeedSfx {
     _stopVoices(_hushFade);
   }
 
-  /// Soft whoosh when the feed moves to the next or previous game. It
-  /// replaces no board sound.
-  void playSwipe() {
+  /// The reader turned to another page. It makes no sound; the draw chime
+  /// still waiting behind the last game's final move is dropped, and the
+  /// next game's moves are not held back by the last one's stinger.
+  void pageTurned() {
     _cancelPendingResult();
     _lastHeadlineMs = null;
-    if (_silent) return;
-    noteSounded();
-    ClassificationSfx.playSfx(SfxType.feedSwipe);
   }
 
   /// Takes down every voice the audio engine is still sounding, over [fade].

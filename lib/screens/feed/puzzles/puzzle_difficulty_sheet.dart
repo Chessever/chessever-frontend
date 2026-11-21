@@ -7,6 +7,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -26,11 +28,9 @@ Future<void> showPuzzleDifficultySheet(
   final notifier = ref.read(puzzleRatingRangeProvider.notifier);
   final initial = ref.read(puzzleRatingRangeProvider);
   PuzzleRatingRange? custom;
-  await showModalBottomSheet<void>(
+  await showGlassModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: context.colors.scrim,
     builder: (sheetContext) => PuzzleDifficultySheet(
       initial: initial,
       onPreset: (preset) {
@@ -167,75 +167,75 @@ class _PuzzleDifficultySheetState extends State<PuzzleDifficultySheet> {
 
     return SafeArea(
       top: false,
-      child: Container(
-        margin: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: colors.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        // A floating card of the popups' frosted glass (it clips its content
+        // to its corners).
+        child: PopupGlass(
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colors.divider),
-        ),
-        clipBehavior: Clip.antiAlias,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-        ),
-        // Scrolls on a short screen rather than cutting the custom wheels.
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    'Puzzle difficulty',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textLgBold.copyWith(
-                      color: colors.textPrimary,
+          tone: colors.surface,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          // Scrolls on a short screen rather than cutting the custom wheels.
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      'Puzzle difficulty',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: colors.textPrimary,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              for (final option in PuzzleRatingPreset.values)
+                for (final option in PuzzleRatingPreset.values)
+                  _Row(
+                    key: ValueKey('puzzle_difficulty_${option.name}'),
+                    label: option.label,
+                    value: _label(option.range),
+                    selected: preset == option,
+                    onTap: () => widget.onPreset(option),
+                  ),
                 _Row(
-                  key: ValueKey('puzzle_difficulty_${option.name}'),
-                  label: option.label,
-                  value: _label(option.range),
-                  selected: preset == option,
-                  onTap: () => widget.onPreset(option),
+                  key: const ValueKey('puzzle_difficulty_custom'),
+                  label: 'Custom',
+                  value: preset == null ? _label(_range) : null,
+                  selected: preset == null,
+                  expanded: _customOpen,
+                  onTap: () {
+                    HapticFeedbackService.selection();
+                    setState(() => _customOpen = !_customOpen);
+                  },
                 ),
-              _Row(
-                key: const ValueKey('puzzle_difficulty_custom'),
-                label: 'Custom',
-                value: preset == null ? _label(_range) : null,
-                selected: preset == null,
-                expanded: _customOpen,
-                onTap: () {
-                  HapticFeedbackService.selection();
-                  setState(() => _customOpen = !_customOpen);
-                },
-              ),
-              // The wheels open under Custom; content stays laid out, only its
-              // visible height moves, on a spring.
-              if (reduceMotion)
-                _customOpen ? wheels : const SizedBox.shrink()
-              else
-                ClipRect(
-                  child: SingleMotionBuilder(
-                    value: _customOpen ? 1.0 : 0.0,
-                    motion: const CupertinoMotion.smooth(),
-                    child: wheels,
-                    builder: (context, t, child) => Align(
-                      alignment: Alignment.topCenter,
-                      heightFactor: t.clamp(0.0, 1.0),
-                      child: child,
+                // The wheels open under Custom; content stays laid out, only its
+                // visible height moves, on a spring.
+                if (reduceMotion)
+                  _customOpen ? wheels : const SizedBox.shrink()
+                else
+                  ClipRect(
+                    child: SingleMotionBuilder(
+                      value: _customOpen ? 1.0 : 0.0,
+                      motion: const CupertinoMotion.smooth(),
+                      child: wheels,
+                      builder: (context, t, child) => Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: t.clamp(0.0, 1.0),
+                        child: child,
+                      ),
                     ),
                   ),
-                ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),

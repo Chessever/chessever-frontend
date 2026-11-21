@@ -4,7 +4,9 @@ import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,10 +56,48 @@ void main() {
   });
 
   group('the cards', () {
-    testWidgets('by default they enter as on the Events page', (tester) async {
+    testWidgets('by default they settle in as on the Events page, fully '
+        'visible from their first frame', (tester) async {
       await _pumpCards(tester, players: [_player('A B', fideId: 1)]);
-      expect(_hidden(tester), findsWidgets);
+      // Nothing fades in from nothing: no opacity anywhere above the words,
+      // on the very first frame.
+      expect(_hidden(tester), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(PlayerSearchCards),
+          matching: find.byType(Opacity),
+        ),
+        findsNothing,
+      );
+      expect(find.text('A B'), findsOneWidget);
+      // They start a few points above their place and settle onto it.
+      final start = tester.getTopLeft(find.text('A B')).dy;
       await tester.pumpAndSettle();
+      final rest = tester.getTopLeft(find.text('A B')).dy;
+      expect(rest - start, closeTo(MediaCardsEntrance.rise, 0.5));
+      expect(
+        find.descendant(
+          of: find.byType(PlayerSearchCards),
+          matching: find.byType(MediaCardsEntrance),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('under reduced motion they stand still', (tester) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: MediaCardsEntrance(child: const Text('still')),
+          ),
+        ),
+      );
+      final start = tester.getTopLeft(find.text('still')).dy;
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(find.text('still')).dy, start);
+      expect(find.byType(Transform), findsNothing);
     });
 
     testWidgets('without the entrance they are fully there on their first '
@@ -121,6 +161,49 @@ void main() {
       );
       final flush = tester.getSize(find.byType(PlayerSearchCards)).height;
       expect(withGap - flush, closeTo(16.sp, 0.01));
+    });
+
+    // The flag fills the card at full strength, so a federation the flag
+    // package cannot draw (FIDE's neutral players map to "XX") must leave
+    // the plain card: its stand-in is a white tile with a question mark.
+    testWidgets('a federation with no flag leaves the plain card, never the '
+        'flag package\'s question mark', (tester) async {
+      await _pumpCards(
+        tester,
+        players: [
+          _player('Ian Nepomniachtchi', fideId: 4168119, fed: 'FID'),
+          _player('Magnus Carlsen', fideId: 1503014, fed: 'NOR'),
+        ],
+        animateIn: false,
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const Key('countryFlags_NotFound_ColoredBox')),
+        findsNothing,
+      );
+      // Norway's backdrop (the vector flag in its own colours) and the
+      // small flag beside its rating; nothing at all for the neutral
+      // player.
+      expect(find.byType(MediaFlagBackdrop), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(MediaFlagBackdrop),
+          matching: find.byType(CountryFlag),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(CountryFlag), findsNWidgets(2));
+      final neutral = find.ancestor(
+        of: find.text('Ian Nepomniachtchi'),
+        matching: find.byType(MediaTextScrim),
+      );
+      expect(
+        find.descendant(of: neutral, matching: find.byType(CountryFlag)),
+        findsNothing,
+      );
+      expect(MediaFlagBackdrop.knows('XX'), isFalse);
+      expect(MediaFlagBackdrop.knows('NO'), isTrue);
+      expect(MediaFlagBackdrop.knows(null), isFalse);
     });
   });
 }
@@ -194,11 +277,17 @@ EnhancedSearchResult _results(List<SearchPlayer> players) {
   );
 }
 
-SearchPlayer _player(String name, {int? fideId, String? memorialId}) {
+SearchPlayer _player(
+  String name, {
+  int? fideId,
+  String? memorialId,
+  String? fed,
+}) {
   return SearchPlayer(
     id: '${fideId ?? memorialId ?? name}',
     name: name,
     fideId: fideId,
+    fed: fed,
     memorialSourceIdentity: memorialId,
     tournamentId: _event.id,
     tournamentName: _event.title,

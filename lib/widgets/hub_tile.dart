@@ -7,6 +7,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
+import 'package:chessever2/widgets/hub_context_art.dart';
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -16,27 +18,16 @@ const String kHubTileCaption = 'Tap to view';
 /// Opaque ink the hub tiles are printed on.
 ///
 /// These tiles are a **media surface**, not a page surface: artwork (the
-/// photo mosaic, the country flag, a pixel object) under a dark ramp with
-/// white type on top. That composition only works over a dark base, so the
-/// base, and every ink inside the tile, is pinned here rather than resolved
-/// from [AppColors]. Same value as the dark scaffold, so dark mode reads as
-/// one surface.
+/// photo mosaic, the country flag, a drawn hub scene) with white type on top.
+/// That composition only works over a dark base, so the base, and every ink
+/// inside the tile, is pinned here rather than resolved from [AppColors], and
+/// the tile is the same dark card in both themes ([MediaTheme]). Same value
+/// as the dark scaffold, so dark mode reads as one surface.
 const Color kHubTileInk = Color(0xFF0C0C0E);
 
 /// On-media ink. White-based because it always sits on [kHubTileInk] or on
-/// darkened artwork.
-const Color kHubTileOnMedia = Color(0xFFFFFFFF);
-
-/// Ink drawn ON a tile's artwork: white on the dark media tile, the page's
-/// own ink on the light paper tile.
-Color hubTileOnTile(BuildContext context) =>
-    context.isLightTheme ? context.colors.textPrimary : kHubTileOnMedia;
-
-/// Tile artwork that brings its own light drawing (a pale ground, its subject
-/// in deep tones, the label's corner kept clear), so on the light tile it is
-/// shown as drawn: no paper veil is laid over it. Artwork without its own
-/// light drawing (a photo mosaic, a flag) keeps the veil.
-abstract interface class HubPaperArtwork {}
+/// the tile's artwork, over the shade out of the label's corner.
+const Color kHubTileOnMedia = kMediaOnInk;
 
 /// Side gutter of the hub pages (My Space, Discovery): the design's 16 on
 /// phones, and on tablets the For You header's own inset (its search field
@@ -84,8 +75,10 @@ class HubTile extends StatelessWidget {
   final Widget? mark;
   final VoidCallback onTap;
 
-  /// Grades the artwork down to the tile's ink under the label. Artwork that
-  /// already keeps clear of the label, or a tile with no artwork, goes without.
+  /// Lays one soft shade out of the label's corner ([MediaTextScrim]), only
+  /// as deep as the artwork's brightest pixel needs for the white type to
+  /// read over it. Artwork that already keeps clear of the label, or a tile
+  /// with no artwork, goes without.
   final bool ramp;
 
   /// Long-press, for tiles that lift into the focus menu.
@@ -156,10 +149,11 @@ class HubTileRow extends StatelessWidget {
   }
 }
 
-/// The tile itself: base ink, artwork, the readability ramp and the label.
-/// Light: a paper card on the page; artwork with its own light drawing
-/// ([HubPaperArtwork]) is shown as drawn, any other is washed into paper at
-/// the label. Dark: the media tile.
+/// The tile itself: base ink, artwork, the shade out of the label's corner
+/// and the label. One design in both themes: the dark media tile, which a
+/// light page shows as a dark card exactly as dark mode does ([MediaTheme]).
+/// The artwork shows at full strength; one smooth gradient, darkest at the
+/// label's corner and fading away across the tile, carries the words.
 class HubTileFace extends StatelessWidget {
   const HubTileFace({
     super.key,
@@ -281,46 +275,26 @@ class HubTileFace extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final isLight = context.isLightTheme;
-    // Light artwork drawn for paper already keeps the label's corner clear
-    // on a ground of the tile's own tone, so it is shown as drawn.
-    final paperArt = isLight && artwork is HubPaperArtwork;
-    final onTile = hubTileOnTile(context);
-    // On paper the tile sits a half step above the page, not on the cards'
-    // bright white: a full-white slab (and a ramp fading into it) glares
-    // next to the page's own tone.
-    final base = isLight
-        ? Color.lerp(context.colors.background, context.colors.surface, 0.45)!
-        : kHubTileInk;
-    final quiet = isLight
-        ? context.colors.textSecondary
-        : kHubTileOnMedia.withValues(alpha: 0.85);
-    // On paper the type needs no help; on the media tile a pale photo can
-    // land right under the label, so the type carries its own contrast. A
-    // mark never sits under the type, so its label needs no shadow either.
-    final shadowed = !isLight && mark == null && ramp;
-    List<Shadow>? shadow(double alpha, double blur, [Offset? offset]) =>
-        shadowed
-        ? [
-            Shadow(
-              color: Colors.black.withValues(alpha: alpha),
-              blurRadius: blur,
-              offset: offset ?? Offset.zero,
-            ),
-          ]
-        : null;
+  Widget build(BuildContext context) =>
+      MediaTheme(child: Builder(builder: _face));
+
+  Widget _face(BuildContext context) {
+    const quiet = kMediaOnInkQuiet;
+    // A pale photo or flag can land right under the label, so beside its
+    // shade the type carries a tight shadow of its own. A mark never sits
+    // under the type, so its label needs none.
+    final shadowed = mark == null && ramp;
 
     // Sized on the type scale here, at build, so the tile's words grow with
     // the tile on a tablet exactly as the section titles beside it do.
     final titleStyle = titleType().copyWith(
-      color: onTile,
-      shadows: shadow(0.45, 4, const Offset(0, 1)),
+      color: kHubTileOnMedia,
+      shadows: shadowed ? kMediaTitleShadows : null,
     );
     final captionSize = 12.f;
     final captionStyle = captionType().copyWith(
       color: quiet,
-      shadows: shadow(0.4, 3),
+      shadows: shadowed ? kMediaCaptionShadows : null,
     );
     final scaler = MediaQuery.textScalerOf(context);
     double measuredHeight(String text, TextStyle style) {
@@ -354,8 +328,8 @@ class HubTileFace extends StatelessWidget {
           Icon(
             titleIcon,
             size: 18.sp,
-            color: onTile,
-            shadows: shadow(0.45, 4, const Offset(0, 1)),
+            color: kHubTileOnMedia,
+            shadows: shadowed ? kMediaTitleShadows : null,
           ),
           SizedBox(width: 4.w),
         ],
@@ -389,10 +363,13 @@ class HubTileFace extends StatelessWidget {
                 overflow: TextOverflow.visible,
               ),
               SizedBox(width: 4.w),
-              SpaceGlyph(
-                SpaceGlyphKind.arrowUpRight,
-                size: (captionSize * 0.8).roundToDouble(),
-                ink: Color.alphaBlend(quiet, isLight ? base : Colors.black),
+              // Held to 3:1 by the tile's shade, as a glyph beside the words.
+              MediaScrimGlyph(
+                child: SpaceGlyph(
+                  SpaceGlyphKind.arrowUpRight,
+                  size: (captionSize * 0.8).roundToDouble(),
+                  ink: Color.alphaBlend(quiet, Colors.black),
+                ),
               ),
             ],
           ),
@@ -401,111 +378,79 @@ class HubTileFace extends StatelessWidget {
     );
 
     final markWidget = mark;
-    final body = markWidget == null
-        ? Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              Positioned.fill(child: artwork!),
-              // One ramp in both themes: it grades the tile's own artwork
-              // down to its own ink, and never touches the page behind it.
-              // Paper artwork gets no veil across it, only a faint breath
-              // of the tile's own tone in the label's corner.
-              if (ramp)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: paperArt
-                          ? LinearGradient(
-                              begin: Alignment.bottomLeft,
-                              end: Alignment.topRight,
-                              colors: [
-                                base.withValues(alpha: 0.5),
-                                base.withValues(alpha: 0),
-                              ],
-                              stops: const [0.0, 0.45],
-                            )
-                          : LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              // Paper: the veil fades into the tile's own
-                              // page-toned paper, never bright white, so the
-                              // words get a calm backing without a white glow.
-                              colors: isLight
-                                  ? [
-                                      base.withValues(alpha: 0),
-                                      base.withValues(alpha: 0.74),
-                                      base.withValues(alpha: 0.92),
-                                    ]
-                                  : [
-                                      Colors.transparent,
-                                      Colors.black.withValues(alpha: 0.6),
-                                      Colors.black.withValues(alpha: 0.95),
-                                    ],
-                              stops: isLight
-                                  ? const [0.2, 0.6, 1.0]
-                                  : const [0.0, 0.5, 1.0],
-                            ),
-                    ),
+    final inset = labelInset;
+    final Widget body;
+    if (markWidget == null) {
+      final label = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          titleRow,
+          SizedBox(height: 2.sp),
+          captionRow,
+        ],
+      );
+      final art = artwork!;
+      final padded = Padding(padding: EdgeInsets.all(inset), child: label);
+      body = Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          Positioned.fill(child: art),
+          // One soft shade out of the label's corner, over the tile's whole
+          // face, only as deep as the art can need: a drawn scene declares
+          // the brightest it gets (the Likes heart needs none); a flag or a
+          // photo mosaic can put white anywhere.
+          Positioned.fill(
+            child: ramp
+                ? MediaTextScrim(
+                    ground: art is HubSceneBackdrop
+                        ? HubSceneBackdrop.brightest(art.scene)
+                        : 1,
+                    child: padded,
+                  )
+                : padded,
+          ),
+        ],
+      );
+    } else {
+      body = Padding(
+        padding: EdgeInsets.all(inset),
+        // The mark stands beside the title, bottom-aligned with it, and the
+        // caption runs the tile's full width under both: the longer line
+        // never shares its row with the mark, and the title gives way
+        // (truncating) before it could reach the mark.
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: titleRow,
                   ),
                 ),
-              Padding(
-                padding: EdgeInsets.all(14.sp),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    titleRow,
-                    SizedBox(height: 2.sp),
-                    captionRow,
-                  ],
-                ),
-              ),
-            ],
-          )
-        : Padding(
-            padding: EdgeInsets.all(14.sp),
-            // The mark stands beside the title, bottom-aligned with it, and
-            // the caption runs the tile's full width under both: the longer
-            // line never shares its row with the mark, and the title gives
-            // way (truncating) before it could reach the mark.
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.bottomLeft,
-                        child: titleRow,
-                      ),
-                    ),
-                    SizedBox(width: markGap),
-                    SizedBox.square(dimension: markSide, child: markWidget),
-                  ],
-                ),
-                SizedBox(height: 2.sp),
-                captionRow,
+                SizedBox(width: markGap),
+                SizedBox.square(dimension: markSide, child: markWidget),
               ],
             ),
-          );
+            SizedBox(height: 2.sp),
+            captionRow,
+          ],
+        ),
+      );
+    }
 
     return Container(
       height: height,
       decoration: BoxDecoration(
-        color: base,
+        color: kHubTileInk,
         borderRadius: BorderRadius.circular(14.br),
-        // The edge is the only part of the tile that meets the page. On dark
-        // the page and the tile share an ink, so a divider-toned lip
-        // separates them; on light the paper tile sits one tonal step above
-        // the page and a faint self-coloured ink lip draws its edge.
-        border: Border.all(
-          color: isLight
-              ? context.colors.textPrimary.withValues(alpha: 0.08)
-              : context.colors.divider,
-          width: 1,
-        ),
+        // The edge is the only part of the tile that meets the page: a
+        // divider-toned lip, the tile's own ink lifted a step.
+        border: Border.all(color: context.colors.divider, width: 1),
       ),
       child: ClipRRect(borderRadius: BorderRadius.circular(14.br), child: body),
     );

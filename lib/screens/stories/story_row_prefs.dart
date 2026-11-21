@@ -3,50 +3,40 @@ import 'dart:convert';
 
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
-import 'package:chessever2/screens/stories/story_models.dart' show kStoryCap;
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// When the collection stories row sits at the top of Today (Settings ›
+/// Whether the collection stories row sits at the top of Today (Settings ›
 /// Customization › Collection stories).
 enum StoryRowMode {
-  /// While there is something new to the reader: stories they have not
-  /// seen, for up to [kStoryRowIdleDays] days on Today without a story
-  /// opened; once they have seen it all, for the rest of that day. The
-  /// default.
-  whenNew,
-
-  /// Whenever there are collections, the unseen first.
-  always,
+  /// The row is there, its circles quiet once watched, a circle with
+  /// something new leading. The default.
+  on,
 
   /// Never.
   off;
 
   /// The choice as the picker lists it.
   String get label => switch (this) {
-    StoryRowMode.whenNew => "When there's something new",
-    StoryRowMode.always => 'Always',
+    StoryRowMode.on => 'On',
     StoryRowMode.off => 'Off',
   };
 
   /// The choice as the settings row names it, beside its title.
-  String get shortLabel => switch (this) {
-    StoryRowMode.whenNew => 'When new',
-    StoryRowMode.always => 'Always',
-    StoryRowMode.off => 'Off',
-  };
+  String get shortLabel => label;
 
   String get _wire => switch (this) {
-    StoryRowMode.whenNew => 'new',
-    StoryRowMode.always => 'always',
+    StoryRowMode.on => 'on',
     StoryRowMode.off => 'off',
   };
 
+  /// 39.1.0 and older offered "When there's something new" (`new`, the
+  /// default) and "Always" (`always`): both are On now. Builds before
+  /// 39.2.0 read `on` as their default, When new.
   static StoryRowMode _parse(Object? wire) => switch (wire) {
-    'always' => StoryRowMode.always,
     'off' => StoryRowMode.off,
-    _ => StoryRowMode.whenNew,
+    _ => StoryRowMode.on,
   };
 }
 
@@ -151,81 +141,6 @@ class StoryRowDismissal {
   int get hashCode => Object.hash(at, fingerprint, games);
 }
 
-/// How many days the row stands on Today, with nothing new arriving and no
-/// story opened, before it steps away until something new comes (When
-/// new). Opening a story starts the count again.
-const int kStoryRowIdleDays = 3;
-
-/// The row's current stretch on Today (device): what the catalog held when
-/// it began ([since], as [storyCatalogSnapshot]), and on how many local
-/// days ([days], the last one [day]) the row has stood there since with
-/// nothing new and no story opened.
-///
-/// A reader who never opens a collection still sees the row step away: the
-/// stories they pass over every day are not new to them any more.
-@immutable
-class StoryRowRun {
-  const StoryRowRun({
-    required this.since,
-    required this.days,
-    required this.day,
-  });
-
-  /// A stretch beginning on [today] with [catalog]: the row stood there
-  /// today ([days] 1), or a story was just opened (0).
-  factory StoryRowRun.start(
-    List<Collection> catalog,
-    String today, {
-    int days = 1,
-  }) => StoryRowRun(
-    since: Map.unmodifiable(storyCatalogSnapshot(catalog)),
-    days: days,
-    day: today,
-  );
-
-  final Map<String, int> since;
-  final int days;
-  final String day;
-
-  /// The stretch is over on [today]: the row stood its days, and a new day
-  /// has begun since the last of them.
-  bool retiredOn(String today) => days >= kStoryRowIdleDays && day != today;
-
-  /// The row stood on Today on [today] too.
-  StoryRowRun countedOn(String today) => day == today
-      ? this
-      : StoryRowRun(since: since, days: days + 1, day: today);
-
-  Map<String, Object> toJson() => {
-    's': _packSnapshot(since),
-    'n': days,
-    'd': day,
-  };
-
-  static StoryRowRun? fromJson(Object? json) {
-    if (json is! Map) return null;
-    final packed = json['s'];
-    final days = json['n'];
-    final day = json['d'];
-    if (packed is! String || days is! int || day is! String) return null;
-    return StoryRowRun(
-      since: Map.unmodifiable(_unpackSnapshot(packed)),
-      days: days,
-      day: day,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is StoryRowRun &&
-      other.days == days &&
-      other.day == day &&
-      mapEquals(other.since, since);
-
-  @override
-  int get hashCode => Object.hash(days, day, since.length);
-}
-
 /// [snapshot] packed as `key:count,key:count`.
 String _packSnapshot(Map<String, int> snapshot) => [
   for (final MapEntry(:key, :value) in snapshot.entries) '$key:$value',
@@ -243,14 +158,12 @@ Map<String, int> _unpackSnapshot(String packed) {
   return snapshot;
 }
 
-/// The row's state as the reader set it, and as the device saw it.
+/// The row's state as the reader set it.
 @immutable
 class StoryRowPrefs {
   const StoryRowPrefs({
-    this.mode = StoryRowMode.whenNew,
+    this.mode = StoryRowMode.on,
     this.dismissal,
-    this.allSeenDay,
-    this.run,
     this.owner,
     this.updatedAt = 0,
   });
@@ -260,13 +173,6 @@ class StoryRowPrefs {
 
   /// The row pulled away (account).
   final StoryRowDismissal? dismissal;
-
-  /// The local day ([storyDayKey]) this device first found every story
-  /// seen (device). Cleared as soon as something is unseen again.
-  final String? allSeenDay;
-
-  /// The row's current stretch on Today (device), When new.
-  final StoryRowRun? run;
 
   /// The account [mode] and [dismissal] belong to (device): the signed-in
   /// reader's id when they were set or last synced, null when set signed
@@ -280,15 +186,11 @@ class StoryRowPrefs {
   StoryRowPrefs copyWith({
     StoryRowMode? mode,
     StoryRowDismissal? Function()? dismissal,
-    String? Function()? allSeenDay,
-    StoryRowRun? Function()? run,
     String? Function()? owner,
     int? updatedAt,
   }) => StoryRowPrefs(
     mode: mode ?? this.mode,
     dismissal: dismissal == null ? this.dismissal : dismissal(),
-    allSeenDay: allSeenDay == null ? this.allSeenDay : allSeenDay(),
-    run: run == null ? this.run : run(),
     owner: owner == null ? this.owner : owner(),
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -300,13 +202,12 @@ class StoryRowPrefs {
     'u': updatedAt,
   };
 
-  /// What the device keeps: the account's part and whose it is, the day it
-  /// saw all, and the row's current stretch.
+  /// What the device keeps: the account's part and whose it is. 39.1.0's
+  /// device fields (the day it saw all, the row's stretch of days) are
+  /// read past and dropped.
   String encodeLocal() => jsonEncode({
     ...toAccountJson(),
     'd': dismissal?.toLocalJson(),
-    'a': ?allSeenDay,
-    'r': ?run?.toJson(),
     'o': ?owner,
   });
 
@@ -315,11 +216,8 @@ class StoryRowPrefs {
     try {
       final json = jsonDecode(raw);
       if (json is! Map) return const StoryRowPrefs();
-      final day = json['a'];
       final owner = json['o'];
       return fromAccountJson(json).copyWith(
-        allSeenDay: () => day is String && day.isNotEmpty ? day : null,
-        run: () => StoryRowRun.fromJson(json['r']),
         owner: () => owner is String && owner.isNotEmpty ? owner : null,
       );
     } catch (_) {
@@ -341,14 +239,11 @@ class StoryRowPrefs {
       other is StoryRowPrefs &&
       other.mode == mode &&
       other.dismissal == dismissal &&
-      other.allSeenDay == allSeenDay &&
-      other.run == run &&
       other.owner == owner &&
       other.updatedAt == updatedAt;
 
   @override
-  int get hashCode =>
-      Object.hash(mode, dismissal, allSeenDay, run, owner, updatedAt);
+  int get hashCode => Object.hash(mode, dismissal, owner, updatedAt);
 }
 
 /// Where [StoryRowPrefs] live: a device copy read at once (Today's first
@@ -518,11 +413,8 @@ class StoryRowPrefsNotifier extends StateNotifier<StoryRowPrefs> {
   /// The reader's choice in Settings.
   Future<void> setMode(StoryRowMode mode) async {
     if (mode == state.mode) return;
-    // A new choice starts clean: Always or When new shows the row now, with
-    // a new stretch of days.
-    await _change(
-      state.copyWith(mode: mode, dismissal: () => null, run: () => null),
-    );
+    // A new choice starts clean: On shows the row now.
+    await _change(state.copyWith(mode: mode, dismissal: () => null));
   }
 
   /// The reader pulled the row away with [catalog] in it. Returns what was
@@ -567,28 +459,6 @@ class StoryRowPrefsNotifier extends StateNotifier<StoryRowPrefs> {
     await _change(state.copyWith(dismissal: () => null));
   }
 
-  /// Records what this device saw of the row ([decideStoryRow]): the day
-  /// it found every story seen (null: something is unseen), and the row's
-  /// current stretch on Today.
-  void observe({required String? allSeenDay, required StoryRowRun? run}) {
-    if (state.allSeenDay == allSeenDay && state.run == run) return;
-    unawaited(
-      _set(state.copyWith(allSeenDay: () => allSeenDay, run: () => run)),
-    );
-  }
-
-  /// The reader opened a story from the row with [catalog] in it: the row
-  /// is wanted, and its count of idle days starts again.
-  void opened(List<Collection> catalog) {
-    if (state.mode != StoryRowMode.whenNew) return;
-    final today = storyDayKey(_now());
-    unawaited(
-      _set(
-        state.copyWith(run: () => StoryRowRun.start(catalog, today, days: 0)),
-      ),
-    );
-  }
-
   Future<void> _change(StoryRowPrefs next) async {
     // Always later than the copy it replaces, even on a clock that stepped
     // back: the newer copy is the one that wins everywhere. Stamped with
@@ -626,14 +496,10 @@ String storySlugKey(String slug) {
   return hash.toRadixString(36);
 }
 
-/// How many of [c]'s games count toward something new in its stories: a
-/// book's every game (its newest lead its stories), anything else's first
-/// [kStoryCap] (later ones are past its stories). A collection holds new
-/// stories exactly when this grows (as the seen record counts them).
-int storyNewsCount(Collection c) =>
-    c.kind == CollectionKind.book || c.gameCount < kStoryCap
-    ? c.gameCount
-    : kStoryCap;
+/// How many of [c]'s games count toward something new: every one, since a
+/// collection's latest game always leads its stories. A collection holds
+/// something new for a pull-away exactly when this grows.
+int storyNewsCount(Collection c) => c.gameCount;
 
 /// [storyNewsCount] per collection of [catalog], keyed by [storySlugKey].
 Map<String, int> storyCatalogSnapshot(List<Collection> catalog) => {
@@ -673,8 +539,6 @@ class StoryRowDecision {
     this.fresh = const {},
     this.returning = false,
     this.clearDismissal = false,
-    this.allSeenDay,
-    this.run,
     this.adoptSnapshot,
   });
 
@@ -684,19 +548,11 @@ class StoryRowDecision {
   /// What arrived while the row was away (it leads the row).
   final Set<String> fresh;
 
-  /// The row comes back after a pull-away or a stretch it stepped away
-  /// from, [fresh] first.
+  /// The row comes back after a pull-away, [fresh] first.
   final bool returning;
 
   /// Something new arrived since the pull-away: forget it.
   final bool clearDismissal;
-
-  /// The day every story was seen, as it should now be recorded (null:
-  /// something is unseen).
-  final String? allSeenDay;
-
-  /// The row's stretch on Today, as it should now be recorded.
-  final StoryRowRun? run;
 
   /// A pull-away made on another device, still in force: this device's own
   /// snapshot of the catalog to keep for it, from which it tells what is
@@ -707,107 +563,48 @@ class StoryRowDecision {
 /// Whether the row shows for [catalog], and what to record:
 ///
 /// * Off: never.
-/// * Pulled away: hidden until a collection is new, or one gained games
-///   among its stories, since; then back, those first. On a device other
-///   than the one it was pulled away on, until the catalog has grown since.
-/// * When new: while something is new to the reader. A collection with a
-///   story they have not seen is new for [kStoryRowIdleDays] days on Today
-///   ([StoryRowRun]); past them, with nothing new arriving and no story
-///   opened, the row steps away until something new comes, then returns,
-///   that first. Once every story is seen, the row stays for the rest of
-///   that local day ([today]).
-/// * Always: whenever there are collections.
+/// * Pulled away: hidden until a collection is new, or one gained games,
+///   since; then back, those first. On a device other than the one it was
+///   pulled away on, until the catalog has grown since.
+/// * On: always, while there are collections. Everything seen never takes
+///   the row away: its circles go quiet, and a circle with something new
+///   leads it.
 StoryRowDecision decideStoryRow({
   required StoryRowPrefs prefs,
   required List<Collection> catalog,
-  required bool Function(Collection collection) isSeen,
-  required String today,
 }) {
-  final anyUnseen = catalog.any((c) => !isSeen(c));
-  final allSeenDay = anyUnseen ? null : (prefs.allSeenDay ?? today);
-  final run = prefs.run;
   if (prefs.mode == StoryRowMode.off || catalog.isEmpty) {
-    return StoryRowDecision(shows: false, allSeenDay: allSeenDay, run: run);
+    return const StoryRowDecision(shows: false);
   }
-  final whenNew = prefs.mode == StoryRowMode.whenNew;
   final dismissal = prefs.dismissal;
-  if (dismissal != null) {
-    final snapshot = dismissal.snapshot;
-    final Set<String> fresh;
-    if (snapshot != null) {
-      fresh = storyFreshSince(snapshot, catalog);
-    } else {
-      // Put away on another device: the account holds only what the whole
-      // catalog came to. The same catalog, or one with no more to it, is
-      // nothing new, and becomes this device's own snapshot; one that grew
-      // brings the row back (what grew is not known here: unseen first).
-      final now = storyCatalogSnapshot(catalog);
-      final same = storySnapshotFingerprint(now) == dismissal.fingerprint;
-      if (same || storySnapshotGames(now) <= dismissal.games) {
-        return StoryRowDecision(
-          shows: false,
-          allSeenDay: allSeenDay,
-          run: run,
-          adoptSnapshot: now,
-        );
-      }
-      fresh = const {};
+  if (dismissal == null) return const StoryRowDecision(shows: true);
+  final snapshot = dismissal.snapshot;
+  final Set<String> fresh;
+  if (snapshot != null) {
+    fresh = storyFreshSince(snapshot, catalog);
+    if (fresh.isEmpty) return const StoryRowDecision(shows: false);
+  } else {
+    // Put away on another device: the account holds only what the whole
+    // catalog came to. The same catalog, or one with no more to it, is
+    // nothing new, and becomes this device's own snapshot; one that grew
+    // brings the row back (what grew is not known here: unseen first).
+    final now = storyCatalogSnapshot(catalog);
+    final same = storySnapshotFingerprint(now) == dismissal.fingerprint;
+    if (same || storySnapshotGames(now) <= dismissal.games) {
+      return StoryRowDecision(shows: false, adoptSnapshot: now);
     }
-    if (snapshot != null && fresh.isEmpty) {
-      return StoryRowDecision(shows: false, allSeenDay: allSeenDay, run: run);
-    }
-    return StoryRowDecision(
-      shows: true,
-      fresh: fresh,
-      returning: true,
-      clearDismissal: true,
-      allSeenDay: allSeenDay,
-      run: whenNew ? StoryRowRun.start(catalog, today) : run,
-    );
-  }
-  if (!whenNew) {
-    return StoryRowDecision(shows: true, allSeenDay: allSeenDay, run: run);
-  }
-  // Every story seen: the row's last day is the day that happened, and no
-  // stretch is counted.
-  if (!anyUnseen) {
-    return StoryRowDecision(shows: allSeenDay == today, allSeenDay: allSeenDay);
-  }
-  if (run == null) {
-    return StoryRowDecision(
-      shows: true,
-      run: StoryRowRun.start(catalog, today),
-    );
-  }
-  final fresh = storyFreshSince(run.since, catalog);
-  if (run.retiredOn(today)) {
-    if (fresh.isEmpty) return StoryRowDecision(shows: false, run: run);
-    return StoryRowDecision(
-      shows: true,
-      fresh: fresh,
-      returning: true,
-      run: StoryRowRun.start(catalog, today),
-    );
+    fresh = const {};
   }
   return StoryRowDecision(
     shows: true,
-    // Something new arrived while the row stood: its days start again.
-    run: fresh.isEmpty
-        ? run.countedOn(today)
-        : StoryRowRun.start(catalog, today),
+    fresh: fresh,
+    returning: true,
+    clearDismissal: true,
   );
 }
 
 /// Whether the row will show, as far as the device's copy alone says: what
 /// Today's first frame lays out before the catalog is read, so a row that
 /// will stay hidden never shows its skeleton.
-bool storyRowExpected(StoryRowPrefs prefs, String today) {
-  if (prefs.mode == StoryRowMode.off) return false;
-  if (prefs.dismissal != null) return false;
-  if (prefs.mode == StoryRowMode.whenNew) {
-    final day = prefs.allSeenDay;
-    if (day != null && day != today) return false;
-    if (prefs.run?.retiredOn(today) ?? false) return false;
-  }
-  return true;
-}
+bool storyRowExpected(StoryRowPrefs prefs) =>
+    prefs.mode != StoryRowMode.off && prefs.dismissal == null;

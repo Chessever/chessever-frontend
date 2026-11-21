@@ -35,6 +35,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 
 /// Configuration for save analysis sheet
 class SaveAnalysisSheetConfig {
@@ -115,10 +117,14 @@ class _SaveAnalysisSheet extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
+        // Solid glass: its bar floats over a list that scrolls under it, so
+        // the bar has to be opaque, and on solid glass it is the very same
+        // surface (no band across the sheet).
         decoration: ChessSheetDecoration.dark(
           context,
           alpha: 0.97,
           borderRadius: 28.sp,
+          solid: true,
         ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
@@ -1193,8 +1199,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         bottomBarVisibility: const BottomBarVisibility.always(
           ignoreBottomInset: true,
         ),
-        bottomBar: ColoredBox(
-          color: context.colors.surface,
+        // The sheet's own solid glass carries the bar: it floats over the
+        // list while the sheet rests below full height and hides what
+        // scrolls under it, in the plate's own tone and grain, so the sheet
+        // reads as one surface with no band across it.
+        bottomBar: PopupGlassFill(
           child: SafeArea(
             top: false,
             child: Padding(
@@ -1681,7 +1690,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
+        child: GlassDropdown<String>(
           value: _selectedResult,
           isExpanded: true,
           dropdownColor: context.colors.surface,

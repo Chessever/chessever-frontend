@@ -6,9 +6,9 @@ import 'package:chessever2/utils/text_scale.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
-import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 
 class CountryDropdown extends ConsumerStatefulWidget {
   final String selectedCountryCode;
@@ -48,8 +48,8 @@ class CountryDropdown extends ConsumerStatefulWidget {
 }
 
 class _CountryDropdownState extends ConsumerState<CountryDropdown> {
-  final GlobalKey<DropdownButton2State<String>> _dropdownKey =
-      GlobalKey<DropdownButton2State<String>>();
+  final GlobalKey<GlassDropdownState<String>> _dropdownKey =
+      GlobalKey<GlassDropdownState<String>>();
   var isDropDownOpen = false;
   var selectedCountryCode = 'US';
   final TextEditingController _searchController = TextEditingController();
@@ -162,7 +162,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                   : Border.all(color: context.colors.surfaceRecessed, width: 1.w),
         ),
         child: DropdownButtonHideUnderline(
-          child: DropdownButton2<String>(
+          child: GlassDropdown<String>(
             key: _dropdownKey,
             isExpanded: true,
             customButton: Container(
@@ -210,23 +210,21 @@ selectedCountryCode,
                 ],
               ),
             ),
-            dropdownStyleData: DropdownStyleData(
-              // A hugging button can be a flag and a few letters wide; the
-              // menu (search field, full country names) keeps a usable width.
-              width: hug ? 300.w : null,
-              padding: EdgeInsets.zero,
-              offset: const Offset(0, -4),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: dropDownBorderRadius,
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              maxHeight: 300.h,
-            ),
-            dropdownSearchData: DropdownSearchData(
-              searchController: _searchController,
-              searchInnerWidgetHeight: pinHeight + searchHeight,
-              searchInnerWidget: _withPinEntry(
+            // The menu: the popover glass, toned to the surface it was, the
+            // button's width (a hugging button's menu keeps a usable width
+            // for the search field and full country names), flush under it.
+            menuWidth: hug ? 300.w : null,
+            menuMargin: EdgeInsets.zero,
+            menuPadding: EdgeInsets.zero,
+            menuItemPadding: EdgeInsets.zero,
+            menuOffset: const Offset(0, -4),
+            dropdownColor: context.colors.surface,
+            menuBorderRadius: dropDownBorderRadius,
+            menuMaxHeight: 300.h,
+            highlightSelected: false,
+            searchController: _searchController,
+            menuHeaderHeight: pinHeight + searchHeight,
+            menuHeader: _withPinEntry(
                 onPin,
                 pinHeight,
                 Container(
@@ -287,26 +285,18 @@ selectedCountryCode,
                   ),
                 ),
               ),
-              searchMatchFn: (item, searchValue) {
-                final countryCode = item.value;
-                if (countryCode == null) return false;
-                final country = allCountries.firstWhere(
-                  (c) => c.countryCode == countryCode,
-                  orElse: () => allCountries.first,
-                );
-                return country.name.toLowerCase().contains(
-                  searchValue.toLowerCase(),
-                );
-              },
-            ),
-            buttonStyleData: ButtonStyleData(
-              height: 40.h,
-              padding: EdgeInsets.zero,
-            ),
-            menuItemStyleData: MenuItemStyleData(
-              height: context.textExtent(40.h),
-              padding: EdgeInsets.zero,
-            ),
+            searchMatch: (item, searchValue) {
+              final countryCode = item.value;
+              if (countryCode == null) return false;
+              final country = allCountries.firstWhere(
+                (c) => c.countryCode == countryCode,
+                orElse: () => allCountries.first,
+              );
+              return country.name.toLowerCase().contains(
+                searchValue.toLowerCase(),
+              );
+            },
+            itemHeight: context.textExtent(40.h),
             value: widget.isLoading ? null : selectedCountryCode,
             onChanged:
                 widget.isLoading
@@ -353,7 +343,7 @@ selectedCountryCode,
                       setState(() {});
                       return;
                     }
-                    _dropdownKey.currentState?.callTap();
+                    _dropdownKey.currentState?.open();
                   });
                   return;
                 }

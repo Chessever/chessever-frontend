@@ -3,6 +3,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
@@ -125,7 +126,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
         ? _selectedId
         : widget.items.first['key'];
 
-    return DropdownButton<String>(
+    return GlassDropdown<String>(
       itemHeight: widget.multiline ? null : kMinInteractiveDimension,
       value: currentValue,
       onChanged: (newValue) {

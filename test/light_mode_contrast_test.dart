@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:chessever2/widgets/search_no_matches.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -168,10 +169,11 @@ void main() {
 
     test('has a legible tooltip theme', () {
       final tooltip = theme.tooltipTheme;
-      final decoration = tooltip.decoration as BoxDecoration?;
+      // A solid chip of the popups' glass: its plate is its tone.
+      final decoration = tooltip.decoration as SolidGlassDecoration?;
       expect(decoration, isNotNull, reason: 'light theme must set a tooltip');
       expect(tooltip.textStyle?.color, isNotNull);
-      expectReadable(tooltip.textStyle!.color!, decoration!.color!,
+      expectReadable(tooltip.textStyle!.color!, decoration!.tone,
           what: 'tooltip text on tooltip plate');
     });
 

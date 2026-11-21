@@ -74,19 +74,39 @@ void main() {
         ),
         'Home → Discovery',
       );
-      // Sections without pages are named alone.
+      expect(
+        startScreenName(
+          BottomNavBarItem.collections,
+          collectionsStartPage(CollectionsTab.authors),
+        ),
+        'Collections → Authors',
+      );
+      // Sections without pages are named alone, and so is a page that
+      // shares its section's name.
       expect(startScreenName(BottomNavBarItem.feed, null), 'Feed');
       expect(startScreenName(BottomNavBarItem.profile, null), 'Profile');
+      expect(
+        startScreenName(
+          BottomNavBarItem.collections,
+          collectionsStartPage(CollectionsTab.collections),
+        ),
+        'Collections',
+      );
     });
 
     test('a saved section that left the bar opens Home', () async {
-      // Events and Collections moved to Profile (2026-11-18).
+      // Events moved to Profile (2026-11-18).
       await prefs.setString(defaultBottomTabPrefsKey, 'tournaments');
       expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
-      await prefs.setString(defaultBottomTabPrefsKey, 'collections');
-      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+      // Search left the dock for Today's button (Collections took its
+      // slot): a reader who launched on it opens on Home, one tap from it.
       await prefs.setString(defaultBottomTabPrefsKey, 'search');
-      expect(readDefaultBottomTab(), BottomNavBarItem.search);
+      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+    });
+
+    test('Collections, on the dock again, reads back as itself', () async {
+      await prefs.setString(defaultBottomTabPrefsKey, 'collections');
+      expect(readDefaultBottomTab(), BottomNavBarItem.collections);
     });
   });
 
@@ -197,6 +217,36 @@ void main() {
       container.dispose();
     });
 
+    testWidgets('Collections saves the page it is showing', (tester) async {
+      await pumpHost(
+        tester,
+        (context, ref) => makeStartScreenDefault(
+          context,
+          ref,
+          section: BottomNavBarItem.collections,
+        ),
+      );
+      container.read(selectedCollectionsTabProvider.notifier).state =
+          CollectionsTab.authors;
+
+      await tester.tap(find.text('hold'));
+      await settle(tester);
+      expect(
+        find.text('Make Collections → Authors your start screen?'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Apply'));
+      await settle(tester);
+
+      expect(prefs.getString(defaultBottomTabPrefsKey), 'collections');
+      expect(prefs.getString(defaultCollectionsTabPrefsKey), 'authors');
+      expect(readDefaultBottomTab(), BottomNavBarItem.collections);
+      expect(readDefaultCollectionsTab(), CollectionsTab.authors);
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+    });
+
     testWidgets('a section without pages saves the section alone', (
       tester,
     ) async {
@@ -205,17 +255,17 @@ void main() {
         (context, ref) => makeStartScreenDefault(
           context,
           ref,
-          section: BottomNavBarItem.search,
+          section: BottomNavBarItem.feed,
         ),
       );
 
       await tester.tap(find.text('hold'));
       await settle(tester);
-      expect(find.text('Make Search your start screen?'), findsOneWidget);
+      expect(find.text('Make Feed your start screen?'), findsOneWidget);
       await tester.tap(find.text('Apply'));
       await settle(tester);
 
-      expect(prefs.getString(defaultBottomTabPrefsKey), 'search');
+      expect(prefs.getString(defaultBottomTabPrefsKey), 'feed');
       expect(prefs.getString(defaultForYouTabPrefsKey), isNull);
       expect(hostContext.mounted, isTrue);
       await tester.pump(const Duration(seconds: 6));

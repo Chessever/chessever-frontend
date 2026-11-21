@@ -7,6 +7,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/popup_glass.dart';
+import 'package:chessever2/widgets/glass_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -287,7 +288,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
             ),
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
+            child: GlassDropdown<String>(
               value: _selectedParentId,
               dropdownColor: context.colors.surface,
               borderRadius: BorderRadius.circular(12.br),

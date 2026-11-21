@@ -39,7 +39,8 @@ Future<PrepAddResult?> showPrepSourcePicker(
   List<PrepAccount> initial = const [],
 }) => Navigator.of(context, rootNavigator: true).push(
   MotionSheetRoute<PrepAddResult>(
-    barrierColor: context.colors.scrim,
+    // The plain scrim the sheet's glass is solved over.
+    barrierColor: ChessSheetGlass.barrierColor(context),
     barrierLabel: 'Close',
     // Clear of the status bar, but down to the bottom edge.
     viewportPadding: EdgeInsets.only(

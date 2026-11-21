@@ -9,10 +9,11 @@
 import 'dart:ui' as ui;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessground/chessground.dart';
@@ -116,7 +117,25 @@ Widget _app({required Widget home}) => RepaintBoundary(
   ),
 );
 
-/// The Today page with its filter button calling the real opener.
+/// The event filter as the Events page opens it (Today's filter button is
+/// gone; the flow is the same one it ran): seeded from the applied filter,
+/// in the app's alert modal.
+void _openEventFilters(BuildContext context, WidgetRef ref) {
+  ref
+      .read(filterPopupProvider.notifier)
+      .setState(ref.read(eventAppliedFilterProvider));
+  showAlertModal<void>(
+    context: context,
+    horizontalPadding: 0,
+    child: FilterPopup(
+      onApplyFilters: (next) =>
+          ref.read(eventAppliedFilterProvider.notifier).state = next,
+      onResetFilters: () {},
+    ),
+  );
+}
+
+/// A busy page under a button opening the event filter.
 Widget _today() => _app(
   home: Scaffold(
     body: Stack(
@@ -128,7 +147,7 @@ Widget _today() => _app(
           child: Consumer(
             builder: (context, ref, _) => TextButton(
               key: _open,
-              onPressed: () => showEventFilters(context, ref),
+              onPressed: () => _openEventFilters(context, ref),
               child: const Text('Filters'),
             ),
           ),

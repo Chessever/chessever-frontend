@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:chessever2/screens/feed/widgets/feed_deck.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/number_format_utils.dart';
+import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/press_spring.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
@@ -14,17 +16,39 @@ import 'package:motor/motor.dart';
 /// From this many likes the Like button shows the count instead of "Like".
 const int kFeedLikeCountFloor = 3;
 
+/// A count as the Feed shows it: whole, in at most five characters, so it
+/// always fits under its mark. "999", "1.2K", "12.3K", "123K", "1.2M",
+/// "12M", "123M", "1.2B". Rounded down, so it never claims what has not
+/// happened yet (999,999 is "999K", never "1000K"), with ".0" dropped
+/// ("12K").
+String feedCompactCount(int count) {
+  if (count < 1000) return '${math.max(0, count)}';
+  String tenths(int unit, String suffix) {
+    final t = count * 10 ~/ unit;
+    final rest = t % 10;
+    return rest == 0 ? '${t ~/ 10}$suffix' : '${t ~/ 10}.$rest$suffix';
+  }
+
+  if (count < 100000) return tenths(1000, 'K');
+  if (count < 1000000) return '${count ~/ 1000}K';
+  if (count < 10000000) return tenths(1000000, 'M');
+  if (count < 1000000000) return '${count ~/ 1000000}M';
+  if (count < 10000000000) return tenths(1000000000, 'B');
+  return '${count ~/ 1000000000}B';
+}
+
 /// The Like button's word: the like count from [kFeedLikeCountFloor] up
 /// ("12", "1.2K"), otherwise "Like". The heart's fill says whether the
 /// viewer is among them.
 String feedLikeLabel(int likes) =>
-    likes >= kFeedLikeCountFloor ? formatCompactCount(likes) : 'Like';
+    likes >= kFeedLikeCountFloor ? feedCompactCount(likes) : 'Like';
 
 /// The number under the rail's heart: the like count from
-/// [kFeedLikeCountFloor] up ("12", "1.2K"), otherwise nothing (the heart
-/// alone is the button).
+/// [kFeedLikeCountFloor] up ("12", "1.2K", "12.3K"), otherwise nothing (the
+/// heart alone is the button). A screen reader hears the exact count
+/// ([feedLikeSemantics]).
 String? feedLikeCount(int likes) =>
-    likes >= kFeedLikeCountFloor ? formatCompactCount(likes) : null;
+    likes >= kFeedLikeCountFloor ? feedCompactCount(likes) : null;
 
 /// What a screen reader hears on the Like button.
 String feedLikeSemantics({required bool liked, required int likes}) {
@@ -36,14 +60,16 @@ String feedLikeSemantics({required bool liked, required int likes}) {
 /// databases.
 String feedSaveLabel({required bool saved}) => saved ? 'Saved' : 'Save';
 
-/// Analyze, Share, Save and Like down the right of a post, beside its
-/// chart: one column of cells, each a 24pt glyph over its word, Like at the
-/// foot where the thumb rests and Save over it, as on the board screen.
+/// Analyze, Share, Save and Like down the right end of a post's chart: one
+/// column of bare 24pt glyphs on a frosted backing ([FeedRailGlass]) while
+/// the chart is under them, Like at the foot where the thumb rests and Save
+/// over it, as on the board screen.
 ///
 /// The cells stand at the foot of the rail's room ([FeedLayout.railTop] is
-/// laid out for four): a post that cannot be saved or liked drops that cell
-/// and the rest keep their order down to the foot, so Like is always the
-/// last. My Space lives in the post's long-press menu, not here.
+/// laid out for four, the zone's height): a post that cannot be saved or
+/// liked drops that cell and the rest keep their order down to the foot, so
+/// Like is always the last. The backing hugs the cells there are. My Space
+/// lives in the post's long-press menu, not here.
 class FeedActionRail extends StatelessWidget {
   const FeedActionRail({
     required this.cellHeight,
@@ -53,6 +79,7 @@ class FeedActionRail extends StatelessWidget {
     this.shownLikes,
     this.heartPop = 0,
     this.saved = false,
+    this.backing = true,
     required this.likeIconKey,
     this.onLike,
     required this.onShare,
@@ -60,6 +87,11 @@ class FeedActionRail extends StatelessWidget {
     required this.onAnalyze,
     super.key,
   });
+
+  /// Whether the frosted backing stands behind the marks: while the chart
+  /// is under the rail. Off while the viewer's own line stands in the
+  /// chart's place beside it ([FeedRailColumn.backing]).
+  final bool backing;
 
   /// One cell's height ([FeedLayout.railCell]); its width is the rail's.
   final double cellHeight;
@@ -138,8 +170,8 @@ class FeedActionRail extends StatelessWidget {
       color: ink,
     );
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
+    return FeedRailColumn(
+      backing: backing,
       children: [
         cell(
           key: const ValueKey('feed_analyze_button'),
@@ -189,6 +221,187 @@ class FeedActionRail extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A rail's cells stacked to the foot of its room, over the backing's
+/// insets ([FeedLayout.railInsetTop], [FeedLayout.railInsetBottom]), so the
+/// game and puzzle posts' rails and the skeleton's put every mark in the
+/// same place and read as one object.
+///
+/// The frosted backing ([FeedRailGlass]) stands behind the cells only when
+/// [backing] is on: over a chart, where the marks need it to read over the
+/// curve. Over the page's own ground (a puzzle, the skeleton) the marks
+/// stand bare, since a frosted plate with nothing behind it to frost is
+/// only a grey pill.
+class FeedRailColumn extends StatelessWidget {
+  const FeedRailColumn({
+    required this.children,
+    this.backing = true,
+    super.key,
+  });
+
+  final List<Widget> children;
+
+  /// Whether the frosted backing stands behind the cells. When it changes
+  /// (a game post's chart giving way to the viewer's line and coming back)
+  /// it fades on a spring; the cells never move or rebuild.
+  final bool backing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: FeedRailGlass(
+        shown: backing,
+        child: Padding(
+          padding: const EdgeInsets.only(
+            top: FeedLayout.railInsetTop,
+            bottom: FeedLayout.railInsetBottom,
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: children),
+        ),
+      ),
+    );
+  }
+}
+
+/// The rail's backing: a small vertical plate of the app's glass
+/// ([GlassStyle]), cut to the rail's width with round ends, standing over
+/// the chart's right end.
+///
+/// The chart shows through it, blurred, behind a plate tinted from the deck
+/// it stands on, so the marks and the like count read over the curve while
+/// the curve is still felt under them. The edge is the plate's own lit rim,
+/// a hair brighter at the top; there is no shadow and no outline, so it
+/// reads as a pane on the chart rather than a box beside it. The blur is
+/// clipped to the plate and never reaches past it.
+///
+/// With [shown] off there is no plate: blur, tint and rim fade out together
+/// on one spring (so nothing pops), and once gone the child is painted with
+/// no backdrop layer and no clip at all. The tree under it never changes,
+/// so the cells keep their state.
+class FeedRailGlass extends StatelessWidget {
+  const FeedRailGlass({required this.child, this.shown = true, super.key});
+
+  final Widget child;
+
+  /// Whether the plate stands behind [child].
+  final bool shown;
+
+  /// Below this the plate is gone: a spring settling on 0 leaves dust, and
+  /// dust must not keep a backdrop layer alive.
+  static const double _gone = 0.001;
+
+  /// Round ends: the rail is one target wide.
+  static const double radius = FeedLayout.railWidth / 2;
+
+  /// Light enough that the curve under the plate still reads as a line.
+  static const double blurSigma = 4;
+
+  /// How much of the plate covers the blurred chart: enough that the marks
+  /// read over the curve, little enough that the curve is still seen under
+  /// them. Paper takes a little more, so the frost reads as white.
+  static const double plateAlphaDark = 0.42;
+  static const double plateAlphaLight = 0.5;
+
+  /// Where on the deck the rail stands, as [FeedBottomDeck.toneAt] takes
+  /// it: the chart's own ground.
+  static const double deckDepth = 0.45;
+
+  /// The plate's colour over [context]'s deck: the deck's tone, lifted a
+  /// step toward the light (a little ink in dark, white on paper), at
+  /// partial strength.
+  static Color plateOf(BuildContext context) {
+    final deck = FeedBottomDeck.toneAt(context, deckDepth);
+    if (context.isLightTheme) {
+      return Color.lerp(
+        deck,
+        const Color(0xFFFFFFFF),
+        0.55,
+      )!.withValues(alpha: plateAlphaLight);
+    }
+    return Color.lerp(
+      deck,
+      context.colors.textPrimary,
+      0.1,
+    )!.withValues(alpha: plateAlphaDark);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleMotionBuilder(
+      value: shown ? 1.0 : 0.0,
+      motion: const CupertinoMotion.smooth(),
+      // With reduced motion the plate simply comes or goes; one tree either
+      // way, so the setting changing never rebuilds the cells.
+      active: !MediaQuery.disableAnimationsOf(context),
+      child: child,
+      builder: (context, t, child) =>
+          _plate(context, t.clamp(0.0, 1.0), child!),
+    );
+  }
+
+  /// The plate at [presence] (1 whole, 0 gone) behind [child]. One tree at
+  /// every presence: only the paint changes.
+  Widget _plate(BuildContext context, double presence, Widget child) {
+    final style = GlassStyle.of(context);
+    final plate = plateOf(context);
+    final on = presence > _gone;
+    return CustomPaint(
+      key: const ValueKey('feed_rail_glass'),
+      foregroundPainter: _RailRimPainter(
+        top: style.rimTop,
+        bottom: style.rimBottom,
+        presence: on ? presence : 0,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        clipBehavior: on ? Clip.antiAlias : Clip.none,
+        child: BackdropFilter(
+          enabled: on,
+          filter: ui.ImageFilter.blur(
+            sigmaX: blurSigma * presence,
+            sigmaY: blurSigma * presence,
+          ),
+          child: ColoredBox(
+            color: on
+                ? plate.withValues(alpha: plate.a * presence)
+                : const Color(0x00000000),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RailRimPainter extends CustomPainter {
+  const _RailRimPainter({
+    required this.top,
+    required this.bottom,
+    required this.presence,
+  });
+
+  final Color top;
+  final Color bottom;
+
+  /// How much of the plate stands: the rim fades with it.
+  final double presence;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (presence <= 0) return;
+    paintGlassRim(
+      canvas,
+      BorderRadius.circular(FeedRailGlass.radius).toRRect(Offset.zero & size),
+      top.withValues(alpha: top.a * presence),
+      bottom.withValues(alpha: bottom.a * presence),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RailRimPainter old) =>
+      old.top != top || old.bottom != bottom || old.presence != presence;
 }
 
 /// The size every word of the rail is set at: [FeedActionLabel.restSize],
@@ -274,11 +487,49 @@ class _LikeGlyphState extends State<_LikeGlyph>
 /// One cell of a Feed rail: the bare glyph, centred in its target, with an
 /// optional count under it (the heart's likes). No word: the marks are the
 /// buttons, as in the bottom bar, and each says its name to a screen reader.
+///
+/// The count is always whole: compact ([feedCompactCount]), in tabular
+/// figures, at the one size [feedRailCountFontSize] gives every count, which
+/// keeps the widest of them inside [FeedLayout.railCountRoom], clear of the
+/// backing's round end, at any text size.
 class FeedRailMark extends StatelessWidget {
   const FeedRailMark({required this.icon, this.count, super.key});
 
   final Widget icon;
   final String? count;
+
+  /// The count's size before text scaling.
+  static const double countSize = 11;
+
+  /// The count grows with the viewer's text size up to here; the rail is a
+  /// fixed 44pt wide, so it cannot grow without end.
+  static const double countMaxScale = 1.15;
+
+  /// Every shape [feedCompactCount] can take at its widest, in figures that
+  /// are all one width: the count's size is fitted to the widest of these.
+  static const List<String> widestCounts = [
+    '88.8K',
+    '888K',
+    '8.8M',
+    '888M',
+    '8.8B',
+    '888B',
+  ];
+
+  /// The count's type at [fontSize]: set as the Text under it draws it,
+  /// over the inherited default style, so what is measured is what is
+  /// drawn (an inherited tracking would otherwise widen it unseen).
+  static TextStyle countStyle(BuildContext context, double fontSize) =>
+      DefaultTextStyle.of(context).style.merge(
+        AppTypography.textXsMedium.copyWith(
+          fontSize: fontSize,
+          height: 13 / 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0,
+          color: context.colors.textPrimary,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -293,19 +544,15 @@ class FeedRailMark extends StatelessWidget {
           ),
           if (count != null) ...[
             const SizedBox(height: FeedLayout.railGlyphGap),
-            MediaQuery.withClampedTextScaling(
-              maxScaleFactor: 1.15,
-              child: Text(
-                count,
-                maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(
-                  fontSize: 11,
-                  height: 13 / 11,
-                  fontWeight: FontWeight.w600,
-                  color: context.colors.textPrimary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
+            Text(
+              count,
+              key: const ValueKey('feed_rail_count'),
+              maxLines: 1,
+              softWrap: false,
+              // Already scaled: [feedRailCountFontSize] read the viewer's
+              // text size.
+              textScaler: TextScaler.noScaling,
+              style: countStyle(context, feedRailCountFontSize(context)),
             ),
           ],
         ],
@@ -313,6 +560,42 @@ class FeedRailMark extends StatelessWidget {
     );
   }
 }
+
+/// The size every like count is set at: [FeedRailMark.countSize] grown
+/// with the viewer's text size (up to [FeedRailMark.countMaxScale]), or
+/// less where the widest count the rail can show
+/// ([FeedRailMark.widestCounts]) would not fit [FeedLayout.railCountRoom] at
+/// that size. Every count is set at it, so "128" and "12.3K" are one size
+/// and none is ever cut.
+double feedRailCountFontSize(BuildContext context) {
+  final size = MediaQuery.textScalerOf(context)
+      .clamp(maxScaleFactor: FeedRailMark.countMaxScale)
+      .scale(FeedRailMark.countSize);
+  final style = FeedRailMark.countStyle(context, size);
+  final key = (style.fontFamily, style.letterSpacing, size);
+  final widest = _widestCountAt[key] ??= () {
+    var widest = 0.0;
+    for (final text in FeedRailMark.widestCounts) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: TextScaler.noScaling,
+        maxLines: 1,
+      )..layout();
+      widest = math.max(widest, painter.width);
+      painter.dispose();
+    }
+    return widest;
+  }();
+  const room = FeedLayout.railCountRoom;
+  if (widest <= room) return size;
+  // A hair under, so the widest count sits inside its room, not on its edge.
+  return size * room / widest * 0.99;
+}
+
+/// The widest count's width per family and size: measured once, as the
+/// rail rebuilds on every move of the replay.
+final Map<(String?, double?, double), double> _widestCountAt = {};
 
 /// One Feed action: its glyph over its word. Shared by the game and puzzle
 /// posts' rails so they read as one system.

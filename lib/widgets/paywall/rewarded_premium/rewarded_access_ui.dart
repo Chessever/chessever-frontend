@@ -7,6 +7,7 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_theme.dart' show kPrimaryColor;
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/glass_dialog_route.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -25,11 +26,13 @@ Future<bool> showRewardedAccessChoice(
   if (_choiceOpen || !context.mounted) return false;
   _choiceOpen = true;
   try {
-    return await showDialog<bool>(
+    // No fade, so the card's glass is frosted from its first frame. An
+    // outside tap still asks the card's PopScope (never while busy).
+    return await showGlassDialog<bool>(
           context: context,
-          useRootNavigator: true,
           barrierDismissible: !expired,
-          barrierColor: Colors.black.withValues(alpha: 0.56),
+          // The dark card's own stage, in both themes.
+          scrim: Colors.black.withValues(alpha: 0.56),
           builder: (_) => _AccessChoice(upgrade: upgrade, expired: expired),
         ) ??
         false;
@@ -147,15 +150,14 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
     });
     return PopScope(
       canPop: !widget.expired && !_busy,
-      child: Dialog(
-        backgroundColor: card,
-        surfaceTintColor: Colors.transparent,
+      // The card is dark in both themes, so is its glass; the glass's lit
+      // rim is its edge.
+      child: GlassDialog(
+        tone: card,
+        dark: true,
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         constraints: const BoxConstraints(maxWidth: 352),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF39454D)),
-        ),
+        borderRadius: BorderRadius.circular(20),
         child: SingleChildScrollView(
           child: Padding(
             padding: EdgeInsets.fromLTRB(20, 20 - titleInset, 20, 12),
