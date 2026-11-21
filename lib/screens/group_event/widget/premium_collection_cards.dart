@@ -16,13 +16,16 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 
 import 'package:chessever2/widgets/hub_tile.dart';
-import 'package:chessever2/widgets/media_card.dart';
+import 'package:chessever2/widgets/media_card.dart' show MediaTheme;
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// On-media ink, from the shared hub tile.
+/// On-media ink and the tile's own ink, from the shared hub tile.
 const Color _kOnTile = kHubTileOnMedia;
+
+Color _onTile(BuildContext context) => hubTileOnTile(context);
 
 /// Collection cards displayed at the top of For You tab.
 /// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
@@ -109,17 +112,15 @@ class _PremiumCollectionCard extends ConsumerWidget {
   }
 
   Widget _buildTile(BuildContext context, WidgetRef ref) {
-    // One design in both themes (the dark media tile): the followed
-    // players' photo mosaic for Favorites, the federation's flag in its own
-    // colours for Countrymen, each filling the tile at full strength, the
-    // label carried by one soft shade out of its corner.
-    final favorites = type == PremiumGamesType.favorites;
-    return HubTileFace(
-      title: title,
-      ramp: true,
-      artwork: favorites
-          ? const _FavoritePlayersGridBackground()
-          : _FlagFullBackground(ref: ref),
+    // Full background: the player grid for Favorites, the flag for
+    // Countrymen. One tile in both themes: light mode draws the dark tile
+    // as it is (Berkay, 2026-11-21: the dark pair is the design; the light
+    // drawings of these two were rejected).
+    final artwork = type == PremiumGamesType.favorites
+        ? const _FavoritePlayersGridBackground()
+        : _FlagFullBackground(ref: ref);
+    return MediaTheme(
+      child: HubTileFace(title: title, ramp: true, artwork: artwork),
     );
   }
 
@@ -406,7 +407,7 @@ class _PlayerPhotoCell extends StatelessWidget {
           ? CachedNetworkImage(
               imageUrl: photoUrl!,
               fit: BoxFit.cover,
-              filterQuality: FilterQuality.medium,
+              filterQuality: FilterQuality.low,
               memCacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
                   .toInt(),
               memCacheHeight: (size * MediaQuery.devicePixelRatioOf(context))
@@ -436,8 +437,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.15),
-            _kOnTile.withValues(alpha: 0.08),
+            _onTile(context).withValues(alpha: 0.15),
+            _onTile(context).withValues(alpha: 0.08),
           ],
         ),
       ),
@@ -445,7 +446,7 @@ class _PlayerPhotoCell extends StatelessWidget {
         child: Icon(
           Icons.person_rounded,
           size: size * 0.5,
-          color: _kOnTile.withValues(alpha: 0.4),
+          color: _onTile(context).withValues(alpha: 0.4),
         ),
       ),
     );
@@ -476,8 +477,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.12),
-            _kOnTile.withValues(alpha: 0.06),
+            _onTile(context).withValues(alpha: 0.12),
+            _onTile(context).withValues(alpha: 0.06),
           ],
         ),
       ),
@@ -488,7 +489,7 @@ class _PlayerPhotoCell extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.32,
             fontWeight: FontWeight.w700,
-            color: _kOnTile.withValues(alpha: 0.9),
+            color: _onTile(context).withValues(alpha: 0.9),
             letterSpacing: -0.5,
             // Default line height leaves the glyphs sitting a hair high in the
             // circle. Pinning it to 1 hands the vertical centring to the Center
@@ -513,14 +514,14 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.1),
-            _kOnTile.withValues(alpha: 0.05),
-            _kOnTile.withValues(alpha: 0.07),
+            _onTile(context).withValues(alpha: 0.1),
+            _onTile(context).withValues(alpha: 0.05),
+            _onTile(context).withValues(alpha: 0.07),
           ],
         ),
       ),
       child: CustomPaint(
-        painter: _FloatingHeartsPainter(accentColor: _kOnTile),
+        painter: _FloatingHeartsPainter(accentColor: _onTile(context)),
         size: Size.infinite,
       ),
     );
@@ -599,11 +600,16 @@ class _FlagFullBackground extends StatelessWidget {
     final countryAsync = ref.watch(countryDropdownProvider);
 
     return countryAsync.when(
-      // The flag edge to edge in its own colours; the tile's shade carries
-      // the label over it.
-      data: (country) =>
-          MediaFlagBackdrop.ofFederation(country.countryCode) ??
-          _FlagPlaceholder(),
+      data: (country) {
+        final flag = FittedBox(
+          fit: BoxFit.cover,
+          child: CountryFlag.fromCountryCode(
+            country.countryCode,
+            theme: ImageTheme(width: 200, height: 150),
+          ),
+        );
+        return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
+      },
       loading: () => _FlagPlaceholder(),
       error: (_, __) => _FlagPlaceholder(),
     );
@@ -619,8 +625,8 @@ class _FlagPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.1),
-            _kOnTile.withValues(alpha: 0.05),
+            _onTile(context).withValues(alpha: 0.1),
+            _onTile(context).withValues(alpha: 0.05),
           ],
         ),
       ),
@@ -628,7 +634,7 @@ class _FlagPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.public_rounded,
           size: 48.sp,
-          color: _kOnTile.withValues(alpha: 0.15),
+          color: _onTile(context).withValues(alpha: 0.15),
         ),
       ),
     );

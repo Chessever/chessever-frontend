@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 // Full-tile artwork for the four hub tiles (My Likes, My Prep, Feed,
@@ -19,18 +20,30 @@ class HubArtFade extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Paper carries no dark ramp to sit the words on, so there the picture
+    // clears out further before the label: the dark ink stays on plain tile.
+    final light = context.isLightTheme;
     return ShaderMask(
       blendMode: BlendMode.dstIn,
-      shaderCallback: (bounds) => const LinearGradient(
+      shaderCallback: (bounds) => LinearGradient(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
-        colors: [
-          Color(0x26000000),
-          Color(0x59000000),
-          Color(0xD9000000),
-          Color(0xFF000000),
-        ],
-        stops: [0.0, 0.22, 0.42, 0.58],
+        colors: light
+            ? const [
+                Color(0x00000000),
+                Color(0x14000000),
+                Color(0x99000000),
+                Color(0xFF000000),
+              ]
+            : const [
+                Color(0x26000000),
+                Color(0x59000000),
+                Color(0xD9000000),
+                Color(0xFF000000),
+              ],
+        stops: light
+            ? const [0.0, 0.38, 0.56, 0.72]
+            : const [0.0, 0.22, 0.42, 0.58],
       ).createShader(bounds),
       child: child,
     );

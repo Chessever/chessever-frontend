@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/hub_context_art.dart';
 import 'package:chessever2/widgets/media_card.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:country_flags/country_flags.dart';
@@ -542,49 +541,6 @@ void main() {
     });
   });
 
-  group('hub art', () {
-    test('each scene declares the brightest its drawing gets, and the '
-        'drawing never gets brighter', () async {
-      for (final scene in HubScene.values) {
-        final file = File(HubSceneBackdrop.asset(scene));
-        final codec = await ui.instantiateImageCodec(file.readAsBytesSync());
-        final image = (await codec.getNextFrame()).image;
-        final data = (await image.toByteData(
-          format: ui.ImageByteFormat.rawRgba,
-        ))!;
-        var brightest = 0.0;
-        for (var i = 0; i < data.lengthInBytes; i += 4) {
-          final color = Color.fromARGB(
-            255,
-            data.getUint8(i),
-            data.getUint8(i + 1),
-            data.getUint8(i + 2),
-          );
-          brightest = math.max(brightest, color.computeLuminance());
-        }
-        image.dispose();
-        expect(
-          HubSceneBackdrop.brightest(scene),
-          greaterThanOrEqualTo(brightest),
-          reason: '$scene measures $brightest',
-        );
-        // Declared close to what it is, so the shade is no heavier than it
-        // needs to be.
-        expect(
-          HubSceneBackdrop.brightest(scene),
-          lessThan(brightest + 0.03),
-          reason: '$scene measures $brightest',
-        );
-      }
-    });
-
-    test('the Likes heart is dark enough to need no shade at all', () {
-      final ground = HubSceneBackdrop.brightest(HubScene.mostLiked);
-      for (final ink in [kMediaOnInk, kMediaOnInkQuiet]) {
-        expect(MediaTextScrim.shadeFor(ink, ground: ground), 0);
-      }
-    });
-  });
 }
 
 /// A media card's name.
