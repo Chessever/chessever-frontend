@@ -201,6 +201,42 @@ def publish(args):
         raise ReviewError('App Store publisher failed; diagnostic codes: ' + ', '.join(codes))
 
 
+def upload_states(api, app, platform, version, number):
+    """Apple's own records of uploads of exactly this package, and their error codes."""
+    rows = api.get(f'/v1/apps/{app}/buildUploads', **{
+        'filter[cfBundleShortVersionString]': version, 'filter[cfBundleVersion]': number,
+        'filter[platform]': platform, 'limit': 20,
+    })['data']
+    states, codes = set(), set()
+    for row in rows:
+        state = row['attributes'].get('state') or {}
+        if row['attributes'].get('uploadedDate'):
+            states.add(state.get('state'))
+        codes.update(str(error.get('code')) for error in state.get('errors') or [])
+    return states, sorted(codes)
+
+
+def upload_package(api, app, platform, version, number, package, publisher=publish,
+                   sleep=time.sleep):
+    try:
+        publisher(['publish', '--path', str(package)])
+    except ReviewError as error:
+        # codemagic-cli-tools reads any "ERROR:" log line from Xcode 27's altool
+        # as a failed upload unless "UPLOAD SUCCEEDED" is on the output's first
+        # line, which altool 27's path banner never is. 39.2.0 (2026-11-21) was
+        # accepted by Apple while the step went red. Apple's record decides.
+        for attempt in range(16):
+            states, codes = upload_states(api, app, platform, version, number)
+            if states & {'PROCESSING', 'COMPLETE'}:
+                print('The publisher reported an error, but App Store Connect '
+                      'received this package.', flush=True)
+                return
+            if 'FAILED' in states or attempt == 15:
+                raise ReviewError(f'{error} Apple upload errors: {", ".join(codes)}') from None
+            sleep(4)
+    print('Package upload accepted.', flush=True)
+
+
 def submit(api, platform, package, version, number, notes, replace=False,
            publisher=publish, sleep=time.sleep):
     app, bundle, _ = TARGETS[platform]
@@ -208,8 +244,7 @@ def submit(api, platform, package, version, number, notes, replace=False,
     if application['id'] != app or application['attributes']['bundleId'] != bundle:
         raise ReviewError('Unexpected production App Store application.')
     if not find_build(api, app, platform, version, number):
-        publisher(['publish', '--path', str(package)])
-        print('Package upload accepted.', flush=True)
+        upload_package(api, app, platform, version, number, package, publisher, sleep)
     build = wait_build(api, app, platform, version, number, sleep)
     already_reviewed = prepare_version(api, app, platform, version, build, replace, sleep)
     if not already_reviewed:

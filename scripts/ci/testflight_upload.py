@@ -9,10 +9,12 @@ import os
 from pathlib import Path
 import re
 
-from app_store_review import AppleAPI, ReviewError, TARGETS, find_build, publish
+import time
+
+from app_store_review import AppleAPI, ReviewError, TARGETS, find_build, publish, upload_package
 
 
-def upload(api, package, version, number, publisher=publish):
+def upload(api, package, version, number, publisher=publish, sleep=time.sleep):
     app, bundle, _ = TARGETS['IOS']
     application = api.get(f'/v1/apps/{app}', **{'fields[apps]': 'bundleId'})['data']
     if application['id'] != app or application['attributes']['bundleId'] != bundle:
@@ -22,8 +24,7 @@ def upload(api, package, version, number, publisher=publish):
     else:
         # A plain upload: no --app-store, no --testflight beta review. Internal
         # testers receive the build once Apple finishes processing it.
-        publisher(['publish', '--path', str(package)])
-        print('Package upload accepted.', flush=True)
+        upload_package(api, app, 'IOS', version, number, package, publisher, sleep)
     print(json.dumps({'app': app, 'platform': 'IOS', 'version': version,
                       'build': number, 'destination': 'TestFlight'}))
 

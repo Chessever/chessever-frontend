@@ -24,6 +24,11 @@ class AppleFixture:
         self.requests = []
         self.commands = []
         self.bundle = TARGETS[platform][1]
+        # Apple's build upload record: None (no record yet) or its state.
+        self.upload_record = None
+        # The publisher exits non-zero (codemagic misreading altool 27 output).
+        self.publisher_fails = False
+        self.upload_errors = []
 
     def get(self, path, **query):
         self.requests.append(('GET', path, query))
@@ -36,6 +41,15 @@ class AppleFixture:
                 if self.uploaded else []),
                 'included': [{'id': 'release-id', 'type': 'preReleaseVersions',
                               'attributes': {'version': '37.1.1', 'platform': self.platform}}]}
+        if path == f'/v1/apps/{TARGETS[self.platform][0]}/buildUploads':
+            assert query['filter[cfBundleVersion]'] == '3710'
+            assert query['filter[cfBundleShortVersionString]'] == '37.1.1'
+            assert query['filter[platform]'] == self.platform
+            if self.upload_record is None:
+                return {'data': []}
+            return {'data': [{'type': 'buildUploads', 'id': 'upload-id', 'attributes': {
+                'uploadedDate': '2026-11-21T05:50:53Z', 'state': {
+                    'state': self.upload_record, 'errors': self.upload_errors}}}]}
         if path.endswith('/appStoreVersions'):
             return {'data': copy.deepcopy(self.rows)}
         if path.endswith('/appStoreVersionSubmission'):
@@ -60,6 +74,8 @@ class AppleFixture:
         self.commands.append(args)
         if '--app-store' not in args:
             self.uploaded = True
+            if self.publisher_fails:
+                raise ReviewError('App Store publisher failed; diagnostic codes: ')
             return
         assert '--skip-package-upload' in args
         assert args[args.index('--release-type') + 1] == 'MANUAL'
@@ -75,6 +91,15 @@ class AppReviewFlowTest(unittest.TestCase):
             submit(fixture, fixture.platform, 'fixture.ipa', '37.1.1', '3710', 'notes.txt',
                    replace, fixture.publisher, lambda _: self.fail('Unexpected processing wait'))
         return output.getvalue()
+
+    def test_publisher_error_after_apple_received_the_package_still_submits(self):
+        # codemagic-cli-tools misreads Xcode 27's altool output (39.2.0).
+        api = AppleFixture(uploaded=False)
+        api.publisher_fails = True
+        api.upload_record = 'COMPLETE'
+        receipt = self.run_flow(api)
+        self.assertEqual(api.commands[0], ['publish', '--path', 'fixture.ipa'])
+        self.assertIn('WAITING_FOR_REVIEW', receipt)
 
     def test_approved_manual_version_is_withdrawn_and_renamed_without_release(self):
         api = AppleFixture(version())
