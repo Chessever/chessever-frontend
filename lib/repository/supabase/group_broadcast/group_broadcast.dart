@@ -11,6 +11,7 @@ class GroupBroadcast {
   final DateTime? dateEnd;
   final String? timeControl;
   final String broadcastWriter;
+  final DateTime? pinnedAt;
 
   GroupBroadcast({
     required this.id,
@@ -22,6 +23,7 @@ class GroupBroadcast {
     this.dateEnd,
     this.timeControl,
     String? broadcastWriter,
+    this.pinnedAt,
   }) : broadcastWriter = normalizeBroadcastWriter(broadcastWriter);
 
   factory GroupBroadcast.fromJson(Map<String, dynamic> json) => GroupBroadcast(
@@ -40,6 +42,7 @@ class GroupBroadcast {
             : DateTime.parse(json['date_end'] as String),
     timeControl: json['time_control'] as String?,
     broadcastWriter: json['broadcast_writer']?.toString(),
+    pinnedAt: DateTime.tryParse(json['pinned_at']?.toString() ?? ''),
   );
 
   static String normalizeBroadcastWriter(Object? value) =>
@@ -62,6 +65,7 @@ class GroupBroadcast {
     'date_end': dateEnd?.toIso8601String(),
     'time_control': timeControl,
     'broadcast_writer': broadcastWriter,
+    'pinned_at': pinnedAt?.toUtc().toIso8601String(),
   };
 
   @override

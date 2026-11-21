@@ -17,6 +17,7 @@ class TournamentSortingService {
   List<GroupEventCardModel> sortAllTours(
     List<GroupEventCardModel> tours, {
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    bool prioritizePins = false,
   }) {
     final filteredList = tours.toList();
 
@@ -40,6 +41,7 @@ class TournamentSortingService {
     return _applyFavoriteSorting(
       filteredList,
       eventFavoritePlayersMap: eventFavoritePlayersMap,
+      prioritizePins: prioritizePins,
     );
   }
 
@@ -177,23 +179,26 @@ class TournamentSortingService {
     required List<String> favorites,
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
     Map<String, DateTime>? favoriteTimestamps,
+    bool prioritizePins = false,
   }) {
     return _sortWithHeartPriority(
       tours,
       favorites,
       eventFavoritePlayersMap,
       favoriteTimestamps,
+      prioritizePins: prioritizePins,
     );
   }
 
-  /// Sorts events with priority: Starred > Hearted (by count) > Regular
-  /// Within each group, sorts by timestamp (most recent first), then by event date (latest event first)
+  /// Ranks starred events, optional Current pins, favorite-player events,
+  /// and the remaining events in that order.
   List<GroupEventCardModel> _sortWithHeartPriority(
     List<GroupEventCardModel> tours,
     List<String> starredFavorites,
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
-    Map<String, DateTime>? favoriteTimestamps,
-  ) {
+    Map<String, DateTime>? favoriteTimestamps, {
+    bool prioritizePins = false,
+  }) {
     // Get favorite player counts for all events
     final eventFavoritePlayerCounts = <String, int>{};
 
@@ -206,20 +211,19 @@ class TournamentSortingService {
       }
     }
 
-    // Categorize events into three groups
     final starredEvents = <GroupEventCardModel>[];
+    final pinnedEvents = <GroupEventCardModel>[];
     final heartedEvents = <GroupEventCardModel>[];
     final regularEvents = <GroupEventCardModel>[];
 
     for (final tour in tours) {
       if (starredFavorites.contains(tour.id)) {
-        // Priority 1: Starred by user
         starredEvents.add(tour);
+      } else if (prioritizePins && tour.pinnedAt != null) {
+        pinnedEvents.add(tour);
       } else if ((eventFavoritePlayerCounts[tour.id] ?? 0) > 0) {
-        // Priority 2: Has favorite players (hearted)
         heartedEvents.add(tour);
       } else {
-        // Priority 3: Regular events
         regularEvents.add(tour);
       }
     }
@@ -320,8 +324,17 @@ class TournamentSortingService {
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
-    // Return: starred first, then hearted (sorted by count), then regular
-    return [...starredEvents, ...heartedEvents, ...regularEvents];
+    pinnedEvents.sort((a, b) {
+      final byPin = b.pinnedAt!.compareTo(a.pinnedAt!);
+      return byPin != 0 ? byPin : a.id.compareTo(b.id);
+    });
+
+    return [
+      ...starredEvents,
+      ...pinnedEvents,
+      ...heartedEvents,
+      ...regularEvents,
+    ];
   }
 
   /// Apply favorite sorting to put favorited events on top
@@ -329,6 +342,7 @@ class TournamentSortingService {
   List<GroupEventCardModel> _applyFavoriteSorting(
     List<GroupEventCardModel> tours, {
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    bool prioritizePins = false,
   }) {
     final favoritesAsync = ref.read(favoriteEventsProvider);
 
@@ -355,6 +369,7 @@ class TournamentSortingService {
       favorites: favoriteIds,
       eventFavoritePlayersMap: eventFavoritePlayersMap,
       favoriteTimestamps: favoriteTimestamps,
+      prioritizePins: prioritizePins,
     );
   }
 

@@ -443,6 +443,7 @@ class _GroupEventScreenController
         final ranked = sortingService.sortAllTours(
           models,
           eventFavoritePlayersMap: eventFavoritePlayersMap,
+          prioritizePins: tourEventCategory == GroupEventCategory.current,
         );
         if (!_liveFirst) return ranked;
         return liveEventsFirst(

@@ -93,6 +93,7 @@ List<GroupEventCardModel> currentEventsDisplayOrder({
     favorites: favorites,
     eventFavoritePlayersMap: eventFavoritePlayersMap,
     favoriteTimestamps: favoriteTimestamps,
+    prioritizePins: true,
   );
   return liveFirst ? liveEventsFirst(ranked, liveIds) : ranked;
 }

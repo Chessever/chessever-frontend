@@ -22,6 +22,7 @@ class GroupEventCardModel extends Equatable {
     required this.endDate,
     required this.startDate,
     this.location,
+    this.pinnedAt,
     this.searchTerms = const [],
     this.eventSource = EventSource.lichessBroadcast,
     this.isMajorUpcoming = false,
@@ -36,6 +37,7 @@ class GroupEventCardModel extends Equatable {
   final String timeControl;
   final DateTime? endDate;
   final DateTime? startDate;
+  final DateTime? pinnedAt;
   final String? location;
   final List<String> searchTerms;
   final EventSource eventSource;
@@ -69,6 +71,7 @@ class GroupEventCardModel extends Equatable {
       endDate: utcEnd,
       startDate: utcStart,
       searchTerms: groupBroadcast.search,
+      pinnedAt: groupBroadcast.pinnedAt,
       eventSource: EventSource.lichessBroadcast,
     );
   }
@@ -188,6 +191,7 @@ class GroupEventCardModel extends Equatable {
       location: location,
       searchTerms: searchTerms,
       eventSource: eventSource,
+      pinnedAt: pinnedAt,
       isMajorUpcoming: isMajorUpcoming,
     );
   }
@@ -204,7 +208,7 @@ class GroupEventCardModel extends Equatable {
     endDate,
     location,
     searchTerms,
-    eventSource,
+    pinnedAt,    eventSource,
     isMajorUpcoming,
   ];
 
