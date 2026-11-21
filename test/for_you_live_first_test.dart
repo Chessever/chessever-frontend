@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
@@ -33,6 +34,8 @@ import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Trello #1420, the For You tab (labelled Home): Live first floats over
@@ -70,6 +73,84 @@ void main() {
         expect(_ids(container), ['a', 'b', 'c']);
       },
     );
+
+    test('the Today repository reads pins without changing RPC pagination', () async {
+      final rpcRows = [_gb('a', 2900).toJson(), _gb('charlotte', 2700).toJson()];
+      var pinsUnavailable = false;
+      final client = SupabaseClient(
+        'http://localhost:54321',
+        'test-anon-key',
+        httpClient: MockClient((request) async {
+          if (request.url.path.endsWith('/rpc/get_for_you_group_broadcasts')) {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body['p_offset'], 20);
+            expect(body['p_limit'], 2);
+            return http.Response(jsonEncode(rpcRows), 200, request: request);
+          }
+          expect(request.url.path, endsWith('/group_broadcasts_current'));
+          expect(request.url.queryParameters['select'], 'id,pinned_at');
+          expect(request.url.queryParameters['id'], 'in.("a","charlotte")');
+          expect(request.url.queryParameters['pinned_at'], 'not.is.null');
+          if (pinsUnavailable) {
+            return http.Response('unavailable', 503, request: request);
+          }
+          return http.Response(
+            '[{"id":"charlotte","pinned_at":"2026-11-21T11:00:00Z"}]',
+            200,
+            request: request,
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+      final repo = _TodayRepository(client);
+      final page = await repo.getForYouGroupBroadcasts(limit: 2, offset: 20);
+      expect(page.map((event) => event.id), ['a', 'charlotte']);
+      expect(page.first.pinnedAt, isNull);
+      expect(page.last.pinnedAt, DateTime.utc(2026, 11, 21, 11));
+
+      pinsUnavailable = true;
+      final fallback = await repo.getForYouGroupBroadcasts(limit: 2, offset: 20);
+      expect(fallback.map((event) => event.id), ['a', 'charlotte']);
+      expect(fallback.last.pinnedAt, isNull);
+    });
+
+    test('Today reapplies admin pins on refresh and keeps Live first', () async {
+      final rows = [_gb('a', 2900), _gb('b', 2800), _gb('charlotte', 2700)];
+      final container = _container(_Feed(rows), liveIds: const ['b']);
+      await _loaded(container);
+      expect(_ids(container), ['a', 'b', 'charlotte']);
+
+      rows[2] = GroupBroadcast.fromJson({
+        ...rows[2].toJson(),
+        'pinned_at': '2026-11-21T11:00:00Z',
+      });
+      await container.read(forYouEventsProvider.notifier).refresh();
+      expect(_ids(container), ['charlotte', 'a', 'b']);
+
+      _flag(container).state = true;
+      expect(_ids(container), ['b', 'charlotte', 'a']);
+      _flag(container).state = false;
+
+      rows[2] = _gb('charlotte', 2700);
+      await container.read(forYouEventsProvider.notifier).refresh();
+      expect(_ids(container), ['a', 'b', 'charlotte']);
+    });
+
+    test('a pinned event from a later page moves ahead of the first page', () async {
+      final rows = [for (var i = 0; i < 25; i++) _gb('e$i', 2800 - i * 10)];
+      rows[23] = GroupBroadcast.fromJson({
+        ...rows[23].toJson(),
+        'pinned_at': '2026-11-21T11:00:00Z',
+      });
+      final container = _container(_Feed(rows));
+      await _loaded(container);
+      await container.read(forYouEventsProvider.notifier).loadMore();
+      expect(_ids(container), [
+        'e23',
+        for (var i = 0; i < 25; i++)
+          if (i != 23) 'e$i',
+      ]);
+    });
 
     test('a feed built while Live first is on loads live first', () async {
       final feed = _Feed([_gb('a', 2900), _gb('b', 2800), _gb('c', 2700)]);
@@ -779,6 +860,13 @@ List<String> _rows(WidgetTester tester) => [
 Future<void> _unmount(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(const Duration(seconds: 61));
+}
+
+class _TodayRepository extends GroupBroadcastRepository {
+  _TodayRepository(this.supabase);
+
+  @override
+  final SupabaseClient supabase;
 }
 
 /// The For You feed by rating, paged as the RPC pages it, and every event

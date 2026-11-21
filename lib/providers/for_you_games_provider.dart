@@ -952,12 +952,11 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     mirror: ref.read(liveBroadcastIdsProvider),
   );
 
-  /// Records [session] as the feed in its session order and returns the list
-  /// to show: [session] itself, or while Live first is on, its live events
-  /// and [_liveExtras] above the rest ([liveEventsFirst]).
+  /// Keep the base session order separate so pinning and unpinning never
+  /// reshuffle the rest of the feed. Live first still takes priority.
   List<GroupEventCardModel> _present(List<GroupEventCardModel> session) {
     _sessionEvents = session;
-    if (!_liveFirst) return session;
+    if (!_liveFirst) return _withPinnedEvents(session);
     final liveIds = _liveIds();
     final loaded = {for (final event in session) event.id};
     final extras = [
@@ -965,9 +964,18 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         if (!loaded.contains(event.id) && isLiveEvent(event, liveIds)) event,
     ];
     return liveEventsFirst(
-      extras.isEmpty ? session : [...session, ...extras],
+      _withPinnedEvents(extras.isEmpty ? session : [...session, ...extras]),
       liveIds,
     );
+  }
+
+  List<GroupEventCardModel> _withPinnedEvents(List<GroupEventCardModel> events) {
+    if (!events.any((event) => event.pinnedAt != null)) return events;
+    final favorites = ref.read(favoriteEventsProvider).valueOrNull;
+    final starred = {
+      for (final event in favorites ?? const <FavoriteEvent>[]) event.eventId,
+    };
+    return prioritizePinnedTours(events, starred);
   }
 
   /// Shows the session order again, laid out for Live first as it stands,

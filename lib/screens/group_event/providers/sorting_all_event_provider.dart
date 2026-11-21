@@ -9,6 +9,33 @@ final tournamentSortingServiceProvider =
       return TournamentSortingService(ref);
     });
 
+/// Promotes admin pins within an already ranked list without disturbing the
+/// order of starred events or the relative order of other events.
+List<GroupEventCardModel> prioritizePinnedTours(
+  List<GroupEventCardModel> tours,
+  Set<String> starredIds,
+) {
+  final starred = <GroupEventCardModel>[];
+  final pinned = <GroupEventCardModel>[];
+  final rest = <GroupEventCardModel>[];
+  for (final tour in tours) {
+    if (starredIds.contains(tour.id)) {
+      starred.add(tour);
+    } else if (tour.pinnedAt != null) {
+      pinned.add(tour);
+    } else {
+      rest.add(tour);
+    }
+  }
+  if (pinned.isEmpty) return tours;
+
+  pinned.sort((a, b) {
+    final byPin = b.pinnedAt!.compareTo(a.pinnedAt!);
+    return byPin != 0 ? byPin : a.id.compareTo(b.id);
+  });
+  return [...starred, ...pinned, ...rest];
+}
+
 class TournamentSortingService {
   final Ref ref;
 
@@ -212,15 +239,12 @@ class TournamentSortingService {
     }
 
     final starredEvents = <GroupEventCardModel>[];
-    final pinnedEvents = <GroupEventCardModel>[];
     final heartedEvents = <GroupEventCardModel>[];
     final regularEvents = <GroupEventCardModel>[];
 
     for (final tour in tours) {
       if (starredFavorites.contains(tour.id)) {
         starredEvents.add(tour);
-      } else if (prioritizePins && tour.pinnedAt != null) {
-        pinnedEvents.add(tour);
       } else if ((eventFavoritePlayerCounts[tour.id] ?? 0) > 0) {
         heartedEvents.add(tour);
       } else {
@@ -324,17 +348,10 @@ class TournamentSortingService {
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
-    pinnedEvents.sort((a, b) {
-      final byPin = b.pinnedAt!.compareTo(a.pinnedAt!);
-      return byPin != 0 ? byPin : a.id.compareTo(b.id);
-    });
-
-    return [
-      ...starredEvents,
-      ...pinnedEvents,
-      ...heartedEvents,
-      ...regularEvents,
-    ];
+    final ranked = [...starredEvents, ...heartedEvents, ...regularEvents];
+    return prioritizePins
+        ? prioritizePinnedTours(ranked, starredFavorites.toSet())
+        : ranked;
   }
 
   /// Apply favorite sorting to put favorited events on top
