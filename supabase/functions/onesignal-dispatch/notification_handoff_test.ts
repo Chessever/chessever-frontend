@@ -85,6 +85,52 @@ Deno.test("handoff drops null and undefined data values", async () => {
   assertEquals(payloads[0].data, { type: "round_heads_up", round_id: "round-3" });
 });
 
+Deno.test("handoff carries the push picture and collapse key only when set", async () => {
+  const payloads: Array<Record<string, unknown>> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input, init) => {
+    payloads.push(JSON.parse((init as { body: string }).body));
+    return Promise.resolve(new Response(null, { status: 202 }));
+  };
+  try {
+    await handoffNotification(
+      "https://notifications.invalid",
+      "test-secret",
+      "outbox-3",
+      ["user-1"],
+      {
+        title: "New games in Najdorf Mastery",
+        body: "3 games added",
+        url: null,
+        data: { type: "collection_games_added", collection_slug: "najdorf" },
+        imageUrl: "https://cdn.chessever.com/covers/najdorf.webp",
+      },
+      "collection:najdorf",
+    );
+    await handoffNotification(
+      "https://notifications.invalid",
+      "test-secret",
+      "outbox-4",
+      ["user-1"],
+      {
+        title: "Round 3 started",
+        body: "Zürich Open",
+        url: null,
+        data: { type: "round_started", round_id: "round-3" },
+        imageUrl: null,
+      },
+      null,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assertEquals(payloads[0].image, "https://cdn.chessever.com/covers/najdorf.webp");
+  assertEquals(payloads[0].collapseKey, "collection:najdorf");
+  // Old shape exactly when neither is known: no image or collapseKey keys.
+  assertEquals("image" in payloads[1], false);
+  assertEquals("collapseKey" in payloads[1], false);
+});
+
 Deno.test("compactPushData keeps falsy values that are not null", () => {
   assertEquals(
     compactPushData({ a: 0, b: "", c: false, d: null, e: undefined, f: "x" }),

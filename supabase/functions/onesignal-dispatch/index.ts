@@ -325,7 +325,8 @@ async function processItem(item: OutboxItem) {
     const legacy = userIds.filter(id => !migrated.includes(id));
     if (migrated.length) {
       await handoffNotification(Deno.env.get("NOTIFICATION_SERVICE_URL") ?? "",
-        Deno.env.get("NOTIFICATION_SERVICE_SECRET") ?? "", item.id, migrated, notification);
+        Deno.env.get("NOTIFICATION_SERVICE_SECRET") ?? "", item.id, migrated, notification,
+        notificationCollapseId(notification));
     }
     if (legacy.length) {
       await sendLegacyOneSignal(legacy, { ...notification, data: compactPushData(notification.data) });

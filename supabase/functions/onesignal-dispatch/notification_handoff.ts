@@ -11,9 +11,16 @@ export function compactPushData(data: Record<string, unknown>): Record<string, u
   return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== null && v !== undefined));
 }
 
+/** [collapseKey] folds repeats of one board/round into one tray entry and
+ * [notification.imageUrl] is the push picture, as the legacy OneSignal send
+ * carried them (collapse_id, big_picture). The notification service accepts
+ * both since admin portal e7dab0f (2026-11-22) and drops an invalid one
+ * without dropping the push.
+ */
 export async function handoffNotification(
   endpoint: string, secret: string, outboxId: string, userIds: string[],
-  notification: {title:string;body:string;url:string|null;data:Record<string,unknown>;iosSound?:string;androidSound?:string},
+  notification: {title:string;body:string;url:string|null;data:Record<string,unknown>;iosSound?:string;androidSound?:string;imageUrl?:string|null},
+  collapseKey?: string|null,
 ):Promise<void> {
   if (!endpoint.startsWith('https://') || !secret) throw new Error('Notification service is not configured');
   const recipients=[...new Set(userIds)].sort();if(!recipients.length)return;
@@ -28,6 +35,7 @@ export async function handoffNotification(
   const res=await fetch(`${endpoint.replace(/\/$/,'')}/internal/notifications`,{method:'POST',headers:{authorization:`Bearer ${secret}`,'content-type':'application/json; charset=utf-8'},
     body:JSON.stringify({eventKey,userIds:recipients,title:notification.title,body:notification.body,data:notification.data,url:notification.url??'',
       ttlSeconds:['game_started','round_started'].includes(String(notification.data.type))?900:86400,
-      iosSound:notification.iosSound,androidSound:notification.androidSound}),signal:AbortSignal.timeout(15000)});
+      iosSound:notification.iosSound,androidSound:notification.androidSound,
+      ...(notification.imageUrl?{image:notification.imageUrl}:{}),...(collapseKey?{collapseKey}:{})}),signal:AbortSignal.timeout(15000)});
   if(!res.ok)throw new Error(`Notification handoff failed: ${res.status}`);
 }
