@@ -440,6 +440,7 @@ class PrepProfile {
     this.favoriteId,
     this.fideIdentity,
     this.watching = false,
+    this.starredWithoutAlerts = false,
   });
 
   final String id;
@@ -454,9 +455,14 @@ class PrepProfile {
   /// Set when the profile was added from Players.
   final String? favoriteId;
 
-  /// Starred: the server checks its online accounts once a day and pushes
+  /// Subscribed: the server checks its online accounts once a day and pushes
   /// when the player has new games (see `prep_watch.dart`).
   final bool watching;
+
+  /// A visual star that does not create a server watch.
+  final bool starredWithoutAlerts;
+
+  bool get isStarred => watching || starredWithoutAlerts;
 
   String? get fideId =>
       fideIdentity ??
@@ -574,6 +580,7 @@ class PrepProfile {
     List<PrepAccount>? accounts,
     PrepKind? kind,
     bool? watching,
+    bool? starredWithoutAlerts,
   }) => PrepProfile(
     id: id,
     kind: kind ?? this.kind,
@@ -585,6 +592,7 @@ class PrepProfile {
         accounts?.map((a) => a.fideId).whereType<String>().firstOrNull,
     favoriteId: favoriteId,
     watching: watching ?? this.watching,
+    starredWithoutAlerts: starredWithoutAlerts ?? this.starredWithoutAlerts,
   );
 
   PrepProfile replaceAccount(PrepAccount account) => copyWith(
@@ -600,6 +608,7 @@ class PrepProfile {
     'fideIdentity': fideId,
     'favoriteId': favoriteId,
     if (watching) 'watching': true,
+    if (starredWithoutAlerts) 'starredWithoutAlerts': true,
   };
 
   static PrepProfile? fromJson(Object? raw) {
@@ -620,6 +629,7 @@ class PrepProfile {
       ],
       favoriteId: _text(raw['favoriteId']),
       watching: raw['watching'] == true,
+      starredWithoutAlerts: raw['starredWithoutAlerts'] == true,
     );
   }
 }

@@ -153,9 +153,40 @@ Finder _labelled(String label) => find.byWidgetPredicate(
 
 final _star = _labelled('Star Candidates 2026');
 final _unstar = _labelled('Unstar Candidates 2026');
-final _question = find.text('Turn on notifications?');
+final _question = find.text('Get notifications for this collection?');
 
 void main() {
+  testWidgets('a player can be starred without opting in', (tester) async {
+    final saved = <bool>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: TextButton(
+                  onPressed: () => playerStarNotificationFlow(context)(
+                    (enabled) async => saved.add(enabled),
+                  ),
+                  child: const Text('Follow player'),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Follow player'));
+    await _settle(tester);
+    expect(find.text('Get notifications for this player?'), findsOneWidget);
+    expect(saved, isEmpty);
+    await tester.tap(find.text('Just star'));
+    await _settle(tester);
+    expect(saved, [false]);
+  });
+
   testWidgets('starring a collection asks about new games; a yes is written '
       'onto its row', (tester) async {
     final store = await _pump(tester);
@@ -163,19 +194,14 @@ void main() {
     await tester.tap(_star);
     await _settle(tester);
 
-    expect(store.added, ['collection:candidates-2026']);
+    expect(store.added, isEmpty);
     expect(_question, findsOneWidget);
-    expect(
-      find.text('Get an alert when new games are added to Candidates 2026.'),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('Turn on'));
+    await tester.tap(find.text('Notify me'));
     await _settle(tester);
 
-    final (patchedId, patch) = store.patches.single;
-    expect(patchedId, 'collection:candidates-2026');
-    expect(patch, {kStarNotificationsKey: true});
+    expect(store.added, ['collection:candidates-2026']);
+    expect(store._rows.single.metadata[kStarNotificationsKey], true);
+    expect(store.patches, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
@@ -189,16 +215,14 @@ void main() {
 
     await tester.tap(_star);
     await _settle(tester);
-    await tester.tap(find.text('Not now'));
+    await tester.tap(find.text('Just star'));
     await _settle(tester);
 
     expect(store.added, ['collection:candidates-2026']);
     expect(store.removed, isEmpty);
     expect(_unstar, findsOneWidget);
-    // "Not now" is written down: a collection star with no answer notifies.
-    final (patchedId, patch) = store.patches.single;
-    expect(patchedId, 'collection:candidates-2026');
-    expect(patch, {kStarNotificationsKey: false});
+    expect(store._rows.last.metadata[kStarNotificationsKey], false);
+    expect(store.patches, isEmpty);
   });
 
   test('a collection star notifies unless its owner said no; a smart event '

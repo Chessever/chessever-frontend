@@ -300,6 +300,7 @@ class _Favorites extends FavoritePlayersNotifierNew {
     String? gamebasePlayerId,
     String? memorialSourceIdentity,
     String? memorialRouteId,
+    PlayerStarFlow? starFlow,
   }) async {
     unfollows++;
     return false;

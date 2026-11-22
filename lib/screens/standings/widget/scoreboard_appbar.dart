@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -65,20 +66,21 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
         final currentlyFavorited = ref
             .read(favoritePlayersProviderNew)
             .maybeWhen(
-              data:
-                  (players) =>
-                      players.any((p) => p.fideId == player.fideId?.toString()),
+              data: (players) =>
+                  players.any((p) => p.fideId == player.fideId?.toString()),
               orElse: () => false,
             );
         if (!currentlyFavorited) {
           if (!mounted) return;
           final canAdd = await canAddMoreFavorites(context, ref);
-          if (!canAdd) return;
+          if (!canAdd || !mounted) return;
         }
 
+        if (!mounted) return;
         final isNowFavorite = await ref
             .read(favoritePlayersProviderNew.notifier)
             .toggleFavorite(
+              starFlow: playerStarNotificationFlow(context),
               fideId: player.fideId?.toString(),
               playerName: player.name,
               countryCode: player.countryCode,
@@ -86,7 +88,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
               title: player.title,
             );
 
-        if (isNowFavorite) {
+        if (isNowFavorite && mounted) {
           _animationController.forward().then(
             (_) => _animationController.reverse(),
           );
@@ -115,10 +117,9 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   @override
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
-    final isForYouView =
-        ref
-            .watch(chessboardViewFromProviderNew)
-            .usesEventScopedScorecardContext;
+    final isForYouView = ref
+        .watch(chessboardViewFromProviderNew)
+        .usesEventScopedScorecardContext;
 
     bool isFavorite = false;
     if (isForYouView) {
@@ -126,9 +127,8 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
       isFavorite =
           player != null &&
           favoritesAsync.maybeWhen(
-            data:
-                (players) =>
-                    players.any((p) => p.fideId == player.fideId?.toString()),
+            data: (players) =>
+                players.any((p) => p.fideId == player.fideId?.toString()),
             orElse: () => false,
             skipLoadingOnRefresh: true,
             skipLoadingOnReload: true,

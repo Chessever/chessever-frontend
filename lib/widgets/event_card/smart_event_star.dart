@@ -17,10 +17,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Stars or unstars [request]: the one path behind every smart event star.
 ///
 /// A star is the smart event's favorites row (`smart_event:v2:<criteria>`),
-/// independent of its My Space shortcut. Starring is subscribing: each evening, in their own
-/// timezone, its owner hears how many new games it caught
-/// (`queue_smart_event_digests`). Unstarring is the only opt-out, so starring
-/// asks nothing; it only makes sure the push can arrive.
+/// independent of its My Space shortcut. A new star asks whether it should also send notifications.
 ///
 /// Under [SpaceStarPins] (the Search tab) a star also keeps the smart event
 /// in My Space ([pinStarredToSpace]); an unstar never takes it out.
@@ -79,11 +76,19 @@ Future<void> toggleSmartEventFavorite({
         return;
       }
 
+      if (!context.mounted) return;
+      final wantsAlerts = await askStarNotifications(
+        context,
+        subject: StarNotificationSubject.event,
+      );
       await notifier.addFavorite(
         eventId: request.favoriteEventId,
         eventName: request.displayName,
         maxAvgElo: request.minElo > 0 ? request.minElo : null,
-        extraMetadata: request.toFavoriteMetadata(),
+        extraMetadata: {
+          ...request.toFavoriteMetadata(),
+          kFavoriteAlertChoiceKey: wantsAlerts,
+        },
       );
       track(true);
       if (pinToSpace) {
@@ -93,10 +98,12 @@ Future<void> toggleSmartEventFavorite({
           draft: smartEventSpaceDraft(request),
         );
       }
-      await makeSmartEventStarReachable(
-        container: container,
-        messenger: messenger,
-      );
+      if (wantsAlerts) {
+        await activateEventStarNotifications(
+          container: container,
+          messenger: messenger,
+        );
+      }
     });
   } catch (_) {
     if (messenger != null && messenger.mounted) {

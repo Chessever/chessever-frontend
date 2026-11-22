@@ -2675,9 +2675,10 @@ class SpaceSavedRow extends ConsumerWidget {
       customSemanticsActions: starrable && !editing
           ? {
               CustomSemanticsAction(
-                label: prep.watching ? 'Unstar' : 'Star',
-              ): () =>
-                  prep.watching ? unstar(prep) : togglePrepWatch(context, prep),
+                label: prep.isStarred ? 'Unstar' : 'Star',
+              ): () => prep.isStarred
+                  ? unstar(prep)
+                  : togglePrepWatch(context, prep),
             }
           : null,
       child: TappableScale(

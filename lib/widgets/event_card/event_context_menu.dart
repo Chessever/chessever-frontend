@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -184,28 +185,26 @@ Future<bool?> toggleEventFavorite({
   final container = ProviderScope.containerOf(context, listen: false);
   final messenger = ScaffoldMessenger.maybeOf(context);
   final allowed = await requireFullAuthGuard(context);
-  if (!allowed) return null;
+  if (!allowed || !context.mounted) return null;
 
   HapticFeedbackService.pin();
 
   final favoritesCount =
       ref.read(favoriteEventsProvider).valueOrNull?.length ?? 0;
   try {
-    final isFavorited = await ref
-        .read(favoriteEventsProvider.notifier)
-        .toggleFavorite(
-          eventId: model.id,
-          eventName: model.title,
-          timeControl: model.timeControl,
-          maxAvgElo: model.maxAvgElo > 0 ? model.maxAvgElo : null,
-          dates: model.dates.isNotEmpty ? model.dates : null,
-        );
+    final isFavorited = await toggleEventStarWithNotifications(
+      context: context,
+      eventId: model.id,
+      eventName: model.title,
+      timeControl: model.timeControl,
+      maxAvgElo: model.maxAvgElo > 0 ? model.maxAvgElo : null,
+      dates: model.dates.isNotEmpty ? model.dates : null,
+    );
     // Same path for Current / For You / Calendar cards — remaps synthetic
     // cal_event_* ids to group_broadcasts.id when possible.
-    final nextCount =
-        isFavorited
-            ? favoritesCount + 1
-            : (favoritesCount - 1).clamp(0, favoritesCount);
+    final nextCount = isFavorited
+        ? favoritesCount + 1
+        : (favoritesCount - 1).clamp(0, favoritesCount);
     AnalyticsService.instance.trackEventDetached(
       'Event Favorite Toggled',
       properties: {
@@ -313,10 +312,9 @@ List<LibraryMenuAction> eventMenuActions({
       ),
     if (broadcastActions && tourIds.isNotEmpty)
       LibraryMenuAction(
-        icon:
-            noSpoilersEnabled
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
+        icon: noSpoilersEnabled
+            ? Icons.visibility_off_outlined
+            : Icons.visibility_outlined,
         label: eventNoSpoilersMenuLabel(noSpoilersEnabled),
         onSelected: () async {
           final enabled = eventNoSpoilersNextEnabled(spoilerStates);
@@ -341,8 +339,8 @@ List<LibraryMenuAction> eventMenuActions({
       LibraryMenuAction(
         icon: Icons.copy_rounded,
         label: 'Copy PGN',
-        onSelected:
-            () => _copyEventPgn(context: context, ref: ref, model: model),
+        onSelected: () =>
+            _copyEventPgn(context: context, ref: ref, model: model),
       ),
     ],
     spaceMenuAction(
@@ -368,8 +366,9 @@ Future<void> showEventContextMenu({
 }) async {
   // The menu (and its haptic) answers the press at once; the tours load
   // behind it and the No Spoilers row settles them if it is chosen.
-  final pendingTourIds =
-      hasBroadcastActions(model) ? loadEventMenuTourIds(ref, model) : null;
+  final pendingTourIds = hasBroadcastActions(model)
+      ? loadEventMenuTourIds(ref, model)
+      : null;
   await showLibraryContextMenu(
     context: context,
     actions: eventMenuActions(
@@ -433,12 +432,11 @@ LibraryMenuAction _pendingNoSpoilersAction(
   return LibraryMenuAction(
     icon: Icons.visibility_outlined,
     label: eventNoSpoilersMenuLabel(false),
-    onSelected:
-        () => _turnOnNoSpoilersOnceResolved(
-          container: container,
-          messenger: messenger,
-          pendingTourIds: pendingTourIds,
-        ),
+    onSelected: () => _turnOnNoSpoilersOnceResolved(
+      container: container,
+      messenger: messenger,
+      pendingTourIds: pendingTourIds,
+    ),
   );
 }
 
@@ -512,10 +510,9 @@ Future<void> _shareEvent({
   );
   if (!context.mounted) return;
   final box = context.findRenderObject() as RenderBox?;
-  final origin =
-      box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 1, 1);
+  final origin = box != null
+      ? box.localToGlobal(Offset.zero) & box.size
+      : const Rect.fromLTWH(0, 0, 1, 1);
 
   AnalyticsService.instance.trackEventDetached(
     'Event Shared',
@@ -617,9 +614,7 @@ Future<void> _copyEventPgn({
         final pgn = g.pgn;
         if (pgn == null || pgn.trim().isEmpty) continue;
         if (copied > 0) pgnBuffer.write('\n\n');
-        pgnBuffer.write(
-          canonicalizePgnForExport(rebrandPgnLinks(pgn.trim())),
-        );
+        pgnBuffer.write(canonicalizePgnForExport(rebrandPgnLinks(pgn.trim())));
         copied++;
       }
 
@@ -661,11 +656,7 @@ Future<void> _copyEventPgn({
       copied == 1 ? 'PGN copied' : '$copied PGNs copied',
     );
   } catch (_) {
-    showAppSnackOn(
-      messenger,
-      'Failed to copy PGN',
-      tone: AppSnackTone.danger,
-    );
+    showAppSnackOn(messenger, 'Failed to copy PGN', tone: AppSnackTone.danger);
   }
 }
 

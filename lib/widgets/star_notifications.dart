@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/notification_permission_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -19,42 +20,75 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// the way [starNotificationsEnabled] does.
 const String kStarNotificationsKey = 'notificationsEnabled';
 
-/// Whether the starred row [favorite] sends notifications.
-///
-/// A smart event's star always does: starring one is subscribing to its
-/// evening "new games" push and unstarring is the only opt-out, so it has no
-/// switch (and older builds' `notificationsEnabled: false` means nothing).
-/// A collection's star does unless its owner turned that off: starring one
-/// is asking to hear about its new games (Trello #1225), and a star made
-/// before the question, on the desktop app or on an older build never
-/// answered it.
+/// New explicit decisions for events, Smart Events and players. Older rows
+/// have no decision and keep their previous behavior. Collections already
+/// used [kStarNotificationsKey] and keep reading and writing that key.
+const kFavoriteAlertChoiceKey = 'starAlertsOptIn';
+
 bool starNotificationsEnabled(FavoriteEvent favorite) {
-  if (favorite.eventId.startsWith('smart_event:') ||
-      favorite.metadata['type'] == 'smart_event') {
-    return true;
+  final choice = favorite.metadata[kFavoriteAlertChoiceKey];
+  if (choice is bool) return choice;
+  if (favorite.eventId.startsWith('collection:') ||
+      favorite.metadata['kind'] == 'collection') {
+    return favorite.metadata[kStarNotificationsKey] != false;
   }
-  final flag = favorite.metadata[kStarNotificationsKey];
-  if (flag is bool) return flag;
-  return favorite.eventId.startsWith('collection:') ||
-      favorite.metadata['kind'] == 'collection';
+  return true;
 }
 
-/// Asks, right after a star, whether it should also send notifications.
-/// [message] says what would arrive ("Get an alert when a round starts or
-/// finishes in GM Games."). True only on an explicit yes: dismissing the
-/// dialog keeps the star and leaves it quiet.
+enum StarNotificationSubject { event, collection, player }
+
+/// Dismissing the dialog is equivalent to Just star.
 Future<bool> askStarNotifications(
   BuildContext context, {
-  required String message,
+  required StarNotificationSubject subject,
 }) async {
-  final answer = await showSmoothConfirmDialog(
-    context: context,
-    title: 'Turn on notifications?',
-    message: message,
-    confirmText: 'Turn on',
-    cancelText: 'Not now',
+  if (!context.mounted) return false;
+  return await showSmoothConfirmDialog(
+        context: context,
+        title: 'Get notifications for this ${subject.name}?',
+        confirmText: 'Notify me',
+        cancelText: 'Just star',
+      ) ==
+      true;
+}
+
+Future<bool> toggleEventStarWithNotifications({
+  required BuildContext context,
+  required String eventId,
+  required String eventName,
+  String? timeControl,
+  int? maxAvgElo,
+  String? dates,
+}) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  await container.read(favoriteEventsProvider.future);
+  final notifier = container.read(favoriteEventsProvider.notifier);
+  if (notifier.isFavorited(eventId, eventName: eventName)) {
+    await notifier.removeFavorite(eventId, eventName: eventName);
+    return false;
+  }
+  final wantsAlerts =
+      context.mounted &&
+      await askStarNotifications(
+        context,
+        subject: StarNotificationSubject.event,
+      );
+  await notifier.addFavorite(
+    eventId: eventId,
+    eventName: eventName,
+    timeControl: timeControl,
+    maxAvgElo: maxAvgElo,
+    dates: dates,
+    extraMetadata: {kFavoriteAlertChoiceKey: wantsAlerts},
   );
-  return answer == true;
+  if (wantsAlerts) {
+    await activateEventStarNotifications(
+      container: container,
+      messenger: messenger,
+    );
+  }
+  return true;
 }
 
 /// Sets whether the starred row [eventId] notifies, and when turning it on
@@ -104,12 +138,26 @@ Future<void> setStarNotifications({
   if (reachable && confirm) snack('Notifications turned on');
 }
 
-/// Makes a new smart event star's evening push reachable: starring one
-/// turns its pushes on, with no question. Sent under starred-event alerts.
-Future<bool> makeSmartEventStarReachable({
+Future<bool> activateEventStarNotifications({
   required ProviderContainer container,
   required ScaffoldMessengerState? messenger,
 }) => _makeReachable(container, messenger);
+
+/// Only called on the add branch of a player favorite action.
+PlayerStarFlow playerStarNotificationFlow(BuildContext context) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  return (save) async {
+    final wantsAlerts = await askStarNotifications(
+      context,
+      subject: StarNotificationSubject.player,
+    );
+    await save(wantsAlerts);
+    if (wantsAlerts) {
+      await makePlayerStarReachable(container: container, messenger: messenger);
+    }
+  };
+}
 
 /// Makes a starred My Prep player's daily push reachable, as a yes does for
 /// a starred event. The dispatcher sends it under favorite-player alerts.
@@ -145,10 +193,8 @@ Future<bool> _makeReachable(
   final service = PushNotificationsService.instance;
   bool granted;
   try {
+    await service.requestPermissionIfNotGranted();
     granted = await service.isPermissionGranted();
-    if (!granted && await service.canRequestPermission()) {
-      granted = await service.requestPermissionWithDialog();
-    }
     // Keeps the Settings switch and the account's push flag on the OS truth.
     unawaited(
       container.read(notificationPermissionProvider.notifier).refresh(),

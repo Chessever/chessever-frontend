@@ -2802,6 +2802,7 @@ class _RecordingFavoriteEvents extends FavoriteEventsNotifier {
     int? maxAvgElo,
     String? dates,
     Map<String, dynamic>? extraMetadata,
+    PlayerStarFlow? starFlow,
   }) async {
     toggles.add(eventId);
     if (_starred.remove(eventId)) return false;

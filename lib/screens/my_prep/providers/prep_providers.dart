@@ -206,9 +206,22 @@ class PrepProfilesNotifier
 
   // ---------------------------------------------------------------- stars
 
-  /// Stars or unstars [profileId]. The server's copy follows on its own.
+  /// Changes the star and its alert choice together. Only Notify me mirrors
+  /// a watch to the server; a quiet star still survives a restart.
+  void setStar(
+    String profileId, {
+    required bool starred,
+    bool alerts = false,
+  }) => edit(
+    profileId,
+    (p) => p.copyWith(
+      watching: starred && alerts,
+      starredWithoutAlerts: starred && !alerts,
+    ),
+  );
+
   void setWatching(String profileId, bool watching) =>
-      edit(profileId, (p) => p.copyWith(watching: watching));
+      setStar(profileId, starred: watching, alerts: watching);
 
   /// A push arrived for [profileId], which this device holds without its
   /// star. An unstar the server has not heard is told again, so the pushes
@@ -273,6 +286,10 @@ class PrepProfilesNotifier
       for (final p in _profiles)
         if (p.watching) p.id,
     };
+    final quiet = {
+      for (final p in _profiles)
+        if (p.starredWithoutAlerts) p.id,
+    };
     final acked = {..._watchAcked};
     final onServer = await _ref.read(prepWatchRemoteProvider).watched();
     if (!mounted) return;
@@ -280,7 +297,9 @@ class PrepProfilesNotifier
       var changed = false;
       final next = [
         for (final p in _profiles)
-          if (_unwatchPending.contains(p.id) || !prepCanWatch(p))
+          if (_unwatchPending.contains(p.id) ||
+              !prepCanWatch(p) ||
+              p.starredWithoutAlerts != quiet.contains(p.id))
             p
           else if (p.watching &&
               starred.contains(p.id) &&
@@ -299,7 +318,7 @@ class PrepProfilesNotifier
             () {
               changed = true;
               _watchAcked.add(p.id);
-              return p.copyWith(watching: true);
+              return p.copyWith(watching: true, starredWithoutAlerts: false);
             }()
           else
             p,

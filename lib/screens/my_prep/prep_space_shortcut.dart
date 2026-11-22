@@ -56,6 +56,7 @@ Map<String, dynamic>? prepPinRecipe(PrepProfile profile) {
     'fideIdentity': ?profile.fideId,
     'favoriteId': ?profile.favoriteId,
     if (profile.watching) 'watching': true,
+    if (profile.starredWithoutAlerts) 'starredWithoutAlerts': true,
     'accounts': accounts,
   };
 }
@@ -129,6 +130,7 @@ final prepSpaceSyncProvider = Provider<void>((ref) {
         // The server knows whether a profile it can watch is starred.
         final profile = carried.copyWith(
           watching: prepCanWatch(carried) ? star != null : carried.watching,
+          starredWithoutAlerts: star == null && carried.starredWithoutAlerts,
         );
         final holder = profiles.restore(profile);
         if (holder != null) restored.add(holder.id);

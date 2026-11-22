@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
@@ -58,10 +59,9 @@ class _CalendarEventDetailScreenState
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, widget.events.length - 1);
-    final initialPage =
-        _canSwipe
-            ? (_virtualBase ~/ 2) * widget.events.length + _currentIndex
-            : 0;
+    final initialPage = _canSwipe
+        ? (_virtualBase ~/ 2) * widget.events.length + _currentIndex
+        : 0;
     _controller = PageController(initialPage: initialPage);
   }
 
@@ -109,10 +109,9 @@ class _CalendarEventDetailScreenState
       bottomNavigationBar: _EventBottomBar(event: event),
       body: PageView.builder(
         controller: _controller,
-        physics:
-            _canSwipe
-                ? const BouncingScrollPhysics()
-                : const NeverScrollableScrollPhysics(),
+        physics: _canSwipe
+            ? const BouncingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
         itemCount: _virtualCount,
         onPageChanged: _onPageChanged,
         itemBuilder: (_, virtualIndex) {
@@ -226,11 +225,11 @@ class _EventDetailBody extends StatelessWidget {
                   title: 'Location',
                   flag:
                       event.countryCode != null && event.countryCode!.isNotEmpty
-                          ? CountryFlag.fromCountryCode(
-                            event.countryCode!,
-                            theme: ImageTheme(width: 16.w, height: 12.h),
-                          )
-                          : null,
+                      ? CountryFlag.fromCountryCode(
+                          event.countryCode!,
+                          theme: ImageTheme(width: 16.w, height: 12.h),
+                        )
+                      : null,
                   description: event.location ?? 'TBA',
                 ),
                 SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
@@ -335,10 +334,9 @@ class _EventBottomBar extends StatelessWidget {
               SvgAsset.websiteIcon,
               height: 12.h,
               width: 12.h,
-              colorFilter:
-                  context.isLightTheme
-                      ? ColorFilter.mode(context.colors.accentText, BlendMode.srcIn)
-                      : null,
+              colorFilter: context.isLightTheme
+                  ? ColorFilter.mode(context.colors.accentText, BlendMode.srcIn)
+                  : null,
             ),
             SizedBox(width: 4.w),
             Flexible(
@@ -367,18 +365,17 @@ class _CalendarEventFavoriteStar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final favoritesAsync = ref.watch(favoriteEventsProvider);
     final isStarred = favoritesAsync.maybeWhen(
-      data:
-          (events) => events.any(
-            (favorite) =>
-                favoriteEventMatchesId(
-                  storedEventId: favorite.eventId,
-                  candidateId: event.id,
-                  eventName: favorite.eventName,
-                  metadata: favorite.metadata,
-                ) ||
-                favorite.eventName.trim().toLowerCase() ==
-                    event.title.trim().toLowerCase(),
-          ),
+      data: (events) => events.any(
+        (favorite) =>
+            favoriteEventMatchesId(
+              storedEventId: favorite.eventId,
+              candidateId: event.id,
+              eventName: favorite.eventName,
+              metadata: favorite.metadata,
+            ) ||
+            favorite.eventName.trim().toLowerCase() ==
+                event.title.trim().toLowerCase(),
+      ),
       orElse: () => false,
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
@@ -394,19 +391,17 @@ class _CalendarEventFavoriteStar extends ConsumerWidget {
         HapticFeedbackService.pin();
 
         try {
-          final isFavorited = await ref
-              .read(favoriteEventsProvider.notifier)
-              .toggleFavorite(
-                eventId: event.id,
-                eventName: event.title,
-                timeControl: event.timeControl,
-                maxAvgElo: event.maxAvgElo > 0 ? event.maxAvgElo : null,
-                dates: event.dates.isNotEmpty ? event.dates : null,
-              );
-          final nextCount =
-              isFavorited
-                  ? favoritesCount + 1
-                  : (favoritesCount - 1).clamp(0, favoritesCount);
+          final isFavorited = await toggleEventStarWithNotifications(
+            context: context,
+            eventId: event.id,
+            eventName: event.title,
+            timeControl: event.timeControl,
+            maxAvgElo: event.maxAvgElo > 0 ? event.maxAvgElo : null,
+            dates: event.dates.isNotEmpty ? event.dates : null,
+          );
+          final nextCount = isFavorited
+              ? favoritesCount + 1
+              : (favoritesCount - 1).clamp(0, favoritesCount);
           AnalyticsService.instance.trackEventDetached(
             'Event Favorite Toggled',
             properties: {

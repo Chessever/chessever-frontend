@@ -323,10 +323,6 @@ bool collectionIsFavorited(Iterable<FavoriteEvent> favorites, Collection c) =>
 /// Stars or unstars [collection]: the one path behind every collection
 /// star, so each writes the same row and the same analytics event.
 ///
-/// Starring fills the star at once and then asks whether new games should
-/// notify; the answer, yes or no, is written onto the row once the row has
-/// landed. A star with no answer notifies (see [starNotificationsEnabled]),
-/// so a "Not now" has to be written down to keep it quiet.
 Future<void> toggleCollectionFavorite({
   required BuildContext context,
   required Collection collection,
@@ -373,37 +369,32 @@ Future<void> toggleCollectionFavorite({
   }
 
   final eventId = collectionFavoriteId(collection);
-  final added = notifier
-      .addFavorite(
-        eventId: eventId,
-        eventName: collection.title,
-        extraMetadata: {
-          'kind': 'collection',
-          'slug': collection.slug,
-          'collectionKind': collection.kind.name,
-        },
-      )
-      .then(
-        (_) => true,
-        onError: (Object e) {
-          debugPrint('[CollectionCard] Error adding favorite: $e');
-          return false;
-        },
-      );
-
   final wantsAlerts = await askStarNotifications(
     context,
-    message: 'Get an alert when new games are added to ${collection.title}.',
+    subject: StarNotificationSubject.collection,
   );
-  if (!await added) return;
+  try {
+    await notifier.addFavorite(
+      eventId: eventId,
+      eventName: collection.title,
+      extraMetadata: {
+        'kind': 'collection',
+        'slug': collection.slug,
+        'collectionKind': collection.kind.name,
+        kStarNotificationsKey: wantsAlerts,
+      },
+    );
+  } catch (e) {
+    debugPrint('[CollectionCard] Error adding favorite: $e');
+    return;
+  }
   settled(true);
-  await setStarNotifications(
-    container: container,
-    messenger: messenger,
-    eventId: eventId,
-    enabled: wantsAlerts,
-    surface: 'collection',
-  );
+  if (wantsAlerts) {
+    await activateEventStarNotifications(
+      container: container,
+      messenger: messenger,
+    );
+  }
 }
 
 /// [c] as a My Space shortcut: it sits with the databases and opens the

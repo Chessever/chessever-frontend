@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/game_list_live_first_provider.dart';
@@ -1591,6 +1592,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       await ref
           .read(favoritePlayersProviderNew.notifier)
           .addFavorite(
+            starFlow: playerStarNotificationFlow(context),
             fideId: player.fideId?.toString(),
             playerName: player.name,
             countryCode: player.countryCode,

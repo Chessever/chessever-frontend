@@ -6,8 +6,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/rounded_search_bar.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -15,6 +13,7 @@ import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -191,10 +190,9 @@ class _PlayerList extends ConsumerWidget {
       displacement: 40.0,
       onRefresh: () => _handleRefresh(ref),
       child: playersState.when(
-        loading:
-            () =>  Center(
-              child: CircularProgressIndicator(color: context.colors.textPrimary),
-            ),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: context.colors.textPrimary),
+        ),
         error: (error, stack) {
           return RefreshIndicator(
             onRefresh: () => _handleRefresh(ref),
@@ -216,7 +214,9 @@ class _PlayerList extends ConsumerWidget {
                       Text(
                         'Pull down to retry',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.7),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.7,
+                          ),
                         ),
                       ),
                     ],
@@ -248,7 +248,9 @@ class _PlayerList extends ConsumerWidget {
                         Text(
                           'Pull down to refresh',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ),
                       ],
@@ -265,10 +267,12 @@ class _PlayerList extends ConsumerWidget {
             itemCount: filteredPlayers.length + (notifier.hasMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (index >= filteredPlayers.length) {
-                return  Center(
+                return Center(
                   child: Padding(
                     padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(color: context.colors.textPrimary),
+                    child: CircularProgressIndicator(
+                      color: context.colors.textPrimary,
+                    ),
                   ),
                 );
               }
@@ -291,12 +295,8 @@ class _PlayerList extends ConsumerWidget {
                   }
                   return true;
                 },
-                onFavoriteToggle:
-                    () => _toggleFavorite(
-                          context,
-                          ref,
-                          player['fideId'].toString(),
-                        ),
+                onFavoriteToggle: () =>
+                    _toggleFavorite(context, ref, player['fideId'].toString()),
                 index: index,
                 isFirst: index == 0,
                 isLast: index == filteredPlayers.length - 1,
@@ -313,52 +313,34 @@ class _PlayerList extends ConsumerWidget {
     WidgetRef ref,
     String playerId,
   ) async {
-    final viewModel = ref.read(playerViewModelProvider);
-    viewModel.toggleFavorite(playerId);
-
-    // Also update the Supabase-backed favorites system so auto-pin updates immediately
+    if (!context.mounted) return;
     try {
       final players = ref.read(playerPaginationProvider).valueOrNull ?? [];
       final player = players.firstWhere(
         (p) => p['fideId'].toString() == playerId,
         orElse: () => <String, dynamic>{},
       );
-
-      if (player.isNotEmpty) {
-        final wasFavorite = player['isFavorite'] == true;
-        final playerModel = PlayerStandingModel(
-          name: '${player['title'] ?? ''} ${player['name']}'.trim(),
-          countryCode: player['fed']?.toString() ?? '',
-          score: player['rating'] ?? 0,
-          scoreChange: 0,
-          matchScore: null,
-          fideId: int.tryParse(playerId),
-          title: player['title']?.toString(),
-        );
-
-        final favService = ref.read(favoriteStandingsPlayerService);
-        await favService.toggleFavorite(playerModel);
-
-        // Increment favorites version to trigger auto-pin recomputation
-        // This will cause the games list to re-sort immediately
-        ref.read(favoritesVersionProvider.notifier).state++;
-        debugPrint(
-          '[PlayerScreen] Incremented favorites version to trigger games resort',
-        );
-
-        AnalyticsService.instance.trackEventDetached(
-          'Player Favorite Toggled',
-          properties: {
-            'player_id': playerId,
-            'player_name': playerModel.name,
-            'country_code': playerModel.countryCode,
-            'rating': playerModel.score,
-            'title': playerModel.title,
-            'is_favorited': !wasFavorite,
-            'source': 'player_list',
-          },
-        );
-      }
+      if (player.isEmpty) return;
+      final isFavorite = await ref
+          .read(playerPaginationProvider.notifier)
+          .toggleFavorite(
+            playerId,
+            starFlow: playerStarNotificationFlow(context),
+          );
+      if (!context.mounted || isFavorite == null) return;
+      ref.read(favoritesVersionProvider.notifier).state++;
+      AnalyticsService.instance.trackEventDetached(
+        'Player Favorite Toggled',
+        properties: {
+          'player_id': playerId,
+          'player_name': player['name'],
+          'country_code': player['fed'],
+          'rating': player['rating'],
+          'title': player['title'],
+          'is_favorited': isFavorite,
+          'source': 'player_list',
+        },
+      );
     } on FavoriteLimitExceededException {
       // Pre-flight `canAddMoreFavorites` already gates the common path; this
       // catches the race where the server-side count is ahead of local state.

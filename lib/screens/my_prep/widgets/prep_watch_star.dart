@@ -20,23 +20,36 @@ const double kPrepWatchStarSlot = 44;
 /// Stars or unstars [profile]. A starred player is checked every hour, and a
 /// push says the same day, while the reader is awake, that they have new
 /// online games (twice a day at most). Unstarring stops it.
-/// Starring is asking for that push, so it also makes sure it can arrive.
+/// The alert choice is made before enabling a server watch.
 Future<void> togglePrepWatch(BuildContext context, PrepProfile profile) async {
   final allowed = await requireFullAuthGuard(context);
   if (!allowed || !context.mounted) return;
   final container = ProviderScope.containerOf(context, listen: false);
   final messenger = ScaffoldMessenger.maybeOf(context);
-  final watching = !profile.watching;
+  final notifier = container.read(prepProfilesProvider.notifier);
+  final current = notifier.byId(profile.id);
+  if (current == null || current.isStarred != profile.isStarred) return;
+  final starred = !current.isStarred;
 
   HapticFeedbackService.pin();
-  container
-      .read(prepProfilesProvider.notifier)
-      .setWatching(profile.id, watching);
+  final wantsAlerts =
+      starred &&
+      await askStarNotifications(
+        context,
+        subject: StarNotificationSubject.player,
+      );
+  final latest = notifier.byId(profile.id);
+  if (latest == null || latest.isStarred == starred) return;
+  notifier.setStar(profile.id, starred: starred, alerts: wantsAlerts);
   AnalyticsService.instance.trackEventDetached(
     'Prep Profile Star Toggled',
-    properties: {'starred': watching, 'kind': profile.kind.name},
+    properties: {
+      'starred': starred,
+      'alerts': wantsAlerts,
+      'kind': profile.kind.name,
+    },
   );
-  if (!watching) return;
+  if (!wantsAlerts) return;
 
   final reachable = await makePlayerStarReachable(
     container: container,
@@ -84,7 +97,7 @@ Future<void> unstarPrepFromSpace(
       'Unstarred and removed from My Space',
       actionLabel: 'Undo',
       onAction: () {
-        notifier.setWatching(profile.id, true);
+        notifier.setStar(profile.id, starred: true, alerts: profile.watching);
         removal.undo();
       },
     );
@@ -108,7 +121,7 @@ class PrepWatchStar extends ConsumerWidget {
     final profile = ref.watch(prepProfileProvider(profileId));
     const slot = SizedBox.square(dimension: kPrepWatchStarSlot);
     if (profile == null || !prepCanStar(profile)) return slot;
-    final starred = profile.watching;
+    final starred = profile.isStarred;
     final unstar = onUnstar;
     return Semantics(
       button: true,

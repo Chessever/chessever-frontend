@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Starring a Prep profile asks the server to watch the player: every hour
+/// Opting in to Prep alerts asks the server to watch the player: every hour
 /// it reads the player's game totals on Lichess and Chess.com, and when they
 /// grew it pushes the same day, while the reader is awake, twice a day at
 /// most. Profiles live on the device, so a starred profile's online accounts
@@ -18,9 +18,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 bool prepCanWatch(PrepProfile profile) => prepWatchAccounts(profile).isNotEmpty;
 
 /// Whether [profile] shows a star: every profile with a name does. The
-/// star only ever asks for this profile's new-game pushes ([prepCanWatch]
-/// says whether the server has an account to check yet); it never follows
-/// or favorites the player, which is the heart's job.
+/// star can optionally enable this profile's new-game pushes. It never
+/// follows or favorites the player, which is the heart's job.
 bool prepCanStar(PrepProfile profile) => profile.name.trim().isNotEmpty;
 
 /// The accounts the server checks for [profile], counted over the clocks

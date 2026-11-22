@@ -13,6 +13,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provider for managing player favorites
 /// Business logic lives here, not in a separate repository
+typedef PlayerStarFlow =
+    Future<void> Function(
+      Future<void> Function(bool notificationsEnabled) save,
+    );
+
 final favoritePlayersProviderNew =
     AsyncNotifierProvider<FavoritePlayersNotifierNew, List<FavoritePlayer>>(
       FavoritePlayersNotifierNew.new,
@@ -27,8 +32,9 @@ bool favoritePlayerMatchesIdentity(
   final requestedMemorialIdentity = memorialSourceIdentity?.trim();
   if (requestedMemorialIdentity != null &&
       requestedMemorialIdentity.isNotEmpty) {
-    final storedMemorialIdentity =
-        favorite.metadata['memorialSourceIdentity']?.toString().trim();
+    final storedMemorialIdentity = favorite.metadata['memorialSourceIdentity']
+        ?.toString()
+        .trim();
     if (storedMemorialIdentity != null && storedMemorialIdentity.isNotEmpty) {
       return storedMemorialIdentity.toLowerCase() ==
           requestedMemorialIdentity.toLowerCase();
@@ -120,10 +126,9 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         .eq('user_id', userId)
         .order('created_at', ascending: false);
 
-    final players =
-        (response as List)
-            .map((json) => FavoritePlayer.fromSupabase(json))
-            .toList();
+    final players = (response as List)
+        .map((json) => FavoritePlayer.fromSupabase(json))
+        .toList();
 
     // Cache locally in background (Supabase stays primary path)
     unawaited(_cachePlayers(players));
@@ -179,7 +184,24 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     String? gamebasePlayerId,
     String? memorialSourceIdentity,
     String? memorialRouteId,
+    PlayerStarFlow? starFlow,
+    bool? notificationsEnabled,
   }) async {
+    if (starFlow != null) {
+      return starFlow(
+        (enabled) => addFavorite(
+          fideId: fideId,
+          playerName: playerName,
+          countryCode: countryCode,
+          rating: rating,
+          title: title,
+          gamebasePlayerId: gamebasePlayerId,
+          memorialSourceIdentity: memorialSourceIdentity,
+          memorialRouteId: memorialRouteId,
+          notificationsEnabled: enabled,
+        ),
+      );
+    }
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
@@ -208,13 +230,12 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
       // Check if already exists by fide_id to prevent duplicates
       if (fideId != null && fideId.isNotEmpty) {
-        final existing =
-            await _supabase
-                .from('user_favorite_players')
-                .select('id')
-                .eq('user_id', userId)
-                .eq('fide_id', fideId)
-                .maybeSingle();
+        final existing = await _supabase
+            .from('user_favorite_players')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('fide_id', fideId)
+            .maybeSingle();
 
         if (existing != null) {
           debugPrint(
@@ -225,6 +246,8 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
       }
 
       final metadata = <String, dynamic>{
+        if (notificationsEnabled != null)
+          'starAlertsOptIn': notificationsEnabled,
         if (countryCode != null) 'countryCode': countryCode,
         if (rating != null) 'rating': rating,
         if (title != null) 'title': title,
@@ -333,6 +356,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     String? gamebasePlayerId,
     String? memorialSourceIdentity,
     String? memorialRouteId,
+    PlayerStarFlow? starFlow,
   }) async {
     final currentState = state.valueOrNull ?? [];
     FavoritePlayer? favorite;
@@ -365,6 +389,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         gamebasePlayerId: gamebasePlayerId,
         memorialSourceIdentity: memorialSourceIdentity,
         memorialRouteId: memorialRouteId,
+        starFlow: starFlow,
       );
       return true;
     }

@@ -24,22 +24,24 @@ final playerInitializationProvider = FutureProvider<void>((ref) async {
 
 final playerSearchQueryProvider = StateProvider<String>((ref) => '');
 
-final playerPaginationProvider = StateNotifierProvider<
-  PlayerPaginationNotifier,
-  AsyncValue<List<Map<String, dynamic>>>
->((ref) {
-  final viewModel = ref.read(playerViewModelProvider);
-  return PlayerPaginationNotifier(viewModel, ref);
-});
+final playerPaginationProvider =
+    StateNotifierProvider<
+      PlayerPaginationNotifier,
+      AsyncValue<List<Map<String, dynamic>>>
+    >((ref) {
+      final viewModel = ref.read(playerViewModelProvider);
+      return PlayerPaginationNotifier(viewModel, ref);
+    });
 
 /// Provider specifically for onboarding - uses optimized fetch
-final onboardingPlayerProvider = StateNotifierProvider<
-  PlayerPaginationNotifier,
-  AsyncValue<List<Map<String, dynamic>>>
->((ref) {
-  final viewModel = ref.read(playerViewModelProvider);
-  return PlayerPaginationNotifier(viewModel, ref, isOnboarding: true);
-});
+final onboardingPlayerProvider =
+    StateNotifierProvider<
+      PlayerPaginationNotifier,
+      AsyncValue<List<Map<String, dynamic>>>
+    >((ref) {
+      final viewModel = ref.read(playerViewModelProvider);
+      return PlayerPaginationNotifier(viewModel, ref, isOnboarding: true);
+    });
 
 final filteredPlayersProvider = Provider<List<Map<String, dynamic>>>((ref) {
   return ref.watch(playerPaginationProvider).valueOrNull ?? [];
@@ -109,8 +111,9 @@ class PlayerPaginationNotifier
         search: _search,
         // For onboarding: fetch global players (more heterogeneous mix)
         // For regular: filter by country if set
-        countryCode:
-            _isOnboarding ? null : (_search.isEmpty ? _countryCode : null),
+        countryCode: _isOnboarding
+            ? null
+            : (_search.isEmpty ? _countryCode : null),
       );
       final filtered = _filterRealPlayers(newBatch);
       final enriched = _mergeWithFavorites(filtered);
@@ -126,15 +129,42 @@ class PlayerPaginationNotifier
     }
   }
 
-  Future<void> toggleFavorite(String fideId) async {
+  Future<bool?> toggleFavorite(
+    String fideId, {
+    PlayerStarFlow? starFlow,
+  }) async {
     final currentPlayers = state.valueOrNull ?? [];
     final idx = currentPlayers.indexWhere(
       (p) => p['fideId'].toString() == fideId,
     );
-    if (idx == -1) return;
+    if (idx == -1) return null;
 
     final player = currentPlayers[idx];
     final toggled = !(player['isFavorite'] ?? false);
+
+    if (starFlow != null) {
+      final saved = await _ref
+          .read(favoritePlayersProviderNew.notifier)
+          .toggleFavorite(
+            fideId: fideId,
+            playerName: player['name']?.toString() ?? '',
+            countryCode: player['fed']?.toString(),
+            rating: player['rating'] as int?,
+            title: player['title']?.toString(),
+            starFlow: starFlow,
+          );
+      state = state.whenData(
+        (rows) => [
+          for (final row in rows)
+            if (row['fideId'].toString() == fideId)
+              {...row, 'isFavorite': saved}
+            else
+              row,
+        ],
+      );
+      unawaited(_viewModel.updateFavoriteFlag(fideId, saved));
+      return saved;
+    }
 
     // Optimistic UI update
     state = AsyncValue.data([
@@ -165,7 +195,7 @@ class PlayerPaginationNotifier
               isSelected: toggled,
             ),
           );
-      return;
+      return toggled;
     }
 
     // Fire Supabase toggle in background
@@ -180,6 +210,7 @@ class PlayerPaginationNotifier
             title: player['title']?.toString(),
           ),
     );
+    return toggled;
   }
 
   Future<void> setSearchQuery(String query) async {
@@ -218,15 +249,16 @@ class PlayerPaginationNotifier
   ) {
     final favorites = _ref.read(favoritePlayersProviderNew).valueOrNull ?? [];
     final pendingFavorites = _ref.read(pendingFavoriteSelectionsProvider);
-    final favoriteNames =
-        favorites.map((f) => f.playerName.toLowerCase()).toSet();
-    final favoriteFideIds =
-        favorites.map((f) => f.fideId?.toLowerCase() ?? '').toSet();
-    final pendingFideIds =
-        pendingFavorites.values
-            .where((p) => p.isSelected)
-            .map((p) => p.fideId.toLowerCase())
-            .toSet();
+    final favoriteNames = favorites
+        .map((f) => f.playerName.toLowerCase())
+        .toSet();
+    final favoriteFideIds = favorites
+        .map((f) => f.fideId?.toLowerCase() ?? '')
+        .toSet();
+    final pendingFideIds = pendingFavorites.values
+        .where((p) => p.isSelected)
+        .map((p) => p.fideId.toLowerCase())
+        .toSet();
 
     return players.map((player) {
       final name = (player['name'] ?? '').toString().toLowerCase();

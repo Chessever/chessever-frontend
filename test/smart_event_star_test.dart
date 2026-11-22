@@ -212,7 +212,7 @@ Future<void> _settle(WidgetTester tester) async {
 
 final _chevron = find.byIcon(Icons.chevron_right_rounded);
 final _star = find.byType(SmartEventStar);
-final _question = find.text('Turn on notifications?');
+final _question = find.text('Get notifications for this event?');
 
 void main() {
   testWidgets('ends in its star in the Events lists, and in the open chevron '
@@ -311,7 +311,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('starring saves the smart event subscribed, and asks nothing', (
+  testWidgets('Just star saves the Smart Event without subscribing', (
     tester,
   ) async {
     final request = _request();
@@ -320,15 +320,20 @@ void main() {
     await tester.tap(_star);
     await _settle(tester);
 
+    expect(_question, findsOneWidget);
+    expect(store.added, isEmpty);
+    await tester.tap(find.text('Just star'));
+    await _settle(tester);
+
     expect(store.added.single.eventId, request.favoriteEventId);
     expect(store.added.single.metadata['type'], 'smart_event');
-    expect(starNotificationsEnabled(store.added.single), isTrue);
+    expect(starNotificationsEnabled(store.added.single), isFalse);
     expect(_question, findsNothing);
     expect(store.patches, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
-  test('a smart star always notifies: there is no switch, whatever an old '
+  test('a legacy Smart Event keeps notifying despite what an old '
       'build saved', () {
     final saved = _starred(_request());
     expect(starNotificationsEnabled(saved), isTrue);
@@ -362,6 +367,9 @@ void main() {
 
       await tester.tap(_star);
       await _settle(tester);
+      await tester.tap(find.text('Notify me'));
+      await _settle(tester);
+      expect(starNotificationsEnabled(store.added.single), isTrue);
       expect(store.added.single.eventId, request.favoriteEventId);
       expect(pinned(tester, request), isTrue);
       expect(find.text('Added to My Space'), findsOneWidget);
@@ -385,6 +393,8 @@ void main() {
       );
       await tester.tap(_star);
       await _settle(tester);
+      await tester.tap(find.text('Just star'));
+      await _settle(tester);
       expect(pinned(tester, request), isTrue);
       expect(find.text('Added to My Space'), findsNothing);
     });
@@ -393,6 +403,8 @@ void main() {
       final request = _request();
       final store = await _pump(tester, starRequest: request);
       await tester.tap(_star);
+      await _settle(tester);
+      await tester.tap(find.text('Just star'));
       await _settle(tester);
       expect(store.added, hasLength(1));
       expect(pinned(tester, request), isFalse);
@@ -423,6 +435,8 @@ void main() {
     final store = await _pump(tester, starRequest: request);
 
     await tester.tap(_star);
+    await _settle(tester);
+    await tester.tap(find.text('Notify me'));
     await _settle(tester);
 
     expect(store.added.single.eventId, request.favoriteEventId);

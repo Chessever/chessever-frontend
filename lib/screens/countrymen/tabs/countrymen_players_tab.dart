@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
@@ -688,9 +689,11 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
                 memorialSourceIdentity: player.memorialSourceIdentity,
               );
         } else {
+          if (!mounted) return;
           await ref
               .read(favoritePlayersProviderNew.notifier)
               .addFavorite(
+                starFlow: playerStarNotificationFlow(context),
                 fideId: player.fideId?.toString(),
                 playerName: player.name,
                 countryCode: player.countryCode,

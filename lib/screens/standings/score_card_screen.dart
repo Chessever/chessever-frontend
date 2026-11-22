@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:io' as io;
@@ -2221,9 +2222,11 @@ class _SliverScoreboardAppBarState
         }
       }
 
+      if (!mounted) return;
       final isNowFavorite = await ref
           .read(favoritePlayersProviderNew.notifier)
           .toggleFavorite(
+            starFlow: playerStarNotificationFlow(context),
             fideId: player.fideId?.toString(),
             // Removal matches on the stored `player_name`, so unfollowing
             // has to name the row that actually exists: the profile screen
