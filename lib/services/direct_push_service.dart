@@ -15,11 +15,24 @@ import '../config/app_environment.dart';
 import 'deep_link_service.dart';
 import 'direct_push_tap_router.dart';
 import 'native_push_permission.dart';
+import 'onesignal_push_payload.dart';
 
 /// Receipts are persisted locally and flushed after Supabase is ready.
 /// A background callback is evidence of receipt; absence of one is not a failure.
+///
+/// On Android a data-only message in OneSignal's format (O6) is drawn here
+/// while this install has not registered directly (with the SDK gone nothing
+/// else would show it); once it has, such a message is a mirror's duplicate
+/// and is dropped ([DirectPushService.presentOneSignalPush]).
 @pragma('vm:entry-point')
 Future<void> directPushBackgroundHandler(RemoteMessage message) async {
+  if (message.notification == null &&
+      await DirectPushService.presentOneSignalPush(
+        message.data,
+        background: true,
+      )) {
+    return;
+  }
   if (message.data['delivery_id'] is! String) return;
   await DirectPushService.storeEvent(message.data, 'received');
 }
@@ -46,6 +59,11 @@ class DirectPushService with WidgetsBindingObserver {
   bool _syncing = false;
   bool _syncAgain = false;
   String? _owner;
+
+  /// The account this install registered for directly ([sync]), removed
+  /// once it is detached ([detach]). Legacy [SharedPreferences], which the
+  /// background isolate reads too ([presentOneSignalPush]).
+  static const _ownerKey = 'direct_push_owner';
   Future<void>? _starting;
   Timer? _registrationRetry;
   int _registrationAttempts = 0;
@@ -112,37 +130,9 @@ class DirectPushService with WidgetsBindingObserver {
             badge: true,
             sound: true,
           );
-      FirebaseMessaging.onMessage.listen((message) {
-        // Inline tester pushes intentionally have no persisted delivery ID.
-        if (message.data['delivery_id'] is String) {
-          unawaited(
-            storeEvent(message.data, 'received').then((_) => flushEvents()),
-          );
-        }
-        if (defaultTargetPlatform == TargetPlatform.android &&
-            message.notification != null) {
-          final notificationId =
-              message.messageId ??
-              message.data['delivery_id'] as String? ??
-              DateTime.now().microsecondsSinceEpoch.toString();
-          unawaited(
-            _local.show(
-              notificationId.hashCode & 0x7fffffff,
-              message.notification!.title,
-              message.notification!.body,
-              const NotificationDetails(
-                android: AndroidNotificationDetails(
-                  'chessever_direct',
-                  'ChessEver alerts',
-                  importance: Importance.high,
-                  priority: Priority.high,
-                ),
-              ),
-              payload: jsonEncode(message.data),
-            ),
-          );
-        }
-      });
+      FirebaseMessaging.onMessage.listen(
+        (message) => unawaited(handleForegroundMessage(message)),
+      );
       FirebaseMessaging.onMessageOpenedApp.listen(
         (m) => _tapRouter.open(m.messageId, m.data, _open),
       );
@@ -157,9 +147,7 @@ class DirectPushService with WidgetsBindingObserver {
           unawaited(sync());
         }
       });
-      _owner = (await SharedPreferences.getInstance()).getString(
-        'direct_push_owner',
-      );
+      _owner = (await SharedPreferences.getInstance()).getString(_ownerKey);
       _ready = true;
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
@@ -178,6 +166,47 @@ class DirectPushService with WidgetsBindingObserver {
       _starting = null;
       _retryRegistration();
     }
+  }
+
+  /// A push arriving while the app is in the foreground
+  /// ([FirebaseMessaging.onMessage]). Its receipt is stored, and on Android,
+  /// where the system draws nothing then, the app shows it: a notification
+  /// push through its own channel, a data-only one only in OneSignal's
+  /// format and only while this install has not registered directly (O6,
+  /// [presentOneSignalPush]).
+  @visibleForTesting
+  Future<void> handleForegroundMessage(RemoteMessage message) async {
+    // Inline tester pushes intentionally have no persisted delivery ID.
+    if (message.data['delivery_id'] is String) {
+      unawaited(
+        storeEvent(message.data, 'received').then((_) => flushEvents()),
+      );
+    }
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    final notification = message.notification;
+    if (notification == null) {
+      // OneSignal's data-only format (O6): drawn by the app now.
+      await presentOneSignalPush(message.data);
+      return;
+    }
+    final notificationId =
+        message.messageId ??
+        message.data['delivery_id'] as String? ??
+        DateTime.now().microsecondsSinceEpoch.toString();
+    await _local.show(
+      notificationId.hashCode & 0x7fffffff,
+      notification.title,
+      notification.body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'chessever_direct',
+          'ChessEver alerts',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+      payload: jsonEncode(message.data),
+    );
   }
 
   @override
@@ -304,7 +333,7 @@ class DirectPushService with WidgetsBindingObserver {
         '[DirectPush] Installation registered (${package.version}+${package.buildNumber}).',
       );
       _owner = session.user.id;
-      await prefs.setString('direct_push_owner', _owner!);
+      await prefs.setString(_ownerKey, _owner!);
       if (Supabase.instance.client.auth.currentUser?.id != _owner) {
         await detach();
         return;
@@ -364,7 +393,7 @@ class DirectPushService with WidgetsBindingObserver {
           .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return false;
       _owner = null;
-      await prefs.remove('direct_push_owner');
+      await prefs.remove(_ownerKey);
       await prefs.remove('direct_push_detach_pending');
       return true;
     } catch (e) {
@@ -387,7 +416,100 @@ class DirectPushService with WidgetsBindingObserver {
     );
   }
 
-  void _open(Map<String, dynamic> data) {
+  /// Android's channel for every push the app draws itself.
+  static const _androidDetails = AndroidNotificationDetails(
+    'chessever_direct',
+    'ChessEver alerts',
+    channelDescription: 'ChessEver notifications',
+    importance: Importance.high,
+    priority: Priority.high,
+    icon: '@mipmap/ic_launcher',
+  );
+
+  /// OneSignal ids already drawn, newest last, across launches and isolates.
+  static const _oneSignalShownKey = 'direct_push_onesignal_shown';
+  static const _oneSignalShownMax = 50;
+
+  /// Draws an Android data-only push in OneSignal's format (O6) through the
+  /// app's own notification path: its title and text, and the unwrapped data
+  /// as the payload, so a tap routes like any push
+  /// ([FlutterLocalNotificationsPlugin]'s response, or its launch details).
+  /// One OneSignal notification is drawn once: its id names the
+  /// notification and is remembered. False when [data] is not such a push
+  /// (or not on Android), so the caller handles it as before.
+  ///
+  /// Drawn only while this install has not registered directly
+  /// ([_registeredDirectly]). Once it has, the notification service sends
+  /// every push itself, and the same push arriving in OneSignal's format
+  /// comes from the account's old OneSignal registration (a mirror) the
+  /// server has not dropped yet: it is taken (true) and not drawn, so the
+  /// reader never sees one push twice.
+  ///
+  /// [background] for the background isolate: the plugin is set up there,
+  /// and the registration is read anew, since the app may have registered
+  /// after that isolate first read it.
+  static Future<bool> presentOneSignalPush(
+    Map<String, dynamic> data, {
+    bool background = false,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    final push = parseOneSignalPush(data);
+    if (push == null) return false;
+    // A silent one (no text) has nothing to show and nothing to tap.
+    if (push.title == null && push.body == null) return true;
+    // A mirror's copy of a push the service delivers directly.
+    if (await _registeredDirectly(reread: background)) return true;
+    try {
+      final prefs = SharedPreferencesAsync();
+      final shown = await prefs.getStringList(_oneSignalShownKey) ?? const [];
+      if (shown.contains(push.id)) return true;
+      await prefs.setStringList(_oneSignalShownKey, [
+        ...shown.skip(
+          (shown.length - _oneSignalShownMax + 1).clamp(0, shown.length),
+        ),
+        push.id,
+      ]);
+    } catch (_) {
+      // No memory to check: the notification id still keeps it single.
+    }
+    final local = FlutterLocalNotificationsPlugin();
+    if (background) {
+      await local.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        ),
+      );
+    }
+    await local.show(
+      oneSignalNotificationId(push.id),
+      push.title,
+      push.body,
+      const NotificationDetails(android: _androidDetails),
+      payload: jsonEncode(push.data),
+    );
+    return true;
+  }
+
+  /// Whether this install has registered with the notification service
+  /// directly: [sync] stores the account it registered for ([_ownerKey]) and
+  /// [detach] removes it. [reread] in the background isolate, whose cached
+  /// copy predates any registration the app made since; the app's own
+  /// isolate writes through the cache it reads. Unreadable counts as not
+  /// registered: the push is drawn, once per OneSignal id.
+  static Future<bool> _registeredDirectly({required bool reread}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (reread) await prefs.reload();
+      return prefs.getString(_ownerKey) != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _open(Map<String, dynamic> raw) {
+    final data = unwrapOneSignalPush(raw);
     if (data['delivery_id'] is String) {
       unawaited(storeEvent(data, 'opened').then((_) => flushEvents()));
     }

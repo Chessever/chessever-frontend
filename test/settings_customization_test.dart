@@ -564,6 +564,52 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Collection stories shows the latest choice live, whichever '
+      'way it was made: a pull on Today\'s row turns it Off here, and On '
+      'here brings the row back', (tester) async {
+    final container = await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+    );
+    Finder value(String text) => find.descendant(
+      of: find.byKey(const ValueKey('settings_story_row')),
+      matching: find.text(text),
+    );
+    expect(value('On'), findsOneWidget);
+    // What the row does when it is pulled past its end.
+    await container
+        .read(storyRowPrefsProvider.notifier)
+        .setMode(StoryRowMode.off);
+    await tester.pump();
+    expect(value('Off'), findsOneWidget);
+    // And On from here: the one state the row reads.
+    await _tap(tester, find.text('Collection stories'));
+    await tester.tap(find.text('On').last);
+    await tester.pumpAndSettle();
+    expect(container.read(storyRowPrefsProvider).mode, StoryRowMode.on);
+    expect(value('On'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a row pulled away by 39.2 ("until something new") reads as '
+      'Off in Settings', (tester) async {
+    await SharedPreferencesService.instance.prefsOrNull!.setString(
+      AppStoryRowPrefsStore.localKey,
+      '{"m":"on","u":7,"d":{"t":1763600000000,"f":"abc","g":12}}',
+    );
+    await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings_story_row')),
+        matching: find.text('Off'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   test('a choice saved by 39.1.0 and older reads as On: "When there\'s '
       'something new" and "Always" alike; Off stays Off', () {
     for (final (wire, mode) in [

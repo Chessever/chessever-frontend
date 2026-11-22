@@ -428,9 +428,8 @@ final List<DialogScene> dialogScenes = [
   for (final expired in [false, true])
     DialogScene(
       expired ? 'rewarded_expired' : 'rewarded_choice',
-      shown: () => find.text(
-        expired ? 'Your Premium access has ended' : 'Unlock Premium',
-      ),
+      shown: () =>
+          find.text(expired ? 'Your Premium time is up' : 'Unlock Premium'),
       open: (tester, {required light}) async {
         debugResetRewardedAccessChoice();
         final context = await pumpDialogsHost(

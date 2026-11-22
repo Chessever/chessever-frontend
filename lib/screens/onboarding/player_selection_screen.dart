@@ -437,7 +437,9 @@ Future<void> markOnboardingComplete(BuildContext context) async {
   container.invalidate(onboardingSelectedFideIdsProvider);
 
   if (context.mounted) {
-    Navigator.pushReplacementNamed(context, '/home_screen');
+    // Home alone: replacing only this page left onboarding under Home (Back
+    // returned to it). Home also routes a link held while onboarding ran.
+    Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
   }
 }
 

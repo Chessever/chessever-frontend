@@ -22,6 +22,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_tabs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -46,6 +47,45 @@ void main() {
     for (final channel in _storageChannels) {
       messenger.setMockMethodCallHandler(channel, null);
     }
+  });
+
+  group('standingsShareTab', () {
+    test('team event Players share links the Players tab', () {
+      expect(
+        standingsShareTab(
+          mode: TournamentDetailScreenMode.players,
+          isTeamEvent: true,
+        ),
+        'players',
+      );
+      // The app opens that tab from the link (the deep-link router reads it).
+      expect(
+        tournamentDetailModeFromTabQuery(
+          standingsShareTab(
+            mode: TournamentDetailScreenMode.players,
+            isTeamEvent: true,
+          ),
+        ),
+        TournamentDetailScreenMode.players,
+      );
+    });
+
+    test('individual events keep ?tab=standings', () {
+      expect(
+        standingsShareTab(
+          mode: TournamentDetailScreenMode.standings,
+          isTeamEvent: false,
+        ),
+        'standings',
+      );
+      expect(
+        standingsShareTab(
+          mode: TournamentDetailScreenMode.standings,
+          isTeamEvent: true,
+        ),
+        'standings',
+      );
+    });
   });
 
   group('standingsShareActionsFor', () {

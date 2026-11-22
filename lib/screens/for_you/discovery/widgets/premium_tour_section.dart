@@ -21,7 +21,7 @@ import 'package:chessever2/widgets/flag_pole_scene.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 
 /// The position the opening-tree tile shows and opens: the French Defence,
 /// Advance Variation, after 3.e5.
@@ -301,9 +301,7 @@ class PremiumTourSection extends ConsumerWidget {
         cta: 'Continue on your computer',
         visual: const _DesktopVisual(),
         onUnlocked: () async {
-          if (await canLaunchUrl(_kDesktopUri)) {
-            await launchUrl(_kDesktopUri, mode: LaunchMode.externalApplication);
-          }
+          await openOwnWebPage(_kDesktopUri);
         },
       ),
     ];

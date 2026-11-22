@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/collections/collections_screen.dart';
+import 'package:dio/dio.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
@@ -458,64 +461,120 @@ void main() {
     },
   );
 
-  testWidgets('Collections opens on its dock tab, over Home, pushing nothing', (
+  for (final entry in {
+    '/app/collections': BottomNavBarItem.collections,
+    // Feed is always on the dock: /app/feed used to push a second FeedScreen
+    // over the shell that already holds one.
+    '/app/feed': BottomNavBarItem.feed,
+  }.entries) {
+    testWidgets(
+      '${entry.key} opens on its dock tab, over Home, pushing nothing',
+      (tester) async {
+        late BuildContext homeContext;
+        late WidgetRef homeRef;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appDestinationPageNavigationProvider.overrideWithValue((
+                _,
+                page,
+                name,
+              ) {
+                opened.add(page);
+                routeNames.add(name);
+              }),
+            ],
+            child: MaterialApp(
+              onGenerateRoute: (settings) => MaterialPageRoute<void>(
+                settings: settings,
+                builder: (_) => const Text('another page'),
+              ),
+              // Home, as the app names its route.
+              onGenerateInitialRoutes: (_) => [
+                MaterialPageRoute<void>(
+                  settings: const RouteSettings(name: '/home_screen'),
+                  builder: (_) => Consumer(
+                    builder: (ctx, widgetRef, _) {
+                      homeContext = ctx;
+                      homeRef = widgetRef;
+                      return const Text('home');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        final container = ProviderScope.containerOf(homeContext);
+        final section = container.listen(
+          selectedBottomNavBarItemProvider,
+          (_, _) {},
+        );
+        addTearDown(section.close);
+        expect(section.read(), BottomNavBarItem.forYou);
+        final reveal = container.read(homeChromeRevealRequestProvider);
+
+        expect(
+          await openAppDestination(
+            homeContext,
+            homeRef,
+            parseAppDestination(entry.key)!,
+            openLegacyLink: (_) async => throw StateError('Must not resolve'),
+          ),
+          isTrue,
+        );
+        await tester.pump();
+        expect(section.read(), entry.value);
+        expect(opened, isEmpty);
+        expect(find.text('home'), findsOneWidget);
+        expect(
+          container.read(homeChromeRevealRequestProvider),
+          reveal + 1,
+          reason: 'Home shows its dock even when the section was already open',
+        );
+      },
+    );
+  }
+
+  // Shared collection links, collection pushes and the catalog open a
+  // Premium collection for every reader and gate when a game opens; the
+  // configured route used to paywall the page itself.
+  testWidgets('Premium locked collection opens its page with no paywall', (
     tester,
   ) async {
-    late BuildContext homeContext;
-    late WidgetRef homeRef;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          appDestinationPageNavigationProvider.overrideWithValue((
-            _,
-            page,
-            name,
-          ) {
-            opened.add(page);
-            routeNames.add(name);
-          }),
-        ],
-        child: MaterialApp(
-          onGenerateRoute: (settings) => MaterialPageRoute<void>(
-            settings: settings,
-            builder: (_) => const Text('another page'),
-          ),
-          // Home, as the app names its route.
-          onGenerateInitialRoutes: (_) => [
-            MaterialPageRoute<void>(
-              settings: const RouteSettings(name: '/home_screen'),
-              builder: (_) => Consumer(
-                builder: (ctx, widgetRef, _) {
-                  homeContext = ctx;
-                  homeRef = widgetRef;
-                  return const Text('home');
-                },
-              ),
-            ),
-          ],
-        ),
+    final repo = _OneCollection(
+      const Collection(
+        id: 'book-1',
+        slug: 'my-60-memorable-games',
+        kind: CollectionKind.book,
+        title: 'My 60 Memorable Games',
+        access: CollectionAccess.premium,
+        contentLocked: true,
       ),
     );
-    final container = ProviderScope.containerOf(homeContext);
-    final section = container.listen(
-      selectedBottomNavBarItemProvider,
-      (_, _) {},
+    await host(
+      tester,
+      extra: [collectionsRepositoryProvider.overrideWithValue(repo)],
     );
-    addTearDown(section.close);
-    expect(section.read(), BottomNavBarItem.forYou);
-
-    expect(
-      await openAppDestination(
-        homeContext,
-        homeRef,
-        parseAppDestination('/app/collections')!,
-        openLegacyLink: (_) async => throw StateError('Must not resolve'),
-      ),
-      isTrue,
-    );
-    await tester.pump();
-    expect(section.read(), BottomNavBarItem.collections);
-    expect(opened, isEmpty);
-    expect(find.text('home'), findsOneWidget);
+    entitled = false;
+    expect(await open('/app/collections/my-60-memorable-games'), isTrue);
+    expect(requestedFeatures, isEmpty);
+    expect((opened.single as CollectionScreen).collection.slug,
+        'my-60-memorable-games');
+    expect(repo.fetches, ['my-60-memorable-games']);
   });
+}
+
+class _OneCollection extends CollectionsRepository {
+  _OneCollection(this.collection)
+    : super(GamebaseRepository(Dio(), apiKey: 'test'));
+
+  final Collection collection;
+  final fetches = <String>[];
+
+  @override
+  Future<Collection> fetchCollection(String slug) async {
+    fetches.add(slug);
+    return collection;
+  }
 }

@@ -98,6 +98,16 @@ final storyGameOpenerProvider = Provider<StoryGameOpener>(
   (ref) => openStoryGame,
 );
 
+/// Opens a story game's event over the stories (Missed chances' second
+/// action) through the app's own links; true once it is on its way. Tests
+/// hand in their own.
+typedef StoryEventOpener =
+    Future<bool> Function({String? tourId, String? roundId});
+
+final storyEventOpenerProvider = Provider<StoryEventOpener>(
+  (ref) => DeepLinkService.instance.openEventForShortcut,
+);
+
 /// The app's [StoryGameOpener].
 Future<void> openStoryGame(
   BuildContext context,
@@ -706,11 +716,18 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   }
 
   @override
-  void settle(String frameId, StoryPuzzleOutcome outcome) {
+  void settle(String frameId, StoryPuzzleOutcome outcome, {Duration? hold}) {
     _outcomes[frameId] = outcome;
     if (frameId != _activeFrameId) return;
     _prompting = false;
     _promptFor = null;
+    // The answer is enjoyed before the story moves on: its bar runs from
+    // the start over the longer of the position's reading time and the
+    // answer's hold. Never a page the reader did not see: the bar held at
+    // its start while they thought.
+    final run = _progress.duration ?? kStoryEmptyDuration;
+    if (hold != null && hold > run) _progress.duration = hold;
+    _setProgress(0);
     _sync();
   }
 
@@ -721,10 +738,22 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     zone.value = null;
   }
 
-  /// The last finger came down on the board taking the reader's move: its
-  /// tap or hold is theirs, never the story's, even once the move it made
-  /// has answered the question (the board hears the finger first).
+  /// The last finger came down on the board taking the reader's move and
+  /// the board took it (a piece picked up, played or put down): its tap or
+  /// hold is the reader's, never the story's, even once the move it made
+  /// has answered the question. A finger on an empty square (or an
+  /// opponent's piece) with nothing picked up is the story's: it moves on
+  /// like a tap anywhere else ([storyBoardTap]).
   bool _downOnBoard = false;
+
+  /// What the board said of the finger now coming down ([boardTouch]): it
+  /// hears every touch before the viewer does. Read once, by that touch.
+  bool? _boardTook;
+
+  @override
+  void boardTouch(String frameId, {required bool takes}) {
+    _boardTook = frameId == _activeFrameId && takes;
+  }
 
   // ------------------------------------------------------------- caught up
 
@@ -927,7 +956,9 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// Records how the surface's own space stands to the screen's under a
   /// new finger ([_touchScale]).
   void _onPointerDown(PointerDownEvent event) {
-    _downOnBoard = zone.value?.contains(event.position) ?? false;
+    final took = _boardTook ?? false;
+    _boardTook = null;
+    _downOnBoard = took && (zone.value?.contains(event.position) ?? false);
     final toLocal = event.transform;
     if (toLocal == null) {
       _touchScale = 1;
@@ -1327,7 +1358,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
 
     route?.onUncovered = back;
-    final opened = await DeepLinkService.instance.openEventForShortcut(
+    final opened = await ref.read(storyEventOpenerProvider)(
       tourId: game.tourId,
       roundId: game.roundId,
     );

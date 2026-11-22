@@ -65,12 +65,22 @@ void main() {
       expect(out, contains('[GameURL "https://chessever.com/games/DDDD4444"]'));
     });
 
-    test('also rewrites the lichess.dev staging host', () {
-      const pgn = '[Annotator "https://lichess.dev/@/AAArmstark"]\n\n*';
+    // chessever.com serves no /@/<user>, /study or analysis path: a host-only
+    // swap turned these working Lichess links into dead ChessEver ones.
+    test('leaves Lichess paths ChessEver does not serve on Lichess', () {
+      const pgn =
+          '[Annotator "https://lichess.dev/@/AAArmstark"]\n'
+          '[Source "https://lichess.org/study/abcdEFGH/ijklMNOP"]\n'
+          '[Analysis "https://lichess.org/analysis/standard"]\n\n*';
+      final out = rebrandPgnLinks(pgn);
+      expect(out, contains('[Annotator "https://lichess.dev/@/AAArmstark"]'));
       expect(
-        rebrandPgnLinks(pgn),
-        contains('[Annotator "https://chessever.com/@/AAArmstark"]'),
+        out,
+        contains('[Source "https://lichess.org/study/abcdEFGH/ijklMNOP"]'),
       );
+      expect(out, contains('[Analysis "https://lichess.org/analysis/standard"]'));
+      expect(out, isNot(contains('chessever.com/@/')));
+      expect(out, isNot(contains('chessever.com/study')));
     });
 
     test('is idempotent and leaves correct ChessEver game URLs unchanged', () {

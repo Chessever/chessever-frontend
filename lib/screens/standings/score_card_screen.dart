@@ -1768,7 +1768,7 @@ class _ScoreCardPage extends HookConsumerWidget {
             [XFile(file.path, mimeType: 'image/png')],
             text: playerShareUrl,
             subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+            sharePositionOrigin: sharePreviewOrigin(),
           );
         },
         onShareLink: playerShareUrl == null || playerShareUrl.isEmpty
@@ -1777,7 +1777,7 @@ class _ScoreCardPage extends HookConsumerWidget {
                 await Share.share(
                   playerShareUrl,
                   subject: subject,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  sharePositionOrigin: sharePreviewOrigin(),
                 );
               },
       );

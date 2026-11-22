@@ -72,8 +72,9 @@ abstract final class StoryRowMetrics {
   static const double partShown = 0.3;
 
   /// A pull past either end of the row, read through its resistance
-  /// ([pullCeiling]), puts the row away from here on: well past a scroll's
-  /// overshoot, as News turns a page.
+  /// ([pullCeiling]), turns the row Off (Settings › Customization ›
+  /// Collection stories): well past a scroll's overshoot, as News turns a
+  /// page.
   static const double pullArm = 56;
 
   /// What a pull past an end can reach, however far the finger goes.
@@ -179,6 +180,12 @@ abstract class StoryAnchors {
   void reveal(String slug);
 }
 
+/// What the row says once a pull past its end has turned it Off: what
+/// happened, and where it comes back from.
+const String kStoryRowHiddenMessage =
+    'Collection stories hidden. Turn them on again in Settings › '
+    'Customization.';
+
 /// A catalog read this long ago is read again when the app comes back to
 /// Today ([TodayStoryRow]).
 const Duration kStoryCatalogStale = Duration(minutes: 10);
@@ -186,7 +193,7 @@ const Duration kStoryCatalogStale = Duration(minutes: 10);
 /// Reads the stories' catalog again: Today's pull to refresh, and a return
 /// to a Today left in the background. The row keeps its circles meanwhile;
 /// what the new read holds (a new collection, a book's new games) lights
-/// its ring, and brings a row that was put away back. Off reads nothing.
+/// its ring. Off reads nothing.
 void refreshStoryCatalog(WidgetRef ref) {
   if (ref.read(storyRowPrefsProvider).mode == StoryRowMode.off) return;
   ref.invalidate(collectionsProvider);
@@ -194,16 +201,16 @@ void refreshStoryCatalog(WidgetRef ref) {
 
 /// The collections' story row at the top of Today: the Missed chances
 /// circle and the [kStoryCollectionCap] collections updated most recently,
-/// what arrived while the row was put away first, then the circles with
-/// something the reader has not seen, then the seen ones, quiet. A
-/// collection that gets a new game or an update lands leftmost. A skeleton
-/// of the same geometry while they load.
+/// the circles with something the reader has not seen first, then the seen
+/// ones, quiet. A collection that gets a new game or an update lands
+/// leftmost. A skeleton of the same geometry while they load.
 ///
 /// The row stays while it is On, everything seen or not: watched circles
 /// go grey, and the row is never empty of what the reader can come back to.
-/// Pulled past its first or last circle it goes until something new
-/// arrives ([decideStoryRow]). Today's first frame already knows whether it
-/// is there ([storyRowExpected]), so the list never jumps on launch.
+/// Pulled past its first or last circle it turns Off: the same choice as
+/// Settings › Customization › Collection stories, which shows it at once,
+/// with an Undo. Today's first frame already knows whether it is there
+/// ([storyRowExpected]), so the list never jumps on launch.
 ///
 /// [gutter] is the page's: the row scrolls edge to edge and starts and ends
 /// on it.
@@ -231,13 +238,6 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   /// the next time the row is built, never under the reader's eyes.
   List<Collection> _order = const [];
   List<String>? _orderedFrom;
-
-  /// What arrived while the row was pulled away: it leads the row when it
-  /// comes back.
-  Set<String> _fresh = const {};
-
-  /// The catalog the row last showed, for a pull-away's snapshot.
-  List<Collection>? _catalog;
 
   /// A failed catalog read is asked again on its own (an offline cold
   /// start), waiting longer each time, so the row comes back once the
@@ -301,10 +301,19 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: _onResume);
-    // The account may hold a newer choice than the device (made elsewhere).
+    // The server holds the signed-in reader's choice, perhaps changed on
+    // another device since this one last read it.
     scheduleMicrotask(() {
       if (mounted) unawaited(ref.read(storyRowPrefsProvider.notifier).pull());
     });
+    // On again by any way (Settings, the server, Undo): the "hidden" snack
+    // would now say the opposite of what Today shows, so it goes.
+    ref.listenManual<StoryRowMode>(
+      storyRowPrefsProvider.select((prefs) => prefs.mode),
+      (_, mode) {
+        if (mode == StoryRowMode.on) _retireHiddenSnack();
+      },
+    );
   }
 
   void _scheduleRetry() {
@@ -345,7 +354,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     ];
     if (!listEquals(slugs, _orderedFrom)) {
       _orderedFrom = slugs;
-      _order = orderStoryCollections(collections, seen.isSeen, fresh: _fresh);
+      _order = orderStoryCollections(collections, seen.isSeen);
     } else {
       // Same collections: keep the order, take the fresh rows.
       final bySlug = {for (final c in collections) c.slug: c};
@@ -467,24 +476,6 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     if (_lastContent != null) setState(() => _lastContent = null);
   }
 
-  /// Records what the row decided, after the frame: something new since a
-  /// pull-away brings the row back (the new first), and a pull-away made on
-  /// another device takes this device's snapshot.
-  void _apply(StoryRowDecision decision, StoryRowPrefs prefs) {
-    final clear = decision.clearDismissal;
-    final adopt = decision.adoptSnapshot;
-    final dismissal = prefs.dismissal;
-    if (!clear && adopt == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final notifier = ref.read(storyRowPrefsProvider.notifier);
-      if (clear) unawaited(notifier.clearDismissal());
-      if (adopt != null && dismissal != null) {
-        notifier.adoptDismissalSnapshot(dismissal, adopt);
-      }
-    });
-  }
-
   // ------------------------------------------------------------ freshness
 
   /// When the row last had the catalog read, by the row's clock.
@@ -495,8 +486,8 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
 
   /// Back from the background: the day may have turned (a new day of
   /// Missed chances), and a catalog read long ago is read again, so what
-  /// arrived meanwhile shows (new circles, lit rings, a row that was put
-  /// away coming back) without a cold start.
+  /// arrived meanwhile shows (new circles, lit rings) without a cold
+  /// start.
   void _onResume() {
     if (!mounted) return;
     final readAt = _catalogReadAt;
@@ -608,9 +599,9 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   void _onPointerUp(PointerEvent event) {
     if (event.pointer != _pointer) return;
     _pointer = null;
-    final dismiss = _armed;
+    final hide = _armed;
     _releasePull();
-    if (dismiss) _dismiss();
+    if (hide) _hide();
   }
 
   void _onPointerCancel(PointerEvent event) {
@@ -619,19 +610,45 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     _releasePull();
   }
 
-  /// Puts the row away until something new arrives, with a way back.
-  void _dismiss() {
-    final catalog = _catalog;
-    if (catalog == null || !mounted) return;
+  /// Turns the row Off: the one choice Settings › Customization ›
+  /// Collection stories shows, changed here, with Undo turning it On again.
+  void _hide() {
+    if (!mounted) return;
     unawaited(HapticFeedbackService.success());
     final notifier = ref.read(storyRowPrefsProvider.notifier);
-    final before = notifier.dismiss(catalog);
-    showAppSnack(
-      context,
-      "Stories hidden until there's something new. Change this in Settings.",
+    unawaited(notifier.setMode(StoryRowMode.off));
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    final snack = showAppSnackOn(
+      messenger,
+      kStoryRowHiddenMessage,
       actionLabel: 'Undo',
-      onAction: () => notifier.restore(before),
+      onAction: () => notifier.setMode(StoryRowMode.on),
     );
+    _hiddenSnack = (snack: snack, messenger: messenger);
+    unawaited(
+      snack.closed.then((_) {
+        if (identical(_hiddenSnack?.snack, snack)) _hiddenSnack = null;
+      }),
+    );
+  }
+
+  /// The "hidden" snack while it is still up.
+  ({
+    ScaffoldFeatureController<SnackBar, SnackBarClosedReason> snack,
+    ScaffoldMessengerState messenger,
+  })?
+  _hiddenSnack;
+
+  /// Takes the "hidden" snack down, if it is still up. Every snack raised
+  /// retires the one before it ([showAppSnackOn]), so while this one has not
+  /// closed it is the one showing, or the one leaving for a newer message:
+  /// hiding the current snack hides it and never touches that newer one.
+  void _retireHiddenSnack() {
+    final hidden = _hiddenSnack;
+    _hiddenSnack = null;
+    if (hidden == null || !hidden.messenger.mounted) return;
+    hidden.messenger.hideCurrentSnackBar();
   }
 
   // --------------------------------------------------------------- build
@@ -690,9 +707,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
       final collections = ref.watch(storyCollectionsProvider);
       final seenRecord = ref.watch(storySeenProvider);
       final list = collections.valueOrNull;
-      final missed = prefs.dismissal != null || list == null
-          ? null
-          : _missedCircle(now);
+      final missed = list == null ? null : _missedCircle(now);
       if (list == null && collections.hasError) {
         _scheduleRetry();
         shown = false;
@@ -712,17 +727,10 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
           _onCatalogArrived(list);
         }
         final seen = ref.read(storySeenProvider.notifier);
-        final decision = decideStoryRow(prefs: prefs, catalog: list);
-        _apply(decision, prefs);
-        if (decision.returning && !setEquals(_fresh, decision.fresh)) {
-          // Back after a pull-away: what arrived leads from its first frame.
-          _fresh = decision.fresh;
-          _orderedFrom = null;
-        }
-        shown = decision.shows;
+        // On, with collections to show: there, everything seen or not.
+        shown = list.isNotEmpty;
         // Coming back onto Today: ordered afresh before its first frame.
         if (shown && _shown == false) _orderedFrom = null;
-        _catalog = list;
         final circles = [?missed?.circle, ...selectStoryCollections(list)];
         // Drawn while it is there or still springing away.
         content = circles.isEmpty || (!shown && _shown != true)
@@ -743,7 +751,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     return Semantics(
       container: true,
       customSemanticsActions: {
-        const CustomSemanticsAction(label: 'Hide collection stories'): _dismiss,
+        const CustomSemanticsAction(label: 'Hide collection stories'): _hide,
       },
       child: Padding(
         padding: EdgeInsets.only(bottom: StoryRowMetrics.bottom),

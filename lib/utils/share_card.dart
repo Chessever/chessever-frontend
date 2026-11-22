@@ -49,29 +49,28 @@ Future<Uint8List?> captureCardPng(
   final boundaryKey = GlobalKey();
 
   final entry = OverlayEntry(
-    builder:
-        (_) => Positioned(
-          // Painted (so it owns a compositing layer to snapshot) but pushed far
-          // off-screen so the user never sees the measurement pass. Positioned
-          // with only left/top passes UNBOUNDED constraints, so the
-          // ConstrainedBox pins the width and imposes the minimum height.
-          left: 0,
-          top: 0,
-          child: Transform.translate(
-            offset: const Offset(-100000, 0),
-            child: RepaintBoundary(
-              key: boundaryKey,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minWidth: width,
-                  maxWidth: width,
-                  minHeight: width * minHeightFactor,
-                ),
-                child: ShareCardScope(palette: resolvedPalette, child: child),
-              ),
+    builder: (_) => Positioned(
+      // Painted (so it owns a compositing layer to snapshot) but pushed far
+      // off-screen so the user never sees the measurement pass. Positioned
+      // with only left/top passes UNBOUNDED constraints, so the
+      // ConstrainedBox pins the width and imposes the minimum height.
+      left: 0,
+      top: 0,
+      child: Transform.translate(
+        offset: const Offset(-100000, 0),
+        child: RepaintBoundary(
+          key: boundaryKey,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: width,
+              maxWidth: width,
+              minHeight: width * minHeightFactor,
             ),
+            child: ShareCardScope(palette: resolvedPalette, child: child),
           ),
         ),
+      ),
+    ),
   );
 
   overlayState.insert(entry);
@@ -195,6 +194,38 @@ Future<void> shareFilesWithText(
   );
 }
 
+/// Where the preview sheet's last tapped action stood on screen. Set just
+/// before that action's callback runs (the sheet closes first).
+Rect? _lastSharePreviewActionOrigin;
+
+/// The iPad share popover's anchor for a share started from the preview
+/// sheet: the action the reader tapped there, else the bottom centre of the
+/// screen. Never the top-left corner, where the popover points at nothing.
+Rect sharePreviewOrigin() =>
+    _lastSharePreviewActionOrigin ?? shareScreenBottomOrigin();
+
+/// A 1x1 anchor at the bottom centre of the app's screen, for a share with
+/// no control on screen to rise from.
+Rect shareScreenBottomOrigin() {
+  final view = WidgetsBinding.instance.platformDispatcher.implicitView;
+  if (view == null || view.devicePixelRatio <= 0) {
+    return const Rect.fromLTWH(0, 0, 1, 1);
+  }
+  final size = view.physicalSize / view.devicePixelRatio;
+  return Rect.fromLTWH(size.width / 2, size.height - 1, 1, 1);
+}
+
+void _rememberSharePreviewOrigin(BuildContext buttonContext) {
+  final box = buttonContext.findRenderObject();
+  _lastSharePreviewActionOrigin =
+      box is RenderBox && box.attached && box.hasSize
+      ? box.localToGlobal(Offset.zero) & box.size
+      : null;
+}
+
+@visibleForTesting
+void debugResetSharePreviewOrigin() => _lastSharePreviewActionOrigin = null;
+
 /// Shows the captured share image in a preview bottom sheet with up to two
 /// actions: "Share Image" (always) and "Share Link" (when [onShareLink] is
 /// provided). Each action dismisses the sheet then runs the native share flow.
@@ -213,17 +244,16 @@ Future<void> showShareImagePreview(
       maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
       maxHeight: MediaQuery.sizeOf(context).height * 0.85,
     ),
-    builder:
-        (sheetContext) => GlassSheet(
-          radius: 16.br,
-          tone: sheetContext.colors.surface,
-          inkSurface: true,
-          child: SharePreviewSheet(
-            imageBytes: imageBytes,
-            onShareImage: onShareImage,
-            onShareLink: onShareLink,
-          ),
-        ),
+    builder: (sheetContext) => GlassSheet(
+      radius: 16.br,
+      tone: sheetContext.colors.surface,
+      inkSurface: true,
+      child: SharePreviewSheet(
+        imageBytes: imageBytes,
+        onShareImage: onShareImage,
+        onShareLink: onShareLink,
+      ),
+    ),
   );
 }
 
@@ -287,13 +317,12 @@ class SharePreviewSheet extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.h),
             child: Container(
               // A paper card on the paper sheet needs an edge to sit on.
-              foregroundDecoration:
-                  context.isLightTheme
-                      ? BoxDecoration(
-                        borderRadius: BorderRadius.circular(12.br),
-                        border: Border.all(color: context.colors.divider),
-                      )
-                      : null,
+              foregroundDecoration: context.isLightTheme
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(12.br),
+                      border: Border.all(color: context.colors.divider),
+                    )
+                  : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12.br),
                 // Decoded at the size it is shown (never above the render's
@@ -303,20 +332,16 @@ class SharePreviewSheet extends StatelessWidget {
                 child: _ReservedAspect(
                   aspectRatio: shareImageAspectRatio(imageBytes),
                   child: LayoutBuilder(
-                    builder:
-                        (context, constraints) => Image.memory(
-                          imageBytes,
-                          fit: BoxFit.fitWidth,
-                          width: double.infinity,
-                          cacheWidth:
-                              constraints.maxWidth.isFinite
-                                  ? (constraints.maxWidth *
-                                          MediaQuery.devicePixelRatioOf(
-                                            context,
-                                          ))
-                                      .ceil()
-                                  : null,
-                        ),
+                    builder: (context, constraints) => Image.memory(
+                      imageBytes,
+                      fit: BoxFit.fitWidth,
+                      width: double.infinity,
+                      cacheWidth: constraints.maxWidth.isFinite
+                          ? (constraints.maxWidth *
+                                    MediaQuery.devicePixelRatioOf(context))
+                                .ceil()
+                          : null,
+                    ),
                   ),
                 ),
               ),
@@ -334,30 +359,32 @@ class SharePreviewSheet extends StatelessWidget {
             children: [
               if (onShareLink != null) ...[
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      Navigator.of(context).pop();
-                      await onShareLink!();
-                    },
-                    icon: Icon(Icons.link, size: 18.ic),
-                    label: const Text('Share Link'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: context.colors.textPrimary,
-                      // Paper: a recessed fill with no edge, the secondary the
-                      // game share overlay uses, so the row is not an outline
-                      // beside a fill. Same box either way; dark keeps its
-                      // brand-cyan edge.
-                      backgroundColor:
-                          context.isLightTheme
-                              ? context.colors.surfaceRecessed
-                              : null,
-                      side:
-                          context.isLightTheme
-                              ? BorderSide.none
-                              : BorderSide(color: context.colors.brand),
-                      padding: EdgeInsets.symmetric(vertical: 14.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.br),
+                  child: Builder(
+                    builder: (buttonContext) => OutlinedButton.icon(
+                      onPressed: () async {
+                        // The iPad popover rises from this button.
+                        _rememberSharePreviewOrigin(buttonContext);
+                        Navigator.of(context).pop();
+                        await onShareLink!();
+                      },
+                      icon: Icon(Icons.link, size: 18.ic),
+                      label: const Text('Share Link'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: context.colors.textPrimary,
+                        // Paper: a recessed fill with no edge, the secondary the
+                        // game share overlay uses, so the row is not an outline
+                        // beside a fill. Same box either way; dark keeps its
+                        // brand-cyan edge.
+                        backgroundColor: context.isLightTheme
+                            ? context.colors.surfaceRecessed
+                            : null,
+                        side: context.isLightTheme
+                            ? BorderSide.none
+                            : BorderSide(color: context.colors.brand),
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.br),
+                        ),
                       ),
                     ),
                   ),
@@ -365,21 +392,25 @@ class SharePreviewSheet extends StatelessWidget {
                 SizedBox(width: 12.w),
               ],
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    await onShareImage();
-                  },
-                  icon: Icon(Icons.ios_share, size: 18.ic),
-                  label: const Text('Share Image'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: context.colors.brand,
-                    // White on cyan is ~2.4:1 in either theme; the accent ink
-                    // clears AA on it (~6.3:1 dark, ~8:1 light).
-                    foregroundColor: context.colors.inkOnAccent,
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
+                child: Builder(
+                  builder: (buttonContext) => FilledButton.icon(
+                    onPressed: () async {
+                      // The iPad popover rises from this button.
+                      _rememberSharePreviewOrigin(buttonContext);
+                      Navigator.of(context).pop();
+                      await onShareImage();
+                    },
+                    icon: Icon(Icons.ios_share, size: 18.ic),
+                    label: const Text('Share Image'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: context.colors.brand,
+                      // White on cyan is ~2.4:1 in either theme; the accent ink
+                      // clears AA on it (~6.3:1 dark, ~8:1 light).
+                      foregroundColor: context.colors.inkOnAccent,
+                      padding: EdgeInsets.symmetric(vertical: 14.h),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
                     ),
                   ),
                 ),

@@ -70,6 +70,7 @@ import 'package:dio/dio.dart';
 import 'my_prep_sources_test.dart' show databasePlayer, sourceGame;
 import 'support/offline_premium_fakes.dart';
 import 'fixtures/duo_window_matrix.dart';
+import 'support/signed_in_auth.dart';
 
 class _PickerRepository extends PrepRepository {
   _PickerRepository()
@@ -2144,6 +2145,8 @@ void main() {
         onGenerateRoute: (settings) =>
             MaterialPageRoute<void>(settings: settings, builder: (_) => host),
         overrides: [
+          // A push opens for a reader with a session (a guest's too).
+          signedInAuthOverride(),
           prepWatchRemoteProvider.overrideWithValue(remote),
           prepAnalysisProvider.overrideWith(
             (ref, id) async => PrepAnalysis(profileId: id, games: games),

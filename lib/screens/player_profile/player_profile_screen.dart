@@ -717,7 +717,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: displayShareName,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+            sharePositionOrigin: sharePreviewOrigin(),
           );
         },
         onShareLink: shareUrl == null
@@ -726,7 +726,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 await Share.share(
                   shareUrl,
                   subject: displayShareName,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  sharePositionOrigin: sharePreviewOrigin(),
                 );
               },
       );

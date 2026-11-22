@@ -23,11 +23,24 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// so we can assert which one [getGameByAnyId] chose to delegate to.
 class _TrackingGameRepository extends GameRepository {
   String? calledGetByIdWith;
+  String? calledFindByIdWith;
   String? calledGetByLichessIdWith;
+
+  /// games.id values that exist. A short id outside this set misses on
+  /// games.id and falls back to lichess_id.
+  final Map<String, String> rowsById = {};
 
   void reset() {
     calledGetByIdWith = null;
+    calledFindByIdWith = null;
     calledGetByLichessIdWith = null;
+  }
+
+  @override
+  Future<Games?> findGameById(String id) async {
+    calledFindByIdWith = id;
+    final lichessId = rowsById[id];
+    return lichessId == null ? null : _stubGame(id);
   }
 
   @override
@@ -174,15 +187,32 @@ void main() {
   // -------------------------------------------------------------------------
   group('getGameByAnyId — short-ID (Lichess) routing', () {
     test(
-      '8-char alphanumeric Lichess ID routes to getGameByLichessId',
+      '8-char id that is no games.id falls back to getGameByLichessId',
       () async {
         const id = '4uVwSr9q';
         await repo.getGameByAnyId(id);
 
+        expect(repo.calledFindByIdWith, equals(id));
         expect(repo.calledGetByLichessIdWith, equals(id));
         expect(repo.calledGetByIdWith, isNull);
       },
     );
+
+    // Production: games.id XBnzfSW7 has lichess_id q83KAyaw, and no game has
+    // lichess_id XBnzfSW7. Share links and game_started/game_finished pushes
+    // carry games.id, so the lichess-only lookup sent every tap to Home.
+    test('8-char games.id that differs from lichess_id resolves by id', () async {
+      repo.rowsById['XBnzfSW7'] = 'q83KAyaw';
+      final game = await repo.getGameByAnyId('XBnzfSW7');
+
+      expect(game.id, 'XBnzfSW7');
+      expect(repo.calledFindByIdWith, 'XBnzfSW7');
+      expect(
+        repo.calledGetByLichessIdWith,
+        isNull,
+        reason: 'a games.id hit never reads lichess_id',
+      );
+    });
 
     test(
       'short ID with leading/trailing whitespace is trimmed then routes to getGameByLichessId',
