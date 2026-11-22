@@ -12,6 +12,8 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart'
+    show GameCardFrame;
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
@@ -867,9 +869,11 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
   /// Matches a host's responsive grid; existing Discovery previews use two.
   final int gridColumns;
 
-  /// The compact row: its 60.h player strip over its 24.h footer
-  /// (`GameCard`).
-  static double get _rowHeight => 60.h + 24.h;
+  /// The compact row: its player strip over its footer (`GameCard`), both
+  /// at the reader's text size (60.h and 24.h at the default size).
+  static double _rowHeight(BuildContext context) =>
+      GameCardFrame.stripHeightOf(context) +
+      GameCardFrame.footerHeightOf(context);
 
   /// A grid card's player line (`PlayerFirstRowDetailWidget` in grid view)
   /// and the gap between it and the board.
@@ -946,7 +950,11 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
             for (var i = 0; i < n; i++) {
               rows.add(
                 labelledPlate(
-                  plate(width: width, height: _rowHeight, radius: 12.br),
+                  plate(
+                    width: width,
+                    height: _rowHeight(context),
+                    radius: 12.br,
+                  ),
                   width - 2 * _rowInset,
                   inset: _rowInset,
                 ),

@@ -41,7 +41,11 @@ class _MemorySpaceShortcuts extends SpaceShortcutsNotifier {
 
   @override
   Future<bool> add(SpaceShortcut draft) async {
-    if (_list.any((s) => s.key == draft.key)) return false;
+    // Same write boundary as the real store: kinds My Space does not take
+    // are refused before anything is stored.
+    if (!draft.canAddToMySpace || _list.any((s) => s.key == draft.key)) {
+      return false;
+    }
     state = AsyncData([draft, ..._list]);
     return true;
   }
@@ -206,10 +210,17 @@ List<SpaceShortcut> _stored(WidgetTester tester) {
   return container.read(spaceShortcutsProvider).valueOrNull ?? const [];
 }
 
+/// Lets the snack the My Space row raises time out, so no timer outlives the
+/// test.
+Future<void> _drainSnack(WidgetTester tester) async {
+  await tester.pump(const Duration(seconds: 10));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('event card focus menu', () {
     testWidgets(
-      'long-press lifts the card and keeps event actions without unsupported additions',
+      'long-press lifts the card and keeps every old action plus My Space',
       (tester) async {
         final repo = _TourIdsRepository();
         var opened = 0;
@@ -249,23 +260,38 @@ void main() {
         expect(find.text('Share'), findsOneWidget);
         expect(find.text('Copy PGN'), findsOneWidget);
         // ...plus Open and the My Space row. Favoriting is the card's own
-        // star, never a menu row.
+        // star, never a menu row. Events are addable to My Space again since
+        // 35.30.0 (8e22962b); see my_space_add_policy_test.dart.
         expect(find.text('Open event'), findsOneWidget);
         expect(find.text('Add to favorites'), findsNothing);
-        expect(find.text('Add to My Space'), findsNothing);
+        expect(find.text('Add to My Space'), findsOneWidget);
         expect(repo.tourIdLookups, 1);
 
-        expect(_stored(tester), isEmpty);
+        await tester.tap(find.text('Add to My Space'));
+        await tester.pumpAndSettle();
+
+        final stored = _stored(tester);
+        expect(stored, hasLength(1));
+        expect(stored.single.kind, SpaceShortcutKind.event);
+        expect(stored.single.targetId, 'group-1');
+        expect(stored.single.title, 'Sinquefield Cup 2026');
         expect(opened, 0);
+        await _drainSnack(tester);
+
+        // Reopening reads live state: the row flips to Remove.
+        await tester.longPress(find.byType(EventCard).first);
+        await tester.pumpAndSettle();
+        expect(find.text('Remove from My Space'), findsOneWidget);
+        expect(find.text('Add to My Space'), findsNothing);
+
         await tester.tap(find.text('Open event'));
         await tester.pumpAndSettle();
         expect(opened, 1);
       },
     );
 
-    testWidgets('calendar events keep their supported non-broadcast actions', (
-      tester,
-    ) async {
+    testWidgets('calendar events keep only their non-broadcast rows and pin '
+        'with their calendar identity', (tester) async {
       final repo = _TourIdsRepository();
       await tester.pumpWidget(
         _host(
@@ -285,14 +311,23 @@ void main() {
 
       expect(find.text('Open event'), findsOneWidget);
       expect(find.text('Add to favorites'), findsNothing);
-      expect(find.text('Add to My Space'), findsNothing);
+      expect(find.text('Add to My Space'), findsOneWidget);
       expect(find.text('Share'), findsNothing);
       expect(find.text('Copy PGN'), findsNothing);
       expect(find.textContaining('No Spoilers'), findsNothing);
       // A calendar event has no tours to look up.
       expect(repo.tourIdLookups, 0);
 
-      expect(_stored(tester), isEmpty);
+      await tester.tap(find.text('Add to My Space'));
+      await tester.pumpAndSettle();
+      final pin = _stored(tester).single;
+      expect(pin.kind, SpaceShortcutKind.event);
+      expect(pin.targetId, 'cal_event_fide_grand_swiss_2026');
+      expect(pin.params['source'], 'calendar');
+      expect(pin.params['calendarEventId'], 'cal_event_fide_grand_swiss_2026');
+      expect(pin.params['calendarEventName'], 'FIDE Grand Swiss 2026');
+      expect(pin.params['eventSource'], 'communityEvent');
+      await _drainSnack(tester);
     });
   });
 
@@ -404,7 +439,7 @@ void main() {
       ),
     ];
 
-    testWidgets('keeps its rows without adding an event to My Space', (
+    testWidgets('keeps its rows and adds the event to My Space', (
       tester,
     ) async {
       final broadcast = GroupBroadcast(
@@ -435,14 +470,18 @@ void main() {
       expect(find.text('Share event'), findsOneWidget);
       // Games-tab rows stay on the Games tab.
       expect(find.text('Pin all'), findsNothing);
-      expect(find.text('Add event to My Space'), findsNothing);
+      expect(find.text('Add event to My Space'), findsOneWidget);
 
-      expect(_stored(tester), isEmpty);
+      await tester.tap(find.text('Add event to My Space'));
+      await tester.pumpAndSettle();
+      final pin = _stored(tester).single;
+      expect(pin.key, eventSpaceDraft(_broadcastEvent()).key);
+      expect(pin.params['tourId'], 'tour-1');
+      await _drainSnack(tester);
     });
 
-    testWidgets('a gamebase-only event keeps Share without My Space', (
-      tester,
-    ) async {
+    testWidgets('a gamebase-only event pins by its virtual id and offers no '
+        'dead share link', (tester) async {
       const virtualAbout = AboutTourModel(
         id: 'gamebase::Tata Steel 2024',
         slug: '',
@@ -483,10 +522,20 @@ void main() {
       await tester.tap(find.byType(TournamentMenuButton));
       await tester.pumpAndSettle();
 
-      expect(find.text('Share event'), findsOneWidget);
-      expect(find.text('Add event to My Space'), findsNothing);
+      // No page on chessever.com and no deep-link route for a virtual event,
+      // so no "Share event" row (dd5d2bc2, 37.0.11, Trello #1264).
+      expect(find.text('Share event'), findsNothing);
+      expect(find.text('Add event to My Space'), findsOneWidget);
 
-      expect(_stored(tester), isEmpty);
+      await tester.tap(find.text('Add event to My Space'));
+      await tester.pumpAndSettle();
+      final pin = _stored(tester).single;
+      expect(pin.kind, SpaceShortcutKind.event);
+      expect(pin.targetId, 'gamebase::Tata Steel 2024');
+      expect(pin.title, 'Tata Steel 2024');
+      // A virtual tour id is not a tour the opener could preselect.
+      expect(pin.params.containsKey('tourId'), isFalse);
+      await _drainSnack(tester);
     });
   });
 

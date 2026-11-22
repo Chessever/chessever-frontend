@@ -267,12 +267,16 @@ void main() {
       final container = ProviderContainer(overrides: scope.overrides);
       addTearDown(container.dispose);
       expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
+      // Most Liked periods are shared worldwide at 00:00 UTC (37.9.9,
+      // 995ce38a): the link's date is restored as that UTC day, whatever the
+      // reader's time zone, and its month starts on the 1st at 00:00 UTC.
+      expect(container.read(mostLikedDayProvider), DateTime.utc(2026, 9, 23));
       expect(
         MostLikedQuery(
           container.read(mostLikedPeriodProvider),
           container.read(mostLikedDayProvider)!,
         ).start,
-        DateTime(2026, 9),
+        DateTime.utc(2026, 9),
       );
       expect((scope.child as LikesScreen).initialView, MostLikedView.players);
       expect(ref.read(mostLikedDayProvider), DateTime(2026, 8, 1));
@@ -559,8 +563,10 @@ void main() {
     entitled = false;
     expect(await open('/app/collections/my-60-memorable-games'), isTrue);
     expect(requestedFeatures, isEmpty);
-    expect((opened.single as CollectionScreen).collection.slug,
-        'my-60-memorable-games');
+    expect(
+      (opened.single as CollectionScreen).collection.slug,
+      'my-60-memorable-games',
+    );
     expect(repo.fetches, ['my-60-memorable-games']);
   });
 }

@@ -201,18 +201,31 @@ class GameCardFrame extends StatelessWidget {
   /// The footer strip's height.
   static double get footerHeight => 24.h;
 
+  static double _lineHeight(BuildContext context, TextStyle style) =>
+      MediaQuery.textScalerOf(context).scale(style.fontSize!) *
+      (style.height ?? 1);
+
+  /// The player strip's height at the reader's text size: [stripHeight],
+  /// taller when two text lines need it at accessibility sizes. Skeletons
+  /// read it too, so a plate stands as tall as the row that replaces it.
+  static double stripHeightOf(BuildContext context) => math.max(
+    stripHeight,
+    _lineHeight(context, nameStyle(context)) * 2 + 16.sp,
+  );
+
+  /// The footer strip's height at the reader's text size: [footerHeight],
+  /// taller when its one line needs it.
+  static double footerHeightOf(BuildContext context) =>
+      math.max(footerHeight, _lineHeight(context, footerStyle(context)) + 4.sp);
+
   /// The row's player strip around [child]: its height, inset, surface,
   /// top corners and (on paper) the divider under it. [GameCard] draws its
   /// players in this very strip.
   static Widget playerStrip(BuildContext context, {required Widget child}) {
     final isLight = context.isLightTheme;
-    final style = nameStyle(context);
-    final lineHeight =
-        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
-        (style.height ?? 1);
     return Container(
       // Two text lines must remain inside the strip at accessibility sizes.
-      height: math.max(stripHeight, lineHeight * 2 + 16.sp),
+      height: stripHeightOf(context),
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
@@ -237,12 +250,8 @@ class GameCardFrame extends StatelessWidget {
   /// The row's footer strip around [child] (clocks and the last move on a
   /// game): its height, inset, surface and bottom corners.
   static Widget footerStrip(BuildContext context, {required Widget child}) {
-    final style = footerStyle(context);
-    final lineHeight =
-        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
-        (style.height ?? 1);
     return Container(
-      height: math.max(footerHeight, lineHeight + 4.sp),
+      height: footerHeightOf(context),
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: context.colors.surface,
@@ -591,7 +600,6 @@ class _BottomSection extends ConsumerWidget {
     );
 
     final game = matchComparison.game;
-    final clockWidth = _gameCardClockColumnWidth(context);
     final storedWithoutClocks =
         game.source != GameSource.supabase &&
         game.whiteClockSeconds == null &&
@@ -634,53 +642,40 @@ class _BottomSection extends ConsumerWidget {
       );
     }
 
+    final desiredClockWidth = _gameCardClockColumnWidth(context);
+    Widget clock(Side side, double width) => SizedBox(
+      width: width,
+      child: _TimerWidget(
+        turn: game.activePlayer == side,
+        time:
+            side == Side.white ? game.whiteTimeDisplay : game.blackTimeDisplay,
+        gamesTourModel: game,
+        isWhitePlayer: side == Side.white,
+      ),
+    );
+    final leftSide =
+        matchComparison.comparison == MatchComparison.sameOrder
+            ? Side.white
+            : Side.black;
     return GameCardFrame.footerStrip(
       context,
-      child: Row(
-        children:
-            matchComparison.comparison == MatchComparison.sameOrder
-                ? [
-                  SizedBox(
-                    width: clockWidth,
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.white,
-                      time: matchComparison.game.whiteTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: true,
-                    ),
-                  ),
-                  lastMoveWidget,
-                  SizedBox(
-                    width: clockWidth,
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.black,
-                      time: matchComparison.game.blackTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: false,
-                    ),
-                  ),
-                ]
-                : [
-                  SizedBox(
-                    width: clockWidth,
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.black,
-                      time: matchComparison.game.blackTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: false,
-                    ),
-                  ),
-                  lastMoveWidget,
-                  SizedBox(
-                    width: clockWidth,
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.white,
-                      time: matchComparison.game.whiteTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: true,
-                    ),
-                  ),
-                ],
+      // The two clock columns never take more than the strip: on a narrow
+      // card at a large text size each holds half of it, and the last move
+      // between them fades. No clock is scaled down.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final clockWidth = math.min(
+            desiredClockWidth,
+            constraints.maxWidth / 2,
+          );
+          return Row(
+            children: [
+              clock(leftSide, clockWidth),
+              lastMoveWidget,
+              clock(leftSide.opposite, clockWidth),
+            ],
+          );
+        },
       ),
     );
   }
@@ -871,22 +866,30 @@ class _TimerWidget extends StatelessWidget {
                   : null,
         ),
         // Full size always: the column is sized for the widest clock
-        // (_gameCardClockColumnWidth), so nothing shrinks to fit.
-        child: AtomicCountdownText(
-          clockSeconds:
-              clockSeconds, // Primary source: time in seconds from last_clock fields
-          clockCentiseconds:
-              clockCentiseconds, // Fallback source: raw database clock
-          lastMoveTime: gamesTourModel.lastMoveTime,
-          isActive:
-              isClockRunning, // Clock frozen if game is effectively finished
-          style: AppTypography.textXsMedium.copyWith(
-            color:
-                isGameFinished
-                    ? context.colors.textPrimary
-                    : (shouldHighlightClock
-                        ? context.colors.accentText
-                        : context.colors.textPrimaryMuted),
+        // (_gameCardClockColumnWidth), so nothing shrinks to fit. Only when
+        // half the strip is narrower than that (a narrow card at a large
+        // text size) can a clock run out of room; it then fades on one
+        // line, like the names, never wrapping or shrinking.
+        child: DefaultTextStyle.merge(
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
+          child: AtomicCountdownText(
+            clockSeconds:
+                clockSeconds, // Primary source: time in seconds from last_clock fields
+            clockCentiseconds:
+                clockCentiseconds, // Fallback source: raw database clock
+            lastMoveTime: gamesTourModel.lastMoveTime,
+            isActive:
+                isClockRunning, // Clock frozen if game is effectively finished
+            style: AppTypography.textXsMedium.copyWith(
+              color:
+                  isGameFinished
+                      ? context.colors.textPrimary
+                      : (shouldHighlightClock
+                          ? context.colors.accentText
+                          : context.colors.textPrimaryMuted),
+            ),
           ),
         ),
       ),
@@ -1162,6 +1165,8 @@ bool _clockColumnWidthsWatchFonts = false;
 /// ("h:mm:ss" in the widest digit) at the reader's text size, plus the box's
 /// padding and border, and never under the original 60.w. Both columns share
 /// it, so the last move stays centred and no clock is scaled down or clipped.
+/// [_BottomSection] caps it at half the strip, so the two always fit; only a
+/// clock wider than that half (a narrow card at a large text size) fades.
 double _gameCardClockColumnWidth(BuildContext context) {
   final style = AppTypography.textXsMedium;
   final scaler = MediaQuery.textScalerOf(context);

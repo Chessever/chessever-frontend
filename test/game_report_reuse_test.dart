@@ -11,8 +11,19 @@ import 'package:chessever2/screens/chessboard/game_review/game_review_provider.d
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/server_game_report.dart';
 import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// Opening or generating any report needs paid or active rewarded access
+/// since 35.35.7 (docs/rewarded-premium.md, "Premium-only reports"):
+/// `requestAnalysis` asks `ensureGameReportAccess` first. These readers have
+/// it, so the gate passes without a paywall and the test reaches what it pins.
+Widget _withReportAccess(Widget child) => ProviderScope(
+  overrides: [premiumAccessProvider.overrideWithValue(true)],
+  child: child,
+);
 
 void main() {
   setUp(GameAnalysisReportController.clearSessionCacheForTest);
@@ -275,9 +286,13 @@ void main() {
     (tester) async {
       final payload = savedPayload();
       final previous = ChessGame.fromPgn('previous', payload['pgn'] as String);
-      final next = ChessGame.fromPgn(
-        'next',
-        r'1. d4 $247 {[%eval 0.25]} d5 {[%eval 0.15]} 1-0',
+      // Stamped as the report writer stamps its output: since 37.8.7 only a
+      // verified ChessEver report is restored from a PGN.
+      final next = withChesseverReportStamp(
+        ChessGame.fromPgn(
+          'next',
+          r'1. d4 $247 {[%eval 0.25]} d5 {[%eval 0.15]} 1-0',
+        ),
       );
       final store = _DelayedReportStore(gameReportFingerprint(previous));
       final reports = GameAnalysisReportController(store: store);
@@ -303,12 +318,14 @@ void main() {
       );
       late BuildContext context;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (value) {
-              context = value;
-              return const SizedBox();
-            },
+        _withReportAccess(
+          MaterialApp(
+            home: Builder(
+              builder: (value) {
+                context = value;
+                return const SizedBox();
+              },
+            ),
           ),
         ),
       );
@@ -383,15 +400,17 @@ void main() {
 
       late BuildContext context;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (value) {
-              context = value;
-              return GameAnalysisButton(
-                state: review.reviewState,
-                onPressed: null,
-              );
-            },
+        _withReportAccess(
+          MaterialApp(
+            home: Builder(
+              builder: (value) {
+                context = value;
+                return GameAnalysisButton(
+                  state: review.reviewState,
+                  onPressed: null,
+                );
+              },
+            ),
           ),
         ),
       );

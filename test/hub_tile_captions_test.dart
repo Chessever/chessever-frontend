@@ -268,6 +268,9 @@ void main() {
   });
 
   group('hubCollectionsCaption', () {
+    // A book (CollectionKind.book) reads as a "collection" to the reader
+    // since 35.30.0 (8e22962b renamed books to collections across the UI;
+    // stories say "View collection" for one).
     test('analysis counts independently from books', () {
       expect(
         hubCollectionsCaption(
@@ -277,7 +280,7 @@ void main() {
             _collection('analysis', CollectionKind.analysis),
           ]),
         ),
-        '1 event · 1 book · 1 analysis',
+        '1 event · 1 collection · 1 analysis',
       );
       expect(
         hubCollectionsCaption(
@@ -292,11 +295,11 @@ void main() {
     test('events and books, by kind and number', () {
       expect(
         hubCollectionsCaption(AsyncData(_shelf(events: 6, books: 2))),
-        '6 events · 2 books',
+        '6 events · 2 collections',
       );
       expect(
         hubCollectionsCaption(AsyncData(_shelf(events: 1, books: 1))),
-        '1 event · 1 book',
+        '1 event · 1 collection',
       );
       expect(
         hubCollectionsCaption(AsyncData(_shelf(events: 6))),
@@ -306,8 +309,14 @@ void main() {
         hubCollectionsCaption(AsyncData(_shelf(events: 1))),
         '1 annotated event',
       );
-      expect(hubCollectionsCaption(AsyncData(_shelf(books: 2))), '2 books');
-      expect(hubCollectionsCaption(AsyncData(_shelf(books: 1))), '1 book');
+      expect(
+        hubCollectionsCaption(AsyncData(_shelf(books: 2))),
+        '2 collections',
+      );
+      expect(
+        hubCollectionsCaption(AsyncData(_shelf(books: 1))),
+        '1 collection',
+      );
     });
 
     test('an empty shelf says so', () {
