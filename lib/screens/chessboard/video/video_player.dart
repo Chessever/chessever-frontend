@@ -11,12 +11,19 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'video_session.dart';
 import 'video_stream.dart';
 
-/// Let the surrounding game scroll own vertical drags. Horizontal drags stay
-/// in the player (e.g. seeking) rather than switching the PageView's game.
+/// The surrounding game scroll owns vertical drags by default. Horizontal
+/// drags stay in the player for seeking without switching the PageView's game.
 /// Unclaimed taps are forwarded to the WebView by the platform-view gesture
 /// arena, so Play/Pause and other native provider controls remain interactive.
 const eventVideoGestureRecognizers = <Factory<OneSequenceGestureRecognizer>>{
   Factory<EventVideoSeekGestureRecognizer>(EventVideoSeekGestureRecognizer.new),
+};
+
+/// YouTube's settings menus scroll inside a cross-origin iframe. The player
+/// needs the complete touch sequence, and the wrapper can't see when a menu
+/// is open.
+const youtubeVideoGestureRecognizers = <Factory<OneSequenceGestureRecognizer>>{
+  Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
 };
 
 /// Decide the axis before the enclosing game PageView reaches its drag slop.
@@ -331,10 +338,13 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
     return _controller == null
         ? const Center(child: CircularProgressIndicator())
         : WebViewWidget(
-          key: _viewKey,
-          controller: _controller!,
-          gestureRecognizers: eventVideoGestureRecognizers,
-        );
+            key: _viewKey,
+            controller: _controller!,
+            gestureRecognizers:
+                _session?.selected?.source.platform == VideoPlatform.youtube
+                ? youtubeVideoGestureRecognizers
+                : eventVideoGestureRecognizers,
+          );
   }
 
   Widget? _fullscreenView;

@@ -47,7 +47,7 @@ void main() {
   });
 
   testWidgets(
-    'existing eager platform view adopts the scroll-friendly policy',
+    'YouTube receives vertical drags until the view switches providers',
     (tester) async {
       final scroll = ScrollController();
       final pages = PageController();
@@ -57,9 +57,7 @@ void main() {
           view,
           scroll,
           pages,
-          gestureRecognizers: {
-            Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new),
-          },
+          gestureRecognizers: youtubeVideoGestureRecognizers,
         ),
       );
       await tester.drag(
@@ -68,6 +66,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(scroll.offset, 0);
+      expect(view.events.whereType<PointerMoveEvent>(), isNotEmpty);
       view.events.clear();
       await tester.pumpWidget(_harness(view, scroll, pages));
       await tester.drag(

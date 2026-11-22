@@ -3,6 +3,7 @@ import 'package:chessever2/screens/chessboard/video/video_session.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:webview_flutter/webview_flutter.dart' show WebViewWidget;
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 import 'event_video_test.dart' show FakeVideoRepository, fixtureVideos;
 
@@ -548,7 +549,7 @@ void main() {
     expect(shown.documents.last, isNot(contains('ChessVideo')));
     expect(tester.takeException(), isNull);
   });
-  testWidgets('a provider mute report reloads the next stream muted', (
+  testWidgets('switching to Twitch carries mute and restores page scrolling', (
     tester,
   ) async {
     final h = _Harness();
@@ -558,6 +559,11 @@ void main() {
     await _flushPlayer(tester);
     final controller = platform.controllers.single;
     expect(controller.documents.last, contains('mute:0'));
+    final webView = find.byType(WebViewWidget);
+    expect(
+      tester.widget<WebViewWidget>(webView).gestureRecognizers,
+      youtubeVideoGestureRecognizers,
+    );
     h.session.reportPlayback(true, h.session.playerRevision);
     controller.channel!.onMessageReceived(
       JavaScriptMessage(
@@ -571,6 +577,10 @@ void main() {
     await _flushPlayer(tester);
     expect(controller.documents.last, contains('muted:true'));
     expect(controller.documents.last, contains('p.setMuted(true)'));
+    expect(
+      tester.widget<WebViewWidget>(webView).gestureRecognizers,
+      eventVideoGestureRecognizers,
+    );
     controller.channel!.onMessageReceived(
       JavaScriptMessage(
         message:
