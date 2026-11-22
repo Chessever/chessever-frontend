@@ -123,9 +123,11 @@ class ChessSheetConfigs {
   /// 80% default, 95% when user wants more space
   static SheetSnapGrid commentEditorSnaps({double minFlingSpeed = 600.0}) {
     return SheetSnapGrid(
+      // A comment editor over the board stays a panel, not a takeover:
+      // enough for the field plus the keyboard, never the whole screen.
       snaps: const [
-        SheetOffset.proportionalToViewport(0.80),
-        SheetOffset.proportionalToViewport(0.95),
+        SheetOffset.proportionalToViewport(0.56),
+        SheetOffset.proportionalToViewport(0.72),
       ],
       minFlingSpeed: minFlingSpeed,
     );
@@ -157,11 +159,16 @@ class ChessSheetDecoration {
     double alpha = 0.96,
     double borderRadius = 28.0,
     bool solid = false,
+    bool lip = true,
   }) {
     return SheetDecorationBuilder(
       size: SheetSize.stretch,
-      builder: (context, child) =>
-          ChessSheetGlass(radius: borderRadius, solid: solid, child: child),
+      builder: (context, child) => ChessSheetGlass(
+        radius: borderRadius,
+        solid: solid,
+        lip: lip,
+        child: child,
+      ),
     );
   }
 
@@ -171,12 +178,14 @@ class ChessSheetDecoration {
     double alpha = 0.92,
     double borderRadius = 28.0,
     bool solid = false,
+    bool lip = true,
   }) {
     return dark(
       context,
       alpha: alpha,
       borderRadius: borderRadius,
       solid: solid,
+      lip: lip,
     );
   }
 }
@@ -193,6 +202,7 @@ class ChessSheetGlass extends GlassSheet {
     super.radius = 28,
     super.tone,
     super.solid,
+    super.lip,
   }) : super(inkSurface: true);
 
   /// The barrier a glass sheet opens over: the theme's scrim at the
@@ -420,15 +430,18 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     required BuildContext? context,
     required String label,
+    Color? barrierColor,
   }) {
     final padding = context != null
         ? MediaQuery.viewPaddingOf(context)
         : EdgeInsets.zero;
     return MotionSheetRoute<void>(
       builder: builder,
-      barrierColor: context != null
-          ? ChessSheetGlass.barrierColor(context)
-          : _fallbackBarrier,
+      barrierColor:
+          barrierColor ??
+          (context != null
+              ? ChessSheetGlass.barrierColor(context)
+              : _fallbackBarrier),
       barrierLabel: label,
       barrierDismissible: true,
       // Only respect top padding; allow the sheet to cover the bottom safe area
@@ -440,13 +453,25 @@ class ChessSheetRoutes {
   static MotionSheetRoute<void> actionMenu({
     required WidgetBuilder builder,
     BuildContext? context,
-  }) => _route(builder: builder, context: context, label: 'Close menu');
+    Color? barrierColor,
+  }) => _route(
+    builder: builder,
+    context: context,
+    label: 'Close menu',
+    barrierColor: barrierColor,
+  );
 
   /// Comment editor route, and the Library's save sheets.
   static MotionSheetRoute<void> commentEditor({
     required WidgetBuilder builder,
     BuildContext? context,
-  }) => _route(builder: builder, context: context, label: 'Close editor');
+    Color? barrierColor,
+  }) => _route(
+    builder: builder,
+    context: context,
+    label: 'Close editor',
+    barrierColor: barrierColor,
+  );
 
   /// Preview route.
   static MotionSheetRoute<void> preview({
