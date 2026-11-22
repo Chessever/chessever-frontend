@@ -120,6 +120,14 @@ void main() {
     bool? answer;
     await host(tester, reward, answer: (value) => answer = value);
     expect(find.text('Upgrade'), findsOneWidget);
+    // The body names both ways in before either button.
+    expect(
+      find.text(
+        'Upgrade for unlimited access, or watch a short ad for 10 minutes of '
+        'Premium.',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Watch ad'));
     await tester.pumpAndSettle();
     expect(answer, true);
@@ -138,6 +146,13 @@ void main() {
       answer: (value) => answer = value,
     );
     expect(find.text('Watch ad again'), findsOneWidget);
+    expect(
+      find.text(
+        'Watch another ad for 10 more minutes, or upgrade for unlimited '
+        'access.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Upgrade'), findsOneWidget);
     await tester.tapAt(const Offset(2, 2));
     await tester.pumpAndSettle();

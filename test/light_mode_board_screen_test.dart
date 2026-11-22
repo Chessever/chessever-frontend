@@ -174,7 +174,9 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('QUALITY'), findsOneWidget);
+    // The picker is open: its glyph rows carry no category labels.
+    expect(find.text('!?'), findsWidgets);
+    expect(find.text('QUALITY'), findsNothing);
     expectNoContrastMisses(
       auditTextContrast(tester, fallbackGround: AppColors.light.background),
       where: 'NAG picker',

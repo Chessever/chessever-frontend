@@ -216,7 +216,13 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                 Text(
                   confirming
                       ? 'Confirming your reward…'
-                      : 'Watch an ad for 10 minutes of access to all Premium features.',
+                      // The two ways in, named before either button: the
+                      // duration belongs to the ad, never to the upgrade.
+                      : widget.expired
+                      ? 'Watch another ad for 10 more minutes, or upgrade for '
+                            'unlimited access.'
+                      : 'Upgrade for unlimited access, or watch a short ad '
+                            'for 10 minutes of Premium.',
                   style: const TextStyle(
                     color: bodyInk,
                     fontSize: 16,

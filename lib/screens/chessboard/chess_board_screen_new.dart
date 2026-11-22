@@ -13255,8 +13255,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final route = ChessSheetRoutes.commentEditor(
       context: context,
-      builder: (_) =>
-          _DirectCommentSheet(config: commentConfig, hostContext: hostContext),
+      barrierColor: Colors.transparent,
+      builder: (_) => _DirectCommentSheet(
+        config: commentConfig,
+        hostContext: hostContext,
+        peekPixels: boardSheetAnchorPixels.value,
+      ),
     );
 
     await Navigator.of(context).push(route);
@@ -13914,11 +13918,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     await _showNotationActionSheet(
       context: hostContext,
       title: isNullMove ? 'Null move' : moveText,
-      subtitle: 'Move options',
       actions: actions,
       commentConfig: commentConfig,
       timeSpentLabel: timeSpentLabel,
       initialSheetFraction: initialSheetFraction,
+      peekPixels: boardSheetAnchorPixels.value,
     );
   }
 
@@ -13939,6 +13943,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     await showGlassModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      // The board stays lit behind the marks: the panel is the only thing
+      // that should draw attention, not a scrim over the position.
+      barrierColor: Colors.transparent,
+      enableDrag: false,
       builder: (sheetContext) => _NagPickerSheet(
         moveText: moveText,
         params: params,
@@ -14017,6 +14025,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       actions: actions,
       commentConfig: commentConfig,
       initialSheetFraction: initialSheetFraction,
+      peekPixels: boardSheetAnchorPixels.value,
     );
   }
 
@@ -14129,17 +14138,35 @@ class _DirectCommentSheet extends ConsumerWidget {
   final _VariationCommentSheetConfig config;
   final BuildContext hostContext;
 
-  const _DirectCommentSheet({required this.config, required this.hostContext});
+  /// Distance from the bottom of the window to the board's lower player row.
+  /// The editor sizes to it, so its top edge always lands under that row and
+  /// the board and both names stay in view.
+  final double? peekPixels;
+
+  const _DirectCommentSheet({
+    required this.config,
+    required this.hostContext,
+    this.peekPixels,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final peek = peekPixels;
+    final anchored = peek != null && peek > 0;
+    final offset = anchored
+        ? CommentEditorSheetOffset(SheetOffset.absolute(peek))
+        : const CommentEditorSheetOffset(
+            SheetOffset.proportionalToViewport(0.56),
+          );
     final navigator = Navigator(
       onGenerateInitialRoutes: (_, __) => [
         SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: ChessSheetConfigs.commentEditor,
-          initialOffset: const SheetOffset.proportionalToViewport(0.8),
-          snapGrid: ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
+          initialOffset: offset,
+          snapGrid: anchored
+              ? SheetSnapGrid.single(snap: offset)
+              : ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
           builder: (context) =>
               _NotationCommentPage(config: config, hostContext: hostContext),
         ),
@@ -14154,6 +14181,8 @@ class _DirectCommentSheet extends ConsumerWidget {
         decoration: ChessSheetDecoration.dark(
           context,
           alpha: 0.97,
+          // A panel under the board, not a sheet to pull: no lit lip.
+          lip: false,
           borderRadius: 28.sp,
         ),
         shrinkChildToAvoidDynamicOverlap: true,
@@ -14164,7 +14193,7 @@ class _DirectCommentSheet extends ConsumerWidget {
 }
 
 const int _variationCommentPreviewChars = 80;
-const int _variationCommentMaxChars = 280;
+const int _variationCommentMaxChars = 1000;
 
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
@@ -15723,10 +15752,12 @@ Future<void> _showNotationActionSheet({
   _VariationCommentSheetConfig? commentConfig,
   String? timeSpentLabel,
   double initialSheetFraction = _mainlineActionSheetInitialFraction,
+  double? peekPixels,
 }) async {
   final hostContext = context;
   final route = ChessSheetRoutes.actionMenu(
     context: context,
+    barrierColor: Colors.transparent,
     builder: (_) => _NotationActionSheet(
       title: title,
       subtitle: subtitle,
@@ -15735,6 +15766,7 @@ Future<void> _showNotationActionSheet({
       commentConfig: commentConfig,
       timeSpentLabel: timeSpentLabel,
       initialSheetFraction: initialSheetFraction,
+      peekPixels: peekPixels,
     ),
   );
   // The move's actions hang over the board for a moment: the board stays
@@ -15778,6 +15810,10 @@ class _NotationActionSheet extends ConsumerWidget {
   final String? timeSpentLabel;
   final double initialSheetFraction;
 
+  /// Measured height that lands the comment page's top edge under the board's
+  /// lower player row.
+  final double? peekPixels;
+
   const _NotationActionSheet({
     required this.title,
     this.subtitle,
@@ -15786,25 +15822,25 @@ class _NotationActionSheet extends ConsumerWidget {
     this.commentConfig,
     this.timeSpentLabel,
     required this.initialSheetFraction,
+    this.peekPixels,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final clampedInitial = initialSheetFraction.clamp(0.25, 0.9).toDouble();
-    final snapFractions = <double>{0.35, 0.75, clampedInitial}.toList()..sort();
-    final snapGrid = SheetSnapGrid(
-      snaps: snapFractions
-          .map((value) => SheetOffset.proportionalToViewport(value))
-          .toList(),
-      minFlingSpeed: 850.0,
-    );
+    // A share of the viewport (the old behaviour) put the menu's top edge above
+    // the board's lower player row on tall phones, hiding the name and clock.
+    // One snap, at the menu's own height: it rests at the bottom of the screen
+    // and cannot be dragged taller. A long action list may still reach past
+    // the row. [peekPixels] only places the comment page opened from here.
+    final contentOffset = const RelativeSheetOffset(1.0);
+    final snapGrid = SheetSnapGrid.single(snap: contentOffset);
 
     final navigator = Navigator(
       onGenerateInitialRoutes: (_, __) => [
         SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: ChessSheetConfigs.actionMenu,
-          initialOffset: SheetOffset.proportionalToViewport(clampedInitial),
+          initialOffset: contentOffset,
           snapGrid: snapGrid,
           builder: (context) => _NotationActionListPage(
             title: title,
@@ -15813,6 +15849,7 @@ class _NotationActionSheet extends ConsumerWidget {
             commentConfig: commentConfig,
             hostContext: hostContext,
             timeSpentLabel: timeSpentLabel,
+            peekPixels: peekPixels,
           ),
         ),
       ],
@@ -15827,6 +15864,7 @@ class _NotationActionSheet extends ConsumerWidget {
           context,
           alpha: 0.97,
           borderRadius: 28.sp,
+          lip: false,
         ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
@@ -15842,6 +15880,7 @@ class _NotationActionListPage extends ConsumerWidget {
   final _VariationCommentSheetConfig? commentConfig;
   final BuildContext hostContext;
   final String? timeSpentLabel;
+  final double? peekPixels;
 
   const _NotationActionListPage({
     required this.title,
@@ -15850,6 +15889,7 @@ class _NotationActionListPage extends ConsumerWidget {
     this.subtitle,
     this.commentConfig,
     this.timeSpentLabel,
+    this.peekPixels,
   });
 
   Future<void> _handleActionTap(
@@ -15859,12 +15899,23 @@ class _NotationActionListPage extends ConsumerWidget {
     HapticFeedback.selectionClick();
 
     if (action.triggersCommentEditor && commentConfig != null) {
+      // Under the board's lower player row when it has been measured, so the
+      // board and both names stay visible while the note is written.
+      final peek = peekPixels;
+      final anchored = peek != null && peek > 0;
+      final offset = anchored
+          ? CommentEditorSheetOffset(SheetOffset.absolute(peek))
+          : const CommentEditorSheetOffset(
+              SheetOffset.proportionalToViewport(0.56),
+            );
       await Navigator.of(context).push(
         SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: ChessSheetConfigs.commentEditor,
-          initialOffset: const SheetOffset.proportionalToViewport(0.8),
-          snapGrid: ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
+          initialOffset: offset,
+          snapGrid: anchored
+              ? SheetSnapGrid.single(snap: offset)
+              : ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
           builder: (context) => _NotationCommentPage(
             config: commentConfig!,
             hostContext: hostContext,
@@ -15894,17 +15945,7 @@ class _NotationActionListPage extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 40.w,
-              height: 4.h,
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-          SizedBox(height: 12.h),
+          SizedBox(height: 4.h),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -16125,13 +16166,10 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
     _controller = TextEditingController(text: widget.config.initialValue ?? '')
       ..addListener(_onChanged);
 
+    // Not focused on open: the panel comes up pinned under the player row with
+    // the board still readable, and the keyboard appears when the field is
+    // tapped — not before, which would push the panel over the board.
     _focusNode = FocusNode();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode.requestFocus();
-      }
-    });
   }
 
   @override
@@ -16218,13 +16256,6 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                       style: AppTypography.textLgBold.copyWith(
                         color: context.colors.textPrimary,
                         letterSpacing: 0.3,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      'Leave a note for this branch.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimaryMuted,
                       ),
                     ),
                   ],
@@ -17454,6 +17485,7 @@ class _NagPickerSheet extends ConsumerWidget {
     // area keeps the content where it was.
     return ChessSheetGlass(
       radius: 20.sp,
+      lip: false,
       child: SafeArea(
         top: false,
         child: Padding(
@@ -17462,17 +17494,6 @@ class _NagPickerSheet extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 36.sp,
-                  height: 4.sp,
-                  margin: EdgeInsets.only(bottom: 14.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.textPrimary.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -17529,8 +17550,6 @@ class _NagPickerSheet extends ConsumerWidget {
               ),
               SizedBox(height: 14.sp),
               _NagGroup(
-                label: 'Quality',
-                hint: 'How good was the move?',
                 nags: _qualityNags,
                 activeSet: activeSet,
                 onTap: (nag) {
@@ -17540,8 +17559,6 @@ class _NagPickerSheet extends ConsumerWidget {
               ),
               SizedBox(height: 14.sp),
               _NagGroup(
-                label: 'Position assessment',
-                hint: 'Who stands better?',
                 nags: _evaluationNags,
                 activeSet: activeSet,
                 onTap: (nag) {
@@ -17551,25 +17568,12 @@ class _NagPickerSheet extends ConsumerWidget {
               ),
               SizedBox(height: 14.sp),
               _NagGroup(
-                label: 'Observation',
-                hint: 'Theme of the move',
                 nags: _observationNags,
                 activeSet: activeSet,
                 onTap: (nag) {
                   HapticFeedback.selectionClick();
                   notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
                 },
-              ),
-              SizedBox(height: 18.sp),
-              Center(
-                child: Text(
-                  'One glyph per category. Tap a glyph again to remove it.',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.textInk(0.4),
-                    fontSize: 10.5.sp,
-                    letterSpacing: 0.1,
-                  ),
-                ),
               ),
             ],
           ),
@@ -17670,15 +17674,11 @@ class _NagPickerClearButton extends StatelessWidget {
 }
 
 class _NagGroup extends StatelessWidget {
-  final String label;
-  final String hint;
   final List<int> nags;
   final Set<int> activeSet;
   final void Function(int nag) onTap;
 
   const _NagGroup({
-    required this.label,
-    required this.hint,
     required this.nags,
     required this.activeSet,
     required this.onTap,
@@ -17686,50 +17686,19 @@ class _NagGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // The row of marks is the whole group: the labels and the hints above it
+    // ("Quality — How good was the move?") repeated what the glyphs already
+    // say and cost the sheet the height that kept it off the board.
+    return Wrap(
+      spacing: 8.sp,
+      runSpacing: 8.sp,
       children: [
-        Padding(
-          padding: EdgeInsets.only(left: 2.sp, bottom: 8.sp),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: AppTypography.textXsMedium.copyWith(
-                  color: context.textInk(0.55),
-                  fontSize: 10.sp,
-                  letterSpacing: 1.4,
-                ),
-              ),
-              SizedBox(width: 8.sp),
-              Expanded(
-                child: Text(
-                  hint,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.textInk(0.32),
-                    fontSize: 10.sp,
-                    letterSpacing: 0.0,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+        for (final nag in nags)
+          _NagChip(
+            nag: nag,
+            isActive: activeSet.contains(nag),
+            onTap: () => onTap(nag),
           ),
-        ),
-        Wrap(
-          spacing: 8.sp,
-          runSpacing: 8.sp,
-          children: [
-            for (final nag in nags)
-              _NagChip(
-                nag: nag,
-                isActive: activeSet.contains(nag),
-                onTap: () => onTap(nag),
-              ),
-          ],
-        ),
       ],
     );
   }
@@ -17761,11 +17730,13 @@ class _NagChip extends StatelessWidget {
           child: AnimatedScale(
             duration: const Duration(milliseconds: 140),
             curve: Curves.easeOutCubic,
-            scale: isActive ? 1 : 0.88,
+            scale: isActive ? 1 : 0.94,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 140),
               curve: Curves.easeOutCubic,
-              opacity: isActive ? 1 : 0.38,
+              // Neighbours stay clearly readable: the selected mark reads by
+              // its full weight and slight lift, not by dimming the rest away.
+              opacity: isActive ? 1 : 0.78,
               child: badgeAsset != null
                   ? SvgPicture.asset(
                       badgeAsset,
@@ -17843,7 +17814,7 @@ class _NagChip extends StatelessWidget {
 
     final isLight = context.isLightTheme;
     final activeBg = display.color;
-    final inactiveBg = display.color.withValues(alpha: 0.10);
+    final inactiveBg = display.color.withValues(alpha: isLight ? 0.10 : 0.16);
     // Paper: the pale slate/observation hues vanish at 45%, so the edge and
     // glyph take the same hue darkened to AA against the tinted well.
     final inactiveWell = Color.alphaBlend(
@@ -17857,10 +17828,13 @@ class _NagChip extends StatelessWidget {
             minContrast: 3,
             on: inactiveWell,
           )
-        : display.color.withValues(alpha: 0.45);
+        : display.color.withValues(alpha: 0.60);
     final inactiveInk = isLight
         ? nagInk(context, display, on: inactiveWell)
-        : display.color.withValues(alpha: 0.95);
+        // Dark: the slate and observation greys are already quiet hues, and
+        // dimming them again left the row unreadable. Lift them toward white
+        // so every glyph is legible before it is picked.
+        : Color.lerp(display.color, Colors.white, 0.34)!;
     final width = display.symbol.length > 1 ? 50.sp : 42.sp;
 
     return GestureDetector(

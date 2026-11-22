@@ -39,6 +39,10 @@ Future<T?> showGlassModalBottomSheet<T>({
   bool isDismissible = true,
   bool enableDrag = true,
   BoxConstraints? constraints,
+  /// The scrim behind the sheet. `null` keeps the popups' standard scrim;
+  /// a sheet that must leave the page legible (the board) passes
+  /// [Colors.transparent].
+  Color? barrierColor,
 }) {
   final navigator = Navigator.of(context, rootNavigator: useRootNavigator);
   final localizations = MaterialLocalizations.of(context);
@@ -54,7 +58,7 @@ Future<T?> showGlassModalBottomSheet<T>({
       barrierOnTapHint: localizations.scrimOnTapHint(
         localizations.bottomSheetLabel,
       ),
-      modalBarrierColor: glassSheetBarrier(context),
+      modalBarrierColor: barrierColor ?? glassSheetBarrier(context),
       isDismissible: isDismissible,
       enableDrag: enableDrag,
       useSafeArea: useSafeArea,

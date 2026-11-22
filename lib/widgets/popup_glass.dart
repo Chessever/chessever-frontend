@@ -30,6 +30,19 @@ class PopupGlassStyle {
     required this.scrim,
   });
 
+  /// The same plate without its lit top lip: no rim highlight and no sheen
+  /// along the edge. A panel that cannot be dragged anywhere should not
+  /// look like it can.
+  PopupGlassStyle withoutLip() => PopupGlassStyle(
+    plate: plate,
+    rimTop: const Color(0x00000000),
+    rimBottom: const Color(0x00000000),
+    sheen: const Color(0x00000000),
+    shadow: shadow,
+    grain: grain,
+    scrim: scrim,
+  );
+
   /// How much of the plate covers the blurred backdrop.
   static const double _lightCover = 0.86;
   static const double _darkCover = 0.85;
@@ -697,6 +710,7 @@ class PopupGlass extends StatelessWidget {
     this.page,
     this.pointer,
     this.solid = false,
+    this.lip = true,
   });
 
   final Widget child;
@@ -734,6 +748,10 @@ class PopupGlass extends StatelessWidget {
   /// solid without asking.
   final bool solid;
 
+  /// Whether the top lip catches the light (the rim highlight and sheen).
+  /// False for a fixed panel that invites no drag.
+  final bool lip;
+
   @override
   Widget build(BuildContext context) {
     final surface = tone ?? context.colors.surface;
@@ -750,6 +768,7 @@ class PopupGlass extends StatelessWidget {
       page: page,
     );
     final style = solid ? frosted._solidIn(surface) : frosted;
+    final styled = lip ? style : style.withoutLip();
     final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     // Under a [PopupGlassCluster] the frost and the shadow are the
     // cluster's: this panel is only its plate.
@@ -783,7 +802,7 @@ class PopupGlass extends StatelessWidget {
 
     Widget glass = CustomPaint(
       painter: _PlatePainter(
-        style: style,
+        style: styled,
         borderRadius: borderRadius,
         devicePixelRatio: ratio,
         openBottom: openBottom,

@@ -376,7 +376,8 @@ void main() {
       await tester.tap(find.text('Annotate (!? ± ∞ =)'));
       await tester.pump();
       await board.settle();
-      expect(find.text('QUALITY'), findsOneWidget);
+      // Groups are their glyphs only: no category labels or hints.
+      expect(find.text('QUALITY'), findsNothing);
       await _shot(tester, 'nag_picker', light);
       await board.dispose();
     });
