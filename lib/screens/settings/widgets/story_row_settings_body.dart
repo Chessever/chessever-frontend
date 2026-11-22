@@ -1,8 +1,10 @@
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart'
     show showStartScreenPicker;
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -29,10 +31,18 @@ class StoryRowSettingsBody extends ConsumerWidget {
             context: context,
             title: 'Collection stories',
             options: StoryRowMode.values,
-            label: (mode) => mode.label,
+            label: (option) => option.label,
             selected: mode,
           );
-          if (picked == null || picked == mode) return;
+          if (!context.mounted || picked == null || picked == mode) return;
+          if (picked == StoryRowMode.off &&
+              !ref.read(subscriptionProvider).isSubscribed) {
+            final entitled = await showPremiumPaywallSheet(
+              context: context,
+              allowRewarded: false,
+            );
+            if (!context.mounted || !entitled) return;
+          }
           await ref.read(storyRowPrefsProvider.notifier).setMode(picked);
           HapticFeedbackService.success();
         },

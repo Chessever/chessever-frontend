@@ -33,7 +33,9 @@ class SettingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(18.br),
-        border: Border.all(color: context.colors.divider.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: context.colors.divider.withValues(alpha: 0.4),
+        ),
         boxShadow: context.isLightTheme
             ? [
                 BoxShadow(
@@ -109,43 +111,44 @@ class SettingsPickerRow extends StatelessWidget {
       },
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: 10.h),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
                     title,
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),
                   ),
-                  if (caption != null) ...[
-                    SizedBox(height: 2.h),
-                    Text(
-                      caption!,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
+                SizedBox(width: 12.w),
+                Text(
+                  value,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20.ic,
+                  color: context.colors.textSecondary,
+                ),
+              ],
+            ),
+            if (caption != null) ...[
+              SizedBox(height: 4.h),
+              Text(
+                caption!,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
               ),
-            ),
-            Text(
-              value,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
-              ),
-            ),
-            SizedBox(width: 4.w),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20.ic,
-              color: context.colors.textSecondary,
-            ),
+            ],
           ],
         ),
       ),

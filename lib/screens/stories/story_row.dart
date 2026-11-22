@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart'
     show moveAnnotationColor;
@@ -533,6 +534,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   /// carries the row there.
   bool _onRowScroll(ScrollNotification notification) {
     if (_pointer == null ||
+        !ref.read(subscriptionProvider).isSubscribed ||
         _shown != true ||
         notification.depth != 0 ||
         notification.metrics.axis != Axis.horizontal) {
@@ -613,7 +615,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   /// Turns the row Off: the one choice Settings › Customization ›
   /// Collection stories shows, changed here, with Undo turning it On again.
   void _hide() {
-    if (!mounted) return;
+    if (!mounted || !ref.read(subscriptionProvider).isSubscribed) return;
     unawaited(HapticFeedbackService.success());
     final notifier = ref.read(storyRowPrefsProvider.notifier);
     unawaited(notifier.setMode(StoryRowMode.off));
@@ -748,10 +750,14 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
 
   Widget _row(List<Collection> list, StorySeenNotifier seen) {
     final order = _ordered(list, seen);
+    final canHide = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
     return Semantics(
       container: true,
       customSemanticsActions: {
-        const CustomSemanticsAction(label: 'Hide collection stories'): _hide,
+        if (canHide)
+          const CustomSemanticsAction(label: 'Hide collection stories'): _hide,
       },
       child: Padding(
         padding: EdgeInsets.only(bottom: StoryRowMetrics.bottom),

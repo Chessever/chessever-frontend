@@ -21,10 +21,12 @@ import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
+import 'package:chessever2/widgets/glass_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'fixtures/duo_window_matrix.dart';
 
@@ -59,7 +61,8 @@ class _Permission extends StateNotifier<AsyncValue<bool>>
 
 class _Subscription extends StateNotifier<SubscriptionState>
     implements SubscriptionNotifier {
-  _Subscription() : super(SubscriptionState(isSubscribed: true));
+  _Subscription(bool subscribed)
+    : super(SubscriptionState(isSubscribed: subscribed));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -113,6 +116,7 @@ Future<ProviderContainer> _pumpSettings(
   _AutoPin? autoPin,
   _Botvinnik? botvinnik,
   bool viaRoute = false,
+  bool subscribed = true,
   Size size = const Size(393, 852),
 }) async {
   tester.view.physicalSize = size;
@@ -125,7 +129,7 @@ Future<ProviderContainer> _pumpSettings(
       boardEngineLinesVisibleProvider.overrideWith(_BoardLinesVisibility.new),
       notificationPreferencesProvider.overrideWith(_Notifications.new),
       notificationPermissionProvider.overrideWith((_) => _Permission()),
-      subscriptionProvider.overrideWith((_) => _Subscription()),
+      subscriptionProvider.overrideWith((_) => _Subscription(subscribed)),
       autoPinPreferencesProvider.overrideWith(() => autoPin ?? _AutoPin()),
       botvinnikEnabledProvider.overrideWith(() => botvinnik ?? _Botvinnik()),
     ],
@@ -188,6 +192,15 @@ void main() {
     await fonts.load();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await SharedPreferencesService.instance.ensureInitialized();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.llfbandit.app_links/events'),
+          (_) async => null,
+        );
+    await Supabase.initialize(
+      url: 'https://fixture.invalid',
+      publishableKey: 'fixture-publishable-key',
+    );
   });
 
   setUp(() async {
@@ -266,24 +279,19 @@ void main() {
         ]);
         expect(find.text('Appearance').hitTestable(), findsNothing);
         await _tap(tester, find.text('Customization'));
-        for (final label in [
+        expect(find.text('Auto Pin'), findsNothing);
+        const ordered = [
           'Appearance',
-          'Start section',
-          'Home page',
-          'Auto Pin',
           'Favorite Players',
           'Countrymen',
-          'Botvinnik',
-        ]) {
-          expect(find.text(label), findsOneWidget);
-        }
-        final ordered = [
-          'Appearance',
           'Start section',
           'Home page',
-          'Auto Pin',
+          'Collection stories',
           'Botvinnik',
         ];
+        for (final label in ordered) {
+          expect(find.text(label), findsOneWidget);
+        }
         for (var i = 1; i < ordered.length; i++) {
           expect(
             tester.getTopLeft(find.text(ordered[i])).dy,
@@ -519,15 +527,86 @@ void main() {
     expect(find.text('Open settings'), findsOneWidget);
   });
 
-  testWidgets('Collection stories sits in Customization beside Start screen, '
+  testWidgets('free readers cannot switch Botvinnik off', (tester) async {
+    final botvinnik = _Botvinnik();
+    await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.botvinnik,
+      botvinnik: botvinnik,
+      subscribed: false,
+    );
+    final control = _switchIn(BotvinnikSettingsBody, 0);
+    await tester.ensureVisible(control);
+    await tester.pumpAndSettle();
+    await tester.tap(control);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    final upgrade = find.text('Sign in to get Premium');
+    expect(upgrade, findsOneWidget);
+    Navigator.of(tester.element(upgrade)).pop();
+    await tester.pumpAndSettle();
+    expect(botvinnik.calls, isEmpty);
+  });
+
+  testWidgets('free readers can turn stories On but not Off', (tester) async {
+    final container = await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+      subscribed: false,
+    );
+    await container
+        .read(storyRowPrefsProvider.notifier)
+        .setMode(StoryRowMode.off);
+    await tester.pump();
+    await _tap(tester, find.text('Collection stories'));
+    await tester.tap(find.text('On').last);
+    await tester.pumpAndSettle();
+    expect(container.read(storyRowPrefsProvider).mode, StoryRowMode.on);
+    await _tap(tester, find.text('Collection stories'));
+    final off = find.descendant(
+      of: find.byType(GlassSheet),
+      matching: find.text('Off'),
+    );
+    expect(off, findsOneWidget);
+    await tester.tap(off);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    final upgrade = find.text('Sign in to get Premium');
+    expect(upgrade, findsOneWidget);
+    Navigator.of(tester.element(upgrade)).pop();
+    await tester.pumpAndSettle();
+    expect(container.read(storyRowPrefsProvider).mode, StoryRowMode.on);
+  });
+
+  testWidgets('Collection stories separates the value from its caption', (
+    tester,
+  ) async {
+    await _pumpSettings(
+      tester,
+      initiallyExpanded: SettingsSection.customization,
+      size: const Size(340, 852),
+    );
+    final row = find.byKey(const ValueKey('settings_story_row'));
+    Rect bounds(String text) =>
+        tester.getRect(find.descendant(of: row, matching: find.text(text)));
+    final title = bounds('Collection stories');
+    final value = bounds('On');
+    final caption = bounds('Key moments from collections, at the top of Today');
+    expect(value.center.dy, closeTo(title.center.dy, 1));
+    expect(caption.top, greaterThan(value.bottom));
+    expect(value.left - title.right, greaterThanOrEqualTo(8));
+  });
+
+  testWidgets('Collection stories sits in Customization below Auto Pin, '
       'On or Off, and its choice is kept on the device', (tester) async {
     final container = await _pumpSettings(
       tester,
       initiallyExpanded: SettingsSection.customization,
     );
-    final start = tester.getRect(find.byType(StartScreenSettingsBody));
+    final autoPin = tester.getRect(find.byType(AutoPinSettingsBody));
     final stories = tester.getRect(find.text('Collection stories'));
-    expect(stories.top, greaterThan(start.bottom));
+    expect(stories.top, greaterThan(autoPin.bottom));
     // On by default.
     expect(
       find.descendant(

@@ -1,9 +1,11 @@
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -49,7 +51,14 @@ class BotvinnikSettingsBody extends ConsumerWidget {
                 // Same thumb and track as the Auto Pin switches above it.
                 thumbColor: settingsSwitchThumb(context),
                 trackColor: settingsSwitchTrack(context),
-                onChanged: (value) {
+                onChanged: (value) async {
+                  if (!value && !ref.read(subscriptionProvider).isSubscribed) {
+                    final entitled = await showPremiumPaywallSheet(
+                      context: context,
+                      allowRewarded: false,
+                    );
+                    if (!context.mounted || !entitled) return;
+                  }
                   trackPersist(
                     ref
                         .read(botvinnikEnabledProvider.notifier)
