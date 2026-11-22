@@ -1,4 +1,4 @@
-import { handoffNotification } from "./notification_handoff.ts";
+import { compactPushData, handoffNotification } from "./notification_handoff.ts";
 import { HISTORICAL_EVENT_TYPES } from "./historical_guard.ts";
 import {
   isMirrorSection,
@@ -327,7 +327,9 @@ async function processItem(item: OutboxItem) {
       await handoffNotification(Deno.env.get("NOTIFICATION_SERVICE_URL") ?? "",
         Deno.env.get("NOTIFICATION_SERVICE_SECRET") ?? "", item.id, migrated, notification);
     }
-    if (legacy.length) await sendLegacyOneSignal(legacy, notification);
+    if (legacy.length) {
+      await sendLegacyOneSignal(legacy, { ...notification, data: compactPushData(notification.data) });
+    }
   };
 
   // Skip stale items to prevent sending outdated notifications

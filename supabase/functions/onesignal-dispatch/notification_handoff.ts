@@ -2,12 +2,22 @@
  * A stable outbox ID + payload + sorted audience makes producer retries idempotent.
  * Never fall back to OneSignal after a failed handoff: acceptance may be uncertain.
  */
+/** Push data without null or undefined values. The FCM transport carries
+ * every data value as a string, so a JSON null arrived as the string "null"
+ * (a round push with no tour named tour "null"). An absent key is what every
+ * app build already handles.
+ */
+export function compactPushData(data: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== null && v !== undefined));
+}
+
 export async function handoffNotification(
   endpoint: string, secret: string, outboxId: string, userIds: string[],
   notification: {title:string;body:string;url:string|null;data:Record<string,unknown>;iosSound?:string;androidSound?:string},
 ):Promise<void> {
   if (!endpoint.startsWith('https://') || !secret) throw new Error('Notification service is not configured');
   const recipients=[...new Set(userIds)].sort();if(!recipients.length)return;
+  notification={...notification,data:compactPushData(notification.data)};
   const canonical=(value:unknown):string=>{
     if(Array.isArray(value))return `[${value.map(canonical).join(',')}]`;
     if(value!==null && typeof value==='object')return `{${Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
