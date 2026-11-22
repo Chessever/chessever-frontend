@@ -599,7 +599,9 @@ class _ScoreCardPage extends HookConsumerWidget {
     var homeCatalogComplete = !fromHome;
 
     if (combined != null) {
-      allGames = combined.games;
+      // Home opens without a settled event snapshot. Avoid showing an older
+      // stage as the first group before the remaining catalogs resolve.
+      allGames = combined.gamesForDisplay(fromHome: fromHome);
       isLoadingGames = combined.loading && allGames.isEmpty;
     } else if (homeCategories?.isLoading == true) {
       isLoadingGames = true;
