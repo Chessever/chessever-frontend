@@ -419,16 +419,18 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
               children: [
                 PageBackButton(onPressed: _handleBackPressed),
                 SizedBox(width: 4.w),
-                // The picker hugs its flag and name, with the Pin beside it
-                // when the row has room; short of room the name ellipsizes.
+                // On Games, use the room before the toolbar for the country.
+                // On other pages keep the picker snug beside the Pin.
                 Expanded(
                   child: Row(
                     children: [
                       Flexible(
+                        fit: showToolbar ? FlexFit.tight : FlexFit.loose,
                         child: countryAsync.when(
                           data: (country) => _buildCountrySelector(
                             country,
                             offerPin: isTemporary && pinInMenu,
+                            fillAvailableWidth: showToolbar,
                           ),
                           loading: () => _buildCountryPlaceholder(
                             context,
@@ -526,7 +528,11 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
 
   /// With [offerPin] the open menu leads with the Pin action, for rows too
   /// narrow to carry it beside the name.
-  Widget _buildCountrySelector(Country country, {bool offerPin = false}) {
+  Widget _buildCountrySelector(
+    Country country, {
+    bool offerPin = false,
+    required bool fillAvailableWidth,
+  }) {
     return CountryDropdown(
       selectedCountryCode: country.countryCode,
       onChanged: (newCountry) {
@@ -537,6 +543,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen>
       requireAuthToChange: false,
       compact: true,
       hugContent: true,
+      fillAvailableWidth: fillAvailableWidth,
       onPinAsDefault: offerPin ? _pinCurrentCountry : null,
     );
   }

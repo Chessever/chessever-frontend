@@ -458,6 +458,7 @@ void main() {
       }
       expect(back.right, lessThanOrEqualTo(picker.left));
       expect(picker.right, lessThanOrEqualTo(board.left));
+      expect(board.left - picker.right, lessThan(16));
       expect(board.right, lessThanOrEqualTo(filters.left));
       // Classical only lives in the filter popup (2026-11-20).
       expect(_classical, findsNothing);
