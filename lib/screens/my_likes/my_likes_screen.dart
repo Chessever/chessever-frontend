@@ -1,16 +1,6 @@
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
-import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
-import 'dart:io';
 
-import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
-import 'package:chessever2/repository/library/library_repository.dart';
-import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
-import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
-import 'package:chessever2/utils/logger/logger.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -47,7 +37,6 @@ import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/page_back_row.dart';
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/search_no_matches.dart';
@@ -458,37 +447,17 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// ending with the Filters on the gutter, where the search header's
   /// Filters sit (and hold still as the search opens).
   Widget _archiveHeader({required bool hasLikes, required int applied}) {
-    final colors = context.colors;
     return Padding(
       padding: EdgeInsets.only(bottom: SearchHeaderMetrics.bottomGap),
       child: PageBackRow(
         // Named as every pushed page is, with the heart the Library's My
         // Likes card wears as its bare mark.
         title: PageTitle('Likes', mark: LikesHeartGlyph(size: 20.sp)),
-        // Export, Build Tree and Filters: the title keeps one place whether
-        // or not they show.
-        reservedEnd: hasLikes ? 3 * SearchModeFilterButton.target : 0,
+        // Filters closes the row: the title keeps one place whether or not
+        // it shows.
+        reservedEnd: hasLikes ? SearchModeFilterButton.target : 0,
         actions: [
           if (hasLikes) ...[
-            IconButton(
-              tooltip: 'Export as PGN',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(
-                width: SearchModeFilterButton.target,
-                height: SearchModeFilterButton.target,
-              ),
-              onPressed: _handleExportPgn,
-              icon: Icon(
-                Icons.ios_share_rounded,
-                color: colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
-            BuildTreeButton(
-              target: LikedGamesTreeTarget(
-                repository: ref.read(libraryRepositoryProvider),
-              ),
-            ),
             SearchModeShared(
               id: SearchModeFilterButton,
               child: SearchModeFilterButton(
@@ -501,126 +470,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         ],
       ),
     );
-  }
-
-  Future<bool> _promptExportUpgrade(int lockedCount) async {
-    if (!mounted) return false;
-    final completer = Completer<bool>();
-    final controller = showAppSnack(
-      context,
-      '${RewardedAdsConfig.available ? 'Upgrade or watch an ad' : 'Upgrade'} '
-      'to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
-      actionLabel: RewardedAdsConfig.available ? 'Unlock' : 'Upgrade',
-      duration: const Duration(seconds: 6),
-      onAction: () async {
-        if (completer.isCompleted) return;
-        final unlocked = await requirePremiumGuard(context, ref);
-        if (!completer.isCompleted) completer.complete(unlocked);
-      },
-    );
-    if (controller == null) return false;
-    // Resolve to false when the snack dismisses without the Upgrade action
-    // being tapped — caller proceeds with the unlocked slice. This is exactly
-    // why the snack must never be persistent: `closed` is the gate.
-    unawaited(
-      controller.closed.then((_) {
-        if (!completer.isCompleted) completer.complete(false);
-      }),
-    );
-    return completer.future;
-  }
-
-  Future<void> _handleExportPgn() async {
-    HapticFeedbackService.medium();
-
-    final allAnalyses =
-        ref.read(likedGamesProvider).valueOrNull ?? const <SavedAnalysis>[];
-    if (allAnalyses.isEmpty) {
-      showAppSnack(context, 'Nothing to export yet');
-      return;
-    }
-
-    // Free users export their latest-likes window; Premium gets everything. Slice the list at tap time so a sub picked up mid-
-    // session takes effect immediately.
-    List<SavedAnalysis> analyses;
-    if (ref.read(myLikesUnlimitedProvider)) {
-      analyses = allAnalyses;
-    } else {
-      final window = freeLikesWindow(allAnalyses, unlimited: false);
-      analyses = allAnalyses
-          .where((a) => !isLikedGameLocked(a.id, window: window))
-          .toList();
-      final lockedCount = allAnalyses.length - analyses.length;
-      if (lockedCount > 0) {
-        final proceed = await _promptExportUpgrade(lockedCount);
-        if (!mounted) return;
-        if (proceed) {
-          // User just subscribed via the upgrade prompt — re-read state
-          // and export everything.
-          final refreshed = ref.read(featureAccessStateProvider);
-          if (refreshed.isSubscribed) {
-            analyses = allAnalyses;
-          }
-        } else if (analyses.isEmpty) {
-          // Nothing unlocked AND user declined upgrade — bail out cleanly.
-          return;
-        }
-      }
-    }
-
-    List<FolderPgnFile> files;
-    try {
-      files = exportSavedAnalysesAsPgnFiles(
-        analyses: analyses,
-        databaseName: 'My Likes',
-      );
-    } catch (e, st) {
-      talker.handle(e, st);
-      if (!mounted) return;
-      showAppSnack(
-        context,
-        userFacingError(e, fallback: 'Export failed. Please try again.'),
-        tone: AppSnackTone.danger,
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    if (files.isEmpty) {
-      showAppSnack(context, 'Nothing to export yet');
-      return;
-    }
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final xFiles = <XFile>[];
-      for (final entry in files) {
-        final file = File('${tempDir.path}/${entry.filename}');
-        await file.writeAsString(entry.pgn);
-        xFiles.add(XFile(file.path, mimeType: 'application/x-chess-pgn'));
-      }
-
-      if (!mounted) return;
-      final box = context.findRenderObject() as RenderBox?;
-      final origin = box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 1, 1);
-
-      await Share.shareXFiles(
-        xFiles,
-        subject: 'My Likes - Chessever PGN',
-        sharePositionOrigin: origin,
-      );
-      HapticFeedbackService.success();
-    } catch (e, st) {
-      talker.handle(e, st);
-      if (!mounted) return;
-      showAppSnack(
-        context,
-        userFacingError(e, fallback: 'Could not share this. Please try again.'),
-        tone: AppSnackTone.danger,
-      );
-    }
   }
 
   Widget _buildBody(MyLikesData data) {

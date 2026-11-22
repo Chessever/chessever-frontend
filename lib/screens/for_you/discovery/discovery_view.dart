@@ -78,16 +78,33 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                 padding: EdgeInsets.symmetric(horizontal: hubGutter),
                 child: Column(
                   children: [
+                    // Collections leads Discovery: the catalog's books and
+                    // collections, one tap from Discovery as from Search: the
+                    // dock's Collections tab, never a second copy pushed over
+                    // Home.
                     HubTileRow(
                       left: DiscoveryTileShare(
-                        component: DiscoveryShareDestination.feed,
+                        component: DiscoveryShareDestination.collections,
                         child: HubTile(
-                          key: const ValueKey('discovery_feed_tile'),
-                          dotId: 'discovery.tile.feed',
-                          title: 'Feed',
-                          caption: hubFeedCaption(feed),
-                          artwork: const HubSceneBackdrop(scene: HubScene.feed),
-                          onTap: () => FeedScreen.open(context),
+                          key: const ValueKey('discovery_collections_tile'),
+                          dotId: 'discovery.tile.collections',
+                          title: 'Collections',
+                          caption: 'Curated games and books',
+                          artwork: const HubSceneBackdrop(
+                            scene: HubScene.collections,
+                          ),
+                          onTap: () {
+                            if (openHomeSection(
+                              context,
+                              BottomNavBarItem.collections,
+                              navigationType: 'discovery',
+                            )) {
+                              HapticFeedbackService.cardTap();
+                              return;
+                            }
+                            // No dock under Discovery: the pushed page.
+                            CollectionsScreen.open(context);
+                          },
                         ),
                       ),
                       right: DiscoveryTileShare(
@@ -117,6 +134,20 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                         ),
                       ),
                       right: DiscoveryTileShare(
+                        component: DiscoveryShareDestination.feed,
+                        child: HubTile(
+                          key: const ValueKey('discovery_feed_tile'),
+                          dotId: 'discovery.tile.feed',
+                          title: 'Feed',
+                          caption: hubFeedCaption(feed),
+                          artwork: const HubSceneBackdrop(scene: HubScene.feed),
+                          onTap: () => FeedScreen.open(context),
+                        ),
+                      ),
+                    ),
+                    // Reports and Miniatures close the hub.
+                    HubTileRow(
+                      left: DiscoveryTileShare(
                         component: DiscoveryShareDestination.reports,
                         child: HubTile(
                           key: const ValueKey('discovery_reports_tile'),
@@ -129,9 +160,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                           onTap: () => ReportsScreen.open(context),
                         ),
                       ),
-                    ),
-                    HubTileRow(
-                      left: DiscoveryTileShare(
+                      right: DiscoveryTileShare(
                         component: DiscoveryShareDestination.miniatures,
                         child: HubTile(
                           key: const ValueKey('discovery_miniatures_tile'),
@@ -142,33 +171,6 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                             scene: HubScene.miniatures,
                           ),
                           onTap: () => TodaysMiniaturesSection.open(context),
-                        ),
-                      ),
-                      // The catalog's books and collections, one tap from
-                      // Discovery as from Search: the dock's Collections
-                      // tab, never a second copy pushed over Home.
-                      right: DiscoveryTileShare(
-                        component: DiscoveryShareDestination.collections,
-                        child: HubTile(
-                          key: const ValueKey('discovery_collections_tile'),
-                          dotId: 'discovery.tile.collections',
-                          title: 'Collections',
-                          caption: 'Curated games and books',
-                          artwork: const HubSceneBackdrop(
-                            scene: HubScene.collections,
-                          ),
-                          onTap: () {
-                            if (openHomeSection(
-                              context,
-                              BottomNavBarItem.collections,
-                              navigationType: 'discovery',
-                            )) {
-                              HapticFeedbackService.cardTap();
-                              return;
-                            }
-                            // No dock under Discovery: the pushed page.
-                            CollectionsScreen.open(context);
-                          },
                         ),
                       ),
                     ),

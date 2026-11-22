@@ -15,6 +15,7 @@ import 'package:chessever2/screens/library/providers/gamebase_database_games_pro
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
+import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_event_card.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart'
     show SpacePlateArt;
@@ -650,7 +651,9 @@ void main() {
         ],
       );
       expect(find.byType(MyLikesGameCard), findsOneWidget);
-      expect(find.byTooltip('Export as PGN'), findsOneWidget);
+      // The archive header carries Filters alone: no Export, no Build Tree.
+      expect(find.byTooltip('Export as PGN'), findsNothing);
+      expect(find.byType(BuildTreeButton), findsNothing);
       expect(find.byType(PageView), findsNothing);
       // No search row over the archive: search floats in the thumb's reach
       // and opens the field in the title row's place, over the same list.
@@ -679,7 +682,7 @@ void main() {
       await _settle(tester);
       expect(find.byType(MyLikesScreen), findsOneWidget);
       expect(find.byType(TextField), findsNothing);
-      expect(find.byTooltip('Export as PGN'), findsOneWidget);
+      expect(find.byTooltip('Export as PGN'), findsNothing);
       expect(fab, findsOneWidget);
       expect(container.read(myLikesFilterProvider).searchQuery, '');
       await tester.tap(find.byType(DateSectionHeader));
