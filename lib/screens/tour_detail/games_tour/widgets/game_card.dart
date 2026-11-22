@@ -385,7 +385,8 @@ class GamesTourGameCardBody extends ConsumerWidget {
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              overflow: TextOverflow.fade,
             ),
           ),
         // Main card content with adjusted corners
@@ -590,6 +591,7 @@ class _BottomSection extends ConsumerWidget {
     );
 
     final game = matchComparison.game;
+    final clockWidth = _gameCardClockColumnWidth(context);
     final storedWithoutClocks =
         game.source != GameSource.supabase &&
         game.whiteClockSeconds == null &&
@@ -620,7 +622,8 @@ class _BottomSection extends ConsumerWidget {
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
                   ),
                 ),
               )
@@ -638,7 +641,7 @@ class _BottomSection extends ConsumerWidget {
             matchComparison.comparison == MatchComparison.sameOrder
                 ? [
                   SizedBox(
-                    width: 60.w, // Fixed width for clock
+                    width: clockWidth,
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.white,
                       time: matchComparison.game.whiteTimeDisplay,
@@ -648,7 +651,7 @@ class _BottomSection extends ConsumerWidget {
                   ),
                   lastMoveWidget,
                   SizedBox(
-                    width: 60.w, // Fixed width for clock
+                    width: clockWidth,
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.black,
                       time: matchComparison.game.blackTimeDisplay,
@@ -659,7 +662,7 @@ class _BottomSection extends ConsumerWidget {
                 ]
                 : [
                   SizedBox(
-                    width: 60.w, // Fixed width for clock
+                    width: clockWidth,
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.black,
                       time: matchComparison.game.blackTimeDisplay,
@@ -669,7 +672,7 @@ class _BottomSection extends ConsumerWidget {
                   ),
                   lastMoveWidget,
                   SizedBox(
-                    width: 60.w, // Fixed width for clock
+                    width: clockWidth,
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.white,
                       time: matchComparison.game.whiteTimeDisplay,
@@ -709,7 +712,9 @@ class _GamesRound extends ConsumerWidget {
     final name = Text(
       ref.read(stringUtilsProvider).getTrimmedString(player.name),
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      softWrap: false,
+      // Fixed size; a name still too wide fades at its end, never "…".
+      overflow: TextOverflow.fade,
       style: AppTypography.textXsMedium.copyWith(color: nameColor),
     );
     final color = pieceColor;
@@ -744,7 +749,9 @@ class _GamesRound extends ConsumerWidget {
                   if (player.rating > 0) '${player.rating}',
                 ].join(' '),
                 style: AppTypography.textXsMedium.copyWith(color: ratingColor),
-                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
               ),
             ),
           ],
@@ -863,26 +870,23 @@ class _TimerWidget extends StatelessWidget {
                   )
                   : null,
         ),
-        child: FittedBox(
-          // Clock box is fixed-width; scale down instead of clipping digits
-          // off both ends (e.g. "1:07:32" rendering as "1:07:3").
-          fit: BoxFit.scaleDown,
-          child: AtomicCountdownText(
-            clockSeconds:
-                clockSeconds, // Primary source: time in seconds from last_clock fields
-            clockCentiseconds:
-                clockCentiseconds, // Fallback source: raw database clock
-            lastMoveTime: gamesTourModel.lastMoveTime,
-            isActive:
-                isClockRunning, // Clock frozen if game is effectively finished
-            style: AppTypography.textXsMedium.copyWith(
-              color:
-                  isGameFinished
-                      ? context.colors.textPrimary
-                      : (shouldHighlightClock
-                          ? context.colors.accentText
-                          : context.colors.textPrimaryMuted),
-            ),
+        // Full size always: the column is sized for the widest clock
+        // (_gameCardClockColumnWidth), so nothing shrinks to fit.
+        child: AtomicCountdownText(
+          clockSeconds:
+              clockSeconds, // Primary source: time in seconds from last_clock fields
+          clockCentiseconds:
+              clockCentiseconds, // Fallback source: raw database clock
+          lastMoveTime: gamesTourModel.lastMoveTime,
+          isActive:
+              isClockRunning, // Clock frozen if game is effectively finished
+          style: AppTypography.textXsMedium.copyWith(
+            color:
+                isGameFinished
+                    ? context.colors.textPrimary
+                    : (shouldHighlightClock
+                        ? context.colors.accentText
+                        : context.colors.textPrimaryMuted),
           ),
         ),
       ),
@@ -1076,7 +1080,8 @@ class _LastMoveNotation extends StatelessWidget {
           color: context.colors.textPrimary,
         ),
         textAlign: TextAlign.center,
-        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        overflow: TextOverflow.fade,
         maxLines: 1,
       ),
     );
@@ -1149,3 +1154,42 @@ String _displayTextSupporter(MatchWithComparison game) {
 }
 
 /// Motor-powered popup wrapper for smooth spring animations
+
+final Map<double, double> _clockColumnWidths = <double, double>{};
+bool _clockColumnWidthsWatchFonts = false;
+
+/// Width of both clock columns on a game card: the widest clock it can show
+/// ("h:mm:ss" in the widest digit) at the reader's text size, plus the box's
+/// padding and border, and never under the original 60.w. Both columns share
+/// it, so the last move stays centred and no clock is scaled down or clipped.
+double _gameCardClockColumnWidth(BuildContext context) {
+  final style = AppTypography.textXsMedium;
+  final scaler = MediaQuery.textScalerOf(context);
+  final fontSize = scaler.scale(style.fontSize ?? 12);
+  if (!_clockColumnWidthsWatchFonts) {
+    // A font that finishes loading changes the measured width.
+    _clockColumnWidthsWatchFonts = true;
+    PaintingBinding.instance.systemFonts.addListener(_clockColumnWidths.clear);
+  }
+  final textWidth =
+      _clockColumnWidths[fontSize] ??= () {
+        final painter = TextPainter(
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+          textScaler: scaler,
+        );
+        var widest = 0.0;
+        for (var digit = 0; digit <= 9; digit++) {
+          painter.text = TextSpan(
+            text: '$digit:$digit$digit:$digit$digit',
+            style: style,
+          );
+          painter.layout();
+          if (painter.width > widest) widest = painter.width;
+        }
+        painter.dispose();
+        return widest;
+      }();
+  // _TimerWidget pads 6.w a side and may draw a 0.7 border.
+  return math.max(60.w, textWidth.ceilToDouble() + 12.w + 2);
+}
