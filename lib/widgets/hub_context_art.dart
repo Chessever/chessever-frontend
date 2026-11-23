@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/widgets/hub_illustration.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -16,6 +18,7 @@ enum HubScene {
   mostLiked,
   myPrep,
   collections,
+  events,
 }
 
 /// A [HubScene]'s picture as a hub tile's full artwork. Each scene has a
@@ -49,6 +52,55 @@ class HubSceneBackdrop extends StatelessWidget implements HubPaperArtwork {
     lightAsset: lightAsset(scene),
     framed: scene == HubScene.myPrep || scene == HubScene.library,
     shift: shift,
+  );
+}
+
+/// A [HubScene] on a tile that spans a whole [HubTileRow]. The picture keeps
+/// a paired tile's width on the row's right, so its subject has the scale,
+/// crop and seat of the right column above it at every width, and the row's
+/// left stays calm for the label. Its left edge fades into the tile's own
+/// ground, so no seam shows where the picture begins.
+class HubRowSceneBackdrop extends StatelessWidget implements HubPaperArtwork {
+  const HubRowSceneBackdrop({super.key, required this.scene});
+  final HubScene scene;
+
+  /// Eased from clear to full over the picture's first fifth: only its quiet
+  /// field fades, never the subject.
+  static Shader _leftFade(Rect bounds) => const LinearGradient(
+    colors: [
+      Colors.transparent,
+      Color(0x10ffffff),
+      Color(0x40ffffff),
+      Color(0x80ffffff),
+      Color(0xc0ffffff),
+      Color(0xf0ffffff),
+      Colors.white,
+    ],
+    stops: [0, .03, .07, .11, .15, .19, .22],
+  ).createShader(bounds);
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      // The artwork box is the tile less its 1px border on each side, so a
+      // paired tile's box is half the row less the gap, less its own border.
+      final width = math.min(
+        constraints.maxWidth,
+        (constraints.maxWidth - HubTileRow.gap) / 2 - 1,
+      );
+      return Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: width,
+          height: constraints.maxHeight,
+          child: ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: _leftFade,
+            child: HubSceneBackdrop(scene: scene),
+          ),
+        ),
+      );
+    },
   );
 }
 

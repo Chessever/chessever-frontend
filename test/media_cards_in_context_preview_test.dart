@@ -43,7 +43,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // Run with
 //   flutter test --no-pub --dart-define=LIGHT_V2_DIR=/tmp/media_tiles2/after \
 //     test/media_cards_in_context_preview_test.dart
-// to write `context_<page>_<light|dark>.png` there. Photos come from
+// to write `context_<page>_<light|dark>.png` there (Discovery also writes
+// its Events row alone, `context_discovery_events_<light|dark>.png`). Photos
+// come from
 // LIGHT_V2_PHOTOS (square PNGs named after the players); a missing photo is
 // drawn as a stand-in, so nothing asks the network.
 
@@ -169,7 +171,24 @@ void main() {
         ],
         child: const DiscoveryView(),
       );
+      // The Events row closes the page whole, inside the phone's first
+      // screen: no edge of it is cut by the view.
+      final events = find.byKey(const ValueKey('discovery_events_tile'));
+      expect(events, findsOneWidget);
+      expect(
+        Offset.zero & _view,
+        predicate<Rect>(
+          (view) =>
+              view.contains(tester.getRect(events).topLeft) &&
+              view.contains(tester.getRect(events).bottomRight),
+        ),
+      );
       await _save(tester, 'context_discovery_$theme');
+      await _save(
+        tester,
+        'context_discovery_events_$theme',
+        region: tester.getRect(events),
+      );
     });
 
     testWidgets('in context: My Space ($theme)', (tester) async {
@@ -450,13 +469,34 @@ Future<void> _pump(
   expect(tester.takeException(), isNull);
 }
 
-Future<void> _save(WidgetTester tester, String name) async {
+/// Writes the page, or only [region] of it (logical pixels), as `name.png`.
+Future<void> _save(WidgetTester tester, String name, {Rect? region}) async {
   if (_outDir.isEmpty) return;
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(_root),
   );
   await tester.runAsync(() async {
-    final image = await boundary.toImage(pixelRatio: _ratio);
+    var image = await boundary.toImage(pixelRatio: _ratio);
+    if (region != null) {
+      final src = Rect.fromLTRB(
+        region.left * _ratio,
+        region.top * _ratio,
+        region.right * _ratio,
+        region.bottom * _ratio,
+      );
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawImageRect(
+        image,
+        src,
+        Offset.zero & src.size,
+        Paint()..filterQuality = FilterQuality.none,
+      );
+      final picture = recorder.endRecording();
+      final crop = await picture.toImage(src.width.round(), src.height.round());
+      picture.dispose();
+      image.dispose();
+      image = crop;
+    }
     final png = await image.toByteData(format: ui.ImageByteFormat.png);
     final file = File('$_outDir/$name.png');
     await file.parent.create(recursive: true);

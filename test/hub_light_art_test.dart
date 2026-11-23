@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
@@ -63,6 +64,7 @@ const _words = <HubScene, (String, String)>{
   HubScene.mostLiked: ('Likes', 'Community favorites'),
   HubScene.myPrep: ('Prep', 'Your games and opponents'),
   HubScene.collections: ('Collections', 'Curated games and books'),
+  HubScene.events: ('Events', 'Current, upcoming and past'),
 };
 
 /// The readability ramp the tile lays over its artwork.
@@ -115,6 +117,92 @@ void main() {
         );
         darkImage.dispose();
         lightImage.dispose();
+      }
+    },
+  );
+
+  test(
+    'Events ships its pair at 768 x 512, each on its own tile\'s ground',
+    () async {
+      // The full-row Events tile shows its picture beside the tile's own base,
+      // so each drawing's field must be that base or a seam shows where the
+      // picture begins.
+      Future<(ui.Image, ByteData)> pixels(String asset) async {
+        final image = await _decode(asset);
+        final bytes = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        return (image, bytes!);
+      }
+
+      Color at(ui.Image image, ByteData bytes, int x, int y) {
+        final i = (y * image.width + x) * 4;
+        return Color.fromARGB(
+          bytes.getUint8(i + 3),
+          bytes.getUint8(i),
+          bytes.getUint8(i + 1),
+          bytes.getUint8(i + 2),
+        );
+      }
+
+      // Compared as the 8-bit levels the screen shows.
+      void expectNear(Color actual, Color expected, int tolerance, String why) {
+        for (final (a, e) in [
+          (actual.r, expected.r),
+          (actual.g, expected.g),
+          (actual.b, expected.b),
+        ]) {
+          expect(
+            ((a * 255).round() - (e * 255).round()).abs(),
+            lessThanOrEqualTo(tolerance),
+            reason: why,
+          );
+        }
+        expect(
+          actual.a,
+          1.0,
+          reason: '$why: drawn opaque, like its neighbours',
+        );
+      }
+
+      final dark = HubSceneBackdrop.darkAsset(HubScene.events);
+      final light = HubSceneBackdrop.lightAsset(HubScene.events);
+      expect(dark, 'assets/pngs/hub_events_simple.webp');
+      expect(light, 'assets/pngs/hub_events_simple_light.webp');
+      final paper = Color.lerp(
+        AppColors.light.background,
+        AppColors.light.surface,
+        0.45,
+      )!;
+      // The light drawing is lossless and its field is the paper base to the
+      // level: across the band where the picture fades into the tile, even
+      // one level shows as a faint vertical stripe on the flat paper.
+      for (final (asset, ground, tolerance) in [
+        (dark, kHubTileInk, 2),
+        (light, paper, 0),
+      ]) {
+        final (image, bytes) = await pixels(asset);
+        expect([image.width, image.height], [768, 512], reason: asset);
+        // The label's corner and the picture's left edge (the fade band, its
+        // first fifth) are the tile's own ground; the subject sits up and to
+        // the right.
+        for (final (x, y) in [
+          (4, 4),
+          (4, 256),
+          (4, 507),
+          (84, 128),
+          (168, 128),
+          (168, 384),
+          (200, 480),
+        ]) {
+          expectNear(
+            at(image, bytes, x, y),
+            ground,
+            tolerance,
+            '$asset ($x, $y)',
+          );
+        }
+        image.dispose();
       }
     },
   );

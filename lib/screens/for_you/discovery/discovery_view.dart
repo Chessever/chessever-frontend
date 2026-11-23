@@ -13,6 +13,8 @@ import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/todays_miniatures_section.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
     show BottomNavBarItem, openHomeSection;
+import 'package:chessever2/screens/my_profile/profile_hub_screen.dart'
+    show openEventsScreen;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -23,8 +25,9 @@ import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Discovery is a three-row set of destinations. Each destination owns its
-/// loading, empty and retry states, and stays available if its preview fails.
+/// Discovery is a set of destinations: three paired rows, then Events across
+/// the last. Each destination owns its loading, empty and retry states, and
+/// stays available if its preview fails.
 enum DiscoverySection { tiles, likes, news, reports, miniatures }
 
 class DiscoveryView extends ConsumerStatefulWidget {
@@ -157,7 +160,6 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                         ),
                       ),
                     ),
-                    // Reports and Miniatures close the hub.
                     HubTileRow(
                       left: DiscoveryTileShare(
                         component: DiscoveryShareDestination.reports,
@@ -184,6 +186,26 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                           ),
                           onTap: () => TodaysMiniaturesSection.open(context),
                         ),
+                      ),
+                    ),
+                    // Events closes the hub across the whole row: a seventh
+                    // destination has no partner, and a full row keeps the
+                    // grid's edges square. Its picture keeps the right
+                    // column's width, under Likes, Feed and Miniatures. It
+                    // opens the Events lists exactly as Profile's row does.
+                    // No hold-to-share: /app/events has no page on the web
+                    // yet (test/app_share_url_contract_test.dart).
+                    Padding(
+                      padding: EdgeInsets.only(bottom: HubTileRow.spacing),
+                      child: HubTile(
+                        key: const ValueKey('discovery_events_tile'),
+                        dotId: 'discovery.tile.events',
+                        title: 'Events',
+                        caption: 'Current, upcoming and past',
+                        artwork: const HubRowSceneBackdrop(
+                          scene: HubScene.events,
+                        ),
+                        onTap: () => openEventsScreen(context),
                       ),
                     ),
                   ],

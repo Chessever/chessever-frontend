@@ -25,8 +25,12 @@ import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/screens/my_profile/profile_hub_screen.dart'
+    show eventsScreenRoute;
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
+import 'package:chessever2/widgets/hub_illustration.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
@@ -41,6 +45,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -711,6 +716,7 @@ void main() {
           HubScene.feed,
           HubScene.reports,
           HubScene.miniatures,
+          HubScene.events,
         ]);
         expect(find.byType(DiscoveryMiniBoard), findsNothing);
         expect(container.exists(discoveryReviewCurveProvider), isFalse);
@@ -772,7 +778,8 @@ void main() {
     );
 
     testWidgets(
-      'six destinations include News and Collections in reading order',
+      'seven destinations include News, Collections and Events in reading '
+      'order',
       (tester) async {
         final container = await _pump(tester);
         for (final title in [
@@ -782,17 +789,28 @@ void main() {
           'Reports',
           'Miniatures',
           'Collections',
+          'Events',
         ]) {
           expect(find.text(title), findsOneWidget);
         }
         expect(find.text('Most Liked'), findsNothing);
-        expect(find.byType(HubTile), findsNWidgets(6));
+        expect(find.byType(HubTile), findsNWidgets(7));
         expect(
           tester
               .widgetList<HubTile>(find.byType(HubTile))
               .map((tile) => tile.title),
-          ['Collections', 'Likes', 'News', 'Feed', 'Reports', 'Miniatures'],
+          [
+            'Collections',
+            'Likes',
+            'News',
+            'Feed',
+            'Reports',
+            'Miniatures',
+            'Events',
+          ],
         );
+        // Events says what its page holds: its three lists, never a count.
+        expect(find.text('Current, upcoming and past'), findsOneWidget);
         expect(find.byType(DiscoveryGameList), findsNothing);
         expect(container.exists(feedProvider), isFalse);
         expect(container.exists(feedNewsProvider), isFalse);
@@ -852,6 +870,50 @@ void main() {
     );
 
     testWidgets(
+      'Events opens the Events lists, the page Profile\'s Events row opens',
+      (tester) async {
+        final pushed = _PushedPages();
+        final container = await _pump(tester, observers: [pushed]);
+        final tile = find.byKey(const ValueKey('discovery_events_tile'));
+        expect(tester.widget<HubTile>(tile).dotId, 'discovery.tile.events');
+        expect(
+          tester
+              .widget<HubRowSceneBackdrop>(
+                find.descendant(
+                  of: tile,
+                  matching: find.byType(HubRowSceneBackdrop),
+                ),
+              )
+              .scene,
+          HubScene.events,
+        );
+        await tester.tap(tile);
+        await _settle(tester);
+        expect(pushed.pages, hasLength(1));
+        expect(pushed.pages.single, isA<GroupEventScreen>());
+        // The very route Profile's row and the /app/events link push.
+        final route = eventsScreenRoute() as MaterialPageRoute<void>;
+        expect(
+          route.builder(tester.element(tile)).runtimeType,
+          pushed.pages.single.runtimeType,
+        );
+        // No hold menu: /app/events has no page on the web to share yet, so
+        // a hold is a tap, as on Profile's row.
+        expect(
+          find.ancestor(of: tile, matching: find.byType(CardContextMenu)),
+          findsNothing,
+        );
+        await tester.longPress(tile);
+        await _settle(tester);
+        expect(find.text('Share'), findsNothing);
+        expect(pushed.pages, hasLength(2));
+        expect(pushed.pages.last, isA<GroupEventScreen>());
+        expect(tester.takeException(), isNull);
+        await _teardownCards(tester, container);
+      },
+    );
+
+    testWidgets(
       'unavailable rankings do not block Likes before or after refresh',
       (tester) async {
         final queries = <MostLikedQuery>[];
@@ -861,7 +923,7 @@ void main() {
           mostLiked: (_) => Future.error(Exception('offline')),
         );
         expect(find.text('Community favorites'), findsOneWidget);
-        expect(find.byType(HubTile), findsNWidgets(6));
+        expect(find.byType(HubTile), findsNWidgets(7));
         await tester
             .widget<RefreshIndicator>(find.byType(RefreshIndicator))
             .onRefresh();
@@ -912,7 +974,7 @@ void main() {
     });
 
     for (final width in [320.0, 390.0, 1024.0]) {
-      testWidgets('three rows align at $width pixels with large text', (
+      testWidgets('four rows align at $width pixels with large text', (
         tester,
       ) async {
         final container = await _pump(
@@ -932,6 +994,26 @@ void main() {
         expect(box('likes').left, box('feed').left);
         expect(box('likes').left, box('miniatures').left);
         expect(box('collections').height, box('likes').height);
+        // Events spans the whole last row, on the grid's own edges, and its
+        // picture keeps the right column's width and seat, so the clock sits
+        // under Likes, Feed and Miniatures at their scale.
+        expect(box('events').top, greaterThan(box('reports').bottom));
+        expect(box('events').left, closeTo(box('reports').left, 0.01));
+        expect(box('events').right, closeTo(box('miniatures').right, 0.01));
+        expect(box('events').height, closeTo(box('miniatures').height, 0.01));
+        Rect art(String name) => tester.getRect(
+          find.descendant(
+            of: find.byKey(ValueKey('discovery_${name}_tile')),
+            matching: find.byType(HubIllustration),
+          ),
+        );
+        expect(art('events').left, closeTo(art('miniatures').left, 0.01));
+        expect(art('events').right, closeTo(art('miniatures').right, 0.01));
+        expect(
+          art('events').top - box('events').top,
+          closeTo(art('miniatures').top - box('miniatures').top, 0.01),
+        );
+        expect(art('events').height, closeTo(art('miniatures').height, 0.01));
         expect(tester.takeException(), isNull);
         await _teardownCards(tester, container);
       });

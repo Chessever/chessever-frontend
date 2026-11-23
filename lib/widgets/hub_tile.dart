@@ -141,14 +141,20 @@ class HubTileRow extends StatelessWidget {
   final Widget left;
   final Widget right;
 
+  /// Between the two tiles.
+  static double get gap => 12.sp;
+
+  /// Under the row, before the next one.
+  static double get spacing => 20.sp;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 20.sp),
+      padding: EdgeInsets.only(bottom: spacing),
       child: Row(
         children: [
           Expanded(child: left),
-          SizedBox(width: 12.sp),
+          SizedBox(width: gap),
           Expanded(child: right),
         ],
       ),
