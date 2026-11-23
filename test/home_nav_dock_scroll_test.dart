@@ -30,11 +30,14 @@ class _Subscription extends StateNotifier<SubscriptionState>
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+final _unread = StateProvider<int>((ref) => 0);
+
 List<Override> _overrides() => [
   botvinnikTabAvailableProvider.overrideWithValue(true),
   currentUserProvider.overrideWithValue(null),
   profileAvatarUrlProvider.overrideWithValue(null),
-  inboxHasUnreadProvider.overrideWithValue(false),
+  inboxHasUnreadProvider.overrideWith((ref) => ref.watch(_unread) > 0),
+  inboxUnreadCountProvider.overrideWith((ref) => ref.watch(_unread)),
   subscriptionProvider.overrideWith((ref) => _Subscription()),
 ];
 
@@ -153,6 +156,37 @@ bool _hitsDock(WidgetTester tester, Offset point) {
 }
 
 void main() {
+  testWidgets('Botvinnik shows the unread count until Inbox confirms a read', (
+    tester,
+  ) async {
+    await _pump(tester);
+    final slot = find.byKey(bottomNavBarItemKey(BottomNavBarItem.botvinnik));
+    final badge = find.descendant(
+      of: slot,
+      matching: find.byKey(const ValueKey('botvinnik-dock-unread-badge')),
+    );
+    final container = ProviderScope.containerOf(tester.element(slot));
+    expect(badge, findsNothing);
+    container.read(_unread.notifier).state = 2;
+    await tester.pump();
+    expect(badge, findsOneWidget);
+    expect(
+      find.descendant(of: badge, matching: find.text('2')),
+      findsOneWidget,
+    );
+    final badgePosition = tester.getCenter(badge);
+    await tester.tapAt(badgePosition);
+    await tester.pump();
+    expect(
+      container.read(selectedBottomNavBarItemProvider),
+      BottomNavBarItem.botvinnik,
+    );
+    expect(badge, findsOneWidget);
+    container.read(_unread.notifier).state = 0;
+    await tester.pump();
+    expect(badge, findsNothing);
+  });
+
   testWidgets('reading down sends the dock away whole and the buttons down '
       'to the strip; heading back up brings both back', (tester) async {
     final semantics = tester.ensureSemantics();

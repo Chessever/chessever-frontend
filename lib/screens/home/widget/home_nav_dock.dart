@@ -7,6 +7,7 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
+import 'package:chessever2/widgets/search_mode/search_count_badge.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -191,6 +192,9 @@ class HomeNavDock extends ConsumerWidget {
     final items = ref.watch(visibleBottomNavItemsProvider);
     final selected = ref.watch(selectedBottomNavBarItemProvider);
     final unread = ref.watch(inboxHasUnreadProvider);
+    final botvinnikUnread = unread && items.contains(BottomNavBarItem.botvinnik)
+        ? ref.watch(inboxUnreadCountProvider)
+        : 0;
     final m = HomeNavMetrics.of(context, count: items.length);
     final shown = chrome;
     final fade = shown == null ? null : _DockFade(shown);
@@ -214,18 +218,45 @@ class HomeNavDock extends ConsumerWidget {
             key: bottomNavBarItemKey(item),
             width: slotWidth,
             bottomInset: m.gap,
-            semanticsValue: item == BottomNavBarItem.profile && unread
-                ? 'Unread Inbox messages'
-                : null,
+            semanticsValue: switch (item) {
+              BottomNavBarItem.botvinnik when botvinnikUnread > 0 =>
+                '$botvinnikUnread unread Inbox ${botvinnikUnread == 1 ? 'message' : 'messages'}',
+              BottomNavBarItem.profile when unread => 'Unread Inbox messages',
+              _ => null,
+            },
             isSelected: selected == item,
-            dotId: bottomNavBarDotIds[item],
+            dotId: item == BottomNavBarItem.botvinnik && botvinnikUnread > 0
+                ? null
+                : bottomNavBarDotIds[item],
             onTap: () => selectBottomNavBarItem(ref, item),
-            glyph: (ink, side) => bottomNavBarGlyph(
-              item,
-              ink: ink,
-              side: side,
-              selected: selected == item,
-            ),
+            glyph: (ink, side) {
+              final mark = bottomNavBarGlyph(
+                item,
+                ink: ink,
+                side: side,
+                selected: selected == item,
+              );
+              if (item != BottomNavBarItem.botvinnik || botvinnikUnread == 0) {
+                return mark;
+              }
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  mark,
+                  PositionedDirectional(
+                    top: -6,
+                    end: -10,
+                    child: IgnorePointer(
+                      child: SearchCountBadge(
+                        key: const ValueKey('botvinnik-dock-unread-badge'),
+                        count: botvinnikUnread,
+                        diameter: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
             title: namesBottomNavBarIcons[item]!,
             onLongPress: () =>
                 unawaited(makeStartScreenDefault(context, ref, section: item)),
