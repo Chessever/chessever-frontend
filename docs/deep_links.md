@@ -593,10 +593,23 @@ evidence in `/tmp/final_sim`:
   (`_navigateToInbox`), so two Backs reach Home.
 - Start screen after an update: a saved `collections` opens Home, a saved
   `tournaments` opens Events.
-- Not run: a cold start from a link (it would end the debug session) and a
-  real notification banner tap (device checks). A hot restart replays the
-  last link the plugin received; that is a debug-only effect (a release
-  process never re-runs `main()` on the same native plugin state).
+- A hot restart replays the last link the plugin received; that is a
+  debug-only effect (a release process never re-runs `main()` on the same
+  native plugin state).
+- Cold starts and real banner taps, on a fresh simulator build of 39.2.21
+  (`/tmp/final_sim2`): with the app terminated, a game link, a
+  `com.chessever.app://app/events` link and a collection link each launched
+  it onto that page once (Events: the dock section, nothing pushed), Back to
+  Home with the dock. Real system banners (`xcrun simctl push`, the delivery
+  worker's FCM shape, no `delivery_id`) tapped on screen: `game_started` and
+  `round_started` with the app in background and with it terminated each
+  opened their page once (the round: that category, that round on top), Back
+  to Home with the dock. Not reachable on the simulator: a tap on a
+  notification inside Notification Center (the tap never reaches any app);
+  check it on a phone.
+- The Inbox push lands on that message over the Inbox list, as 37.7.0 did
+  (`_navigateToInbox` pushed `InboxScreen` then `InboxMessageScreen` then
+  too), so an update changes nothing there.
 
 Web (chessever-web-frontend #972, open for merge): `/app/events` gets a
 hand-off page like `/app/collections`, and a bare `/events` redirects to
