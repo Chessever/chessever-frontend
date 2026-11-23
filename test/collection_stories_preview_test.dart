@@ -31,9 +31,13 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart'
+    show FeedEval, feedPositionEvalProvider;
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
+import 'package:chessever2/screens/settings/widgets/story_row_settings_body.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
@@ -44,11 +48,14 @@ import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:country_picker/country_picker.dart';
+import 'package:dartchess/dartchess.dart' show Square;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'support/memory_story_row_store.dart';
 
 const _outDir = String.fromEnvironment('STORIES_DIR');
 const _coverDir = String.fromEnvironment(
@@ -246,6 +253,26 @@ const _reportPgn = '''[Event "Round 5: Firouzja - Caruana"]
 
 1. e4 \$247 { [%eval 0.2] } 1... e5 \$247 { [%eval 0.2] } 2. Bc4 { [%eval 0.1] } 2... Nc6 { [%eval 0.1] } 3. Qh5 { [%eval 0.0] } 3... Nf6 \$4 \$246 { [%eval #1] } ( 3... g6 4. Qf3 Nf6 ) 4. Qf3 \$4 \$243 { [%eval 0.1] } ( 4. Qxf7# ) 4... Be7 { [%eval 0.1] } 5. Ne2 { [%eval 0.0] } 5... d6 { [%eval 0.1] } 1/2-1/2''';
 
+/// The screenshot's Missed chances game: Black stood at −3.3 and let the
+/// win go, with the engine's line beside the miss.
+const _blackMissPgn = '''[Event "Myvatn OI Open 2026"]
+[Site "Sel Hotel Myvatn"]
+[White "Gunnarsson, Arnar"]
+[Black "Jonsson, Bragi"]
+[Result "1-0"]
+
+1. e4 { [%eval 0.3] } 1... e5 { [%eval 0.3] } 2. Nf3 { [%eval 0.3] } 2... Nc6 { [%eval 0.3] } 3. Bc4 { [%eval 0.3] } 3... Nd4 { [%eval 0.9] } 4. Nxe5 { [%eval -1.0] } 4... Qg5 { [%eval -1.0] } 5. Nxf7 { [%eval -3.3] } 5... d6 { [%eval 6.0] } ( 5... Qxg2 6. Rf1 Qxe4+ 7. Be2 Nf3# ) 6. Nxg5 { [%eval 6.2] } 1-0''';
+
+/// What the app's eval cache would hold for the Opera game's first stop
+/// (the book's PGN records no evaluation): a Feed clip's cache hit.
+final Map<String, FeedEval> _cachedEvals = () {
+  final qb3 = pickStorySegments(parseStoryPgn(_operaPgn)!).first;
+  return {
+    qb3.fenBefore: const FeedEval(pawns: 1.4),
+    qb3.fenAfter: const FeedEval(pawns: 2.1),
+  };
+}();
+
 final _morphy = _side('Morphy, Paul', 'USA');
 final _duke = _side('Duke Karl, Count Isouard', 'FRA');
 final _firouzja = _side('Firouzja, Alireza', 'FRA', title: 'GM', elo: 2766);
@@ -293,49 +320,52 @@ StoryBatch _batchOf(String slug) {
 }
 
 StoryBatch _missedBatch() {
-  final game = _card(
+  final myvatn = _card(
     'm0',
+    white: _side('Gunnarsson, Arnar', 'ISL', title: 'FM', elo: 2311),
+    black: _side('Jonsson, Bragi', 'ISL', elo: 2158),
+    result: '1-0',
+    event: 'Myvatn OI Open 2026',
+  ).game;
+  final game = _card(
+    'm1',
     white: _firouzja,
     black: _caruana,
     result: '1/2-1/2',
     event: 'Sinquefield Cup 2026',
   ).game;
-  final segments = pickMissedChanceSegments(parseStoryPgn(_reportPgn)!);
   return StoryBatch(
     games: [
       StoryGame(
+        game: myvatn,
+        segments: pickMissedChanceSegments(parseStoryPgn(_blackMissPgn)!),
+        caption: 'Sel Hotel Myvatn · Myvatn OI Open 2026',
+      ),
+      StoryGame(
         game: game,
-        segments: segments,
+        segments: pickMissedChanceSegments(parseStoryPgn(_reportPgn)!),
         caption: 'Sinquefield Cup 2026 · Round 5',
       ),
     ],
-    ordered: [game],
+    ordered: [myvatn, game],
     signature: 'v:missed:2026-11-21',
   );
 }
 
 // ---------------------------------------------------------------- harness
 
-class _RowStore implements StoryRowPrefsStore {
-  String? local;
+/// The row's choice in memory, signed out.
+class _RowStore extends MemoryStoryRowStore {}
+
+/// The scenes are silent.
+class _QuietSounds extends StoryPuzzleSounds {
+  _QuietSounds();
 
   @override
-  String? readLocal() => local;
+  void move({required String san, MoveClass? moveClass}) {}
 
   @override
-  Future<void> writeLocal(String value) async => local = value;
-
-  @override
-  Future<Map<String, dynamic>?> readAccount() async => null;
-
-  @override
-  String? accountId() => null;
-
-  @override
-  Future<void> writeAccount(Map<String, Object?> value) async {}
-
-  @override
-  Stream<void> accountChanges() => const Stream.empty();
+  void warmUp() {}
 }
 
 class _MemoryStorage implements StorySeenStorage {
@@ -446,6 +476,12 @@ Future<ProviderContainer> _pumpToday(
       favoritePlayersProviderNew.overrideWith(_NoFavorites.new),
       countryDropdownProvider.overrideWith((ref) => _Country()),
       currentUserProvider.overrideWithValue(null),
+      storyPuzzleSoundsProvider.overrideWithValue(_QuietSounds()),
+      // The eval cache, as it stands for these positions.
+      feedPositionEvalProvider.overrideWith(
+        (ref, request) =>
+            Stream.value(_cachedEvals[request.fen] ?? FeedEval.none),
+      ),
     ],
   );
   addTearDown(container.dispose);
@@ -558,6 +594,115 @@ Future<void> _play(WidgetTester tester, Duration duration) async {
     await tester.pump(step);
     left -= step;
   }
+}
+
+/// The centre of [name] on the board asking for a move, turned for Black
+/// when [black].
+Offset _boardSquare(WidgetTester tester, String name, {bool black = false}) {
+  final board = tester.getRect(
+    find.byKey(const ValueKey('story_puzzle_board')),
+  );
+  final square = Square.fromName(name);
+  final s = board.width / 8;
+  final file = black ? 7 - square.file : square.file;
+  final row = black ? square.rank : 7 - square.rank;
+  return Offset(board.left + (file + 0.5) * s, board.top + (row + 0.5) * s);
+}
+
+/// Plays [from] to [to] on the board asking for a move, two taps apart.
+Future<void> _move(
+  WidgetTester tester,
+  String from,
+  String to, {
+  bool black = false,
+}) async {
+  await tester.tapAt(_boardSquare(tester, from, black: black));
+  await tester.pump(const Duration(milliseconds: 80));
+  await tester.tapAt(_boardSquare(tester, to, black: black));
+  await tester.pump();
+}
+
+bool _present(String key) => find.byKey(ValueKey(key)).evaluate().isNotEmpty;
+
+/// Today's row with Settings' Collection stories row under it, on one
+/// screen: the two must always say the same thing.
+Future<ProviderContainer> _pumpRowAndSetting(
+  WidgetTester tester, {
+  required bool light,
+}) async {
+  tester.view.devicePixelRatio = 3;
+  tester.view.physicalSize = const Size(393 * 3, 852 * 3);
+  tester.view.padding = const FakeViewPadding(top: 59 * 3, bottom: 34 * 3);
+  tester.view.viewPadding = const FakeViewPadding(top: 59 * 3, bottom: 34 * 3);
+  addTearDown(tester.view.reset);
+  final container = ProviderContainer(
+    overrides: [
+      storyCollectionsProvider.overrideWith((ref) async => _catalog),
+      storyBatchProvider.overrideWith(
+        (ref, slug) async =>
+            slug == kMissedChancesSlug ? _missedBatch() : _batchOf(slug),
+      ),
+      storySeenStorageProvider.overrideWithValue(_MemoryStorage(_seen())),
+      storyClockProvider.overrideWithValue(() => _now),
+      storyRowPrefsStoreProvider.overrideWithValue(_RowStore()),
+      storyCoverOverrideProvider.overrideWithValue((c) => _covers[c.slug]),
+      boardSettingsProviderNew.overrideWith(_Board.new),
+      favoritePlayersProviderNew.overrideWith(_NoFavorites.new),
+      countryDropdownProvider.overrideWith((ref) => _Country()),
+      currentUserProvider.overrideWithValue(null),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    RepaintBoundary(
+      key: _capture,
+      child: UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+          builder: (_, child) => AdaptiveWindowScope(child: child!),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: ListView(
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.paddingOf(context).top + 16,
+                  ),
+                  children: const [
+                    TodayStoryRow(gutter: 16),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: StoryRowSettingsBody(),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
+  await _precache(tester);
+  return container;
+}
+
+/// Pulls the row on past its first circle and lets go.
+Future<void> _pullPastStart(WidgetTester tester) async {
+  final row = tester.getRect(find.byType(TodayStoryRow));
+  final gesture = await tester.startGesture(
+    Offset(row.center.dx, row.top + 40),
+  );
+  for (var i = 0; i < 24; i++) {
+    await gesture.moveBy(const Offset(12, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await gesture.up();
+  await tester.pump();
 }
 
 // ------------------------------------------------------------- settings
@@ -732,7 +877,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 80));
       await tester.tapAt(at(3, 6));
       await _play(tester, const Duration(milliseconds: 700));
-      expect(find.textContaining('Found it'), findsOneWidget);
+      expect(find.textContaining('You found it'), findsOneWidget);
       await _shot(tester, '05_puzzle_solved', light);
     });
 
@@ -741,8 +886,12 @@ void main() {
       await _open(tester, kMissedChancesSlug);
       await _play(tester, const Duration(milliseconds: 600));
       await _precache(tester);
-      expect(find.text('White missed a win here'), findsOneWidget);
+      expect(find.text('Black missed a win here'), findsOneWidget);
       await _shot(tester, '06_missed_chance_prompt', light);
+      await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+      await _play(tester, const Duration(milliseconds: 700));
+      expect(find.textContaining('d6 was played'), findsOneWidget);
+      await _shot(tester, '06b_missed_chance_revealed', light);
     });
 
     testWidgets('all caught up, $theme', (tester) async {
@@ -791,6 +940,92 @@ void main() {
       await _open(tester, 'exchange-sacrifice-2');
       await _play(tester, const Duration(milliseconds: 900));
       await _shot(tester, '10_landscape', light);
+    });
+
+    testWidgets('a missed chance on its side, $theme', (tester) async {
+      await _pumpToday(tester, light: light, landscape: true);
+      await _open(tester, kMissedChancesSlug);
+      await _play(tester, const Duration(milliseconds: 600));
+      await _precache(tester);
+      expect(find.byKey(const ValueKey('story_show_answer')), findsOneWidget);
+      await _shot(tester, '10b_landscape_missed_chance', light);
+    });
+
+    testWidgets('a missed chance: the game\'s move, another, then Show, '
+        '$theme', (tester) async {
+      await _pumpToday(tester, light: light);
+      await _open(tester, kMissedChancesSlug);
+      await _play(tester, const Duration(milliseconds: 600));
+      await _precache(tester);
+      await _shot(tester, '20_puzzle_prompt', light);
+      // The move the game played: the miss the story is about.
+      await _move(tester, 'd7', 'd6', black: true);
+      await _play(tester, const Duration(milliseconds: 360));
+      await _shot(tester, '21_puzzle_missed', light);
+      await _play(tester, const Duration(milliseconds: 1400));
+      await _shot(tester, '21b_puzzle_missed_settled', light);
+      // Another miss, when the board still asks.
+      if (_present('story_prompt') || _present('story_show_answer')) {
+        await _move(tester, 'g8', 'f6', black: true);
+        await _play(tester, const Duration(milliseconds: 1400));
+      }
+      await _shot(tester, '22_puzzle_missed_twice', light);
+      if (_present('story_show_answer')) {
+        await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+        await _play(tester, const Duration(milliseconds: 500));
+        await _shot(tester, '23_puzzle_revealed', light);
+        await _play(tester, const Duration(milliseconds: 2600));
+      }
+      await _shot(tester, '23b_puzzle_revealed_line', light);
+    });
+
+    testWidgets('a missed chance found, $theme', (tester) async {
+      await _pumpToday(tester, light: light);
+      await _open(tester, kMissedChancesSlug);
+      await _play(tester, const Duration(milliseconds: 600));
+      await _precache(tester);
+      await _move(tester, 'g5', 'g2', black: true);
+      await _play(tester, const Duration(milliseconds: 520));
+      await _shot(tester, '24_puzzle_found', light);
+      await _play(tester, const Duration(milliseconds: 2800));
+      await _shot(tester, '25_puzzle_found_line', light);
+    });
+
+    testWidgets('a missed chance missed, on its side, $theme', (tester) async {
+      await _pumpToday(tester, light: light, landscape: true);
+      await _open(tester, kMissedChancesSlug);
+      await _play(tester, const Duration(milliseconds: 600));
+      await _precache(tester);
+      await _move(tester, 'd7', 'd6', black: true);
+      await _play(tester, const Duration(milliseconds: 1400));
+      if (_present('story_prompt') || _present('story_show_answer')) {
+        await _move(tester, 'g8', 'f6', black: true);
+        await _play(tester, const Duration(milliseconds: 1400));
+      }
+      await _shot(tester, '26_landscape_missed_twice', light);
+      if (_present('story_show_answer')) {
+        await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+        await _play(tester, const Duration(milliseconds: 600));
+      }
+      await _shot(tester, '27_landscape_revealed', light);
+    });
+
+    testWidgets('the row pulled away and Settings, one state, $theme', (
+      tester,
+    ) async {
+      final container = await _pumpRowAndSetting(tester, light: light);
+      await _shot(tester, '30_row_and_setting', light);
+      await _pullPastStart(tester);
+      await _play(tester, const Duration(milliseconds: 900));
+      await _shot(tester, '31_row_pulled_away', light);
+      // Settings says On again: the row is back on Today at once.
+      await container
+          .read(storyRowPrefsProvider.notifier)
+          .setMode(StoryRowMode.on);
+      await _play(tester, const Duration(milliseconds: 900));
+      await _precache(tester);
+      await _shot(tester, '32_settings_on_again', light);
+      await tester.pump(const Duration(seconds: 6));
     });
 
     testWidgets('Settings, Customization, $theme', (tester) async {

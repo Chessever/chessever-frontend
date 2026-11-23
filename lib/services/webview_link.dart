@@ -51,3 +51,10 @@ bool canShareWebViewSession(Uri uri) =>
       'www.chessever.com',
       'broadcast.chessever.com',
     }.contains(uri.host);
+
+/// Whether an outside link (universal link, App Link, custom scheme), which
+/// anyone can write, may open [target] in the app's WebView: only
+/// ChessEver's own pages over https, never a third-party page dressed in
+/// the ChessEver chrome. Pushes and in-app links, which ChessEver authors,
+/// are not limited.
+bool isExternalWebViewTarget(Uri target) => canShareWebViewSession(target);

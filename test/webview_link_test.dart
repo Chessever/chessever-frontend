@@ -107,4 +107,23 @@ void main() {
       );
     },
   );
+
+  test('an outside link may open only ChessEver pages in the WebView', () {
+    for (final url in [
+      'https://chessever.com/games/1',
+      'https://www.chessever.com/news/7',
+      'https://broadcast.chessever.com/live',
+    ]) {
+      expect(isExternalWebViewTarget(Uri.parse(url)), isTrue, reason: url);
+    }
+    for (final url in [
+      'https://phish.example/login',
+      'http://chessever.com/games/1',
+      'https://chessever.com.evil.example/',
+      'https://evil.chessever.com/',
+      'https://chessever.com:8443/',
+    ]) {
+      expect(isExternalWebViewTarget(Uri.parse(url)), isFalse, reason: url);
+    }
+  });
 }

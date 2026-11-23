@@ -1279,9 +1279,15 @@ class MyApp extends HookConsumerWidget {
           }),
         );
 
+        // Once per launch, so never dropped: a launch that is not in the
+        // foreground at +250 ms (the same drop that once lost cold-start
+        // links, above) used to skip both for the whole process, losing the
+        // .pgn that launched the app, every later share, and AppsFlyer's
+        // OneLink callbacks. It now waits for the next resume instead.
         ForegroundTaskScheduler.schedule(
           key: 'startup_deep_link_services',
           delay: const Duration(milliseconds: 250),
+          runWhenResumed: true,
           task: () async {
             try {
               // Handle PGN files opened from Files / file managers / share sheet.

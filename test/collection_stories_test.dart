@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -9,6 +10,11 @@ import 'package:chessever2/screens/chessboard/utils/pgn_comment_annotations.dart
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
     show GameCardChessboard;
 import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/settings/widgets/story_row_settings_body.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart'
+    show EvaluationBarWidget;
+import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart'
+    show FeedEval, feedCachedEvalProvider;
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
@@ -19,12 +25,17 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessground/chessground.dart' show Arrow;
-import 'package:dartchess/dartchess.dart' show NormalMove, Side, Square;
+import 'package:chessground/chessground.dart'
+    show Arrow, Chessboard, ChessboardController, PlayerSide;
+import 'package:dartchess/dartchess.dart'
+    show NormalMove, Position, Rule, Setup, Side, Square, makeLegalMoves;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
+import 'package:flutter/services.dart' show SystemChannels;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'support/memory_story_row_store.dart';
 
 // ------------------------------------------------------------- the games
 
@@ -63,6 +74,25 @@ const _missedPgn = '''[Event "Round 2: A - B"]
 
 1. e4 \$247 { [%eval 0.2] } 1... e5 \$247 { [%eval 0.2] } 2. Bc4 { [%eval 0.1] } 2... Nc6 { [%eval 0.1] } 3. Qh5 { [%eval 0.0] } 3... Nf6 \$4 \$246 { [%eval #1] } ( 3... g6 4. Qf3 Nf6 ) 4. Qf3 \$4 \$243 { [%eval 0.1] } ( 4. Qxf7# ) 4... Be7 { [%eval 0.1] } 1/2-1/2''';
 
+/// Black misses a win at move 5 (the screenshot's case: Black stood at
+/// −3.3), with the engine's line beside the miss and an evaluation on every
+/// move.
+const _blackMissPgn = '''[Event "Myvatn OI Open 2026"]
+[Site "Sel Hotel Myvatn"]
+[White "Alpha"]
+[Black "Beta"]
+[Result "1-0"]
+
+1. e4 { [%eval 0.3] } 1... e5 { [%eval 0.3] } 2. Nf3 { [%eval 0.3] } 2... Nc6 { [%eval 0.3] } 3. Bc4 { [%eval 0.3] } 3... Nd4 { [%eval 0.9] } 4. Nxe5 { [%eval -1.0] } 4... Qg5 { [%eval -1.0] } 5. Nxf7 { [%eval -3.3] } 5... d6 { [%eval 6.0] } ( 5... Qxg2 6. Rf1 Qxe4+ 7. Be2 Nf3# ) 6. Nxg5 { [%eval 6.2] } 1-0''';
+
+/// A book's commented move with the engine's numbers beside the words.
+const _commentedEvalPgn = '''[Event "Test"]
+[White "Alpha"]
+[Black "Beta"]
+[Result "*"]
+
+1. e4 { [%eval 0.3] } 1... e5 { [%eval 0.3] } 2. Nf3 { [%eval 0.2] The knight hits e5 at once. } 2... Nc6 { [%eval 0.3] } *''';
+
 /// A quiet game: no words, no glyphs, no evaluation, nothing won.
 const _quietPgn = '''[Result "1/2-1/2"]
 
@@ -88,31 +118,56 @@ class _MemoryStorage implements StorySeenStorage {
   Future<void> write(String value) async => this.value = value;
 }
 
-class _RowStore implements StoryRowPrefsStore {
-  String? local;
-
-  @override
-  String? readLocal() => local;
-
-  @override
-  Future<void> writeLocal(String value) async => local = value;
-
-  @override
-  Future<Map<String, dynamic>?> readAccount() async => null;
-
-  @override
-  String? accountId() => null;
-
-  @override
-  Future<void> writeAccount(Map<String, Object?> value) async {}
-
-  @override
-  Stream<void> accountChanges() => const Stream.empty();
+/// The row's choice in memory, signed out unless a test signs it in.
+class _RowStore extends MemoryStoryRowStore {
+  _RowStore({super.id, super.server});
 }
 
 class _Board extends BoardSettingsNotifierNew {
   @override
   Future<BoardSettingsNew> build() async => const BoardSettingsNew();
+}
+
+/// Every sound a story puzzle asks for, by move and class; nothing plays.
+class _Sounds extends StoryPuzzleSounds {
+  _Sounds();
+
+  final List<(String, MoveClass?)> played = [];
+  int warmed = 0;
+
+  @override
+  void move({required String san, MoveClass? moveClass}) =>
+      played.add((san, moveClass));
+
+  @override
+  void warmUp() => warmed++;
+}
+
+/// Every haptic the stories ask the platform for, by its type.
+class _Haptics {
+  _Haptics(WidgetTester tester) {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          calls.add('${call.arguments}');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+  }
+
+  final calls = <String>[];
+
+  /// [HapticFeedbackService.success] and the Feed puzzle's miss.
+  int get medium =>
+      calls.where((c) => c == 'HapticFeedbackType.mediumImpact').length;
 }
 
 final _now = DateTime(2026, 11, 21, 10);
@@ -196,12 +251,25 @@ String _caughtUp(Map<String, (Collection, StoryBatch)> caught) => jsonEncode({
 });
 
 class _Harness {
-  _Harness(this.container, this.storage, this.rowStore, this.opened);
+  _Harness(
+    this.container,
+    this.storage,
+    this.rowStore,
+    this.opened,
+    this.events,
+    this.sounds,
+  );
 
   final ProviderContainer container;
+
+  /// The story puzzles' sounds.
+  final _Sounds sounds;
   final _MemoryStorage storage;
   final _RowStore rowStore;
   final List<(String, String, int)> opened;
+
+  /// The events opened from a story (Go to event), by tour and round.
+  final List<(String?, String?)> events;
 
   StorySeenNotifier get seen => container.read(storySeenProvider.notifier);
   StoryRowPrefs get prefs => container.read(storyRowPrefsProvider);
@@ -228,6 +296,7 @@ Future<_Harness> _pumpRow(
   bool light = false,
   Completer<void>? openHold,
   List<Override> overrides = const [],
+  Widget? below,
 }) async {
   tester.view.physicalSize = const Size(393, 852) * 3;
   tester.view.devicePixelRatio = 3;
@@ -235,6 +304,8 @@ Future<_Harness> _pumpRow(
   final storage = _MemoryStorage(seen);
   final store = rowStore ?? _RowStore();
   final opened = <(String, String, int)>[];
+  final events = <(String?, String?)>[];
+  final sounds = _Sounds();
   final container = ProviderContainer(
     overrides: [
       storyCollectionsProvider.overrideWith(
@@ -257,8 +328,19 @@ Future<_Harness> _pumpRow(
         opened.add((collection.slug, story.id, moveIndex));
         await openHold?.future;
       }),
+      storyEventOpenerProvider.overrideWithValue(({
+        String? tourId,
+        String? roundId,
+      }) async {
+        events.add((tourId, roundId));
+        return true;
+      }),
+      // The eval cache is never asked here: a position the game records
+      // nothing for reads as a cache miss.
+      feedCachedEvalProvider.overrideWith((ref, fen) async => null),
       boardSettingsProviderNew.overrideWith(_Board.new),
       currentUserProvider.overrideWithValue(null),
+      storyPuzzleSoundsProvider.overrideWithValue(sounds),
     ],
   );
   addTearDown(container.dispose);
@@ -273,9 +355,10 @@ Future<_Harness> _pumpRow(
             return Scaffold(
               body: ListView(
                 padding: const EdgeInsets.only(top: 80),
-                children: const [
-                  TodayStoryRow(gutter: 16),
-                  SizedBox(key: ValueKey('below'), height: 10),
+                children: [
+                  const TodayStoryRow(gutter: 16),
+                  const SizedBox(key: ValueKey('below'), height: 10),
+                  ?below,
                 ],
               ),
             );
@@ -286,7 +369,7 @@ Future<_Harness> _pumpRow(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
-  return _Harness(container, storage, store, opened);
+  return _Harness(container, storage, store, opened, events, sounds);
 }
 
 Finder _circle(String slug) => find.byKey(ValueKey('story_circle_$slug'));
@@ -334,6 +417,58 @@ Color _ringColor(WidgetTester tester, String slug) {
 String _labelText(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const ValueKey('story_label'))).data!;
 
+/// The words' headline as drawn: the move, a find or a miss.
+String _headline(WidgetTester tester) {
+  for (final key in ['story_prompt', 'story_missed', 'story_move']) {
+    final found = find.byKey(ValueKey(key));
+    if (found.evaluate().isEmpty) continue;
+    final text = tester.widget<Text>(found);
+    return text.data ?? text.textSpan!.toPlainText();
+  }
+  return '';
+}
+
+/// The Show plate's fill: the actions' quiet plate, or the page's ink once
+/// it is the way on.
+Color _showFill(WidgetTester tester) {
+  final plate = tester.widget<Container>(
+    find.byKey(const ValueKey('story_show_plate')),
+  );
+  return (plate.decoration! as BoxDecoration).color!;
+}
+
+/// The Show plate's ink: its label's (the glyph wears the same).
+Color _showInk(WidgetTester tester) => tester
+    .widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('story_show_plate')),
+        matching: find.byType(Text),
+      ),
+    )
+    .style!
+    .color!;
+
+/// Plays [from] to [to] on a board turned for Black.
+Future<void> _playBlack(WidgetTester tester, String from, String to) async {
+  Offset at(String name) {
+    final rect = tester.getRect(
+      find.byKey(const ValueKey('story_puzzle_board')),
+    );
+    final square = Square.fromName(name);
+    final s = rect.width / 8;
+    return Offset(
+      rect.left + (7 - square.file + 0.5) * s,
+      rect.top + (square.rank + 0.5) * s,
+    );
+  }
+
+  await tester.tapAt(at(from));
+  await tester.pump(const Duration(milliseconds: 80));
+  await tester.tapAt(at(to));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 16));
+}
+
 /// The center of [square] on the puzzle board, White at the bottom.
 Offset _square(WidgetTester tester, String name) {
   final rect = tester.getRect(find.byKey(const ValueKey('story_puzzle_board')));
@@ -344,6 +479,33 @@ Offset _square(WidgetTester tester, String name) {
     rect.top + (7 - square.rank + 0.5) * s,
   );
 }
+
+Position _fen(String fen) =>
+    Position.setupPosition(Rule.chess, Setup.parseFen(fen));
+
+/// The Scholar's mate, White to find Qxf7#.
+const _mateFen =
+    'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
+
+/// Every string the viewer draws.
+List<String> _drawnText(WidgetTester tester) => [
+  for (final text in tester.widgetList<RichText>(
+    find.descendant(
+      of: find.byKey(const ValueKey('story_viewer')),
+      matching: find.byType(RichText),
+    ),
+  ))
+    text.text.toPlainText(),
+];
+
+/// What the eval bar evaluation in prose looked like: "(−3.3)", "(+0.1)",
+/// "mate in one", "is winning here", "It was level".
+final _evalProse = RegExp(
+  r'\([+−-]?\d+\.\d\)|mate in|winning here|was level|is level|Find it',
+);
+
+EvaluationBarWidget _bar(WidgetTester tester) =>
+    tester.widget(find.byKey(const ValueKey('story_eval_bar')));
 
 Future<void> _play(WidgetTester tester, String from, String to) async {
   await tester.tapAt(_square(tester, from));
@@ -388,7 +550,9 @@ void main() {
       );
       expect(queen.puzzle!.kind, StoryPuzzleKind.findPlayed);
       expect(queen.puzzle!.answerSan, 'Qb8+');
-      expect(queen.puzzle!.prompt.$1, 'White to move');
+      expect(queen.puzzle!.prompt, 'White to move');
+      // What there is to find is named on the one action.
+      expect(queen.puzzle!.reveal, 'Show the move');
     });
 
     test('a cluster of notes is spread: the far one is kept, neighbours '
@@ -419,14 +583,16 @@ void main() {
       expect(mate.finalPly, isTrue);
       expect(mate.puzzle, isNull);
       expect(pickStorySegments(parseStoryPgn(_quietPgn)!), isEmpty);
-      // A game with no position worth a stop is its final position.
+      // A game with no position worth a stop is its final position, with
+      // no words: the player rows carry its result.
       final still = buildStoryGame(_game('q'), pgn: _quietPgn);
       expect(still.segments.single.isStill, isTrue);
-      expect(still.segments.single.label, 'White won');
+      expect(still.segments.single.label, isNull);
+      expect(still.segments.single.evalAfter, isNull);
     });
 
-    test('a missed win asks for the win the PGN gives beside it, and says '
-        'what the evaluation was', () {
+    test('a missed win asks for the win the PGN gives beside it; the '
+        'evaluation is left to the bar, never put in words', () {
       final story = parseStoryPgn(_missedPgn)!;
       expect(story.alternatives[6]!.san, 'Qxf7#');
       final segments = pickMissedChanceSegments(story);
@@ -437,21 +603,23 @@ void main() {
       expect(miss.puzzle!.kind, StoryPuzzleKind.findMissed);
       expect(miss.puzzle!.answerSan, 'Qxf7#');
       expect(miss.puzzle!.solver, Side.white);
-      expect(miss.puzzle!.prompt, ('White missed a win here', 'Find it.'));
-      expect(
-        miss.comment,
-        'White had mate in 1. After Qf3, it is level (+0.1).',
-      );
-      // What the evaluation says, never the move: mate is there.
-      expect(miss.puzzle!.hint, 'There is mate in one.');
+      // One line asks; "Find it." is the action's own words now.
+      expect(miss.puzzle!.prompt, 'White missed a win here');
+      expect(miss.puzzle!.reveal, 'Show the win');
+      expect(miss.comment, isNull);
       expect(miss.puzzle!.line, '4. Qxf7#');
+      // The bar's numbers: mate in one before the miss, level after it; the
+      // answer mates, which the board scores itself.
+      expect(miss.evalBefore, (cp: null, mate: 1));
+      expect(miss.evalAfter, (cp: 10, mate: null));
+      expect(miss.puzzle!.answerEval, isNull);
       // The board opens at the position before the miss while it asks.
       expect(miss.boardMoveIndex(before: true), 5);
       expect(miss.boardMoveIndex(before: false), 6);
     });
 
-    test('a report\'s blunder reads its verdict and what the evaluation '
-        'did, in words', () {
+    test('a report\'s blunder reads its verdict; what the evaluation did is '
+        'the bar\'s, never words', () {
       final segments = pickStorySegments(parseStoryPgn(_missedPgn)!);
       expect([for (final s in segments) s.san], ['Nf6', 'Qf3']);
       final blunder = segments.first;
@@ -459,10 +627,9 @@ void main() {
       expect(blunder.tone, StoryTone.weak);
       expect(blunder.moveClass, MoveClass.blunder);
       expect(blunder.tier, 1);
-      expect(
-        blunder.comment,
-        'It was level (0.0). After Nf6, White mates in 1.',
-      );
+      expect(blunder.comment, isNull);
+      expect(blunder.evalBefore, (cp: 0, mate: null));
+      expect(blunder.evalAfter, (cp: null, mate: 1));
       // A blunder is shown, never asked.
       expect(blunder.puzzle, isNull);
     });
@@ -915,14 +1082,7 @@ void main() {
       expect(_circle(kMissedChancesSlug), findsNothing);
     });
 
-    testWidgets('a pull past the first circle still puts the row away until '
-        'something new arrives', (tester) async {
-      final slugs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-      final harness = await _pumpRow(
-        tester,
-        collections: [for (final s in slugs) _collection(s)],
-        batches: {for (final s in slugs) s: _batch(s, 2)},
-      );
+    Future<void> pullPastStart(WidgetTester tester) async {
       final gesture = await tester.startGesture(const Offset(196, 120));
       for (var i = 0; i < 24; i++) {
         await gesture.moveBy(const Offset(12, 0));
@@ -930,39 +1090,192 @@ void main() {
       }
       await gesture.up();
       await tester.pump();
-      expect(harness.prefs.dismissal, isNotNull);
+    }
+
+    /// A second of frames: the row's spring in or out runs its course.
+    Future<void> frames(WidgetTester tester) async {
       for (var i = 0; i < 60; i++) {
         await tester.pump(const Duration(milliseconds: 16));
       }
-      final row = find.byType(TodayStoryRow, skipOffstage: false);
-      expect(tester.getSize(row).height, 0);
+    }
+
+    double rowHeight(WidgetTester tester) =>
+        tester.getSize(find.byType(TodayStoryRow, skipOffstage: false)).height;
+
+    Finder settingValue(String value) => find.descendant(
+      of: find.byKey(const ValueKey('settings_story_row')),
+      matching: find.text(value),
+    );
+
+    testWidgets('a pull past the first circle turns Collection stories Off: '
+        'saved, the row gone, Settings saying Off at once; Undo turns it On '
+        'and the row is back', (tester) async {
+      final slugs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+      final harness = await _pumpRow(
+        tester,
+        collections: [for (final s in slugs) _collection(s)],
+        batches: {for (final s in slugs) s: _batch(s, 2)},
+        // Settings' own row on the same screen: one state for both.
+        below: const StoryRowSettingsBody(),
+      );
+      expect(settingValue('On'), findsOneWidget);
+      expect(rowHeight(tester), greaterThan(0));
+      await pullPastStart(tester);
+      // The setting itself, not a hidden-until state beside it.
+      expect(harness.prefs.mode, StoryRowMode.off);
+      expect(
+        StoryRowPrefs.decodeLocal(harness.rowStore.local).mode,
+        StoryRowMode.off,
+      );
+      await tester.pump();
+      expect(settingValue('Off'), findsOneWidget);
+      expect(find.text(kStoryRowHiddenMessage), findsOneWidget);
+      expect(kStoryRowHiddenMessage, contains('Settings'));
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(rowHeight(tester), 0);
       await tester.tap(find.text('Undo'));
       await tester.pump();
       await _run(tester, const Duration(milliseconds: 1200));
-      expect(harness.prefs.dismissal, isNull);
+      expect(harness.prefs.mode, StoryRowMode.on);
+      expect(settingValue('On'), findsOneWidget);
+      expect(rowHeight(tester), greaterThan(0));
+      expect(_circle('a'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
     });
 
-    test('the row is there whenever it is On, everything seen or not', () {
-      final catalog = [_collection('a')];
-      expect(
-        decideStoryRow(prefs: const StoryRowPrefs(), catalog: catalog).shows,
-        isTrue,
+    testWidgets('signed in, the pull and its Undo write the one choice to '
+        'the server, and Settings shows each at once', (tester) async {
+      final store = _RowStore(id: 'u1', server: StoryRowMode.on);
+      final slugs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+      final harness = await _pumpRow(
+        tester,
+        collections: [for (final s in slugs) _collection(s)],
+        batches: {for (final s in slugs) s: _batch(s, 2)},
+        rowStore: store,
+        below: const StoryRowSettingsBody(),
       );
+      expect(store.reads, greaterThan(0));
+      expect(settingValue('On'), findsOneWidget);
+      await pullPastStart(tester);
+      await tester.pump();
+      expect(harness.prefs.mode, StoryRowMode.off);
+      expect(store.serverWrites, [('u1', StoryRowMode.off)]);
+      expect(settingValue('Off'), findsOneWidget);
+      // Written, so the device's copy has nothing left to send.
+      expect(harness.prefs.pending, isFalse);
+      await frames(tester);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      await _run(tester, const Duration(milliseconds: 1200));
+      expect(store.serverWrites, [
+        ('u1', StoryRowMode.off),
+        ('u1', StoryRowMode.on),
+      ]);
+      expect(store.server, StoryRowMode.on);
+      expect(settingValue('On'), findsOneWidget);
+      // Never the account's old copy once the server keeps the choice.
+      expect(store.legacyWrites, isEmpty);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('Settings On shows the row at once, Off hides it at once, '
+        'whatever put it away', (tester) async {
+      final harness = await _pumpRow(
+        tester,
+        collections: [_collection('a'), _collection('b')],
+        batches: {'a': _batch('a', 2), 'b': _batch('b', 2)},
+      );
+      final notifier = harness.container.read(storyRowPrefsProvider.notifier);
+      expect(rowHeight(tester), greaterThan(0));
+      await notifier.setMode(StoryRowMode.off);
+      await frames(tester);
+      expect(rowHeight(tester), 0);
+      await notifier.setMode(StoryRowMode.on);
+      await tester.pump();
+      await frames(tester);
+      expect(rowHeight(tester), greaterThan(0));
+      expect(_circle('a'), findsOneWidget);
+      // Pulled away, then On from Settings: back, nothing stale held.
+      await pullPastStart(tester);
+      await frames(tester);
+      expect(rowHeight(tester), 0);
+      expect(find.text(kStoryRowHiddenMessage), findsOneWidget);
+      await notifier.setMode(StoryRowMode.on);
+      await tester.pump();
+      await frames(tester);
+      expect(rowHeight(tester), greaterThan(0));
+      // Its "hidden" snack goes too, well before its own time: it would now
+      // say the opposite of what Today shows.
+      expect(find.text(kStoryRowHiddenMessage), findsNothing);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('a row pulled away by 39.2 ("until something new") reads as '
+        'Off, in Settings and on Today', (tester) async {
+      final store = _RowStore()
+        ..local =
+            '{"m":"on","u":7,"d":{"t":1763600000000,"f":"abc","g":12,'
+            '"s":"k1:3,k2:9"}}';
+      final harness = await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {'a': _batch('a', 2)},
+        rowStore: store,
+        below: const StoryRowSettingsBody(),
+      );
+      expect(harness.prefs.mode, StoryRowMode.off);
+      expect(settingValue('Off'), findsOneWidget);
+      expect(rowHeight(tester), 0);
+      expect(find.byKey(const ValueKey('story_row_skeleton')), findsNothing);
+      // On from Settings: the row comes, and the old pull-away is gone from
+      // what is saved.
+      await harness.container
+          .read(storyRowPrefsProvider.notifier)
+          .setMode(StoryRowMode.on);
+      await tester.pump();
+      await frames(tester);
+      expect(rowHeight(tester), greaterThan(0));
+      expect(store.local, isNot(contains('"d"')));
+      expect(StoryRowPrefs.decodeLocal(store.local).mode, StoryRowMode.on);
+    });
+
+    test('the row is there whenever it is On, everything seen or not; a '
+        '39.2 pull-away on the account reads as Off', () {
+      expect(storyRowExpected(const StoryRowPrefs()), isTrue);
       expect(
-        decideStoryRow(
-          prefs: const StoryRowPrefs(mode: StoryRowMode.off),
-          catalog: catalog,
-        ).shows,
+        storyRowExpected(const StoryRowPrefs(mode: StoryRowMode.off)),
         isFalse,
       );
-      expect(storyRowExpected(const StoryRowPrefs()), isTrue);
       // A 39.1.0 device copy with its old day fields reads as On.
       final old = StoryRowPrefs.decodeLocal(
         '{"m":"new","u":3,"a":"2026-11-19","r":{"s":"","n":3,"d":"x"}}',
       );
       expect(old.mode, StoryRowMode.on);
       expect(storyRowExpected(old), isTrue);
+      // The account's copy of a 39.2 pull-away: Off; one 39.2 cleared
+      // (something new came) is On.
+      expect(
+        StoryRowPrefs.fromAccountJson({
+          'm': 'on',
+          'd': {'t': 1763600000000, 'f': 'abc', 'g': 12},
+          'u': 9,
+        }).mode,
+        StoryRowMode.off,
+      );
+      expect(
+        StoryRowPrefs.fromAccountJson({'m': 'on', 'd': null, 'u': 10}).mode,
+        StoryRowMode.on,
+      );
+      // What is written carries the choice alone.
+      expect(
+        const StoryRowPrefs(
+          mode: StoryRowMode.off,
+          updatedAt: 4,
+        ).toAccountJson(),
+        {'m': 'off', 'u': 4},
+      );
     });
   });
 
@@ -1198,47 +1511,319 @@ void main() {
           openHold: hold,
         );
 
-    testWidgets('the story waits while the reader thinks; the move found '
-        'lands with its verdict, and the story runs on', (tester) async {
-      await pumpPuzzle(tester);
+    StoryBatch missedBatch() => StoryBatch(
+      games: [
+        StoryGame(
+          game: _game('m0', result: '1-0').game,
+          segments: pickMissedChanceSegments(parseStoryPgn(_blackMissPgn)!),
+          caption: 'Myvatn OI Open 2026',
+        ),
+      ],
+      ordered: [_game('m0', result: '1-0').game],
+      signature: 'v:missed:2026-11-21',
+    );
+
+    Future<_Harness> pumpMissed(WidgetTester tester) async {
+      final harness = await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {'a': _batch('a', 1), kMissedChancesSlug: missedBatch()},
+      );
+      await _open(tester, kMissedChancesSlug);
+      await tester.pump(const Duration(milliseconds: 400));
+      return harness;
+    }
+
+    ChessboardController board(WidgetTester tester) => tester
+        .widget<Chessboard>(find.byKey(const ValueKey('story_puzzle_board')))
+        .controller;
+
+    Color? tint(WidgetTester tester) => tester
+        .widget<Chessboard>(find.byKey(const ValueKey('story_puzzle_board')))
+        .settings
+        .colorScheme
+        .lastMove
+        .solidColor;
+
+    double barProgress(WidgetTester tester) => tester
+        .widget<StoryProgressBars>(find.byType(StoryProgressBars))
+        .progress
+        .value;
+
+    testWidgets('the story waits while the reader thinks; found, the move '
+        'lands with the Feed puzzle\'s solve, the found tone and its badge, '
+        'says so, and the story holds before it runs on', (tester) async {
+      final haptics = _Haptics(tester);
+      final harness = await pumpPuzzle(tester);
       await _open(tester, 'a');
       expect(find.text('White to move'), findsOneWidget);
-      // The mate is the strongest move, and the question says what to find.
-      expect(find.text('Find the mate.'), findsOneWidget);
+      // The mate is the strongest move, and the question's one action says
+      // what there is to find.
+      expect(find.text('Show the mate'), findsOneWidget);
+      // The classified sounds load while the reader thinks.
+      expect(harness.sounds.warmed, greaterThan(0));
       // Paused: a long think never moves the story on.
       await tester.pump(const Duration(seconds: 20));
       expect(_story('a0'), findsOneWidget);
-      final bars = tester.widget<StoryProgressBars>(
-        find.byType(StoryProgressBars),
-      );
-      expect(bars.progress.value, 0);
+      expect(barProgress(tester), 0);
+      final before = haptics.medium;
       await _play(tester, 'h5', 'f7');
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('story_prompt')), findsNothing);
-      expect(_labelText(tester), 'Found it · Brilliant');
+      expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      expect(_labelText(tester), 'Brilliant');
       expect(find.byKey(const ValueKey('story_badge')), findsOneWidget);
-      // The bar runs now, and the story moves on when it is full.
+      // The Feed puzzle's solve: its sound and its haptic.
+      expect(harness.sounds.played, [('Qxf7#', MoveClass.brilliant)]);
+      expect(haptics.medium, before + 1);
+      // The squares in the found tone: the board's own highlight.
+      expect(tint(tester), storyTintOf(true));
+      expect(board(tester).lastMove?.uci, 'h5f7');
+      // Never an instant skip: past its usual reading time it still holds.
       await tester.pump(storySegmentDuration(_only(_puzzlePgn)));
+      expect(_story('a0'), findsOneWidget);
+      expect(barProgress(tester), greaterThan(0));
+      // A beat later the story moves on.
+      await tester.pump(const Duration(milliseconds: 1300));
       await tester.pump(const Duration(milliseconds: 16));
       expect(_story('a1'), findsOneWidget);
     });
 
-    testWidgets('another move is shown, then the answer, gently', (
+    testWidgets('a missed win found: the win\'s line plays on the board, a '
+        'move at a time with its sound, the bar holding the winning number', (
       tester,
     ) async {
-      await pumpPuzzle(tester);
+      final harness = await pumpMissed(tester);
+      expect(find.text('Black missed a win here'), findsOneWidget);
+      expect(_bar(tester).evaluation, -3.3);
+      await _playBlack(tester, 'g5', 'g2');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_headline(tester), 'You found it · 5… Qxg2');
+      expect(_labelText(tester), 'd6 was played in the game');
+      expect(find.text('Then 6. Rf1 Qxe4+ 7. Be2'), findsOneWidget);
+      expect(board(tester).lastMove?.uci, 'g5g2');
+      expect(_bar(tester).evaluation, -3.3);
+      // The line: White's reply after a beat, then the win going on.
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(board(tester).lastMove?.uci, 'h1f1');
+      // The mark is the answer's: the line plays on the board's own
+      // highlight.
+      expect(tint(tester), isNot(storyTintOf(true)));
+      expect(find.byKey(const ValueKey('story_badge')), findsNothing);
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(board(tester).lastMove?.uci, 'g2e4');
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(board(tester).lastMove?.uci, 'c4e2');
+      expect(harness.sounds.played, [
+        ('Qxg2', MoveClass.brilliant),
+        ('Rf1', null),
+        ('Qxe4+', null),
+        ('Be2', null),
+      ]);
+      expect(_bar(tester).evaluation, -3.3);
+      expect(_headline(tester), 'You found it · 5… Qxg2');
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('a move that was not it lands softly and goes back for '
+        'another try; the game\'s own move is named; after two, Show is the '
+        'way on, and it reveals as shown', (tester) async {
+      final haptics = _Haptics(tester);
+      final harness = await pumpMissed(tester);
+      final colors = tester.element(find.byType(StoryFrameView)).colors;
+      // Quiet while the reader tries: the actions' own plate.
+      expect(_showFill(tester), colors.surfaceRecessed);
+      // The move the game played.
+      await _playBlack(tester, 'd7', 'd6');
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(_headline(tester), 'Played in the game · try again');
+      expect(harness.sounds.played.last, ('d6', MoveClass.mistake));
+      expect(haptics.medium, 1);
+      expect(tint(tester), storyTintOf(false));
+      expect(find.byKey(const ValueKey('story_badge')), findsOneWidget);
+      // The bar shows what the game's move gave away.
+      expect(_bar(tester).evaluation, 6.0);
+      // The story still waits.
+      expect(barProgress(tester), 0);
+      // It goes back: the board is the reader's again, the bar back on the
+      // position asked, the words still saying what it was.
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(
+        board(tester).fen,
+        pickMissedChanceSegments(
+          parseStoryPgn(_blackMissPgn)!,
+        ).single.fenBefore,
+      );
+      expect(board(tester).game.playerSide, PlayerSide.black);
+      expect(find.byKey(const ValueKey('story_badge')), findsNothing);
+      expect(_bar(tester).evaluation, -3.3);
+      expect(_headline(tester), 'Played in the game · try again');
+      expect(_showFill(tester), colors.surfaceRecessed);
+      await tester.pump(const Duration(seconds: 10));
+      expect(barProgress(tester), 0);
+      expect(find.byKey(const ValueKey('story_show_answer')), findsOneWidget);
+      // Another move: "either", and Show turns solid, the way on. Its label
+      // clears its plate on every frame of the fill's spring, never crossing
+      // the fill's own value on the way.
+      await _playBlack(tester, 'g8', 'f6');
+      var leastContrast = double.infinity;
+      for (var i = 0; i < 30; i++) {
+        leastContrast = math.min(
+          leastContrast,
+          wcagContrast(_showInk(tester), _showFill(tester)),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(leastContrast, greaterThan(3));
+      expect(_headline(tester), 'Not this one either');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_showFill(tester), colors.textPrimary);
+      expect(_showInk(tester), colors.background);
+      // Show: the answer lands as a find does, as shown.
+      await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_headline(tester), 'The win · 5… Qxg2');
+      expect(_headline(tester), isNot(contains('found')));
+      expect(_labelText(tester), 'Missed win · d6 was played');
+      expect(board(tester).lastMove?.uci, 'g5g2');
+      expect(harness.sounds.played.last, ('Qxg2', null));
+      expect(tint(tester), isNot(storyTintOf(true)));
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(board(tester).lastMove?.uci, 'h1f1');
+      await tester.pump(const Duration(seconds: 8));
+    });
+
+    testWidgets('a first miss says "Not this one · try again"; the next try '
+        'can still find it', (tester) async {
+      final harness = await pumpPuzzle(tester);
       await _open(tester, 'a');
       await _play(tester, 'h5', 'h7');
-      expect(find.byKey(const ValueKey('story_badge')), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 700));
-      await tester.pump(const Duration(milliseconds: 400));
+      expect(_headline(tester), 'Not this one · try again');
+      expect(harness.sounds.played.single, ('Qxh7', MoveClass.mistake));
+      // A finger back on the board takes the miss back at once, and never
+      // moves the story on.
+      await tester.tapAt(_square(tester, 'a3'));
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
-      expect(_labelText(tester), 'Not quite · Brilliant');
-      expect(find.text('4. '), findsNothing);
-      final move = tester.widget<Text>(
-        find.byKey(const ValueKey('story_move')),
+      expect(_story('a0'), findsOneWidget);
+      expect(board(tester).game.playerSide, PlayerSide.white);
+      await _play(tester, 'h5', 'f7');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('a take-back touch on the reader\'s own piece picks it up, '
+        'as the board does: the next tap plays it, and the find is seen '
+        'through its whole hold', (tester) async {
+      final harness = await pumpPuzzle(tester);
+      await _open(tester, 'a');
+      await _play(tester, 'h5', 'h7');
+      expect(_headline(tester), 'Not this one · try again');
+      // While the miss stands, the finger comes down on the queen: the miss
+      // goes back, and the board picks the queen up in the same touch.
+      await tester.tapAt(_square(tester, 'h5'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(_story('a0'), findsOneWidget);
+      expect(board(tester).game.playerSide, PlayerSide.white);
+      // f7 is the queen's move, never a tap that moves the story on.
+      await tester.tapAt(_square(tester, 'f7'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_story('a0'), findsOneWidget);
+      expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      expect(find.byKey(const ValueKey('story_badge')), findsOneWidget);
+      expect(harness.sounds.played, [
+        ('Qxh7', MoveClass.mistake),
+        ('Qxf7#', MoveClass.brilliant),
+      ]);
+      // The hold is the find's, as for a first try.
+      await tester.pump(storySegmentDuration(_only(_puzzlePgn)));
+      expect(_story('a0'), findsOneWidget);
+      expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      await tester.pump(const Duration(milliseconds: 1300));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a1'), findsOneWidget);
+    });
+
+    testWidgets('a take-back touch on another piece of the reader\'s picks '
+        'that one up: its move is a second try, and the story still waits', (
+      tester,
+    ) async {
+      final harness = await pumpPuzzle(tester);
+      await _open(tester, 'a');
+      await _play(tester, 'h5', 'h7');
+      await tester.tapAt(_square(tester, 'g1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(_square(tester, 'f3'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a0'), findsOneWidget);
+      expect(board(tester).lastMove?.uci, 'g1f3');
+      expect(_headline(tester), 'Not this one either');
+      expect(harness.sounds.played, [
+        ('Qxh7', MoveClass.mistake),
+        ('Nf3', MoveClass.mistake),
+      ]);
+      // It goes back, and the story waits on the reader as before.
+      await tester.pump(const Duration(seconds: 5));
+      expect(_story('a0'), findsOneWidget);
+      expect(barProgress(tester), 0);
+      expect(board(tester).game.playerSide, PlayerSide.white);
+    });
+
+    testWidgets('each step is told to a screen reader: announced where the '
+        'platform takes it, a live headline elsewhere', (tester) async {
+      final announced = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockDecodedMessageHandler<Object?>(SystemChannels.accessibility, (
+            message,
+          ) async {
+            if (message is Map && message['type'] == 'announce') {
+              announced.add('${(message['data'] as Map)['message']}');
+            }
+            return null;
+          });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger
+            .setMockDecodedMessageHandler<Object?>(
+              SystemChannels.accessibility,
+              null,
+            ),
       );
-      expect(move.textSpan!.toPlainText(), contains('Qxf7#'));
+      final handle = tester.ensureSemantics();
+      // A platform that takes no announcement: the headline is a live
+      // region.
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures();
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await pumpPuzzle(tester);
+      await _open(tester, 'a');
+      final live = find.ancestor(
+        of: find.byKey(const ValueKey('story_prompt')),
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && (w.properties.liveRegion ?? false),
+        ),
+      );
+      expect(live, findsOneWidget);
+      // One that does: each step is announced.
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(supportsAnnounce: true);
+      await tester.pump();
+      await _play(tester, 'h5', 'h7');
+      await tester.pump(const Duration(milliseconds: 700));
+      await _play(tester, 'h5', 'f7');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(announced, [
+        'Not this one. Try again.',
+        'You found it: 4. Qxf7#.',
+      ]);
+      handle.dispose();
+      await tester.pump(const Duration(seconds: 6));
     });
 
     testWidgets('Show reveals without a try; a tap on the right skips the '
@@ -1255,16 +1840,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
       await tester.tap(find.byKey(const ValueKey('story_show_answer')));
       await tester.pump(const Duration(milliseconds: 300));
+      expect(_headline(tester), 'The mate · 4. Qxf7#!!');
       expect(_labelText(tester), 'Brilliant');
       // Next story: asked again, and skipped with a tap clear of the board.
-      await tester.pump(storySegmentDuration(_only(_puzzlePgn)));
+      await tester.pump(
+        storySegmentDuration(_only(_puzzlePgn)) +
+            const Duration(milliseconds: 1300),
+      );
       await tester.pump(const Duration(milliseconds: 16));
       expect(_story('a1'), findsOneWidget);
       expect(find.text('White to move'), findsOneWidget);
-      // A tap on the board is the reader's, never the story's.
-      await tester.tapAt(_square(tester, 'a3'));
+      // A piece picked up is the reader's, never the story's.
+      await tester.tapAt(_square(tester, 'h5'));
       await tester.pump(const Duration(milliseconds: 16));
       expect(_story('a1'), findsOneWidget);
+      // Put down again, then a tap clear of the board moves on.
+      await tester.tapAt(_square(tester, 'h5'));
+      await tester.pump(const Duration(milliseconds: 80));
       final words = tester.getRect(find.byKey(const ValueKey('story_words')));
       await tester.tapAt(Offset(words.right - 8, words.bottom - 8));
       await tester.pump();
@@ -1273,6 +1865,477 @@ void main() {
       // watched, and the stories end on the quiet card, then go.
       expect(find.byKey(const ValueKey('story_caught_up')), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 1900));
+      await _settleClose(tester);
+      expect(find.byType(CollectionStoryViewer), findsNothing);
+    });
+
+    testWidgets('back on a position found before, it rests on the find', (
+      tester,
+    ) async {
+      await pumpPuzzle(tester);
+      await _open(tester, 'a');
+      await _play(tester, 'h5', 'f7');
+      await tester.pump(const Duration(milliseconds: 300));
+      await _tapAside(tester, 0.8);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_story('a1'), findsOneWidget);
+      await _tapAside(tester, 0.1);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_story('a0'), findsOneWidget);
+      expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      expect(find.byKey(const ValueKey('story_show_answer')), findsNothing);
+      await tester.pump(const Duration(seconds: 8));
+    });
+  });
+
+  // ------------------------------------------------- eval bar, board taps
+  group('the eval bar\'s numbers', () {
+    test('every position carries what its PGN records, read as the Feed '
+        'reads a ply; a missed win\'s answer keeps the engine\'s number', () {
+      final miss = pickMissedChanceSegments(
+        parseStoryPgn(_blackMissPgn)!,
+      ).single;
+      expect(miss.san, 'd6');
+      expect(miss.puzzle!.prompt, 'Black missed a win here');
+      expect(miss.puzzle!.reveal, 'Show the win');
+      expect(miss.puzzle!.solver, Side.black);
+      expect(miss.comment, isNull);
+      expect(miss.evalBefore, (cp: -330, mate: null));
+      expect(miss.evalAfter, (cp: 600, mate: null));
+      // The line beside the miss carries no number: the best move keeps
+      // the evaluation it was found with.
+      expect(miss.puzzle!.answerEval, (cp: -330, mate: null));
+      // What the words add under the revealed win: the line after the
+      // move the headline shows, never the move again.
+      expect(miss.puzzle!.continuation, '6. Rf1 Qxe4+ 7. Be2');
+
+      // A variation with its own number gives that.
+      final own = pickMissedChanceSegments(
+        parseStoryPgn(
+          _blackMissPgn.replaceFirst(
+            '( 5... Qxg2',
+            '( 5... Qxg2 { [%eval -4.1] }',
+          ),
+        )!,
+      ).single;
+      expect(own.puzzle!.answerEval, (cp: -410, mate: null));
+
+      // A move with no number of its own reads the nearest earlier one.
+      final commented = pickStorySegments(
+        parseStoryPgn(_commentedEvalPgn)!,
+      ).single;
+      expect(commented.evalBefore, (cp: 30, mate: null));
+      expect(commented.evalAfter, (cp: 20, mate: null));
+    });
+
+    test('a mate the solver delivers is one move nearer after the best '
+        'move; one in one lands on the board\'s own mate', () {
+      expect(storyBestLineEval(null, Side.white), isNull);
+      expect(storyBestLineEval((cp: 250, mate: null), Side.white), (
+        cp: 250,
+        mate: null,
+      ));
+      expect(storyBestLineEval((cp: null, mate: 3), Side.white), (
+        cp: null,
+        mate: 2,
+      ));
+      expect(storyBestLineEval((cp: null, mate: -3), Side.black), (
+        cp: null,
+        mate: -2,
+      ));
+      expect(storyBestLineEval((cp: null, mate: 1), Side.white), isNull);
+      // Being mated: the number stands.
+      expect(storyBestLineEval((cp: null, mate: -2), Side.white), (
+        cp: null,
+        mate: -2,
+      ));
+    });
+
+    test('a finished position speaks for itself, then the record; nothing '
+        'recorded asks the cache', () {
+      final mated = _fen(
+        'r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4',
+      );
+      expect(storyRecordedEval(mated, null), const FeedEval(pawns: 100));
+      expect(
+        storyRecordedEval(mated, (cp: -50, mate: null)),
+        const FeedEval(pawns: 100),
+      );
+      final open = _fen(_mateFen);
+      expect(
+        storyRecordedEval(open, (cp: null, mate: 1)),
+        const FeedEval(mate: 1),
+      );
+      expect(
+        storyRecordedEval(open, (cp: -330, mate: null)),
+        const FeedEval(pawns: -3.3),
+      );
+      expect(storyRecordedEval(open, null), isNull);
+      expect(storyRecordedEval(null, null), FeedEval.none);
+      expect(storyBarEvaluation(const FeedEval(mate: -2)), -10);
+      expect(storyBarEvaluation(const FeedEval(pawns: 0.4)), 0.4);
+    });
+  });
+
+  group('a tap on a board that asks for a move', () {
+    final position = _fen(_mateFen);
+    final legal = makeLegalMoves(position);
+
+    test('nothing picked up: an empty square or an opponent\'s piece is the '
+        'story\'s, a piece of the side to move is the board\'s', () {
+      expect(storyBoardTap(Square.a3, position: position, validMoves: legal), (
+        takes: false,
+        selected: null,
+        promoting: false,
+      ));
+      expect(storyBoardTap(Square.c6, position: position, validMoves: legal), (
+        takes: false,
+        selected: null,
+        promoting: false,
+      ));
+      expect(storyBoardTap(Square.h5, position: position, validMoves: legal), (
+        takes: true,
+        selected: Square.h5,
+        promoting: false,
+      ));
+    });
+
+    test('a piece picked up: every touch is the board\'s (play it, put it '
+        'down, pick up another)', () {
+      Square? tapFrom(Square square) => storyBoardTap(
+        square,
+        position: position,
+        validMoves: legal,
+        selected: Square.h5,
+      ).selected;
+      final play = storyBoardTap(
+        Square.f7,
+        position: position,
+        validMoves: legal,
+        selected: Square.h5,
+      );
+      expect(play, (takes: true, selected: null, promoting: false));
+      expect(
+        storyBoardTap(
+          Square.a3,
+          position: position,
+          validMoves: legal,
+          selected: Square.h5,
+        ).takes,
+        isTrue,
+      );
+      expect(tapFrom(Square.a3), isNull);
+      expect(tapFrom(Square.h5), isNull);
+      expect(tapFrom(Square.c4), Square.c4);
+    });
+
+    test('a promotion\'s choice is the board\'s too', () {
+      final pawn = _fen('8/P7/8/8/8/8/8/k6K w - - 0 1');
+      final moves = makeLegalMoves(pawn);
+      final promote = storyBoardTap(
+        Square.a8,
+        position: pawn,
+        validMoves: moves,
+        selected: Square.a7,
+      );
+      expect(promote, (takes: true, selected: null, promoting: true));
+      expect(
+        storyBoardTap(
+          Square.d4,
+          position: pawn,
+          validMoves: moves,
+          promoting: true,
+        ),
+        (takes: true, selected: null, promoting: false),
+      );
+    });
+  });
+
+  group('polish', () {
+    StoryBatch missedBatch(String pgn) => StoryBatch(
+      games: [
+        StoryGame(
+          game: _game('m0', result: '1-0').game,
+          segments: pickMissedChanceSegments(parseStoryPgn(pgn)!),
+          caption: 'Myvatn OI Open 2026',
+        ),
+      ],
+      ordered: [_game('m0', result: '1-0').game],
+      signature: 'v:missed:2026-11-21',
+    );
+
+    testWidgets('no evaluation is put in words, on any page', (tester) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {
+          'a': _batch('a', 1, pgn: _missedPgn),
+          kMissedChancesSlug: missedBatch(_blackMissPgn),
+        },
+      );
+      await _open(tester, kMissedChancesSlug);
+      await tester.pump(const Duration(milliseconds: 400));
+      // The screenshot's page: the headline and the action, no number.
+      expect(find.text('Black missed a win here'), findsOneWidget);
+      expect(find.text('Show the win'), findsOneWidget);
+      expect(_drawnText(tester).where(_evalProse.hasMatch), isEmpty);
+      await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Then 6. Rf1 Qxe4+ 7. Be2'), findsOneWidget);
+      expect(_drawnText(tester).where(_evalProse.hasMatch), isEmpty);
+      // On to the collection: the report's blunder, then its missed win.
+      await _tapAside(tester, 0.8);
+      await tester.pump(const Duration(milliseconds: 1200));
+      for (var i = 0; i < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(_drawnText(tester).where(_evalProse.hasMatch), isEmpty);
+        await _tapAside(tester, 0.8);
+      }
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('the eval bar stands left of the board, as tall, flush with '
+        'it, and moves with the move as it lands', (tester) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {'a': _batch('a', 1, pgn: _commentedEvalPgn)},
+      );
+      await _open(tester, 'a');
+      final bar = tester.getRect(find.byKey(const ValueKey('story_eval_bar')));
+      final board = tester.getRect(find.byKey(const ValueKey('story_board')));
+      expect(bar.right, moreOrLessEquals(board.left));
+      expect(bar.top, moreOrLessEquals(board.top));
+      expect(bar.height, moreOrLessEquals(board.height));
+      // The Feed's own width on a phone upright.
+      expect(bar.width, 20);
+      // The rows and the words start on the bar's edge.
+      final words = tester.getRect(find.byKey(const ValueKey('story_words')));
+      expect(words.left, moreOrLessEquals(bar.left));
+      expect(words.right, moreOrLessEquals(board.right));
+      final run = storySegmentDuration(
+        pickStorySegments(parseStoryPgn(_commentedEvalPgn)!).single,
+      );
+      await tester.pump(run * 0.2);
+      expect(_bar(tester).evaluation, 0.2);
+      expect(_bar(tester).isFlipped, isFalse);
+      expect(find.text('The knight hits e5 at once.'), findsOneWidget);
+    });
+
+    testWidgets('a missed chance asks with the bar on the position asked, '
+        'turned with the board; Show reveals the win, the bar keeps the '
+        'engine\'s number', (tester) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {
+          'a': _batch('a', 1),
+          kMissedChancesSlug: missedBatch(_blackMissPgn),
+        },
+      );
+      await _open(tester, kMissedChancesSlug);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_bar(tester).evaluation, -3.3);
+      expect(_bar(tester).isFlipped, isTrue);
+      await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('story_prompt')), findsNothing);
+      expect(_bar(tester).evaluation, -3.3);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('a mate revealed reads "#" on the bar, filled for the side '
+        'that mates', (tester) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {
+          'a': _batch('a', 1),
+          kMissedChancesSlug: missedBatch(_missedPgn),
+        },
+      );
+      await _open(tester, kMissedChancesSlug);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_bar(tester).mate, 1);
+      await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_bar(tester).isCheckmate, isTrue);
+      expect(_bar(tester).evaluation, 100);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('the actions are buttons: Show reveals, Open game opens the '
+        'board at the position, Go to event opens the game\'s event', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final harness = await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {
+          'a': _batch('a', 1),
+          kMissedChancesSlug: missedBatch(_blackMissPgn),
+        },
+      );
+      await _open(tester, kMissedChancesSlug);
+      await tester.pump(const Duration(milliseconds: 400));
+      for (final (key, label) in [
+        ('story_show_answer', 'Show the win'),
+        ('story_open_game', 'Open game'),
+        ('story_view_collection', 'Go to event'),
+      ]) {
+        expect(
+          tester.getSemantics(find.byKey(ValueKey(key))),
+          isSemantics(label: label, isButton: true, hasTapAction: true),
+        );
+      }
+      // Open game, at the position asked (before Black's 5th move).
+      await tester.tap(find.byKey(const ValueKey('story_open_game')));
+      await tester.pump();
+      expect(harness.opened.single, (kMissedChancesSlug, 'm0', 8));
+      await tester.pump(const Duration(milliseconds: 100));
+      // Show: the win on the board.
+      await tester.tap(find.byKey(const ValueKey('story_show_answer')));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('story_label')), findsOneWidget);
+      expect(find.textContaining('d6 was played'), findsOneWidget);
+      // Go to event: the game's own.
+      await tester.tap(find.byKey(const ValueKey('story_view_collection')));
+      await tester.pump();
+      final game = _game('m0', result: '1-0').game;
+      expect(harness.events.single, (game.tourId, game.roundId));
+      handle.dispose();
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('View collection is a button that opens the collection', (
+      tester,
+    ) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a', kind: CollectionKind.analysis)],
+        batches: {'a': _batch('a', 2)},
+      );
+      await _open(tester, 'a');
+      expect(find.text('View collection'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('story_view_collection')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byKey(const ValueKey('collection_page')), findsOneWidget);
+    });
+
+    testWidgets('a tap on a still board moves the story on like a tap '
+        'anywhere: right part next, left part back', (tester) async {
+      final games = [_game('a0'), _game('a1')];
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {
+          'a': StoryBatch(
+            games: [
+              buildStoryGame(games[0], pgn: _operaPgn),
+              buildStoryGame(games[1], pgn: _pgn),
+            ],
+            ordered: [for (final g in games) g.game],
+          ),
+        },
+      );
+      await _open(tester, 'a');
+      expect(find.byKey(const ValueKey('story_frame_a0#0')), findsOneWidget);
+      final board = tester.getRect(find.byKey(const ValueKey('story_board')));
+      await tester.tapAt(
+        Offset(board.left + board.width * 0.75, board.center.dy),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.byKey(const ValueKey('story_frame_a0#1')), findsOneWidget);
+      await tester.tapAt(Offset(board.left + 20, board.center.dy));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.byKey(const ValueKey('story_frame_a0#0')), findsOneWidget);
+    });
+
+    testWidgets('on a board asking for a move, an empty square skips; a '
+        'piece and its square play the puzzle, never a skip', (tester) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {'a': _batch('a', 3, pgn: _puzzlePgn)},
+      );
+      await _open(tester, 'a');
+      expect(_story('a0'), findsOneWidget);
+      expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
+      // An empty square on the right: the next story.
+      await tester.tapAt(_square(tester, 'f3'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a1'), findsOneWidget);
+      // An empty square on the left: back.
+      await tester.tapAt(_square(tester, 'a3'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a0'), findsOneWidget);
+      // An opponent's piece with nothing picked up: the story's too.
+      await tester.tapAt(_square(tester, 'f6'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a1'), findsOneWidget);
+      await tester.tapAt(_square(tester, 'a3'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a0'), findsOneWidget);
+      // The queen picked up, then an empty square: the board's (it puts
+      // the queen down), not a skip.
+      await tester.tapAt(_square(tester, 'h5'));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(_story('a0'), findsOneWidget);
+      // d3: no square the queen reaches.
+      await tester.tapAt(_square(tester, 'd3'));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(_story('a0'), findsOneWidget);
+      expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
+      // Picked up and played: the puzzle's move.
+      await _play(tester, 'h5', 'f7');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_story('a0'), findsOneWidget);
+      expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      await tester.pump(const Duration(seconds: 1));
+    });
+  });
+
+  group('polish, over the board', () {
+    testWidgets('a hold on an empty square of an asking board pauses, and a '
+        'drag down from it closes the stories', (tester) async {
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {'a': _batch('a', 2, pgn: _puzzlePgn)},
+      );
+      await _open(tester, 'a');
+      expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
+      // The header, bars and actions fade while a story is held.
+      double chrome() => tester
+          .widget<FadeTransition>(
+            find
+                .ancestor(
+                  of: find.byType(StoryHeader),
+                  matching: find.byType(FadeTransition),
+                )
+                .first,
+          )
+          .opacity
+          .value;
+      expect(chrome(), 1);
+      final hold = await tester.startGesture(_square(tester, 'f3'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(chrome(), lessThan(0.05));
+      // The hold turns into a drag down: the stories close.
+      for (var i = 0; i < 14; i++) {
+        await hold.moveBy(const Offset(0, 25));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await hold.up();
       await _settleClose(tester);
       expect(find.byType(CollectionStoryViewer), findsNothing);
     });

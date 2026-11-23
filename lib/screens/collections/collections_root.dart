@@ -48,10 +48,14 @@ class CollectionsRoot extends ConsumerStatefulWidget {
     this.onTabChanged,
     this.onHoldTab,
     this.holdHint,
+    this.dotScope,
   });
 
   /// The pages' names, as the bar's tabs.
   final List<String> tabs;
+
+  /// The tabs' Nudge surfaces' scope ([ForYouPageTabs.dotScope]).
+  final String? dotScope;
 
   /// Page `index`, ending [bottomPadding] further down than a pushed page
   /// would: the dock it runs under, and the search button where it floats.
@@ -270,6 +274,7 @@ class _CollectionsRootState extends ConsumerState<CollectionsRoot>
       removeTop: true,
       child: HomeTopBarFrame(
         child: ForYouPageTabs(
+          dotScope: widget.dotScope,
           pageController: _pages,
           selectedIndex: _selected,
           labels: widget.tabs,

@@ -20,9 +20,11 @@ import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/screens/webview/app_webview_screen.dart';
 import 'package:chessever2/screens/feed/news/news_link_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
 /// A notification tap can reach Dart before the widget tree that owns a
 /// [WidgetRef] exists. On a cold start the native SDK replays the tapped
@@ -121,7 +123,61 @@ void main() {
     }
   }
 
-  testWidgets('custom WebView deep link opens the requested URL', (
+  // An outside link (universal link, App Link, custom scheme) is written by
+  // anyone: /webview?url= opens only ChessEver's own pages in the app's
+  // WebView. A third-party page goes to the system browser, never inside the
+  // ChessEver chrome. Pushes (above) and in-app links are not limited.
+  for (final entry in {
+    'https://example.com/page': false,
+    'http://chessever.com/games/1': false,
+    'https://chessever.com/games/123': true,
+    'https://broadcast.chessever.com/live': true,
+  }.entries) {
+    for (final wrapper in [
+      'com.chessever.app://webview?url=',
+      'https://chessever.com/webview?url=',
+      'https://chessever.com/app/webview?url=',
+    ]) {
+      testWidgets('outside $wrapper${entry.key} '
+          '${entry.value ? 'opens in the WebView' : 'opens in the browser'}', (
+        tester,
+      ) async {
+        DeepLinkService.instance.dispose();
+        final opened = <Widget>[];
+        final launched = <(Uri, LaunchMode)>[];
+        final previous = ownWebPageLauncher;
+        ownWebPageLauncher = (uri, mode) async {
+          launched.add((uri, mode));
+          return true;
+        };
+        addTearDown(() => ownWebPageLauncher = previous);
+        final ref = await pumpHost(
+          tester,
+          overrides: [
+            appDestinationPageNavigationProvider.overrideWithValue(
+              (_, page, __) => opened.add(page),
+            ),
+          ],
+        );
+        DeepLinkService.instance.handleDeepLink(
+          Uri.parse('$wrapper${Uri.encodeComponent(entry.key)}'),
+          navigatorKey,
+          ref,
+        );
+        DeepLinkService.notifyAppReady();
+        await tester.pumpAndSettle();
+        if (entry.value) {
+          expect((opened.single as AppWebViewScreen).url, Uri.parse(entry.key));
+          expect(launched, isEmpty);
+        } else {
+          expect(opened, isEmpty);
+          expect(launched, [(Uri.parse(entry.key), LaunchMode.externalApplication)]);
+        }
+      });
+    }
+  }
+
+  testWidgets('an in-app WebView link still opens any web page in the app', (
     tester,
   ) async {
     DeepLinkService.instance.dispose();
@@ -134,12 +190,14 @@ void main() {
         ),
       ],
     );
-    DeepLinkService.instance.handleDeepLink(
-      Uri.parse(
-        'com.chessever.app://webview?url=https%3A%2F%2Fexample.com%2Fpage',
+    DeepLinkService.instance.attachNotificationRouter(navigatorKey, ref);
+    expect(
+      DeepLinkService.instance.openLinkFromApp(
+        Uri.parse(
+          'com.chessever.app://webview?url=https%3A%2F%2Fexample.com%2Fpage',
+        ),
       ),
-      navigatorKey,
-      ref,
+      isTrue,
     );
     DeepLinkService.notifyAppReady();
     await tester.pumpAndSettle();

@@ -1,13 +1,14 @@
 import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_navigation.dart';
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
-import 'package:chessever2/theme/app_theme.dart' show kPrimaryColor;
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/glass_dialog_route.dart';
+import 'package:chessever2/widgets/paywall/rewarded_premium/choice_plate.dart';
+import 'package:chessever2/widgets/paywall/rewarded_premium/premium_marks.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -27,12 +28,11 @@ Future<bool> showRewardedAccessChoice(
   _choiceOpen = true;
   try {
     // No fade, so the card's glass is frosted from its first frame. An
-    // outside tap still asks the card's PopScope (never while busy).
+    // outside tap still asks the card's PopScope (never while busy). The
+    // card follows the theme, so it stands on the popups' own scrim.
     return await showGlassDialog<bool>(
           context: context,
           barrierDismissible: !expired,
-          // The dark card's own stage, in both themes.
-          scrim: Colors.black.withValues(alpha: 0.56),
           builder: (_) => _AccessChoice(upgrade: upgrade, expired: expired),
         ) ??
         false;
@@ -118,30 +118,11 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
   @override
   Widget build(BuildContext context) {
     final reward = ref.watch(rewardedAccessProvider);
-    const card = Color(0xFF242A30);
-    // Upgrade is the popup's one brand-blue action, first in line. Watch ad
-    // follows as the neutral outlined alternative (Trello #1416).
-    const primary = kPrimaryColor;
-    const primaryInk = Color(0xFF07232B);
-    const titleInk = Color(0xFFF5F7FA);
-    const bodyInk = Color(0xFFC5CDD6);
-    const outline = Color(0xFF74818E);
-    const disabledFill = Color(0xFF334149);
+    final colors = context.colors;
+    final light = context.isLightTheme;
     final confirming = reward.pending;
     final watching = _busy && !_upgrading;
     final upgrading = _busy && _upgrading;
-    final playIcon = !watching && !confirming;
-    // The title's first line and the close button's padded 48 px tap target
-    // share one centre line at every text size; whichever is shorter is
-    // inset by half the difference. The title's inset comes out of the top
-    // padding, so it starts 20 px down with or without the close button.
-    const closeSize = 44.0;
-    const closeTarget = kMinInteractiveDimension;
-    final titleLine = MediaQuery.textScalerOf(context).scale(24) * 1.25;
-    final titleInset = widget.expired
-        ? 0.0
-        : math.max(0.0, (closeTarget - titleLine) / 2);
-    final closeInset = math.max(0.0, (titleLine - closeTarget) / 2);
     ref.listen<bool>(subscriptionProvider.select((s) => s.isSubscribed), (
       _,
       paid,
@@ -150,207 +131,89 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
     });
     return PopScope(
       canPop: !widget.expired && !_busy,
-      // The card is dark in both themes, so is its glass; the glass's lit
-      // rim is its edge.
+      // The popups' glass in the reader's theme, as every centred popup.
+      // Not now and an outside tap dismiss it, so it carries no close X.
       child: GlassDialog(
-        tone: card,
-        dark: true,
+        tone: colors.popup,
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         constraints: const BoxConstraints(maxWidth: 352),
         borderRadius: BorderRadius.circular(20),
         child: SingleChildScrollView(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 20 - titleInset, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: titleInset),
-                        child: Semantics(
-                          namesRoute: true,
-                          header: true,
-                          child: Text(
-                            widget.expired
-                                ? 'Your Premium access has ended'
-                                : 'Unlock Premium',
-                            style: const TextStyle(
-                              color: titleInk,
-                              fontSize: 24,
-                              height: 1.25,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
+                const Center(child: PremiumMark()),
+                const SizedBox(height: 16),
+                Semantics(
+                  namesRoute: true,
+                  header: true,
+                  child: Text(
+                    widget.expired
+                        ? 'Your Premium time is up'
+                        : 'Unlock Premium',
+                    textAlign: TextAlign.center,
+                    style: premiumPopupType(
+                      22,
+                      1.25,
+                      FontWeight.w700,
+                      colors.textPrimary,
                     ),
-                    if (!widget.expired)
-                      Padding(
-                        padding: EdgeInsets.only(top: closeInset),
-                        child: IconButton(
-                          tooltip: 'Close',
-                          onPressed: _busy
-                              ? null
-                              : () => Navigator.of(context).pop(false),
-                          constraints: const BoxConstraints(
-                            minWidth: closeSize,
-                            minHeight: closeSize,
-                          ),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.standard,
-                          style: const ButtonStyle(
-                            tapTargetSize: MaterialTapTargetSize.padded,
-                          ),
-                          color: bodyInk,
-                          disabledColor: outline,
-                          icon: const Icon(Icons.close, size: 20),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
                 Text(
                   confirming
                       ? 'Confirming your reward…'
-                      // The two ways in, named before either button: the
-                      // duration belongs to the ad, never to the upgrade.
+                      // The two ways in, in the buttons' order: the duration
+                      // belongs to the ad, never to the upgrade.
                       : widget.expired
-                      ? 'Watch another ad for 10 more minutes, or upgrade for '
-                            'unlimited access.'
-                      : 'Upgrade for unlimited access, or watch a short ad '
-                            'for 10 minutes of Premium.',
-                  style: const TextStyle(
-                    color: bodyInk,
-                    fontSize: 16,
-                    height: 1.5,
+                      ? 'Unlimited, or 10 more minutes for one ad.'
+                      : 'Unlimited, or 10 minutes for one ad.',
+                  textAlign: TextAlign.center,
+                  style: premiumPopupType(
+                    15,
+                    1.4,
+                    FontWeight.w400,
+                    colors.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _busy ? null : _upgrade,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: primaryInk,
-                    disabledBackgroundColor: upgrading ? primary : disabledFill,
-                    disabledForegroundColor: upgrading ? primaryInk : outline,
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (upgrading) ...[
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: primaryInk,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Flexible(
-                        child: Text(
-                          upgrading ? 'Opening…' : 'Upgrade',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
+                // Upgrade leads (Trello #1416): the premium plate, wearing
+                // the mark. Watch ad follows in the same construction, a
+                // quiet step off the card.
+                ChoicePlate(
+                  label: 'Upgrade',
+                  busyLabel: 'Opening…',
+                  glyph: ChoiceGlyph.premium,
+                  tone: ChoicePlateTone.upgrade(light: light),
+                  onTap: _busy ? null : _upgrade,
+                  busy: upgrading,
+                  dimmed: watching,
+                  pressMovesGlyph: true,
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _busy ? null : _watch,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: titleInk,
-                    disabledForegroundColor: watching ? titleInk : outline,
-                    side: const BorderSide(color: outline),
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (watching)
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: titleInk,
-                          ),
-                        )
-                      else if (playIcon)
-                        const Icon(Icons.play_arrow_rounded, size: 20),
-                      // The play triangle's ink starts ~6.7 px into its 20 px
-                      // box and stops ~4.9 px short of the end. A 3 px gap
-                      // reads like the spinner's 8, and the trailing 6 px
-                      // below keeps the visible group on the button's centre.
-                      if (watching)
-                        const SizedBox(width: 8)
-                      else if (playIcon)
-                        const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          watching
-                              ? confirming
-                                    ? 'Confirming…'
-                                    : 'Loading ad…'
-                              : confirming
-                              ? 'Retry confirmation'
-                              : widget.expired
-                              ? 'Watch ad again'
-                              : 'Watch ad',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      if (playIcon) const SizedBox(width: 6),
-                    ],
-                  ),
+                const SizedBox(height: 10),
+                ChoicePlate(
+                  label: confirming
+                      ? 'Retry confirmation'
+                      : widget.expired
+                      ? 'Watch ad again'
+                      : 'Watch ad',
+                  busyLabel: confirming ? 'Confirming…' : 'Loading ad…',
+                  glyph: confirming ? ChoiceGlyph.retry : ChoiceGlyph.play,
+                  tone: ChoicePlateTone.watch(colors, light: light),
+                  onTap: _busy ? null : _watch,
+                  busy: watching,
+                  dimmed: upgrading,
                 ),
                 const SizedBox(height: 4),
-                TextButton(
+                ChoiceDismissButton(
+                  label: widget.expired ? 'Go back' : 'Not now',
                   onPressed: _busy
                       ? null
                       : () => Navigator.of(context).pop(false),
-                  style: TextButton.styleFrom(
-                    foregroundColor: bodyInk,
-                    disabledForegroundColor: outline,
-                    minimumSize: const Size(0, 44),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      height: 1.4,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  child: Text(widget.expired ? 'Go back' : 'Not now'),
                 ),
               ],
             ),

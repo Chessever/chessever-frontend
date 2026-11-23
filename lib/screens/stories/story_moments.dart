@@ -35,6 +35,32 @@ enum StoryPuzzleKind {
   findMissed,
 }
 
+/// An evaluation a game's PGN records for a position, from White's side as
+/// `[%eval]` gives it: centipawns, or a mate count (positive: White mates).
+/// The story's eval bar reads it as the Feed's post reads its ply.
+typedef StoryEval = ({int? cp, int? mate});
+
+/// After an answer the board plays at most this many moves of the line that
+/// follows it: the win going on, never a whole game.
+const int kStoryLinePlies = 3;
+
+/// One move of the line after a puzzle's answer, as the board plays it once
+/// the answer is on the board.
+@immutable
+class StoryLinePly {
+  const StoryLinePly({
+    required this.move,
+    required this.san,
+    required this.fenAfter,
+  });
+
+  final Move move;
+  final String san;
+
+  /// The position after [move].
+  final String fenAfter;
+}
+
 /// A position the reader is asked to solve: the side to move, the move that
 /// answers it, and for a missed win the move that was actually played.
 @immutable
@@ -46,8 +72,10 @@ class StoryPuzzle {
     required this.answerSan,
     required this.answerFen,
     this.line,
-    this.ask = 'Find the strongest move.',
-    this.hint,
+    this.continuation,
+    this.reveal = 'Show the move',
+    this.answerEval,
+    this.followUp = const [],
   });
 
   final StoryPuzzleKind kind;
@@ -65,19 +93,43 @@ class StoryPuzzle {
   /// A missed win's line as the PGN gives it (`61. Nxa5 Re8 62. Kc5`).
   final String? line;
 
-  /// What to look for ("Find the sacrifice.").
-  final String ask;
+  /// That line after the answer itself (`61… Re8 62. Kc5`): what the words
+  /// under a revealed win add to the move the headline already shows.
+  final String? continuation;
 
-  /// A word on the position while it asks, never the answer: what the
-  /// evaluation said ("There is mate in one.").
-  final String? hint;
+  /// The one action of the question, naming what is there to find without
+  /// giving it away ("Show the mate", "Show the win"). It carries what a
+  /// separate "Find it." line used to say.
+  final String reveal;
+
+  /// The evaluation of [answerFen], when the game records it: the played
+  /// move's own for a strong move found; for a missed win, the variation's
+  /// own `[%eval]`, else the one before the miss carried along the engine's
+  /// line ([storyBestLineEval]).
+  final StoryEval? answerEval;
+
+  /// The moves after [answer], at most [kStoryLinePlies]: for a strong move
+  /// the game's own next moves, for a missed win the engine's line beside
+  /// the miss. The board plays them once the answer is on it.
+  final List<StoryLinePly> followUp;
 
   String get sideName => solver == Side.white ? 'White' : 'Black';
 
-  /// The prompt's two lines: who is to move, and what to look for.
-  (String, String) get prompt => switch (kind) {
-    StoryPuzzleKind.findPlayed => ('$sideName to move', ask),
-    StoryPuzzleKind.findMissed => ('$sideName missed a win here', ask),
+  /// What the answer is, as the question's action names it: "Show the win"
+  /// reveals "The win".
+  String get answerNoun {
+    final words = reveal.trim();
+    final what = words.startsWith('Show ') ? words.substring(5) : 'move';
+    return what.isEmpty
+        ? 'The move'
+        : '${what[0].toUpperCase()}${what.substring(1)}';
+  }
+
+  /// The question's one line: who is to move, or what was missed. What to
+  /// look for is on the reveal action ([reveal]).
+  String get prompt => switch (kind) {
+    StoryPuzzleKind.findPlayed => '$sideName to move',
+    StoryPuzzleKind.findMissed => '$sideName missed a win here',
   };
 }
 
@@ -103,6 +155,8 @@ class StorySegment {
     this.puzzle,
     this.tier = 3,
     this.finalPly = false,
+    this.evalBefore,
+    this.evalAfter,
   });
 
   /// A board that does not move: [fen] with [lastMove] highlighted, and
@@ -154,7 +208,8 @@ class StorySegment {
   /// The verdict's badge on the board, when the move carries one.
   final MoveClass? moveClass;
 
-  /// The annotator's words (or, for a missed win, what the evaluation says).
+  /// The annotator's words: a person's, never the evaluation in prose (the
+  /// eval bar beside the board carries the numbers).
   final String? comment;
 
   /// The move's arrows and marked squares.
@@ -169,6 +224,13 @@ class StorySegment {
 
   /// The game's last move: the game's result shows with it.
   final bool finalPly;
+
+  /// What the PGN records for [fenBefore] and [fenAfter], as the Feed reads
+  /// a ply: the position's own `[%eval]`, else the nearest earlier one.
+  /// Null when nothing up to there carries one (the bar then asks the eval
+  /// cache, as the Feed does).
+  final StoryEval? evalBefore;
+  final StoryEval? evalAfter;
 
   bool get isStill => ply == 0;
 
@@ -206,12 +268,25 @@ class StoryAlternative {
     required this.san,
     required this.fenAfter,
     required this.line,
+    this.continuation,
+    this.eval,
+    this.followUp = const [],
   });
 
   final Move move;
   final String san;
   final String fenAfter;
   final String line;
+
+  /// The line's moves after its first, as the board plays them.
+  final List<StoryLinePly> followUp;
+
+  /// The line after its first move, numbered on its own (`61… Re8 62.
+  /// Kc5`); null when the line is that one move.
+  final String? continuation;
+
+  /// The variation's own `[%eval]` on its first move, when it carries one.
+  final StoryEval? eval;
 }
 
 /// A game read for its stories: the mainline with what the moment finder
@@ -255,7 +330,10 @@ StoryAlternative? _alternative(PgnChildNode<PgnNodeData> start, Position at) {
   Move? first;
   String? firstSan;
   String? firstFen;
+  StoryEval? firstEval;
   final words = <String>[];
+  final rest = <String>[];
+  final followUp = <StoryLinePly>[];
   var plies = 0;
   while (node != null && plies < 4) {
     final Move? move;
@@ -273,10 +351,18 @@ StoryAlternative? _alternative(PgnChildNode<PgnNodeData> start, Position at) {
     } else {
       words.add(plies == 0 ? '$number… $san' : san);
     }
+    if (plies > 0) {
+      rest.add(white ? '$number. $san' : (plies == 1 ? '$number… $san' : san));
+      if (followUp.length < kStoryLinePlies) {
+        followUp.add(StoryLinePly(move: move, san: san, fenAfter: next.fen));
+      }
+    }
     if (first == null) {
       first = move;
       firstSan = san;
       firstFen = next.fen;
+      final eval = parseFlowEval(node.data.comments);
+      if (eval.cp != null || eval.mate != null) firstEval = eval;
     }
     position = next;
     plies++;
@@ -288,6 +374,9 @@ StoryAlternative? _alternative(PgnChildNode<PgnNodeData> start, Position at) {
     san: firstSan!,
     fenAfter: firstFen!,
     line: words.join(' '),
+    continuation: rest.isEmpty ? null : rest.join(' '),
+    eval: firstEval,
+    followUp: List.unmodifiable(followUp),
   );
 }
 
@@ -567,7 +656,8 @@ List<_Candidate> _spread(List<_Candidate> candidates, int plies, int max) {
 }
 
 StoryPuzzle? _puzzleOf(StoryPgn story, _Candidate c) {
-  final move = story.game.moves[c.index];
+  final moves = story.game.moves;
+  final move = moves[c.index];
   final verdict = c.verdict;
   final solver = move.mover;
   // A forced reply is no question to ask.
@@ -579,14 +669,12 @@ StoryPuzzle? _puzzleOf(StoryPgn story, _Candidate c) {
       (c.moment?.type == FeedMomentType.sacrifice &&
           (c.moment?.severity ?? 0) >= 3);
   if (strong) {
-    final ask = switch (c.moment?.type) {
+    // What there is to find, named on the one action of the question.
+    final reveal = switch (c.moment?.type) {
       FeedMomentType.sacrifice when verdict == null || verdict != _brilliant =>
-        'Find the sacrifice.',
-      FeedMomentType.checkmate => 'Find the mate.',
-      _ =>
-        verdict == _brilliant
-            ? 'Find the brilliant move.'
-            : 'Find the strongest move.',
+        'Show the sacrifice',
+      FeedMomentType.checkmate => 'Show the mate',
+      _ => 'Show the move',
     };
     return StoryPuzzle(
       kind: StoryPuzzleKind.findPlayed,
@@ -594,13 +682,25 @@ StoryPuzzle? _puzzleOf(StoryPgn story, _Candidate c) {
       answer: move.move,
       answerSan: move.san,
       answerFen: move.after.fen,
-      ask: ask,
+      reveal: reveal,
+      answerEval: _evalAt(moves, c.index),
+      followUp: List.unmodifiable([
+        for (
+          var k = c.index + 1;
+          k < moves.length && k <= c.index + kStoryLinePlies;
+          k++
+        )
+          StoryLinePly(
+            move: moves[k].move,
+            san: moves[k].san,
+            fenAfter: moves[k].after.fen,
+          ),
+      ]),
     );
   }
   if (verdict == _missedWin) {
     final alternative = story.alternatives[c.index];
     if (alternative == null) return null;
-    final moves = story.game.moves;
     return StoryPuzzle(
       kind: StoryPuzzleKind.findMissed,
       solver: solver,
@@ -608,29 +708,46 @@ StoryPuzzle? _puzzleOf(StoryPgn story, _Candidate c) {
       answerSan: alternative.san,
       answerFen: alternative.fenAfter,
       line: alternative.line,
-      ask: 'Find it.',
-      hint: c.index > 0 && moves[c.index - 1].hasEval
-          ? _winningHint(moves[c.index - 1], solver)
-          : null,
+      continuation: alternative.continuation,
+      reveal: 'Show the win',
+      answerEval:
+          alternative.eval ??
+          storyBestLineEval(_evalAt(moves, c.index - 1), solver),
+      followUp: alternative.followUp,
     );
   }
   return null;
 }
 
-/// What the evaluation before a missed win tells the solver, without the
-/// move: a mate count, or how far ahead they stood.
-String? _winningHint(FeedPgnMove before, Side solver) {
-  final sign = solver == Side.white ? 1 : -1;
-  final mate = before.mate;
-  if (mate != null) {
-    if (mate * sign <= 0) return null;
-    final n = mate.abs();
-    return n == 1 ? 'There is mate in one.' : 'There is a forced mate in $n.';
+/// The evaluation that applies after mainline move [index], as the Feed
+/// reads a ply (`feedEvalAt`): its own `[%eval]`, otherwise the nearest
+/// earlier move's. Null before the first move, or when none up to [index]
+/// carries one.
+StoryEval? _evalAt(List<FeedPgnMove> moves, int index) {
+  for (var k = math.min(index, moves.length - 1); k >= 0; k--) {
+    final m = moves[k];
+    final mate = m.mate;
+    if (mate != null && mate != 0) return (cp: null, mate: mate);
+    if (m.cp != null) return (cp: m.cp, mate: null);
   }
-  final cp = (before.cp ?? 0) * sign;
-  if (cp < 150) return null;
-  final side = solver == Side.white ? 'White' : 'Black';
-  return '$side is winning here (${_evalText(before)}).';
+  return null;
+}
+
+/// The evaluation after [solver] plays the engine's own best move from a
+/// position the engine scored [before]: the same number, since a best
+/// move keeps the evaluation, with a mate the solver delivers one move
+/// nearer. A missed win's answer is the line the engine gave beside the
+/// miss, so this is its evaluation when the line carries none of its own.
+/// A mate in one lands on checkmate, which the board scores itself.
+@visibleForTesting
+StoryEval? storyBestLineEval(StoryEval? before, Side solver) {
+  if (before == null) return null;
+  final mate = before.mate;
+  if (mate == null || mate == 0) return before;
+  final sign = solver == Side.white ? 1 : -1;
+  if (mate * sign <= 0) return before;
+  final next = mate - sign;
+  return next == 0 ? null : (cp: null, mate: next);
 }
 
 StorySegment _segmentOf(StoryPgn story, _Candidate c, {required bool puzzle}) {
@@ -663,65 +780,14 @@ StorySegment _segmentOf(StoryPgn story, _Candidate c, {required bool puzzle}) {
     label: label,
     tone: tone,
     moveClass: verdict?.moveClass ?? move.moveClass,
-    comment: c.comment ?? _evalNote(story, c.index, verdict),
+    comment: c.comment,
     shapes: Set.unmodifiable(c.shapes),
     puzzle: puzzle ? _puzzleOf(story, c) : null,
     tier: c.tier,
     finalPly: c.index == moves.length - 1,
+    evalBefore: _evalAt(moves, c.index - 1),
+    evalAfter: _evalAt(moves, c.index),
   );
-}
-
-// ------------------------------------------------------------ evaluations
-
-/// A missed win or a blunder in words, from the evaluations the PGN
-/// carries: how the game stood before the move, and after it ("It was
-/// level (0.0). After Nf6, White mates in 1.").
-String? _evalNote(StoryPgn story, int index, _Verdict? verdict) {
-  if (verdict != _missedWin && verdict != _blunder) return null;
-  final moves = story.game.moves;
-  final move = moves[index];
-  if (index == 0 || !moves[index - 1].hasEval || !move.hasEval) return null;
-  return '${_stoodBefore(moves[index - 1])}. '
-      'After ${move.san}, ${_standsAfter(move)}.';
-}
-
-/// How the game stood after [move], as a sentence's start: "White had mate
-/// in 2", "It was level (0.2)", "Black was winning (−3.1)".
-String _stoodBefore(FeedPgnMove move) {
-  final mate = move.mate;
-  if (mate != null) {
-    return mate > 0 ? 'White had mate in $mate' : 'Black had mate in ${-mate}';
-  }
-  final cp = move.cp ?? 0;
-  if (cp.abs() < 50) return 'It was level (${_evalText(move)})';
-  final side = cp > 0 ? 'White' : 'Black';
-  final word = cp.abs() >= 300 ? 'winning' : 'better';
-  return '$side was $word (${_evalText(move)})';
-}
-
-/// How the game stands after [move], to end a sentence: "White mates in 1",
-/// "it is level (+0.1)", "Black is winning (−3.1)".
-String _standsAfter(FeedPgnMove move) {
-  final mate = move.mate;
-  if (mate != null) {
-    return mate > 0 ? 'White mates in $mate' : 'Black mates in ${-mate}';
-  }
-  final cp = move.cp ?? 0;
-  if (cp.abs() < 50) return 'it is level (${_evalText(move)})';
-  final side = cp > 0 ? 'White' : 'Black';
-  final word = cp.abs() >= 300 ? 'winning' : 'better';
-  return '$side is $word (${_evalText(move)})';
-}
-
-/// An evaluation as the board's gauge prints it, from White's side: +1.4,
-/// −0.3, 0.0, or a mate count.
-String _evalText(FeedPgnMove move) {
-  final mate = move.mate;
-  if (mate != null) return mate > 0 ? 'mate in $mate' : 'mate in ${-mate}';
-  final cp = move.cp ?? 0;
-  if (cp == 0) return '0.0';
-  final pawns = (cp.abs() / 100).toStringAsFixed(1);
-  return cp > 0 ? '+$pawns' : '−$pawns';
 }
 
 /// Missed chances in [story]: the moves where the side that did not win

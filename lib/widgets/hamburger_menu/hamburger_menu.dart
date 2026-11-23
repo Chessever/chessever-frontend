@@ -14,6 +14,7 @@ import 'package:chessever2/widgets/popup_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 Future<void> _launchEmail() async {
@@ -61,6 +62,11 @@ class _AboutDialog extends ConsumerWidget {
 
   Future<void> _launchUrl(String url) async {
     final Uri uri = Uri.parse(url);
+    // The privacy policy is a chessever.com page the app has no route for.
+    if (isOwnWebHost(uri)) {
+      await openOwnWebPage(uri);
+      return;
+    }
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

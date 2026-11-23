@@ -384,10 +384,12 @@ class TournamentMenuButton extends ConsumerWidget {
           icon: Icons.leaderboard_outlined,
           label: "Share standings",
           onSelected: () {
-            // Standings share = the event link + the standings tab marker, so
-            // the same URL renders standings on the web and opens the
-            // Standings tab in-app.
-            final url = eventLink(tab: kEventStandingsTab);
+            // Standings share = the event link + the tab marker of the table
+            // it pictures: Standings, or a team event's Players tab (its
+            // individual table; ?tab=standings opens the team table there).
+            final url = eventLink(
+              tab: standingsShareTab(mode: mode, isTeamEvent: isTeamEvent),
+            );
             unawaited(_shareStandings(ref, context, aboutModel.name, url));
           },
         ),
@@ -535,7 +537,7 @@ class TournamentMenuButton extends ConsumerWidget {
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+            sharePositionOrigin: sharePreviewOrigin(),
           );
         },
         onShareLink: shareUrl == null
@@ -544,7 +546,7 @@ class TournamentMenuButton extends ConsumerWidget {
                 await Share.share(
                   shareUrl,
                   subject: subject,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  sharePositionOrigin: sharePreviewOrigin(),
                 );
               },
       );
@@ -616,7 +618,7 @@ class TournamentMenuButton extends ConsumerWidget {
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+            sharePositionOrigin: sharePreviewOrigin(),
           );
         },
         onShareLink: shareUrl == null
@@ -625,7 +627,7 @@ class TournamentMenuButton extends ConsumerWidget {
                 await Share.share(
                   shareUrl,
                   subject: subject,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  sharePositionOrigin: sharePreviewOrigin(),
                 );
               },
       );
@@ -712,7 +714,7 @@ class TournamentMenuButton extends ConsumerWidget {
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+            sharePositionOrigin: sharePreviewOrigin(),
           );
         },
         onShareLink: shareUrl == null
@@ -721,7 +723,7 @@ class TournamentMenuButton extends ConsumerWidget {
                 await Share.share(
                   shareUrl,
                   subject: subject,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  sharePositionOrigin: sharePreviewOrigin(),
                 );
               },
       );
@@ -741,6 +743,16 @@ class TournamentMenuButton extends ConsumerWidget {
       .replaceAll(RegExp(r'^-+|-+$'), '')
       .toLowerCase();
 }
+
+/// The `?tab=` of the link an individual-standings share carries: the tab
+/// whose table the image shows. A team event's individual table is its
+/// Players tab; its Standings tab is the team table.
+String standingsShareTab({
+  required TournamentDetailScreenMode mode,
+  required bool isTeamEvent,
+}) => isTeamEvent && mode == TournamentDetailScreenMode.players
+    ? kEventPlayersTab
+    : kEventStandingsTab;
 
 /// Which standings-related share actions belong on the tournament detail ⋮ menu
 /// for the current tab and event type.

@@ -37,6 +37,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
+import 'package:chessever2/services/deep_link_service.dart';
 import 'widget/bottom_nav_bar.dart';
 import 'widget/home_nav_dock.dart';
 import 'widget/tablet_nav_rail.dart';
@@ -64,6 +65,14 @@ void forgetForYouPageForLaunch() {
     ),
   );
 }
+
+/// Test seam: a page to stand in for each dock section. Null in the app,
+/// where the sections are the real screens, which read the network. Tests
+/// that drive the shell itself (its dock and rail, the held-link drain, the
+/// dock reveal a link asks for) stand their own pages in here.
+@visibleForTesting
+final homeSectionPageOverrideProvider =
+    Provider<Widget Function(BottomNavBarItem item)?>((ref) => null);
 
 /// The app's home: five sections over one dock (Home, Feed, Botvinnik,
 /// Collections, Profile). There is no sidebar; what it held lives on
@@ -119,6 +128,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       unawaited(ReviewPromptService.instance.incrementSessionCount());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // A link or push that arrived while the reader was signing in or
+      // onboarding was held for Home: open it now that Home is up.
+      if (mounted) DeepLinkService.instance.drainPendingDestination();
       // A start section that is not on the bar (Botvinnik saved as the start
       // screen, then switched off) opens Home instead of nothing selected.
       if (mounted &&
@@ -137,6 +149,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       if (!E2eConfig.suppressInterruptivePrompts) {
         Future.delayed(const Duration(seconds: 8), () {
           if (!mounted) return;
+          // A notification or link that opened a page over Home in these
+          // eight seconds owns the screen: never ask for a rating over it.
+          if (ModalRoute.of(context)?.isCurrent == false) return;
           unawaited(
             ReviewPromptService.instance.maybePrompt(
               context: context,
@@ -269,6 +284,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (_, next) {
       _chromeFor(next).show(animate: false);
       FocusManager.instance.primaryFocus?.unfocus();
+    });
+    // A link or push that lands on the section already open changes no
+    // section, so it asks for the bars by itself: the reader must never
+    // arrive on Home with its dock scrolled away.
+    ref.listen<int>(homeChromeRevealRequestProvider, (_, _) {
+      _chromeFor(
+        ref.read(selectedBottomNavBarItemProvider),
+      ).show(animate: false);
     });
     ref.listen<List<BottomNavBarItem>>(visibleBottomNavItemsProvider, (
       _,
@@ -570,9 +593,12 @@ class BottomNavBarView extends HookConsumerWidget {
     BottomNavBarItem.collections,
   };
 
-  Widget _buildScreen(BottomNavBarItem item) {
+  Widget _buildScreen(
+    BottomNavBarItem item,
+    Widget Function(BottomNavBarItem item)? standIn,
+  ) {
     final chrome = chromeFor?.call(item);
-    final screen = _screen(item);
+    final screen = standIn?.call(item) ?? _screen(item);
     if (chrome == null) return screen;
     return ScrollChromeRegion(
       controller: chrome,
@@ -606,6 +632,7 @@ class BottomNavBarView extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(selectedBottomNavBarItemProvider);
     final visible = ref.watch(visibleBottomNavItemsProvider);
+    final standIn = ref.watch(homeSectionPageOverrideProvider);
     final current = visible.contains(selected)
         ? selected
         : BottomNavBarItem.forYou;
@@ -627,14 +654,14 @@ class BottomNavBarView extends HookConsumerWidget {
                   enabled: item == current,
                   child: ExcludeFocus(
                     excluding: item != current,
-                    child: _buildScreen(item),
+                    child: _buildScreen(item, standIn),
                   ),
                 ),
               ),
           if (!_kept.contains(current))
             KeyedSubtree(
               key: ValueKey('home-section-${current.name}'),
-              child: _buildScreen(current),
+              child: _buildScreen(current, standIn),
             ),
         ],
       ),

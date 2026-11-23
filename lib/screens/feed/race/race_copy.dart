@@ -93,8 +93,14 @@ String raceShareText({
   final solved = score == 1 ? '1 puzzle' : '$score puzzles';
   return 'ChessEver Puzzle Race, ${raceModeName(mode)}: '
       '$solved in ${formatRaceClock(elapsedMs)}, reached level $displayLevel. '
-      'Best streak $bestStreak.$place';
+      'Best streak $bestStreak.$place\n$kRaceDownloadUrl';
 }
 
-/// The text of a room invite.
-String raceInviteText(String code) => 'Join my ChessEver Puzzle Race: $code';
+/// Where a race share sends someone without the app: the web's download
+/// page (store buttons on a phone). Not an app route, so it never opens the
+/// app on itself.
+const kRaceDownloadUrl = 'https://chessever.com/download';
+
+/// The text of a room invite: the code to type, and where to get the app.
+String raceInviteText(String code) =>
+    'Join my ChessEver Puzzle Race: $code\n$kRaceDownloadUrl';

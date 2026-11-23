@@ -25,6 +25,7 @@ import 'package:motor/motor.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 
 /// The action a Premium gate resumes once the viewer is entitled: whatever
 /// they tapped before the paywall opened (open the archived game, apply the
@@ -573,6 +574,11 @@ class _SpringPress extends StatelessWidget {
 /// Helper function to launch a URL
 Future<void> _launchUrl(String url) async {
   final uri = Uri.parse(url);
+  // Privacy and Terms are chessever.com pages the app has no route for.
+  if (isOwnWebHost(uri)) {
+    await openOwnWebPage(uri);
+    return;
+  }
   if (await canLaunchUrl(uri)) {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }

@@ -75,27 +75,31 @@ final _cases = <_Case>[
     tone: (c) => c.colors.surfaceElevated,
     inks: (c) => {'copy': c.colors.textPrimary, 'Got it': c.colors.accentText},
   ),
+  // The Premium chooser follows the theme on the glass route's own scrim.
+  // Its choices are opaque plates; their labels are checked on the plates
+  // in test/rewarded_access_popup_preview_test.dart.
   _Case(
     'rewarded choice',
-    size: const Size(352, 300),
+    size: const Size(352, 360),
     radius: 20,
-    dark: true,
-    tone: (_) => const Color(0xFF242A30),
-    scrim: (_) => Colors.black.withValues(alpha: 0.56),
-    inks: (_) => {
-      'title': const Color(0xFFF5F7FA),
-      'body': const Color(0xFFC5CDD6),
+    tone: (c) => c.colors.popup,
+    inks: (c) => {
+      'title': c.colors.textPrimary,
+      'body and Not now': c.colors.textSecondary,
     },
   ),
+  // The intro opens over the chooser in its language: the same glass, a
+  // narrower card. Watch ad is the chooser's opaque plate; its label is
+  // checked on the plate in
+  // test/rewarded_interstitial_intro_preview_test.dart.
   _Case(
     'interstitial intro',
-    size: const Size(313, 230),
-    radius: 28,
-    tone: (c) => DialogTheme.of(c).backgroundColor ?? c.colors.popup,
+    size: const Size(313, 240),
+    radius: 20,
+    tone: (c) => c.colors.popup,
     inks: (c) => {
-      'title': Theme.of(c).colorScheme.onSurface,
-      'body': Theme.of(c).colorScheme.onSurfaceVariant,
-      'Skip': Theme.of(c).colorScheme.primary,
+      'title': c.colors.textPrimary,
+      'body and Skip': c.colors.textSecondary,
     },
   ),
   _Case(

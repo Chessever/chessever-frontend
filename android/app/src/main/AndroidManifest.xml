@@ -73,23 +73,51 @@
                <category android:name="android.intent.category.BROWSABLE" />
                <data android:scheme="${authRedirectScheme}" />
            </intent-filter>
-           <!-- Android App Links for HTTPS deep links (sharing, notifications) -->
-           <!-- Catch-all: any path on chessever.com opens the app -->
+           <!-- Android App Links for HTTPS deep links (sharing, notifications).
+                Only the paths DeepLinkService.handleDeepLink routes: keep this
+                list in step with it (test/android_app_links_manifest_test.dart).
+                Never a host-only filter: a VIEW intent for any chessever.com
+                page (account, privacy, terms, desktop) then resolves to the
+                app itself, which has no route for it, and nothing opens.
+                Data elements in one filter combine, so each path pairs with
+                the scheme and host above it. -->
            <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
-               <data
-                   android:scheme="https"
-                   android:host="chessever.com" />
+               <data android:scheme="https" />
+               <data android:host="chessever.com" />
+               <data android:pathPrefix="/games/" />
+               <data android:pathPrefix="/broadcast/" />
+               <data android:pathPrefix="/books/" />
+               <data android:pathPrefix="/databases/" />
+               <data android:pathPrefix="/folders/" />
+               <data android:pathPrefix="/player/" />
+               <data android:pathPrefix="/collections/" />
+               <data android:path="/news" />
+               <data android:pathPrefix="/news/" />
+               <data android:path="/app" />
+               <data android:pathPrefix="/app/" />
+               <data android:path="/webview" />
            </intent-filter>
            <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
-               <data
-                   android:scheme="https"
-                   android:host="www.chessever.com" />
+               <data android:scheme="https" />
+               <data android:host="www.chessever.com" />
+               <data android:pathPrefix="/games/" />
+               <data android:pathPrefix="/broadcast/" />
+               <data android:pathPrefix="/books/" />
+               <data android:pathPrefix="/databases/" />
+               <data android:pathPrefix="/folders/" />
+               <data android:pathPrefix="/player/" />
+               <data android:pathPrefix="/collections/" />
+               <data android:path="/news" />
+               <data android:pathPrefix="/news/" />
+               <data android:path="/app" />
+               <data android:pathPrefix="/app/" />
+               <data android:path="/webview" />
            </intent-filter>
            <!-- AppsFlyer hosts assetlinks.json for the branded and default
                 OneLink domains when Android App Links are configured in the

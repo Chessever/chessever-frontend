@@ -209,6 +209,9 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     StartPage page(int index) =>
         collectionsStartPage(CollectionsTab.values[index]);
     return CollectionsRoot(
+      // The ids the dock's Collections tabs wore before 38.18: Nudges
+      // published for them light here, as on the pushed page below.
+      dotScope: 'collections.tab',
       tabs: [for (final tab in CollectionsTab.values) tab.label],
       initialTab: ref.read(selectedCollectionsTabProvider).index,
       onTabChanged: _rememberTab,

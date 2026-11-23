@@ -235,12 +235,28 @@ expire on the preview, then tap a game or Save and verify another prompt.
 
 ## Premium chooser design
 
-The chooser follows the supplied charcoal mockup: compact Watch ad and Upgrade
-buttons, a play icon, close and Not now actions, and button-local loading states.
+The chooser is a centred popup on the popups' own glass (`GlassDialog`,
+`colors.popup`), in the reader's theme, over the popups' scrim. It carries no
+close X: Not now and an outside tap dismiss it, as every centred popup. The
+ChessEver mark tops it, drawn (`PremiumMark`, `premium_marks.dart`) so its
+corner squares assemble round the king as it opens. Title and body are centred.
+
+Two 56 pt plates follow, Upgrade first (Trello #1416): a deep brand teal plate
+wearing the mark's squares, then a neutral plate wearing a play triangle
+(`ChoiceGlyph`). The two marks are one family, 16 pt tall, drawn to their own
+ink boxes, each 9 pt of air from its label, and each pair centred on its plate
+by ink (`test/rewarded_access_popup_preview_test.dart` measures the pixels).
+Under a finger Upgrade's squares close in 2.4 pt; as the tap lands they burst a
+point past rest and settle back together. A running choice keeps its mark and
+label for 600 ms; only if it is still running then, with nothing opened over
+the popup, does a spinner and Opening… / Loading ad… / Confirming… take their
+place, so a checkout that opens at once never flashes a spinner.
+
 The expiry dialog keeps Watch ad again / Upgrade / Go back and cannot be dismissed
-with close or platform Back. All dismissal and secondary actions are disabled
-while an ad, confirmation, or upgrade is in progress. Text wraps and the dialog
-scrolls on narrow screens or large accessibility text. The app typeface is retained.
+from outside or with platform Back. All dismissal and secondary actions are
+disabled while an ad, confirmation, or upgrade is in progress. Text wraps and the
+dialog scrolls on narrow screens or large accessibility text. The app typeface is
+retained.
 
 ## Subscription-only home customization
 

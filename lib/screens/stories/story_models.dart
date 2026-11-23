@@ -219,23 +219,17 @@ List<Collection> selectStoryCollections(
   return [for (final e in indexed.take(cap)) e.$2];
 }
 
-/// The row's order: what arrived while the row was put away ([fresh], by
-/// slug) first, then circles with something the reader has not seen, then
+/// The row's order: circles with something the reader has not seen, then
 /// the seen ones, each group most recently updated first. A collection
 /// that gets a new game lands leftmost.
 List<Collection> orderStoryCollections(
   List<Collection> collections,
-  bool Function(Collection collection) seen, {
-  Set<String> fresh = const {},
-}) {
+  bool Function(Collection collection) seen,
+) {
   final indexed = [
     for (var i = 0; i < collections.length; i++) (i, collections[i]),
   ];
-  int group(Collection c) => fresh.contains(c.slug)
-      ? 0
-      : seen(c)
-      ? 2
-      : 1;
+  int group(Collection c) => seen(c) ? 1 : 0;
   indexed.sort((a, b) {
     final byGroup = group(a.$2).compareTo(group(b.$2));
     if (byGroup != 0) return byGroup;
@@ -338,16 +332,9 @@ String? storyCaption(CollectionGame game) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
-/// "White won", "Draw", for a still's label.
-String? _resultLabel(GameStatus status) => switch (status) {
-  GameStatus.whiteWins => 'White won',
-  GameStatus.blackWins => 'Black won',
-  GameStatus.draw => 'Draw',
-  _ => null,
-};
-
 /// [game]'s final position as one page: for a game whose moves cannot be
-/// read here (a locked collection), or one with nothing else to show.
+/// read here (a locked collection), or one with nothing else to show. No
+/// words under it: the player rows carry the result on it.
 StoryGame stillStoryGame(CollectionGame game) {
   final preview = game.game;
   return StoryGame(
@@ -356,7 +343,6 @@ StoryGame stillStoryGame(CollectionGame game) {
       StorySegment.still(
         game.card.finalFen ?? preview.fen,
         _uciMove(game.card.lastMove ?? preview.lastMove),
-        label: _resultLabel(preview.gameStatus),
       ),
     ],
     caption: storyCaption(game),

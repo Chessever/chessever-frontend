@@ -9,7 +9,6 @@ import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
-import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/news/news_link_screen.dart';
 import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
@@ -116,25 +115,21 @@ Future<bool> openAppDestination(
     switch (destination.kind) {
       case AppDestinationKind.home:
       case AppDestinationKind.events:
-      // Collections has the dock's tab: it opens there, as Home does.
+      // Feed and Collections have the dock's tabs: they open there, as Home
+      // does, never as a second copy pushed over the shell.
+      case AppDestinationKind.feed:
       case AppDestinationKind.collections:
         if (!canOpen()) return true;
         _openHome(context, ref, destination);
       case AppDestinationKind.collection:
+        // Opens for every reader, as a shared collection link, a collection
+        // push and the catalog do: a Premium collection gates when a game in
+        // it opens (open_collection_game.dart), never at the page.
         final repo = ref.read(collectionsRepositoryProvider);
         final release = repo.holdFreshAccess(destination.id!);
         try {
-          var collection = await repo.fetchCollection(destination.id!);
+          final collection = await repo.fetchCollection(destination.id!);
           if (!canOpen()) return true;
-          if (collection.isPremium && collection.contentLocked != false) {
-            if (!await access(collectionPaywallFeatureId(collection.kind))) {
-              return true;
-            }
-            if (!canOpen()) return true;
-            collection = await repo.fetchCollection(destination.id!);
-            if (!canOpen()) return true;
-            if (collection.contentLocked == true) return false;
-          }
           push(CollectionScreen(collection: collection));
         } finally {
           release();
@@ -146,8 +141,6 @@ Future<bool> openAppDestination(
           return !canOpen() || opened;
         }
         push(const InboxScreen());
-      case AppDestinationKind.feed:
-        push(const FeedScreen());
       case AppDestinationKind.news:
         _openHome(context, ref, parseAppDestination('/app/home/discovery')!);
         // Give externally opened articles the same Back destination as a
@@ -387,9 +380,14 @@ void _openHome(
   final hold = container.listen(selectedBottomNavBarItemProvider, (_, _) {});
   ref
       .read(selectedBottomNavBarItemProvider.notifier)
-      .state = destination.kind == AppDestinationKind.collections
-      ? BottomNavBarItem.collections
-      : BottomNavBarItem.forYou;
+      .state = switch (destination.kind) {
+    AppDestinationKind.collections => BottomNavBarItem.collections,
+    AppDestinationKind.feed => BottomNavBarItem.feed,
+    _ => BottomNavBarItem.forYou,
+  };
+  // Landing on the section already open changes nothing the shell listens
+  // to: ask for its bars, or the dock stays scrolled away.
+  ref.read(homeChromeRevealRequestProvider.notifier).state++;
   if (destination.kind == AppDestinationKind.home) {
     ref.read(selectedForYouTabProvider.notifier).select(
       switch (destination.section) {

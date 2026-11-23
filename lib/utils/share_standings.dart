@@ -157,7 +157,7 @@ Future<void> _presentStandingsShare(
         [XFile(file.path, mimeType: 'image/png')],
         text: shareUrl,
         subject: subject,
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+        sharePositionOrigin: sharePreviewOrigin(),
       );
     },
     onShareLink:
@@ -167,7 +167,7 @@ Future<void> _presentStandingsShare(
               await Share.share(
                 shareUrl,
                 subject: subject,
-                sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                sharePositionOrigin: sharePreviewOrigin(),
               );
             },
   );

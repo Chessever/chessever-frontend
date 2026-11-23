@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'support/signed_in_auth.dart';
 
 class _LoadedAggregateNotifier extends SmartAggregateEventNotifier {
   _LoadedAggregateNotifier(super.ref, super.query) {
@@ -108,6 +109,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // A push opens for a reader with a session (a guest's too).
+          signedInAuthOverride(),
           boardSettingsProviderNew.overrideWith(_BoardSettings.new),
           favoriteEventsProvider.overrideWith(() => _Favorites(favorites)),
           spaceShortcutsProvider.overrideWith(_SpaceShortcuts.new),
