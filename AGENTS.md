@@ -255,7 +255,8 @@ Trello #1387.
   Space end in a chevron; favoriting them stays on the source screens.
 - **Smart event cards end in their star (Trello #1411, 2026-11-17,
   reversing 38.4.0 for smart events only).** A smart event's star is its push
-  subscription: its favorites row is what `queue_smart_event_digests` reads,
+  subscription unless the reader chose Just star (see "Stars ask before they
+  notify" below): its favorites row is what `queue_smart_event_digests` reads,
   so a smart event with no star in My Space can never notify, and with the
   star gone 72 My Space smart event cards had 4 stars and no new star in five
   days. Starring and unstarring there go through `toggleSmartEventFavorite`,
@@ -263,8 +264,11 @@ Trello #1387.
   keeps the card. Edit mode hides it, on the home too: the star fades out in
   its place (`SpaceEditFade`), so the card never reflows. Do not remove it
   again as "a favorite".
-- Prep player cards end in the Prep star, which is not a favorite: it only
-  turns that profile's new-game pushes on or off (`PrepProfile.watching`).
+- Prep player cards end in the Prep star, which is not a favorite: it turns
+  that profile's new-game pushes on or off (`PrepProfile.watching`), or, after
+  Just star, keeps the profile starred and pinned with no pushes and no server
+  watch (`PrepProfile.starredWithoutAlerts`, device only: Prep cloud sync does
+  not carry it).
   It never follows, favorites or unfavorites the player; the heart does
   that. Unstarring a Prep card in My Space stops the pushes and takes the card
   out of My Space (one Undo restores both); the profile stays in Prep. Edit
@@ -312,9 +316,32 @@ Trello #1387.
   or the pin would rebuild it. Stars follow the server across devices
   (`_reconcileWatches`).
 
+## Stars ask before they notify (PR #425, 39.2.19)
+
+A new star on an event, a Smart Event, a collection, a player or a Prep
+profile asks "Get notifications for this ...?" with Notify me / Just star
+(`lib/widgets/star_notifications.dart`). Dismissing it is Just star. Notify
+me runs the onboarding permission flow and turns the matching alerts
+category on.
+
+- The choice is written with the first insert: `metadata.starAlertsOptIn` on
+  `user_favorite_events` and `user_favorite_players`; collections keep
+  `metadata.notificationsEnabled`.
+- **Only an explicit `false` is quiet.** A star with no choice (rows from
+  before, desktop, web, older builds) notifies as before. Every server read
+  of stars for pushes filters `metadata->'starAlertsOptIn' IS DISTINCT FROM
+  'false'`: `match_notification_favorite_players`,
+  `smart_event_stories_since`, `queue_smart_event_digests` (migration
+  `20261122200000_star_alert_choices.sql`) and `onesignal-dispatch`'s REST
+  favorite lookups. A new push path that reads stars must apply the same
+  filter.
+- An event star no longer turns `favorite_event_alerts` on by itself; only
+  Notify me does (`activateEventStarNotifications`).
+
 ## Starred smart event pushes (Trello #1411)
 
-A starred smart event sends at most two pushes a local day, on the rules the
+A starred smart event (not a Just star one) sends at most two pushes a local
+day, on the rules the
 Prep star proved: never while the reader sleeps, at least four hours apart,
 one smart event per push with the reader's others counted. The queue is
 `queue_smart_event_digests` (cron `0 */4 * * *`, migration
