@@ -604,6 +604,29 @@ class ScrollChromeController extends ChangeNotifier
   /// Brings the chrome back (a tab switch, a scroll to the top).
   void show({bool animate = true}) => animate ? _settleTo(1) : _setNow(1);
 
+  /// Brings the chrome back at once and stops the reader's coast where it
+  /// is, as a finger set on the list would: what a link or a push asks of
+  /// the screen it lands on or opens a page over. A coast left running
+  /// pauses under that page (a covered route's tickers are muted) and runs
+  /// on when the page closes: the list moves on under the reader and,
+  /// reading down, sends the bars away again. The list's offset is kept (a
+  /// coast caught in its end bounce is put back at that end).
+  void showAndHold() {
+    final list = _moving;
+    // The reader's own scroll, still moving: their coast (a coast whose
+    // first step has not come yet still reads as the finger's).
+    final readerScroll = _mover == _Mover.fling || _mover == _Mover.finger;
+    if (readerScroll &&
+        _live(list) &&
+        list!.hasContentDimensions &&
+        list.isScrollingNotifier.value) {
+      list.jumpTo(
+        list.pixels.clamp(list.minScrollExtent, list.maxScrollExtent),
+      );
+    }
+    show(animate: false);
+  }
+
   /// Sends the chrome away.
   void hide({bool animate = true}) {
     if (!_enabled || _holding) return;

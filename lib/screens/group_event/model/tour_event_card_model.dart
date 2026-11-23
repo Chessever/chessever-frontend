@@ -82,11 +82,10 @@ class GroupEventCardModel extends Equatable {
 
     // Use event name as ID for calendar events (name is primary key in DB)
     // Replace special characters to ensure valid ID format
-    final sanitizedName =
-        calendarEvent.name
-            .replaceAll(' ', '_')
-            .replaceAll(RegExp(r'[^\w\-]'), '')
-            .toLowerCase();
+    final sanitizedName = calendarEvent.name
+        .replaceAll(' ', '_')
+        .replaceAll(RegExp(r'[^\w\-]'), '')
+        .toLowerCase();
     final eventId = 'cal_event_$sanitizedName';
 
     return GroupEventCardModel(
@@ -117,8 +116,9 @@ class GroupEventCardModel extends Equatable {
     required DateTime? startDate,
     required DateTime? endDate,
     required List<String> liveGroupIds,
+    DateTime? now,
   }) {
-    final now = DateTime.now();
+    now ??= DateTime.now();
 
     // Check if it's a live event first (highest priority)
     // The provider only hands us IDs after verifying recent live-round activity,
@@ -168,14 +168,16 @@ class GroupEventCardModel extends Equatable {
 
   /// Returns a copy of this model with [tourEventCategory] re-derived against
   /// a fresh [liveGroupIds] list. Returns `this` when nothing changes, so
-  /// callers can cheaply skip state updates.
-  GroupEventCardModel withLiveIds(List<String> liveGroupIds) {
+  /// callers can cheaply skip state updates. Dates are read against [now]
+  /// (the clock by default).
+  GroupEventCardModel withLiveIds(List<String> liveGroupIds, {DateTime? now}) {
     final refreshed = getCategory(
       groupId: id,
       groupName: title,
       startDate: startDate,
       endDate: endDate,
       liveGroupIds: liveGroupIds,
+      now: now,
     );
     if (refreshed == tourEventCategory) return this;
     return GroupEventCardModel(
@@ -208,7 +210,8 @@ class GroupEventCardModel extends Equatable {
     endDate,
     location,
     searchTerms,
-    pinnedAt,    eventSource,
+    pinnedAt,
+    eventSource,
     isMajorUpcoming,
   ];
 

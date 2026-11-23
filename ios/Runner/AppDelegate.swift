@@ -205,13 +205,12 @@ import app_links
     continue userActivity: NSUserActivity,
     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
   ) -> Bool {
+    // Not called under the scene lifecycle (SceneDelegate gets the link).
+    // `super` hands the link to every plugin's application delegate,
+    // app_links included, which calls handleLink: forwarding it here too
+    // would deliver it to Dart twice.
     let isBrowsingWeb = userActivity.activityType == NSUserActivityTypeBrowsingWeb
     let hasWebpageURL = userActivity.webpageURL != nil
-
-    if isBrowsingWeb,
-       let url = userActivity.webpageURL {
-      AppLinks.shared.handleLink(url: url)
-    }
 
     let superResult = super.application(
       application,

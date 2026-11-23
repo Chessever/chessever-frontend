@@ -149,6 +149,25 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   /// opens with only the card the reader sees to build.
   bool _exportCardReady = false;
 
+  /// Where the quick action the reader last tapped stands on screen: the
+  /// iPad share popover rises from it ([shareOriginOf]), as every other
+  /// share in the app does, instead of from the screen's bottom centre,
+  /// where it covered the action row.
+  Rect? _actionOrigin;
+
+  /// The quick actions' keys by label, and the one last tapped: the share
+  /// re-reads that button's box when the sheet opens, since a GIF share
+  /// switches the overlay to its GIF layout (the row moves up) between the
+  /// tap and the sheet. [_actionOrigin] stands in while it is not drawn.
+  final Map<String, GlobalKey> _actionKeys = {};
+  GlobalKey? _lastActionKey;
+
+  Rect _shareOrigin() {
+    final current = _lastActionKey?.currentContext;
+    if (current != null) return shareOriginOf(current);
+    return _actionOrigin ?? shareScreenBottomOrigin();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -291,8 +310,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       files,
       subject: _shareSubject,
       text: _effectiveShareUrl,
-      // The overlay's share row sits at the bottom of the screen.
-      sharePositionOrigin: shareScreenBottomOrigin(),
+      // The tapped Share Image / Share GIF button (a GIF with no moves
+      // shares the image from the GIF button).
+      sharePositionOrigin: _shareOrigin(),
     );
   }
 
@@ -896,10 +916,18 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       ),
     );
 
+    final key = _actionKeys.putIfAbsent(label, GlobalKey.new);
     return Expanded(
-      child: GestureDetector(
-        onTap: effectiveOnTap,
-        child: enabled ? content : Opacity(opacity: 0.4, child: content),
+      child: Builder(
+        key: key,
+        builder: (buttonContext) => GestureDetector(
+          onTap: () {
+            _lastActionKey = key;
+            _actionOrigin = shareOriginOf(buttonContext);
+            effectiveOnTap();
+          },
+          child: enabled ? content : Opacity(opacity: 0.4, child: content),
+        ),
       ),
     );
   }

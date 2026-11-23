@@ -165,7 +165,8 @@ bool searchEventIsLive(GroupEventCardModel event, Iterable<String> liveIds) {
 /// have not started by [now] (nor gone live early by [liveIds]), each once,
 /// then soonest first (undated last, then by name) unless [soonestFirst] is
 /// off (the rest of Coming up keeps the view's strongest-first order). Each
-/// reads as it stands now ([GroupEventCardModel.withLiveIds]).
+/// reads as it stands at [now] ([GroupEventCardModel.withLiveIds]), the same
+/// clock that decided it has not started.
 List<GroupEventCardModel> searchUpcomingEvents(
   Iterable<GroupEventCardModel> events, {
   List<String> liveIds = const <String>[],
@@ -181,7 +182,7 @@ List<GroupEventCardModel> searchUpcomingEvents(
     if (searchEventIsLive(event, liveIds)) continue;
     final start = event.startDate;
     if (start != null && !at.isBefore(start)) continue;
-    byId.putIfAbsent(event.id, () => event.withLiveIds(liveIds));
+    byId.putIfAbsent(event.id, () => event.withLiveIds(liveIds, now: at));
   }
   if (!soonestFirst) return byId.values.toList();
   return byId.values.toList()..sort((a, b) {

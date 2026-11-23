@@ -55,6 +55,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1895,6 +1896,191 @@ void main() {
       expect(opened, isEmpty);
       expect(launched, isEmpty);
       expect(stack.names, ['/home_screen']);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The iPhone simulator run (2026-11-23): every universal link opened from
+  // outside reached Dart twice, and a /webview link stacked two WebViews
+  // (one Back left the second). Each delivery arrives as its own platform
+  // message, so the first has opened its page before the second comes.
+  group('one tap delivered twice opens once', () {
+    const premium =
+        'https://chessever.com/webview?url=https%3A%2F%2Fchessever.com%2Fpremium';
+    const pricing =
+        'https://chessever.com/webview?url=https%3A%2F%2Fchessever.com%2Fpricing';
+
+    Future<(WidgetRef, List<Widget>)> pumpWithPages(WidgetTester tester) async {
+      final opened = <Widget>[];
+      final ref = await pumpApp(
+        tester,
+        overrides: [
+          appDestinationPageNavigationProvider.overrideWithValue(
+            (_, page, __) => opened.add(page),
+          ),
+        ],
+      );
+      DeepLinkService.notifyAppReady();
+      return (ref, opened);
+    }
+
+    List<Uri> webViews(List<Widget> opened) => [
+      for (final page in opened) (page as AppWebViewScreen).url,
+    ];
+
+    testWidgets('the same /webview link delivered twice opens one WebView', (
+      tester,
+    ) async {
+      final (ref, opened) = await pumpWithPages(tester);
+      DeepLinkService.instance.handleDeepLink(
+        Uri.parse(premium),
+        navigatorKey,
+        ref,
+      );
+      await tester.pump();
+      expect(webViews(opened), [Uri.parse('https://chessever.com/premium')]);
+
+      DeepLinkService.instance.handleDeepLink(
+        Uri.parse(premium),
+        navigatorKey,
+        ref,
+      );
+      await settle(tester);
+      expect(webViews(opened), [Uri.parse('https://chessever.com/premium')]);
+    });
+
+    testWidgets('another link inside the window, and the same link after '
+        'it, still open', (tester) async {
+      final (ref, opened) = await pumpWithPages(tester);
+      var now = DateTime.utc(2026, 11, 23, 12);
+      DeepLinkService.instance.debugClock = () => now;
+      void tap(String link) => DeepLinkService.instance.handleDeepLink(
+        Uri.parse(link),
+        navigatorKey,
+        ref,
+      );
+
+      tap(premium);
+      await tester.pump();
+      now = now.add(const Duration(milliseconds: 300));
+      tap('$premium#again'); // the same link: the fragment never routes
+      await tester.pump();
+      tap(pricing);
+      await tester.pump();
+      now = now.add(DeepLinkService.outsideLinkRepeatWindow);
+      tap(pricing);
+      await settle(tester);
+
+      expect(webViews(opened), [
+        Uri.parse('https://chessever.com/premium'),
+        Uri.parse('https://chessever.com/pricing'),
+        Uri.parse('https://chessever.com/pricing'),
+      ]);
+    });
+
+    testWidgets('a game link and a collection link delivered twice open once '
+        'each', (tester) async {
+      final ref = await pumpApp(
+        tester,
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(_Games({'XBnzfSW7'})),
+          collectionsRepositoryProvider.overrideWithValue(
+            _OneCollection(
+              const Collection(
+                id: 'book-1',
+                slug: 'us-chess-championships',
+                kind: CollectionKind.book,
+                title: 'US Chess Championships',
+                access: CollectionAccess.free,
+              ),
+            ),
+          ),
+        ],
+      );
+      DeepLinkService.notifyAppReady();
+      Future<void> deliverTwice(String link) async {
+        DeepLinkService.instance.handleDeepLink(
+          Uri.parse(link),
+          navigatorKey,
+          ref,
+        );
+        await tester.pump();
+        DeepLinkService.instance.handleDeepLink(
+          Uri.parse(link),
+          navigatorKey,
+          ref,
+        );
+        await settle(tester);
+      }
+
+      await deliverTwice('https://chessever.com/games/XBnzfSW7');
+      expect(stack.names, ['/home_screen', isNull]);
+      expect(find.text('board XBnzfSW7'), findsOneWidget);
+
+      await deliverTwice(
+        'https://chessever.com/collections/us-chess-championships',
+      );
+      expect(stack.names, ['/home_screen', isNull]);
+      expect(pages.whereType<CollectionScreen>(), hasLength(1));
+    });
+
+    testWidgets('a cold start routes the launch link once; a replay right '
+        'after is dropped, the same link tapped later opens', (tester) async {
+      final (ref, opened) = await pumpWithPages(tester);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const methods = MethodChannel('com.llfbandit.app_links/messages');
+      const events = EventChannel('com.llfbandit.app_links/events');
+      // app_links' native side: getInitialLink answers the launch link, and
+      // the stream's first listener gets it again (never marked sent).
+      messenger.setMockMethodCallHandler(
+        methods,
+        (call) async => call.method == 'getInitialLink' ? premium : null,
+      );
+      // The stream is app_links' one broadcast stream (Supabase may already
+      // listen to it): a link arrives as a message on its channel.
+      messenger.setMockStreamHandler(
+        events,
+        MockStreamHandler.inline(onListen: (_, _) {}),
+      );
+      // Its controllers were made outside this test's clock: let the real
+      // event loop hand the message on.
+      Future<void> deliver(String link) => tester.runAsync(() async {
+        await messenger.handlePlatformMessage(
+          events.name,
+          const StandardMethodCodec().encodeSuccessEnvelope(link),
+          (_) {},
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(methods, null);
+        messenger.setMockStreamHandler(events, null);
+      });
+      final launch = DateTime.utc(2026, 11, 23, 12);
+      var now = launch;
+      DeepLinkService.instance.debugClock = () => now;
+
+      await DeepLinkService.instance.initialize(navigatorKey, ref);
+      await tester.pump();
+      expect(webViews(opened), [Uri.parse('https://chessever.com/premium')]);
+
+      // A replay right after subscribing (when this listener, not Supabase's,
+      // is the one app_links replays to) falls in the repeat window.
+      now = launch.add(const Duration(seconds: 1));
+      await deliver(premium);
+      await settle(tester);
+      expect(webViews(opened), [Uri.parse('https://chessever.com/premium')]);
+
+      // The same link tapped minutes later is a tap again, even when the
+      // replay never reached this listener (Supabase subscribed first).
+      now = launch.add(const Duration(minutes: 3));
+      await deliver(premium);
+      await settle(tester);
+      expect(webViews(opened), [
+        Uri.parse('https://chessever.com/premium'),
+        Uri.parse('https://chessever.com/premium'),
+      ]);
     });
   });
 }

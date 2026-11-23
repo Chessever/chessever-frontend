@@ -37,7 +37,7 @@ Line numbers are for this working tree. "Old builds" means every build up to
 
 | Transport | Native capture | Dart entry |
 |---|---|---|
-| Android App Links, iOS universal links, custom scheme `com.chessever.app://` | `app_links`; iOS `SceneDelegate.swift:26-41` | `DeepLinkService.initialize` (`deep_link_service.dart:658`), started in MyApp's post-frame callback, not the scheduler (`main.dart:1264-1282`) → `handleDeepLink` (`:687`) |
+| Android App Links, iOS universal links, custom scheme `com.chessever.app://` | `app_links`. iOS (`SceneDelegate.swift`): a cold start's URL and activity are forwarded from `willConnectTo`; a universal link while the app runs reaches app_links only through `FlutterSceneDelegate`'s fallback to the plugins' application delegates (no explicit forward since the 2026-11-23 fix: both together delivered every link twice); `openURLContexts` (custom scheme, files) still forwards, and Dart drops the second delivery when the fallback also ran | `DeepLinkService.initialize` (`deep_link_service.dart:699`), started in MyApp's post-frame callback, not the scheduler (`main.dart:1264-1282`) → `handleDeepLink` (`:754`). The same link delivered again within 2 s of its first delivery is one tap (rule 3); that also catches app_links' replay of the launch link on its stream when this listener is the first one (it is usually supabase_flutter's, subscribed earlier, which takes the replay). There is no open-ended skip: the launch link tapped again later opens |
 | OneLink (`get.chessever.com`, `chessever.onelink.me`) | AppsFlyer SDK | UDL `_handleUnifiedDeepLink` and GCD `payload['link']` (`appsflyer_service.dart:871-916`) → `handleDeepLink`. AppsFlyer starts in the `startup_deep_link_services` task, which now waits for a resume instead of being dropped (`main.dart:1282-1306`, `foreground_task_scheduler.dart:40-131`) |
 | iOS "Open in ChessEver" `.pgn` | scene `openURLContexts` → `file://` | `handleDeepLink` iOS file branch (`:773-797`) → `PgnFileIntakeService.handlePgnFilePath` |
 | Android `.pgn` VIEW / SEND / SEND_MULTIPLE | `receive_sharing_intent` (`AndroidManifest.xml:141-190`) | `PgnFileIntakeService.initialize` (`pgn_file_intake_service.dart:199`), same scheduled task as AppsFlyer |
@@ -95,15 +95,32 @@ inbound routing.
    (`player_selection_screen.dart:442`).
 3. **The newest tap wins.** Every path takes `++_destinationGeneration` and
    stops after each await if a newer tap arrived. The same game twice within
-   500 ms is one tap (`:1570-1580`).
+   500 ms is one tap (`_navigateToGame`). **One tap delivered twice opens
+   once:** a link from outside (`handleDeepLink`) equal to the previous one
+   (`inboundLinkKey`: scheme and host lower-cased, no trailing slash, no
+   fragment, the query as sent) within `outsideLinkRepeatWindow` (2 s) of
+   its first delivery is dropped, for every kind of link (a `/webview` link
+   stacked two WebViews, content routes were only absorbed by the newest-tap
+   rule). Another link always opens; the same link after the window opens
+   again. In-app links and pushes are not affected (pushes are deduped by
+   message id, `DirectPushTapRouter`).
 4. **Home is reused, never rebuilt.** `_ensureHomeRoot` (`:2489`) closes the
    pages over the registered home shell (`popToHomeShell`,
    `bottom_nav_bar.dart:381`) and builds `/home_screen` only when there is
    none, so HomeScreen's session count, ATT, Shorebird and review prompt do
    not re-run per tap. It always bumps `homeChromeRevealRequestProvider`
    (`bottom_nav_bar.dart:391`), which HomeScreen answers by showing the dock
-   even when the section did not change (`home_screen.dart:291`). The review
-   prompt never opens over a page a tap pushed (`home_screen.dart:152-154`).
+   even when the section did not change. So does every inbound link not
+   opened in place and every push, as it arrives (`_requestHomeChromeReveal`
+   in `_handleDeepLink` and `handleNotificationData`), since a board, an
+   event or a profile opens over Home without `_ensureHomeRoot`. HomeScreen
+   answers with `ScrollChromeController.showAndHold` (`home_screen.dart`):
+   the dock, the floating buttons and the header come back at once, and a
+   coast of the section's list stops where it is, as a finger on it would.
+   Left running, the coast paused under the page (a covered route's tickers
+   are muted) and ran on after Back: the list moved and, reading down, sent
+   the bars away again. The review prompt never opens over a page a tap
+   pushed (`home_screen.dart:152-154`).
 5. **Content pages.** A board replaces everything above the first route
    (`pushAndRemoveUntil(isFirst)`, `:1779`); an event does the same with
    `/tournament_detail_screen` (`:2896`). Collection, smart event, prep,
@@ -427,8 +444,11 @@ a path is in both) and update the "as of" date.
   bounce back into the app; Manage subscription, Privacy and Terms open on
   Android; a collection link on a signed-out cold start opens after sign-in;
   a link tapped during onboarding opens on Home afterwards; iPad share
-  sheets rise from the tapped button; an Inbox message's game and My Space
-  links open over the message and Back returns to it; a push tapped while
+  sheets rise from the tapped button; an Inbox message's game link and its
+  My Space sub-page links (`/app/my-space/prep`, `/library`, `/likes`) open
+  over the message and Back returns to it, while the My Space root
+  (`/app/my-space`) switches to Home › My Space and closes the message, as
+  every Home page does (section 3a; dock sections, section 5); a push tapped while
   Google's account picker is up (guest Sign up) lands after sign-in on the
   new Home, never on a sign-in page.
   Added by the second follow-up: (1) a push tapped while Google's or
@@ -462,6 +482,82 @@ a path is in both) and update the "as of" date.
   that registration (a fresh update, first push before the first launch
   with a session completes), it shows once. Sign out (detach) and it shows
   again.
+
+### Fourth follow-up: the simulator report (2026-11-23)
+
+The one-time iPhone and iPad simulator run (`/tmp/sim_checks`) found five
+things; each is fixed with a test that drives the real code, and each fix
+was reverted on its own and made its test fail.
+
+- **Every universal link reached Dart twice.** Cause: `SceneDelegate`
+  forwarded `scene(_:continue:)` to `AppLinks.shared.handleLink` after
+  `super`, and `super` (Flutter 3.38+, `FlutterSceneDelegate`) already hands
+  the activity to app_links through its application-delegate fallback (no
+  scene plugin claims it: AppsFlyer returns NO). The explicit forward is
+  gone (also from the unused `AppDelegate` path). `openURLContexts` keeps it:
+  google_sign_in's scene handler returns no BOOL, so the fallback there is
+  not certain. In Dart, `handleDeepLink` drops a repeat of the same link
+  within 2 s (rule 3), which also covers app_links' replay of the launch
+  link on its stream. A first version also skipped that replay with no time
+  limit; the replay goes to supabase_flutter's listener (subscribed first),
+  so the skip never cleared and the same link tapped minutes later did
+  nothing. It is gone. Tests: regressions "one tap delivered twice opens
+  once" (a `/webview` link twice: one WebView; another link inside the
+  window and the same link after it still open; a game and a collection
+  link twice: one board, one collection; a cold start: one WebView, a
+  replay a second later opens nothing, the same link three minutes later
+  opens a second WebView).
+- **Home's bars stayed away after Back.** A push or link that opened a page
+  while Home's dock, buttons and header were scrolled away left them away,
+  and the list moved. Cause: the game route never asked for the bars, and a
+  coast still running paused under the page and ran on after Back (moving
+  the list and hiding the bars again). Every inbound link and push now asks
+  as it arrives, and Home stops the coast (rule 4). Tests:
+  `home_screen_link_landing_test` "Back from the page a game push / a
+  collection push / an outside game link opened over Home finds its bars,
+  at the place the reader left" (real HomeScreen, a real fling, the push
+  or link mid-coast; the outside-link case fails without the link's
+  request for the bars).
+- **The device check's wording** (section 9 above) now matches sections 3a
+  and 5: the My Space root closes an Inbox message by design.
+- **iPad: Share Image and Share GIF on the board** rose from the screen's
+  bottom centre over the overlay's action row. They now anchor at the tapped
+  button (`shareOriginOf`, `share_card.dart`), as every other share does,
+  measured again when the sheet opens (the row can move on its spring
+  between the tap and the share). Test: `share_game_card_ipad_origin_test`
+  (the real overlay to share_plus' channel on an 834x1194 surface: the
+  origin is the button's box, within a few points of where it rests).
+- **iPad Today: an empty left column beside the first event block.** Cause:
+  the tablet paired events two to a row by index, and an event whose boards
+  came back empty hides itself, leaving its partner alone. The tablet now
+  pairs only the events that draw (`drawnForYouEvents`); the phone list is
+  unchanged. Test: `for_you_feed_stall_test` "the tablet pairs the sections
+  that draw".
+
+Device checks (not run here, by rule): (1) iOS, native change: with the app
+running, `xcrun simctl openurl booted https://chessever.com/webview?url=https://chessever.com/premium`
+logs one `DeepLinkService: Received link` and opens one WebView, one Back
+returns to Home; a game, event, profile and collection link log one line
+each; a cold start from a link opens it once, and the same link tapped a
+minute later opens it again; an AppsFlyer OneLink still
+attributes; a custom-scheme link (`com.chessever.app://collections/<slug>`)
+and an "Open in ChessEver" `.pgn` open once. (2) Scroll Today until the dock
+leaves, tap a game push (and a collection push) while the list still
+coasts: Back shows the dock, the Search button and the header, the list
+where it stopped. (3) iPad: board › three dots › Share Game › Share Image
+and Share GIF: the popover points at the tapped button. (4) iPad Today: no
+event block stands beside an empty column.
+
+Re-run on the simulators after the fixes (debug, iPhone and iPad,
+`/tmp/reverify`): a `/webview` link and a game link each logged one
+`Received link` line and opened one page, one Back returned to Home; a
+game push sent mid-coast and Back found the dock, Search button and header
+with the list where it stopped (offsets 279.2 and 1858.0, kept); Share
+Image and Share GIF on the iPad pointed at their buttons; iPad Today drew
+no empty column. That run predates removing the launch-replay skip and
+measuring the share anchor again at share time; both are covered by the
+tests above, and a cold start from a link followed by the same link a
+minute later is device check (1).
 
 ### Admin PR #19 rehearsal on production (2026-11-22)
 
@@ -570,7 +666,10 @@ Change these together, in the same commit or PR pair:
    app that must keep that page goes through `openLinkInPlace`; never
    `pushNamedAndRemoveUntil('/home_screen', ...)` directly, never ignore a
    chessever.com link, never route on a raw string id without
-   `_asNonEmptyString`.
+   `_asNonEmptyString`. Links from outside enter through `handleDeepLink`
+   (the duplicate-delivery rule); anything else the router routes as a link
+   (a push's URL, a held link) calls `_handleDeepLink`, which asks Home for
+   its bars unless the link opens in place.
 6. **Own web pages:** `openOwnWebPage`, never `LaunchMode.externalApplication`
    for chessever.com.
 7. **WebView:** outside links stay on the allowlist; only ChessEver-authored

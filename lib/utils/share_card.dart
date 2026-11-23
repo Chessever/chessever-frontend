@@ -215,12 +215,22 @@ Rect shareScreenBottomOrigin() {
   return Rect.fromLTWH(size.width / 2, size.height - 1, 1, 1);
 }
 
-void _rememberSharePreviewOrigin(BuildContext buttonContext) {
-  final box = buttonContext.findRenderObject();
-  _lastSharePreviewActionOrigin =
-      box is RenderBox && box.attached && box.hasSize
+/// The iPad share popover's anchor for a share started from the control
+/// [buttonContext] belongs to: that control's box on screen, else the
+/// bottom centre of the screen ([shareScreenBottomOrigin]). iPhone and
+/// Android ignore the anchor.
+Rect shareOriginOf(BuildContext buttonContext) =>
+    _globalRectOf(buttonContext) ?? shareScreenBottomOrigin();
+
+Rect? _globalRectOf(BuildContext context) {
+  final box = context.findRenderObject();
+  return box is RenderBox && box.attached && box.hasSize
       ? box.localToGlobal(Offset.zero) & box.size
       : null;
+}
+
+void _rememberSharePreviewOrigin(BuildContext buttonContext) {
+  _lastSharePreviewActionOrigin = _globalRectOf(buttonContext);
 }
 
 @visibleForTesting

@@ -97,6 +97,36 @@ Future<void> _openForYouGame(
       );
 }
 
+/// Whether Today's section for [event] has hidden itself: its boards were
+/// read ([snapshots]) and there are none. One still loading is drawn.
+bool _forYouEventHidden(
+  GroupEventCardModel event,
+  Map<String, ForYouEventGamesSnapshot> snapshots,
+) => snapshots[event.id]?.hasGames == false;
+
+/// Today's [events] whose sections draw, in order: what the tablet pairs two
+/// to a row. Sections that hid themselves are left out.
+@visibleForTesting
+List<GroupEventCardModel> drawnForYouEvents(
+  List<GroupEventCardModel> events,
+  Map<String, ForYouEventGamesSnapshot> snapshots,
+) => [
+  for (final event in events)
+    if (!_forYouEventHidden(event, snapshots)) event,
+];
+
+/// The ids of [events] whose sections hid themselves, as one value that
+/// compares equal while that set holds: a live board updating a snapshot
+/// never rebuilds the list, a section hiding (or coming back) does.
+@visibleForTesting
+String hiddenForYouEventsKey(
+  List<GroupEventCardModel> events,
+  Map<String, ForYouEventGamesSnapshot> snapshots,
+) => [
+  for (final event in events)
+    if (_forYouEventHidden(event, snapshots)) event.id,
+].join('\n');
+
 /// For You tab widget - displays events with their top 4 games
 ///
 /// KEY DESIGN:
@@ -451,6 +481,22 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       return _buildEmptyState();
     }
 
+    // The tablet pairs sections two to a row, so a section that hid itself
+    // must not hold a slot: the one beside it stood alone, with an empty
+    // column for its whole height (the first event block on iPad). The
+    // phone stacks them, where a hidden section leaves no gap.
+    final hiddenKey = ref.watch(
+      forYouTopGamesSnapshotCacheProvider.select(
+        (snapshots) => hiddenForYouEventsKey(events, snapshots),
+      ),
+    );
+    final pairedEvents = hiddenKey.isEmpty
+        ? events
+        : drawnForYouEvents(
+            events,
+            ref.read(forYouTopGamesSnapshotCacheProvider),
+          );
+
     // A list laid out short of its end (sections that hid themselves, a
     // first page smaller than the screen) has no scroll and no change of
     // size to page on: look once it is laid out, once per list.
@@ -478,7 +524,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
             controller: widget.scrollController,
             layout: useColumns,
             child: _buildEventsList(
-              events,
+              useColumns ? pairedEvents : events,
               useColumns: useColumns,
               showNativeAd: showNativeAd,
               viewMode: viewMode,
@@ -689,13 +735,14 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
   }) {
+    // The ad rides under the first section drawn: none drawn yet (every
+    // loaded section hid itself, a page still to come), no ad row.
+    final withAd = showNativeAd && events.isNotEmpty;
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
 
     // Number of event-pair rows (ceil division)
-    final rowCount = showNativeAd
-        ? 1 + events.length ~/ 2
-        : (events.length + 1) ~/ 2;
+    final rowCount = withAd ? 1 + events.length ~/ 2 : (events.length + 1) ~/ 2;
     // +1 for premium cards at top, +1 for loading indicator if showing.
     final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
 
@@ -725,7 +772,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           }
 
           final rowIndex = index - 1;
-          if (showNativeAd && rowIndex == 0) {
+          if (withAd && rowIndex == 0) {
             return _inGutter(
               horizontalPadding,
               Column(
@@ -737,7 +784,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
               ),
             );
           }
-          final i = showNativeAd ? 1 + (rowIndex - 1) * 2 : rowIndex * 2;
+          final i = withAd ? 1 + (rowIndex - 1) * 2 : rowIndex * 2;
           final event1 = events[i];
           final event2 = i + 1 < events.length ? events[i + 1] : null;
 

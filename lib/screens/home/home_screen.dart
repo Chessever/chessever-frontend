@@ -287,11 +287,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     });
     // A link or push that lands on the section already open changes no
     // section, so it asks for the bars by itself: the reader must never
-    // arrive on Home with its dock scrolled away.
+    // arrive on Home with its dock scrolled away. It asks too when it opens
+    // a page over Home, so Back from that page finds the bars, and the
+    // list's coast stops where it is (as a tap on it would): left running,
+    // it paused under the page and ran on once Back closed it, moving the
+    // list and sending the bars away again.
     ref.listen<int>(homeChromeRevealRequestProvider, (_, _) {
-      _chromeFor(
-        ref.read(selectedBottomNavBarItemProvider),
-      ).show(animate: false);
+      _chromeFor(ref.read(selectedBottomNavBarItemProvider)).showAndHold();
     });
     ref.listen<List<BottomNavBarItem>>(visibleBottomNavItemsProvider, (
       _,

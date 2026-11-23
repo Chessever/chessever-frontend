@@ -769,6 +769,91 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // The iPhone simulator run (2026-11-23): the reader read down Today, the
+  // dock, buttons and header stepped away, and a push opened the board (or
+  // a collection) while the list still coasted. Back found Home with its
+  // bars still away, and the list moved on: the coast, paused under the
+  // page, ran on once it closed.
+  for (final entry in <String, (void Function(), Finder)>{
+    'a game push': (
+      () => DeepLinkService.instance.ingestNotificationData({
+        'type': 'game_started',
+        'game_id': 'XBnzfSW7',
+      }),
+      find.text('board XBnzfSW7'),
+    ),
+    'a collection push': (
+      () => DeepLinkService.instance.ingestNotificationData({
+        'type': 'collection_games_added',
+        'collection_slug': 'us-chess-championships',
+      }),
+      find.text('page CollectionScreen'),
+    ),
+    // A link from outside the app (a shared game link tapped in Messages):
+    // the same bar request as a push.
+    'an outside game link': (
+      () => DeepLinkService.instance.handleDeepLink(
+        Uri.parse('https://chessever.com/games/XBnzfSW7'),
+        navigatorKey,
+        appRef,
+      ),
+      find.text('board XBnzfSW7'),
+    ),
+  }.entries) {
+    testWidgets('Back from the page ${entry.key} opened over Home finds its '
+        'bars, at the place the reader left', (tester) async {
+      await pumpHome(
+        tester,
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(_Games({'XBnzfSW7'})),
+          roundRepositoryProvider.overrideWithValue(_Rounds()),
+          collectionsRepositoryProvider.overrideWithValue(_OneCollection()),
+        ],
+      );
+      DeepLinkService.notifyAppReady();
+      final today = find.byKey(const ValueKey('section-forYou'));
+      final list = tester
+          .state<ScrollableState>(
+            find.descendant(of: today, matching: find.byType(Scrollable)),
+          )
+          .position;
+
+      // The reader flicks down Today and lets go: the list coasts on, and
+      // the bars have stepped away. (The stand-in page has no top bar for
+      // the scroll to carry, so the section's chrome is put where reading
+      // down leaves it.)
+      await tester.fling(today, const Offset(0, -400), 2400);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      (tester.widget<HomeNavDock>(find.byType(HomeNavDock)).chrome!
+              as ScrollChromeController)
+          .hide(animate: false);
+      await tester.pump();
+      expect(dock(tester), 0);
+      expect(list.isScrollingNotifier.value, isTrue, reason: 'still coasting');
+      final left = list.pixels;
+
+      entry.value.$1();
+      await settle(tester);
+      expect(entry.value.$2, findsOneWidget);
+
+      await back(tester);
+      // Long past where the coast would have ended had it run on.
+      await tester.pump(const Duration(seconds: 3));
+      expect(stack.names, ['/home_screen']);
+      expect(dock(tester), 1, reason: 'Home comes back with its dock');
+      expect(
+        tester.widget<SlidingFabs>(find.byType(SlidingFabs)).controller!.value,
+        1,
+        reason: 'and its buttons',
+      );
+      expect(list.pixels, left, reason: 'the list is where the reader left');
+      await finish(tester);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   testWidgets("a game push during a guest's Google sign-in waits for the Home "
       'sign-in builds (O17)', (tester) async {
     await pumpHome(

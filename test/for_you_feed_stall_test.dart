@@ -84,6 +84,22 @@ class _GameRepository implements GameRepository {
       throw StateError('Unexpected game call: ${invocation.memberName}');
 }
 
+/// The first event asked about has no boards (its section hides itself);
+/// every other event has one.
+class _FirstEventEmptyGames extends _GameRepository {
+  @override
+  Future<Map<String, List<Games>>> getForYouTopGamesByEventIds({
+    required List<String> eventIds,
+    int boardsPerEvent = 4,
+  }) async {
+    calls++;
+    return {
+      for (final (index, eventId) in eventIds.indexed)
+        eventId: index == 0 ? const <Games>[] : [_game('game-$eventId')],
+    };
+  }
+}
+
 class _FavoritePlayers extends FavoritePlayersNotifierNew {
   @override
   Future<List<FavoritePlayer>> build() async => [];
@@ -127,8 +143,8 @@ GroupBroadcast _broadcast(String id) => GroupBroadcast(
   search: const [],
 );
 
-Games _game() => Games(
-  id: 'game-1',
+Games _game([String id = 'game-1']) => Games(
+  id: id,
   roundId: 'round-1',
   roundSlug: 'round-1',
   tourId: 'tour-1',
@@ -200,11 +216,13 @@ final _todayKey = GlobalKey();
 /// Pumps the real Today feed as the visible For You page.
 Future<void> _pumpToday(
   WidgetTester tester,
-  ProviderContainer container,
-) async {
-  // A phone viewport, so ResponsiveHelper picks the phone list layout.
+  ProviderContainer container, {
+  Size size = const Size(393, 852),
+}) async {
+  // A phone viewport by default, so ResponsiveHelper picks the phone list
+  // layout; a tablet one picks the two-column layout.
   tester.view
-    ..physicalSize = const Size(393 * 3, 852 * 3)
+    ..physicalSize = size * 3
     ..devicePixelRatio = 3;
   addTearDown(tester.view.reset);
   final scrollController = ScrollController();
@@ -667,6 +685,58 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     },
   );
+
+  testWidgets('the tablet pairs the sections that draw: none stands alone '
+      'beside an empty column', (tester) async {
+    // iPad Today (simulator run, 2026-11-23): the first event's boards came
+    // back empty, its section hid itself in the left column, and the event
+    // paired with it stood alone in the right one, an empty column beside
+    // it for its whole height.
+    final container = _container(
+      broadcasts: _BroadcastRepository()
+        ..responses.add(
+          Future.value([
+            _broadcast('event-1'),
+            _broadcast('event-2'),
+            _broadcast('event-3'),
+          ]),
+        ),
+      games: _FirstEventEmptyGames(),
+      clock: _WallClock(),
+      extra: _todayVisible(),
+    );
+
+    await _pumpToday(tester, container, size: const Size(834, 1194));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final events = container.read(forYouEventsProvider).events;
+    expect(events, hasLength(3));
+    final snapshots = container.read(forYouTopGamesSnapshotCacheProvider);
+    expect(snapshots[events[0].id]?.hasGames, isFalse, reason: 'first hides');
+    expect(snapshots[events[1].id]?.hasGames, isTrue);
+    expect(snapshots[events[2].id]?.hasGames, isTrue);
+
+    Rect card(String id) => tester.getRect(
+      find.byWidgetPredicate(
+        (w) => w is EventCard && w.tourEventCardModel.id == id,
+      ),
+    );
+    expect(find.byType(EventCard), findsNWidgets(2));
+    final left = card(events[1].id);
+    final right = card(events[2].id);
+    expect(left.top, right.top, reason: 'one row');
+    expect(left.right, lessThan(right.left), reason: 'side by side');
+    expect(
+      left.left,
+      lessThan(834 / 2 - left.width / 2),
+      reason: 'the first drawn section opens the left column',
+    );
+
+    await tester.pump(const Duration(seconds: 20));
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump(const Duration(seconds: 1));
+  });
 
   testWidgets('Today never lists a starred smart event', (tester) async {
     // Starred from My Space, its only home.

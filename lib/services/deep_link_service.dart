@@ -319,6 +319,26 @@ bool isWebOnlyChesseverPage(Uri uri) {
   return parts.length == 3 && parts[2] == 'teams';
 }
 
+/// What makes two links from outside the app the same tap
+/// ([DeepLinkService.handleDeepLink]): scheme and host in lower case, the
+/// path without a trailing slash, the query as sent. The fragment never
+/// routes, so it is left out.
+@visibleForTesting
+String inboundLinkKey(Uri uri) {
+  var path = uri.path;
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.substring(0, path.length - 1);
+  }
+  final key = StringBuffer()
+    ..write(uri.scheme.toLowerCase())
+    ..write('://')
+    ..write(uri.host.toLowerCase());
+  if (uri.hasPort) key.write(':${uri.port}');
+  key.write(path);
+  if (uri.hasQuery) key.write('?${uri.query}');
+  return key.toString();
+}
+
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
   DeepLinkService._();
@@ -367,6 +387,27 @@ class DeepLinkService {
 
   // Debounce duration to prevent duplicate link events
   static const _debounceDuration = Duration(milliseconds: 500);
+
+  /// The last link from outside the app ([handleDeepLink]) and when it
+  /// first came. One tap can reach Dart twice: on iOS the scene delegate
+  /// forwarded universal links to app_links beside Flutter's own fallback
+  /// into it (installed builds do; custom-scheme and file links still may),
+  /// and on a cold start app_links replays the launch link on its stream
+  /// after getInitialLink returned it. A second delivery of the same link
+  /// inside [outsideLinkRepeatWindow] is that tap again, whatever it opens:
+  /// a WebView link used to push a second page.
+  String? _lastOutsideLinkKey;
+  DateTime? _lastOutsideLinkAt;
+
+  /// How close two deliveries of one link from outside have to be to count
+  /// as one tap. Nobody leaves the app and taps the same link again this
+  /// fast; a tap after it opens the link again, and another link always
+  /// opens.
+  static const outsideLinkRepeatWindow = Duration(seconds: 2);
+
+  /// Test seam: the clock [outsideLinkRepeatWindow] is measured on.
+  @visibleForTesting
+  DateTime Function() debugClock = DateTime.now;
 
   /// Timeout for individual network fetches (game, event).
   static const _fetchTimeout = Duration(seconds: 10);
@@ -680,6 +721,11 @@ class DeepLinkService {
     // Listen for links while app is running (warm start / already open)
     _subscription = _appLinks.uriLinkStream.listen(
       (uri) {
+        // A replay of the launch link right after subscribing (app_links
+        // replays it to its first listener, which in this app is usually
+        // supabase_flutter's) is caught by handleDeepLink's repeat window,
+        // since the launch link above went through it. No open-ended skip:
+        // the same link tapped again later must open.
         _addBreadcrumb(
           'warm-start link received',
           data: _sanitizedUriData(uri),
@@ -695,11 +741,32 @@ class DeepLinkService {
 
   /// Parse and handle an incoming deep link: a universal link, an App Link
   /// or a custom-scheme link from outside the app.
+  ///
+  /// The same link delivered again within [outsideLinkRepeatWindow] of its
+  /// first delivery is the same tap and opens nothing more, for every kind
+  /// of link (see [_lastOutsideLinkKey]).
   void handleDeepLink(
     Uri uri,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
-  ) => _handleDeepLink(uri, navigatorKey, ref, trusted: false);
+  ) {
+    final key = inboundLinkKey(uri);
+    final now = debugClock();
+    final last = _lastOutsideLinkAt;
+    if (key == _lastOutsideLinkKey &&
+        last != null &&
+        now.difference(last) < outsideLinkRepeatWindow) {
+      debugPrint('DeepLinkService: Same link delivered twice, ignored: $uri');
+      _addBreadcrumb(
+        'duplicate link delivery ignored',
+        data: _sanitizedUriData(uri),
+      );
+      return;
+    }
+    _lastOutsideLinkKey = key;
+    _lastOutsideLinkAt = now;
+    _handleDeepLink(uri, navigatorKey, ref, trusted: false);
+  }
 
   /// [trusted] is false for links from outside the app, which anyone can
   /// write: their `/webview?url=` opens only ChessEver's own pages in the
@@ -720,6 +787,9 @@ class DeepLinkService {
   }) {
     debugPrint('DeepLinkService: Received link: $uri');
     _inbound = inPlace ? null : _InboundDestination.link(uri, trusted: trusted);
+    // A link over a page in the app returns to that page; every other one
+    // may open a page over Home, which must show its bars on the way back.
+    if (!inPlace) _requestHomeChromeReveal(ref);
 
     if (isWebViewLink(uri)) {
       final target = webViewLinkTarget(uri);
@@ -1936,6 +2006,7 @@ class DeepLinkService {
     final data = unwrapOneSignalPush(raw);
     final generation = ++_destinationGeneration;
     _inbound = _InboundDestination.push(Map<String, dynamic>.of(data));
+    _requestHomeChromeReveal(ref);
     if (data['type'] == 'favorite_player_news') {
       final article = favoritePlayerNewsDestination(data);
       if (article == null) return;
@@ -2051,7 +2122,9 @@ class DeepLinkService {
                   'collections',
                 }.contains(legacyPath.first));
         if (nativeHost && nativePath) {
-          handleDeepLink(portalUrl, navigatorKey, ref);
+          // A push's own URL, routed as an outside link would be but never
+          // taken for a second delivery of one (pushes are deduped by id).
+          _handleDeepLink(portalUrl, navigatorKey, ref, trusted: false);
         } else {
           unawaited(
             _navigateToWebView(
@@ -2490,12 +2563,21 @@ class DeepLinkService {
       navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
     }
     final ref = _routerRef;
-    if (ref != null) {
-      try {
-        ref.read(homeChromeRevealRequestProvider.notifier).state++;
-      } catch (_) {
-        // A ref whose scope is gone: nothing to reveal.
-      }
+    if (ref != null) _requestHomeChromeReveal(ref);
+  }
+
+  /// Asks the home shell for its bars ([homeChromeRevealRequestProvider]):
+  /// a link or push is landing on Home, or opening a page over it. The
+  /// shell shows them at once and stops a coast of its list where it is
+  /// (HomeScreen), so Back from that page finds Home with its dock, buttons
+  /// and header, at the place the reader left. A coast left running pauses
+  /// under the page and runs on when it closes, carrying the list on and,
+  /// reading down, sending the bars away again.
+  void _requestHomeChromeReveal(WidgetRef ref) {
+    try {
+      ref.read(homeChromeRevealRequestProvider.notifier).state++;
+    } catch (_) {
+      // A ref whose scope is gone: nothing to reveal.
     }
   }
 
@@ -3631,6 +3713,9 @@ class DeepLinkService {
     debugPageOverride = null;
     _lastHandledGameId = null;
     _lastHandledTime = null;
+    _lastOutsideLinkKey = null;
+    _lastOutsideLinkAt = null;
+    debugClock = DateTime.now;
     _appReadyCompleter = Completer<void>();
   }
 
