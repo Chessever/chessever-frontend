@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart'
     show showStartScreenPicker;
+import 'package:chessever2/screens/stories/story_row_access.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// the latest choice whichever way it was made, and Today springs the row
 /// in or out the moment it changes here. Signed in, the choice is kept on
 /// the server with the reader's other settings, so every device follows it.
+/// Off is Premium ([mayChooseStoryRowMode]); On is free.
 class StoryRowSettingsBody extends ConsumerWidget {
   const StoryRowSettingsBody({super.key});
 
@@ -29,10 +31,19 @@ class StoryRowSettingsBody extends ConsumerWidget {
             context: context,
             title: 'Collection stories',
             options: StoryRowMode.values,
-            label: (mode) => mode.label,
+            label: (option) => option.label,
             selected: mode,
           );
-          if (picked == null || picked == mode) return;
+          if (!context.mounted || picked == null || picked == mode) return;
+          // Off goes through the subscription flow for a reader without
+          // Premium; On is free.
+          final allowed = await mayChooseStoryRowMode(
+            context,
+            ref,
+            picked,
+            returnTo: 'settings',
+          );
+          if (!context.mounted || !allowed) return;
           await ref.read(storyRowPrefsProvider.notifier).setMode(picked);
           HapticFeedbackService.success();
         },

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
@@ -18,6 +19,7 @@ import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart'
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
+import 'package:chessever2/screens/stories/story_row_access.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/screens/stories/story_viewer.dart';
@@ -30,7 +32,8 @@ import 'package:chessground/chessground.dart'
 import 'package:dartchess/dartchess.dart'
     show NormalMove, Position, Rule, Setup, Side, Square, makeLegalMoves;
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart' show CustomSemanticsAction;
+import 'package:flutter/semantics.dart'
+    show CustomSemanticsAction, SemanticsAction;
 import 'package:flutter/services.dart' show SystemChannels;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -287,6 +290,14 @@ class _CollectionPage extends StatelessWidget {
   );
 }
 
+class _StorySubscription extends StateNotifier<SubscriptionState>
+    implements SubscriptionNotifier {
+  _StorySubscription(bool subscribed)
+    : super(SubscriptionState(isSubscribed: subscribed));
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Future<_Harness> _pumpRow(
   WidgetTester tester, {
   required List<Collection> collections,
@@ -294,6 +305,7 @@ Future<_Harness> _pumpRow(
   String? seen,
   _RowStore? rowStore,
   bool light = false,
+  bool subscribed = true,
   Completer<void>? openHold,
   List<Override> overrides = const [],
   Widget? below,
@@ -308,6 +320,7 @@ Future<_Harness> _pumpRow(
   final sounds = _Sounds();
   final container = ProviderContainer(
     overrides: [
+      subscriptionProvider.overrideWith((_) => _StorySubscription(subscribed)),
       storyCollectionsProvider.overrideWith(
         (ref) async => List.of(collections),
       ),
@@ -1106,6 +1119,123 @@ void main() {
       of: find.byKey(const ValueKey('settings_story_row')),
       matching: find.text(value),
     );
+
+    testWidgets('a free reader turning the row Off goes through the '
+        'subscription flow: backed out, the row stays On; with Premium it '
+        'turns Off, and its Undo is free', (tester) async {
+      final semantics = tester.ensureSemantics();
+      const slugs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+      final asked = <String>[];
+      var entitle = false;
+      final harness = await _pumpRow(
+        tester,
+        collections: [for (final s in slugs) _collection(s)],
+        batches: {for (final s in slugs) s: _batch(s, 2)},
+        below: const StoryRowSettingsBody(),
+        subscribed: false,
+        overrides: [
+          storyRowPaywallProvider.overrideWithValue((
+            context,
+            ref, {
+            required returnTo,
+          }) async {
+            asked.add(returnTo);
+            return entitle;
+          }),
+        ],
+      );
+      expect(settingValue('On'), findsOneWidget);
+      expect(rowHeight(tester), greaterThan(0));
+
+      // The pull still arms and lets go; the flow comes up, and backing out
+      // of it changes nothing.
+      await pullPastStart(tester);
+      await frames(tester);
+      expect(asked, ['home']);
+      expect(harness.prefs.mode, StoryRowMode.on);
+      expect(settingValue('On'), findsOneWidget);
+      expect(find.text(kStoryRowHiddenMessage), findsNothing);
+      expect(rowHeight(tester), greaterThan(0));
+
+      // The row's accessibility action asks the same way.
+      const hide = CustomSemanticsAction(label: 'Hide collection stories');
+      final node = tester.getSemantics(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              (widget.properties.customSemanticsActions?.containsKey(hide) ??
+                  false),
+        ),
+      );
+      node.owner!.performAction(
+        node.id,
+        SemanticsAction.customAction,
+        CustomSemanticsAction.getIdentifier(hide),
+      );
+      await frames(tester);
+      expect(asked, ['home', 'home']);
+      expect(harness.prefs.mode, StoryRowMode.on);
+
+      // Premium bought in the flow: Off, as for a subscriber.
+      entitle = true;
+      await pullPastStart(tester);
+      await tester.pump();
+      expect(asked, ['home', 'home', 'home']);
+      expect(harness.prefs.mode, StoryRowMode.off);
+      expect(settingValue('Off'), findsOneWidget);
+      expect(find.text(kStoryRowHiddenMessage), findsOneWidget);
+      await frames(tester);
+      expect(rowHeight(tester), 0);
+
+      // On again is free: no flow.
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      await _run(tester, const Duration(milliseconds: 1200));
+      expect(harness.prefs.mode, StoryRowMode.on);
+      expect(asked, hasLength(3));
+      expect(rowHeight(tester), greaterThan(0));
+      await tester.pump(const Duration(seconds: 5));
+      semantics.dispose();
+    });
+
+    testWidgets('Settings asks a free reader for Premium before Off, never '
+        'before On', (tester) async {
+      final asked = <String>[];
+      final harness = await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {'a': _batch('a', 2)},
+        below: const StoryRowSettingsBody(),
+        subscribed: false,
+        overrides: [
+          storyRowPaywallProvider.overrideWithValue((
+            context,
+            ref, {
+            required returnTo,
+          }) async {
+            asked.add(returnTo);
+            return false;
+          }),
+        ],
+      );
+      Future<void> pick(String value) async {
+        await tester.tap(settingValue(harness.prefs.mode.label));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(value).last);
+        await tester.pumpAndSettle();
+      }
+
+      await pick('Off');
+      expect(asked, ['settings']);
+      expect(harness.prefs.mode, StoryRowMode.on);
+      await harness.container
+          .read(storyRowPrefsProvider.notifier)
+          .setMode(StoryRowMode.off);
+      await tester.pumpAndSettle();
+      await pick('On');
+      expect(asked, ['settings']);
+      expect(harness.prefs.mode, StoryRowMode.on);
+    });
 
     testWidgets('a pull past the first circle turns Collection stories Off: '
         'saved, the row gone, Settings saying Off at once; Undo turns it On '

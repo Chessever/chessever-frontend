@@ -4,7 +4,6 @@ import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
-import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/story_row_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -192,13 +191,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     children: [
                       const SettingsAppearanceSection(),
                       SizedBox(height: 18.h),
+                      AutoPinSettingsBody(trackPersist: _trackPersist),
+                      SizedBox(height: 18.h),
                       const StartScreenSettingsBody(),
                       SizedBox(height: 18.h),
                       const StoryRowSettingsBody(),
-                      SizedBox(height: 24.h),
-                      const SectionLabel(title: 'Auto Pin'),
-                      SizedBox(height: 12.h),
-                      AutoPinSettingsBody(trackPersist: _trackPersist),
                       SizedBox(height: 18.h),
                       _CollapsibleSection(
                         title: 'Botvinnik',

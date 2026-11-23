@@ -650,6 +650,8 @@ Future<ProviderContainer> _pumpRowAndSetting(
       favoritePlayersProviderNew.overrideWith(_NoFavorites.new),
       countryDropdownProvider.overrideWith((ref) => _Country()),
       currentUserProvider.overrideWithValue(null),
+      // Pulling the row Off is Premium: this reader has it.
+      subscriptionProvider.overrideWith((_) => _Subscription()),
     ],
   );
   addTearDown(container.dispose);

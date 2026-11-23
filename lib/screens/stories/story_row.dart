@@ -10,6 +10,7 @@ import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart'
     show LichessMoveAnnotationType;
 import 'package:chessever2/screens/stories/story_models.dart';
+import 'package:chessever2/screens/stories/story_row_access.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/screens/stories/story_viewer.dart';
@@ -601,7 +602,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     _pointer = null;
     final hide = _armed;
     _releasePull();
-    if (hide) _hide();
+    if (hide) unawaited(_hide());
   }
 
   void _onPointerCancel(PointerEvent event) {
@@ -612,8 +613,18 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
 
   /// Turns the row Off: the one choice Settings › Customization ›
   /// Collection stories shows, changed here, with Undo turning it On again.
-  void _hide() {
+  /// Off is Premium, as in Settings: a reader without it goes through the
+  /// subscription flow first, and backing out leaves the row On. Undo (On)
+  /// is free.
+  Future<void> _hide() async {
     if (!mounted) return;
+    final allowed = await mayChooseStoryRowMode(
+      context,
+      ref,
+      StoryRowMode.off,
+      returnTo: 'home',
+    );
+    if (!mounted || !allowed) return;
     unawaited(HapticFeedbackService.success());
     final notifier = ref.read(storyRowPrefsProvider.notifier);
     unawaited(notifier.setMode(StoryRowMode.off));
@@ -751,7 +762,8 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     return Semantics(
       container: true,
       customSemanticsActions: {
-        const CustomSemanticsAction(label: 'Hide collection stories'): _hide,
+        const CustomSemanticsAction(label: 'Hide collection stories'): () =>
+            unawaited(_hide()),
       },
       child: Padding(
         padding: EdgeInsets.only(bottom: StoryRowMetrics.bottom),

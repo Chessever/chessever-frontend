@@ -4,6 +4,7 @@ import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/home_customization_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -49,7 +50,19 @@ class BotvinnikSettingsBody extends ConsumerWidget {
                 // Same thumb and track as the Auto Pin switches above it.
                 thumbColor: settingsSwitchThumb(context),
                 trackColor: settingsSwitchTrack(context),
-                onChanged: (value) {
+                onChanged: (value) async {
+                  // Hiding Botvinnik is Home customization: a reader without
+                  // Premium goes through the subscription flow first, and
+                  // backing out leaves it on. Turning it on is free.
+                  if (!value) {
+                    final allowed = await ensureHomeCustomizationAccess(
+                      context,
+                      ref,
+                      featureId: 'hide_botvinnik',
+                      returnTo: 'settings',
+                    );
+                    if (!context.mounted || !allowed) return;
+                  }
                   trackPersist(
                     ref
                         .read(botvinnikEnabledProvider.notifier)
