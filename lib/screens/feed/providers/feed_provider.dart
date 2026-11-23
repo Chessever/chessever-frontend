@@ -811,17 +811,24 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (running != null) return running;
     Future<void> guard(Future<void> Function() run) =>
         run().timeout(_sourceTimeout, onTimeout: () {});
-    final public = Future.wait([
+    // Each is a real Future<void>, not a Future<List<void>> typed as one:
+    // `.timeout(onTimeout: () {})` on the latter throws a TypeError, which
+    // failed the Feed's first load whenever its pool was still empty.
+    final Future<void> public = Future.wait([
       if (!_currentExhausted) guard(() => _fetchCurrent(generation)),
       if (!_topExhausted) guard(() => _fetchTop(generation)),
-    ]);
+    ]).then<void>((_) {});
     final favorites = _favoritesExhausted
         ? Future<void>.value()
         : guard(() => _fetchFavorites(generation));
-    final others = Future.wait([
+    final Future<void> others = Future.wait([
       if (!_likedExhausted) guard(() => _fetchLiked(generation)),
-    ]);
-    final all = Future.wait([public, favorites, others]);
+    ]).then<void>((_) {});
+    final Future<void> all = Future.wait([
+      public,
+      favorites,
+      others,
+    ]).then<void>((_) {});
     final reads = (all: all, public: public, favorites: favorites);
     _inFlight = reads;
     all.whenComplete(() {
