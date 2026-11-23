@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart'
     show BoardViewToggleButton;
-import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
@@ -525,8 +524,6 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen>
                           ),
                         ],
                       ),
-                      // The way back while the header is folded away.
-                      PageBackFloat(controller: _chrome),
                     ],
                   ),
                 ),
