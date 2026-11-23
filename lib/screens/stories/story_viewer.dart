@@ -20,6 +20,7 @@ import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -108,6 +109,77 @@ final storyEventOpenerProvider = Provider<StoryEventOpener>(
   (ref) => DeepLinkService.instance.openEventForShortcut,
 );
 
+/// The Premium chooser (Upgrade / Watch ad) for [collection], as a
+/// collection's own game opens with it: true once the reader may go on (a
+/// purchase, or a watched ad's rewarded access). A guest meets the same
+/// chooser; Upgrade asks them to sign in before the paywall. Tests hand in
+/// their own.
+typedef StoryPremiumChooser =
+    Future<bool> Function(BuildContext context, Collection collection);
+
+final storyPremiumChooserProvider = Provider<StoryPremiumChooser>(
+  (ref) =>
+      (context, collection) => ensurePremiumGameAccess(
+        context,
+        featureId: collectionPaywallFeatureId(collection.kind),
+        returnTo: kCollectionPaywallReturnTo,
+      ),
+);
+
+/// Whether the reader may open [collection]'s page from one of its stories
+/// (View collection, a book's header, an event's Go to event). The stories
+/// themselves are the same for every reader; opening a Premium collection
+/// is what asks a reader without Premium for it, with the same chooser its
+/// games open with. Missed chances opens Reports, which anyone may browse.
+Future<bool> ensureStoryCollectionAccess(
+  BuildContext context,
+  WidgetRef ref,
+  Collection collection,
+) async {
+  if (isMissedChances(collection) || !collection.isPremium) return true;
+  if (ref.read(premiumAccessProvider)) return true;
+  return ref.read(storyPremiumChooserProvider)(context, collection);
+}
+
+/// Puts a story's game on the board, past every gate: [games] to step
+/// through, at [index], each opened at its move in [moves] (the board's own
+/// count). Tests hand in their own.
+typedef StoryBoardOpener =
+    Future<void> Function(
+      BuildContext context,
+      WidgetRef ref, {
+      required List<GamesTourModel> games,
+      required int index,
+      required Map<String, int> moves,
+    });
+
+final storyBoardOpenerProvider = Provider<StoryBoardOpener>(
+  (ref) => _openStoryBoard,
+);
+
+Future<void> _openStoryBoard(
+  BuildContext context,
+  WidgetRef ref, {
+  required List<GamesTourModel> games,
+  required int index,
+  required Map<String, int> moves,
+}) async {
+  ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ChessBoardScreenNew(
+        currentIndex: index,
+        games: games,
+        viewSource: ChessboardView.tour,
+        showGamebaseButton: false,
+        disableGamebaseOverlayByDefault: true,
+        allowGameExport: false,
+        initialMoveIndexByGameId: moves,
+      ),
+    ),
+  );
+}
+
 /// The app's [StoryGameOpener].
 Future<void> openStoryGame(
   BuildContext context,
@@ -143,11 +215,8 @@ Future<void> openStoryGame(
       repository: ref.read(collectionsRepositoryProvider),
       slug: collection.slug,
       visibleIds: [for (final game in previews) game.gameId],
-      requestAccess: (detail) => ensurePremiumGameAccess(
-        context,
-        featureId: collectionPaywallFeatureId(detail.kind),
-        returnTo: kCollectionPaywallReturnTo,
-      ),
+      requestAccess: (detail) =>
+          ref.read(storyPremiumChooserProvider)(context, detail),
       stillCurrent: current,
     );
     if (games == null || !context.mounted || !current()) return;
@@ -166,20 +235,12 @@ Future<void> openStoryGame(
       premium: ref.read(premiumAccessProvider),
       publishedEventGame: true,
     );
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ChessBoardScreenNew(
-          currentIndex: navigation.index,
-          games: navigation.games,
-          viewSource: ChessboardView.tour,
-          showGamebaseButton: false,
-          disableGamebaseOverlayByDefault: true,
-          allowGameExport: false,
-          initialMoveIndexByGameId: moves,
-        ),
-      ),
+    await ref.read(storyBoardOpenerProvider)(
+      context,
+      ref,
+      games: navigation.games,
+      index: navigation.index,
+      moves: moves,
     );
   } catch (error) {
     if (!context.mounted || !current()) return;
@@ -1376,7 +1437,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
 
   /// The collection's own page (its header, View collection) over the
   /// stories, which wait where they are and play on once the reader is
-  /// back.
+  /// back. A Premium collection asks a reader without Premium first
+  /// ([ensureStoryCollectionAccess]); turned down, the stories play on.
   Future<void> _openCollection() async {
     if (_away || _closing || !_opened) return;
     unawaited(HapticFeedbackService.buttonPress());
@@ -1386,6 +1448,10 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     final page = ref.read(storyCollectionPageProvider);
     final collection = _activeCollection;
     try {
+      if (!await ensureStoryCollectionAccess(context, ref, collection) ||
+          !mounted) {
+        return;
+      }
       await Navigator.of(
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => page(collection)));

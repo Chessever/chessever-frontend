@@ -310,11 +310,79 @@ List<CollectionGame> storyGameOrder(
   ];
 }
 
-/// Whether the server lets this viewer read [detail]'s games, so their
-/// positions can be read. A locked Premium collection shows its latest
-/// game's final position only (opening it is gated, as on its page).
+/// Whether a server from before the stories' own read
+/// ([CollectionsRepository.fetchStoryGames]) lets this viewer read
+/// [detail]'s PGNs: that server keeps a Premium collection's moves from a
+/// reader without Premium.
 bool storyMovesReadable(Collection detail) =>
     !detail.isPremium || detail.contentLocked == false;
+
+/// The games a collection's stories are read from: its latest game, then
+/// the day's picks, with the PGNs found for them by game id.
+typedef StoryGamesRead = ({
+  CollectionGame? latest,
+  List<CollectionGame> candidates,
+  Map<String, String> pgns,
+});
+
+/// [slug]'s stories' games for [day] among [games] (the collection as the
+/// browse read lists it).
+///
+/// The server picks them and hands their PGNs to every reader alike
+/// (gamebase `include=story`), so a guest and a free reader watch exactly
+/// what a Premium reader watches; Premium is asked for when a story opens
+/// its game, its collection or its event, never to watch it. A game the server names
+/// that the browse read does not hold (the collection changed between the
+/// two reads) is left out: it could not be opened from its story.
+///
+/// A server from before that read leaves the picking here
+/// ([latestStoryGame], [storyDailyCandidates]), with PGNs only where it lets
+/// this viewer read them ([storyMovesReadable]).
+Future<StoryGamesRead> readStoryGames(
+  CollectionsRepository repository, {
+  required String slug,
+  required String day,
+  required Collection detail,
+  required List<CollectionGame> games,
+}) async {
+  final served = await repository.fetchStoryGames(slug, day: day);
+  if (served != null) {
+    final byId = {for (final g in games) g.id: g};
+    final picked = [for (final card in served) ?byId[card.id]];
+    return (
+      latest: picked.firstOrNull,
+      candidates: picked.skip(1).toList(growable: false),
+      pgns: {
+        for (final card in served)
+          if (card.pgn case final pgn?) card.id: pgn,
+      },
+    );
+  }
+  final latest = latestStoryGame(games);
+  final candidates = storyDailyCandidates(
+    games,
+    latest: latest,
+    slug: slug,
+    day: day,
+  );
+  if (latest == null || !storyMovesReadable(detail)) {
+    return (
+      latest: latest,
+      candidates: candidates,
+      pgns: const <String, String>{},
+    );
+  }
+  // Only the stretches of the server's order that hold these games are read
+  // with their moves, never the whole collection.
+  final pgns = await repository.fetchPgnsOf(
+    slug,
+    {
+      for (final g in [latest, ...candidates]) g.id,
+    },
+    order: [for (final g in games) g.id],
+  );
+  return (latest: latest, candidates: candidates, pgns: pgns);
+}
 
 /// The line over a game story's moment.
 String? storyCaption(CollectionGame game) {
@@ -332,9 +400,9 @@ String? storyCaption(CollectionGame game) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
-/// [game]'s final position as one page: for a game whose moves cannot be
-/// read here (a locked collection), or one with nothing else to show. No
-/// words under it: the player rows carry the result on it.
+/// [game]'s final position as one page: for a game with nothing else to
+/// show, or whose moves could not be read just now. No words under it: the
+/// player rows carry the result on it.
 StoryGame stillStoryGame(CollectionGame game) {
   final preview = game.game;
   return StoryGame(
@@ -535,8 +603,8 @@ const Duration kStoryReplayWait = Duration(seconds: 6);
 /// and the next collection is ready before the reader reaches it.
 ///
 /// Its latest game first, then up to two others picked for the day; only
-/// the games those are read with their moves. A collection the reader may
-/// not read shows its latest game's final position.
+/// the games those are read with their moves ([readStoryGames]). Guests,
+/// free and Premium readers get the same stories.
 final storyBatchProvider = FutureProvider.autoDispose
     .family<StoryBatch, String>((ref, slug) async {
       if (slug == kMissedChancesSlug) {
@@ -550,30 +618,23 @@ final storyBatchProvider = FutureProvider.autoDispose
         final detail = await detailRead;
         final ordered = storyGameOrder(detail.kind, contents);
         final day = storyDayKey(ref.read(storyClockProvider)());
-        final latest = latestStoryGame(contents.games);
-        final candidates = storyDailyCandidates(
-          contents.games,
-          latest: latest,
-          slug: slug,
-          day: day,
-        );
+        var latest = latestStoryGame(contents.games);
+        var candidates = const <CollectionGame>[];
         var segments = const <String, List<StorySegment>>{};
-        if (latest != null && storyMovesReadable(detail)) {
+        if (latest != null) {
           try {
-            final wanted = [latest, ...candidates];
-            // Only the stretches of the server's order that hold these
-            // games are read with their moves, never the whole collection.
-            final pgns = await ref
-                .read(collectionsRepositoryProvider)
-                .fetchPgnsOf(
-                  slug,
-                  {for (final g in wanted) g.id},
-                  order: [for (final g in contents.games) g.id],
-                )
-                .timeout(kStoryReplayWait);
+            final read = await readStoryGames(
+              ref.read(collectionsRepositoryProvider),
+              slug: slug,
+              day: day,
+              detail: detail,
+              games: contents.games,
+            ).timeout(kStoryReplayWait);
+            latest = read.latest ?? latest;
+            candidates = read.candidates;
             final analysis = await ref.read(storyAnalyzerProvider)([
-              for (final g in wanted)
-                if (pgns[g.id] case final pgn?)
+              for (final g in [?read.latest, ...read.candidates])
+                if (read.pgns[g.id] case final pgn?)
                   StoryAnalysisJob(id: g.id, pgn: pgn),
             ]);
             segments = {

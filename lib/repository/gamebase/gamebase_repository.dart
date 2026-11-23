@@ -912,6 +912,29 @@ class GamebaseRepository {
     return CollectionGamesPage.fromJson(data);
   }
 
+  /// The Today stories' games of a collection for [day] (the reader's own
+  /// date, `yyyy-MM-dd`), each with its PGN, in the order the stories read
+  /// them: the collection's latest game, then the day's picks
+  /// (`GET /api/collections/:slug/games?include=story&day=`). The server
+  /// picks them and answers every reader alike, Premium or not, signed in
+  /// or a guest: it needs only the app's key, never an account, so [bearer]
+  /// changes nothing. Watching a story is free; opening its game is what
+  /// Premium is for. A server from before this read refuses the `include`
+  /// with a 400.
+  Future<CollectionGamesPage> getCollectionStoryGames(
+    String slug, {
+    required String day,
+    String? bearer,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}/games',
+      what: 'collection stories',
+      bearer: bearer,
+      queryParameters: {'include': 'story', 'day': day},
+    );
+    return CollectionGamesPage.fromJson(data);
+  }
+
   Future<({List<String> items, int total})> getCollectionAuthors({
     int offset = 0,
     int limit = 100,

@@ -652,7 +652,35 @@ class CollectionsRepository {
     ];
   }
 
-  /// The PGNs of [ids] alone, by game id: the Today stories' replays.
+  /// The Today stories' games of [slug] for [day] (`yyyy-MM-dd`, the
+  /// reader's own date), each card with its PGN, in the order the stories
+  /// read them: the latest game, then the day's picks. The server picks them
+  /// and answers every reader alike, so a guest's and a free reader's
+  /// stories are a Premium reader's. No account is needed: a guest's session,
+  /// or none, gets the same answer.
+  ///
+  /// Null when the server predates that read (it refuses it with a 400, or
+  /// knows no such route): the caller picks the games itself and reads
+  /// their PGNs with [fetchPgnsOf], where the viewer may.
+  Future<List<CollectionGameCard>?> fetchStoryGames(
+    String slug, {
+    required String day,
+  }) async {
+    try {
+      final page = await _api.getCollectionStoryGames(
+        slug,
+        day: day,
+        bearer: await _accessToken(),
+      );
+      return page.items;
+    } on CollectionsRequestException catch (error) {
+      if (error.statusCode == 400 || error.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// The PGNs of [ids] alone, by game id: the Today stories' replays on a
+  /// server from before [fetchStoryGames].
   ///
   /// With [order], every game's id in the order the browse read listed them
   /// (the server's own order), only the short stretches of that order that

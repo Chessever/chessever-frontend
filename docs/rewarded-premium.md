@@ -351,3 +351,53 @@ Paid and rewarded viewers open directly and keep the full navigation list.
 Device check: on a free account, open Countrymen, tap a live and a finished
 game in each layout, dismiss the chooser and verify no board opens. Complete an
 ad and verify the game opens; a subscriber should see no popup.
+
+## Today stories (owner + PM, 2026-11-23)
+
+Guests, free readers and Premium readers watch identical stories: the same
+games, positions, moves, words, arrows, evaluations, puzzles and circles,
+Premium books included. The stories read their games from gamebase's story
+read (`GET /api/collections/:slug/games?include=story&day=`, gamebase PR
+#118), which hands every reader the same picks with their PGNs. The read
+needs no account: the proxy adds the app's first-party key, and gamebase
+ignores whatever session the request carries. A guest (an anonymous session)
+or a reader signed out gets the same answer as a subscriber. No reader sees a
+locked or still-frame stand-in for a story.
+
+The chooser (Watch ad / Upgrade) comes up only when a story opens something:
+
+- Open game: the collection's own game gate (`resolvePlayableCollectionGames`
+  through `storyPremiumChooserProvider`), then the past-game rule. Missed
+  chances keeps the Reports gate (`ensureGameReportAccess`).
+- View collection, a story's header, and an event collection's Go to event:
+  `ensureStoryCollectionAccess`. A Premium collection asks a reader without
+  Premium, and a free collection opens for everyone. Missed chances' header
+  opens Reports, which anyone may browse.
+- Missed chances' Go to event: the in-app event shortcut, which asks the
+  past-event gate. Current events open for everyone, as they do on every
+  other surface.
+
+A watched ad or a purchase lets the open continue, and the reader is asked
+once: the past-game rule after it sees Premium and passes. A subscriber opens
+directly. Turning the chooser down opens nothing, and the story plays on.
+
+A guest meets the same chooser as everywhere else in the app
+(`showPremiumPaywallSheet`). Watch ad works on the guest session. Upgrade
+asks the guest to sign in first, then shows the paywall; where ads are not
+offered, sign-in and the paywall are the whole gate. A guest whose account is
+made permanent keeps its id, so the open continues. A guest who signs in to a
+different account opens nothing on the old session's behalf, as a
+collection's own game does; the story plays on and the reader taps again.
+
+Until gamebase ships the story read, the server answers 400 and the app falls
+back to its old path. On that path a guest or free reader still sees a
+Premium book's latest game as one final position, because the old server
+keeps the moves from them.
+
+Device check: as a guest and on a free account, open a Premium book's circle
+on Today. Its stories must match a subscriber's: the same number of bars,
+moves and words. Tap Open game, View collection and the header, dismiss the
+chooser each time, and verify nothing opens and the story resumes. Watch an
+ad and verify each action opens, with no second chooser. As a guest, tap
+Upgrade and verify sign-in comes before the paywall. A subscriber should see
+no popup.

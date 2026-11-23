@@ -668,11 +668,7 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final plate = _PixelPlate(
-      section: collection.kind == CollectionKind.event
-          ? SpaceSection.events
-          : SpaceSection.library,
-    );
+    final plate = CollectionCoverPlate(collection: collection);
     final url = collection.coverUrl;
     if (url == null) return plate;
     return CachedNetworkImage(
@@ -683,6 +679,22 @@ class _Cover extends StatelessWidget {
       errorWidget: (_, __, ___) => plate,
     );
   }
+}
+
+/// The pixel object [collection] shows in place of a cover it does not
+/// have, or has not loaded yet (the trophy for an event, the stacked boards
+/// for a book), for surfaces outside this file (the Today story circles).
+class CollectionCoverPlate extends StatelessWidget {
+  const CollectionCoverPlate({super.key, required this.collection});
+
+  final Collection collection;
+
+  @override
+  Widget build(BuildContext context) => _PixelPlate(
+    section: collection.kind == CollectionKind.event
+        ? SpaceSection.events
+        : SpaceSection.library,
+  );
 }
 
 /// The stacked-boards plate a book shows in place of a missing cover, for

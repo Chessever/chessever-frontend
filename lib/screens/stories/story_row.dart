@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart'
     show moveAnnotationColor;
 import 'package:chessever2/screens/collections/collections_screen.dart'
-    show CollectionCover, collectionMenuActions;
+    show CollectionCoverPlate, collectionMenuActions;
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart'
     show LichessMoveAnnotationType;
@@ -104,8 +106,8 @@ abstract final class StoryRowMetrics {
       (diameter * MediaQuery.devicePixelRatioOf(context) * 2).round();
 }
 
-/// A collection's cover cropped into a circle of [diameter], as the row and
-/// the viewer's header draw it.
+/// A collection's cover in a circle of [diameter], whole ([StoryCoverImage]),
+/// as the row and the viewer's header draw it.
 class StoryCover extends ConsumerWidget {
   const StoryCover({
     super.key,
@@ -125,34 +127,113 @@ class StoryCover extends ConsumerWidget {
   }
 }
 
-/// A collection's cover filling its box (cropped to it), decoded at the
-/// row circle's size so the row, the viewer's header and its way in and out
-/// all share one decoded picture.
+/// The share of a story circle's diameter a cover stands in, whole and
+/// centred. A 2:3 cover this tall reaches 0.47 of the diameter from the
+/// centre at its corners, so the circle's rim never cuts it: a book's title
+/// and author read in the circle instead of being cropped off its top and
+/// bottom. Missed chances' mark draws its picture at the same share.
+const double kStoryCoverShare = 0.78;
+
+/// How soft the bed around a cover is: the blur's sigma as a share of the
+/// circle's diameter, enough that the bed reads as one field of the cover's
+/// colours, never as a second copy of it.
+const double kStoryCoverBedBlur = 0.2;
+
+/// The bed is drawn this much larger than the circle, so the blur reads the
+/// picture right up to the rim: drawn at the circle's size, it would pull
+/// in the page around it and darken (or lighten) the rim into a halo.
+const double kStoryCoverBedBleed = 1.6;
+
+/// A collection's cover as its story circle draws it, filling its (square)
+/// box: the whole cover centred at [kStoryCoverShare] of the box, on a bed
+/// of its own colours (the same picture, past the box and blurred), so
+/// nothing of the cover is cut by the circle and the circle is still one
+/// picture. A collection with no cover, or one still loading, shows its
+/// pixel plate; Missed chances its own mark.
 ///
-/// [full] decodes the whole cover instead, for a picture drawn large (the
-/// See all story).
+/// Decoded at the row circle's size, so the row, the viewer's header and
+/// its way in and out all share one decoded picture.
 class StoryCoverImage extends ConsumerWidget {
-  const StoryCoverImage({
-    super.key,
-    required this.collection,
-    this.full = false,
-  });
+  const StoryCoverImage({super.key, required this.collection});
 
   final Collection collection;
-  final bool full;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (isMissedChances(collection)) return const MissedChancesMark();
+    final plate = CollectionCoverPlate(collection: collection);
     final local = ref.watch(storyCoverOverrideProvider)?.call(collection);
-    if (local != null) {
-      return Image(image: local, fit: BoxFit.cover, gaplessPlayback: true);
-    }
-    return CollectionCover(
-      collection: collection,
-      cacheWidth: full
-          ? null
-          : StoryRowMetrics.cacheWidth(context, StoryRowMetrics.cover),
+    final url = collection.coverUrl;
+    final ImageProvider? picture =
+        local ??
+        (url == null
+            ? null
+            : ResizeImage.resizeIfNeeded(
+                StoryRowMetrics.cacheWidth(context, StoryRowMetrics.cover),
+                null,
+                CachedNetworkImageProvider(url),
+              ));
+    if (picture == null) return plate;
+    return _StoryCoverPicture(image: picture, placeholder: plate);
+  }
+}
+
+/// [image] laid out as a story circle draws a cover: whole, centred at
+/// [kStoryCoverShare] of its box, over a blurred bed of itself bleeding past
+/// the box. [placeholder] stands in until the picture is decoded, and if it
+/// cannot be.
+class _StoryCoverPicture extends StatelessWidget {
+  const _StoryCoverPicture({required this.image, required this.placeholder});
+
+  final ImageProvider image;
+  final Widget placeholder;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final side = constraints.biggest.shortestSide;
+        if (!side.isFinite || side <= 0) return const SizedBox.shrink();
+        final sigma = side * kStoryCoverBedBlur;
+        return Image(
+          image: image,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => placeholder,
+          frameBuilder: (context, cover, frame, synchronous) {
+            if (frame == null && !synchronous) return placeholder;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                // Decoded already: the bed draws in the same frame.
+                ImageFiltered(
+                  key: const ValueKey('story_cover_bed'),
+                  imageFilter: ui.ImageFilter.blur(
+                    sigmaX: sigma,
+                    sigmaY: sigma,
+                    tileMode: TileMode.clamp,
+                  ),
+                  child: Transform.scale(
+                    scale: kStoryCoverBedBleed,
+                    child: Image(
+                      image: image,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                    ),
+                  ),
+                ),
+                Center(
+                  child: SizedBox.square(
+                    key: const ValueKey('story_cover_whole'),
+                    dimension: side * kStoryCoverShare,
+                    child: cover,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -1274,7 +1355,8 @@ class _StoryRowSkeleton extends StatelessWidget {
 /// The Missed chances circle's own mark, drawn instead of a cover: a crop
 /// of the reader's board, one square ringed in the missed win's coral, and
 /// an arrow that stops one square short of it. The win was there; the move
-/// played did not reach it.
+/// played did not reach it. The drawing stands at [kStoryCoverShare] of the
+/// circle, as a cover does, with the board running on to the rim.
 class MissedChancesMark extends ConsumerWidget {
   const MissedChancesMark({super.key});
 
@@ -1291,6 +1373,7 @@ class MissedChancesMark extends ConsumerWidget {
           light: scheme.lightSquare,
           dark: scheme.darkSquare,
           ring: moveAnnotationColor(LichessMoveAnnotationType.missedWin),
+          share: kStoryCoverShare,
         ),
         child: const SizedBox.expand(),
       ),
@@ -1300,18 +1383,23 @@ class MissedChancesMark extends ConsumerWidget {
 
 /// Paints [MissedChancesMark] into any square: a 5 by 5 crop of the board
 /// whose middle three squares each way hold the drawing, so the circle's
-/// edge never cuts it.
+/// edge never cuts it. The crop spans [share] of the square, centred; the
+/// board's squares run on past it to the edges.
 @visibleForTesting
 class MissedChancesMarkPainter extends CustomPainter {
   const MissedChancesMarkPainter({
     required this.light,
     required this.dark,
     required this.ring,
+    this.share = 1,
   });
 
   final Color light;
   final Color dark;
   final Color ring;
+
+  /// The share of the square the 5 by 5 crop spans.
+  final double share;
 
   /// The arrow's ink: near-black, a touch see-through, as the board's own
   /// arrows lie on the squares.
@@ -1319,12 +1407,20 @@ class MissedChancesMarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.clipRect(Offset.zero & size);
     final side = size.shortestSide;
-    final origin = Offset((size.width - side) / 2, (size.height - side) / 2);
-    final cell = side / 5;
+    final cell = side * share / 5;
+    // The crop's corner, the crop centred in the square.
+    final origin = Offset(
+      (size.width - 5 * cell) / 2,
+      (size.height - 5 * cell) / 2,
+    );
+    // Whole squares beyond the crop on each side, enough to reach the edges.
+    final beyondX = (origin.dx / cell).ceil();
+    final beyondY = (origin.dy / cell).ceil();
     final squares = Paint();
-    for (var row = 0; row < 5; row++) {
-      for (var col = 0; col < 5; col++) {
+    for (var row = -beyondY; row < 5 + beyondY; row++) {
+      for (var col = -beyondX; col < 5 + beyondX; col++) {
         squares.color = (row + col).isEven ? light : dark;
         canvas.drawRect(
           Rect.fromLTWH(
@@ -1384,5 +1480,8 @@ class MissedChancesMarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(MissedChancesMarkPainter old) =>
-      old.light != light || old.dark != dark || old.ring != ring;
+      old.light != light ||
+      old.dark != dark ||
+      old.ring != ring ||
+      old.share != share;
 }

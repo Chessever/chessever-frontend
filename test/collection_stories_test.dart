@@ -744,8 +744,9 @@ void main() {
       expect(still.single.segments.single.isStill, isTrue);
     });
 
-    test('the batch provider reads only the latest and the day\'s pool, and '
-        'builds the stories from them', () async {
+    test('on a server from before the stories\' read, the batch provider '
+        'reads only the latest and the day\'s pool, and builds the stories '
+        'from them', () async {
       final games = [
         for (var i = 0; i < 10; i++)
           _game('g$i', updated: DateTime(2026, 11, 1 + i), annotated: true),
@@ -2535,12 +2536,19 @@ void main() {
   });
 }
 
-/// Hands back PGNs for the ids asked, recording each ask.
+/// Hands back PGNs for the ids asked, recording each ask: a server from
+/// before the stories' own read ([CollectionsRepository.fetchStoryGames]).
 class _PgnRepository implements CollectionsRepository {
   _PgnRepository(this.pgns);
 
   final Map<String, String> pgns;
   final List<Set<String>> asked = [];
+
+  @override
+  Future<List<CollectionGameCard>?> fetchStoryGames(
+    String slug, {
+    required String day,
+  }) async => null;
 
   @override
   Future<Map<String, String>> fetchPgnsOf(
