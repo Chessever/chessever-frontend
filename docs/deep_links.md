@@ -570,6 +570,46 @@ measuring the share anchor again at share time; both are covered by the
 tests above, and a cold start from a link followed by the same link a
 minute later is device check (1).
 
+### Dock swap: simulator run on the final code (2026-11-23)
+
+The dock became Home, Events, Botvinnik, Feed, Profile (39.2.13); Collections
+opens as a page. On the iPhone simulator, debug app hot-restarted onto
+39.2.21's Dart (the binary is 39.2.10+3939 with the native SceneDelegate fix),
+evidence in `/tmp/final_sim`:
+
+- Dock order and marks; Events is a root (no back button, the dock hides and
+  returns with its lists, a re-tap scrolls to the top); Profile has no Events
+  row; Discovery's Collections tile pushes the Collections page with a back
+  button and its Events tile selects the Events section with nothing pushed.
+- Links, each landing once with Back returning to where it started and the
+  dock shown: `com.chessever.app://app/events` (Events section),
+  `/app/collections` (Collections page), `/app/feed` (Feed section),
+  `/app/my-space` (Home, My Space), a game, a collection, a broadcast, a
+  player and a `/webview` link.
+- Pushes, each landing once with Back to Home, bars shown: `game_started`
+  (also sent while the dock was scrolled away), `round_started`,
+  `collection_games_added`, `smart_event_games`, `prep_games_added`. An
+  Inbox push opens the message over the Inbox list by design
+  (`_navigateToInbox`), so two Backs reach Home.
+- Start screen after an update: a saved `collections` opens Home, a saved
+  `tournaments` opens Events.
+- Not run: a cold start from a link (it would end the debug session) and a
+  real notification banner tap (device checks). A hot restart replays the
+  last link the plugin received; that is a debug-only effect (a release
+  process never re-runs `main()` on the same native plugin state).
+
+Web (chessever-web-frontend #972, open for merge): `/app/events` gets a
+hand-off page like `/app/collections`, and a bare `/events` redirects to
+`/broadcast`.
+
+PR #425 backend (2026-11-23): `star_alert_choices` applied on
+oelbsuggrzyqwzmvidju (recorded `20261123124919`; the three functions matched
+the repo byte for byte before, and only gained the `starAlertsOptIn` filter),
+rehearsed under rollback first. `onesignal-dispatch` deployed from this repo
+with `--no-verify-jwt`; `check_edge_function_auth.sh` passed and
+`which_repo_owns_function.sh` names this repo the owner. Push `stable` before
+anyone deploys the dispatcher from `origin/stable`, or #425's filter is lost.
+
 ### Admin PR #19 rehearsal on production (2026-11-22)
 
 All four migrations of admin PR #19 (`20261122180000` News version gate,
