@@ -669,12 +669,14 @@ class BottomNavBarView extends HookConsumerWidget {
   }
 }
 
-/// The floating buttons of the section in view: My Space keeps its add
-/// menu; Today has Search, always, with Live first over it while an event is
-/// in play or while it is on, so a flag left on can always be turned off
-/// ([ForYouTodayFabs]). Discovery has none. Botvinnik has a tab now; it no
-/// longer floats over Home. Collections floats its own catalog search, on
-/// its own page ([CollectionsScreen]).
+/// The floating buttons of the section in view. Search stands in the
+/// corner on all three Home tabs ([homeSearchFab]), the way into the
+/// app-wide search the 38.17 field over all three was: My Space keeps its
+/// add menu over it (Edit's save while editing); Today has Live first
+/// over it while an event is in play or while it is on, so a flag left on
+/// can always be turned off ([ForYouTodayFabs]). Botvinnik has a tab now;
+/// it no longer floats over Home. Collections floats its own catalog
+/// search, on its own page ([CollectionsScreen]).
 ///
 /// Every set stands in an [InkFabStack], as the event screen's do: one
 /// right edge, one step, the main button in the corner.
@@ -688,9 +690,18 @@ class _HomeFab extends ConsumerWidget {
     if (!home) return const SizedBox.shrink();
     final tab = ref.watch(selectedForYouTabProvider);
     return switch (tab) {
-      ForYouTab.mySpace => const InkFabStack(children: [SpaceAddFab()]),
+      // Search stays through Edit too, so the add button (Edit's save
+      // there) never moves under the finger.
+      ForYouTab.mySpace => InkFabStack(
+        children: [
+          const SpaceAddFab(),
+          homeSearchFab(context, key: kMySpaceSearchButtonKey),
+        ],
+      ),
       ForYouTab.today => const ForYouTodayFabs(),
-      ForYouTab.discovery => const SizedBox.shrink(),
+      ForYouTab.discovery => InkFabStack(
+        children: [homeSearchFab(context, key: kDiscoverySearchButtonKey)],
+      ),
     };
   }
 }

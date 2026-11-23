@@ -258,8 +258,8 @@ void main() {
     await _unmount(tester);
   });
 
-  testWidgets('read down, the row steps away and the floating back keeps a '
-      'way out in reach', (tester) async {
+  testWidgets('read down, the row steps away and no floating back is laid '
+      'over the page (owner, 2026-11-22: redundant)', (tester) async {
     await _pump(tester);
     await _openSearch(tester);
     final chrome = tester
@@ -274,11 +274,11 @@ void main() {
     chrome.hide(animate: false);
     await tester.pump();
     expect(_back.hitTestable(), findsNothing);
-    final float = find.byKey(const ValueKey('page_back_float'));
-    expect(float.hitTestable(), findsOneWidget);
-    await tester.tap(float);
-    await _settle(tester);
-    expect(find.byType(SearchTabScreen), findsNothing);
+    expect(find.byKey(const ValueKey('page_back_float')), findsNothing);
+    // Scrolling back up brings the row, and its back, home.
+    chrome.show(animate: false);
+    await tester.pump();
+    expect(_back.hitTestable(), findsOneWidget);
     await _unmount(tester);
   });
 

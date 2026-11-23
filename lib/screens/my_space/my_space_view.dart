@@ -211,13 +211,14 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       onReorder: _reorder,
       controller: widget.scrollController ?? _pageScroll,
       top: 16.sp,
-      // Keep the last row above My Space's add button, which rides over
-      // the home dock: the buttons' reach ([InkFabStack.reach], which holds
-      // the home indicator's inset) and the dock's share of the slot the
-      // shell hands the body as padding beyond it.
+      // Keep the last row above My Space's buttons (Search in the corner,
+      // the add button over it), which ride over the home dock: the
+      // buttons' reach ([InkFabStack.reach], which holds the home
+      // indicator's inset) and the dock's share of the slot the shell hands
+      // the body as padding beyond it.
       bottom:
           24.sp +
-          InkFabStack.reach(context) +
+          InkFabStack.reach(context, regularAbove: 1) +
           math.max(
             0.0,
             MediaQuery.paddingOf(context).bottom -

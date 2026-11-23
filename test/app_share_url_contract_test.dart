@@ -10,8 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// What chessever.com serves under /app (chessever_web_frontend origin/main,
 /// src/app/app/** and next.config.ts redirects) and what its
-/// apple-app-site-association claims, as of 2026-11-22. Update it with the
-/// web change that adds a page or a claim.
+/// apple-app-site-association claims, as of 2026-11-22 (web PR #966,
+/// f875f04a, live as chessever-web version bf8994c6). Update it with the web
+/// change that adds a page or a claim.
 const _webServedAppPaths = {
   '/app', // redirect
   '/app/feed',
@@ -19,18 +20,17 @@ const _webServedAppPaths = {
   '/app/miniatures',
   '/app/reports',
   '/app/news', // redirect, and claimed by the AASA
+  '/app/collections', // hand-off page, and claimed by the AASA
+  '/app/my-space/prep', // hand-off page, and claimed by the AASA
+  '/app/my-space/library', // hand-off page, and claimed by the AASA
+  '/app/my-space/likes', // hand-off page, and claimed by the AASA
 };
 
 /// Shares the web cannot open yet: they need hand-off pages
 /// (src/app/app/collections, src/app/app/my-space/[component]) and AASA
 /// claims on the web. Listed so the gap is visible and no new share joins
 /// it silently; remove each entry when its page ships.
-const _knownWebGaps = {
-  '/app/collections',
-  '/app/my-space/prep',
-  '/app/my-space/library',
-  '/app/my-space/likes',
-};
+const _knownWebGaps = <String>{};
 
 void main() {
   final shared = <String, Uri>{

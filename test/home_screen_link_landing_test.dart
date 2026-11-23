@@ -40,6 +40,11 @@ import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
+import 'package:chessever2/screens/for_you/for_you_screen.dart'
+    show
+        kDiscoverySearchButtonKey,
+        kForYouSearchButtonKey,
+        kMySpaceSearchButtonKey;
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
@@ -67,6 +72,7 @@ import 'package:chessever2/services/editorial_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show SearchInkFab;
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -694,6 +700,47 @@ void main() {
       }
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // 38.17 had the app-wide search field over all three Home tabs; the
+  // overhaul left it on Today's button only (found 2026-11-22). The same
+  // button stands in the same corner on My Space, Today and Discovery.
+  testWidgets('Home\'s Search button: the same corner on My Space, Today and '
+      'Discovery, each opening Search over Home', (tester) async {
+    await pumpHome(tester);
+    DeepLinkService.notifyAppReady();
+    final corners = <ForYouTab, Rect>{};
+    for (final (tab, key) in [
+      (ForYouTab.today, kForYouSearchButtonKey),
+      (ForYouTab.mySpace, kMySpaceSearchButtonKey),
+      (ForYouTab.discovery, kDiscoverySearchButtonKey),
+    ]) {
+      container().read(selectedForYouTabProvider.notifier).state = tab;
+      await settle(tester);
+      final button = find.byKey(ValueKey(key));
+      expect(button.hitTestable(), findsOneWidget, reason: tab.name);
+      expect(tester.widget(button), isA<SearchInkFab>());
+      corners[tab] = tester.getRect(button);
+      if (tab == ForYouTab.mySpace) {
+        // My Space keeps its add button, over Search.
+        final add = tester.getRect(find.byType(SpaceAddFab));
+        expect(find.byType(SpaceAddFab).hitTestable(), findsOneWidget);
+        expect(add.bottom, lessThan(corners[tab]!.top));
+        expect(add.right, closeTo(corners[tab]!.right, 1));
+      }
+
+      await tester.tap(button);
+      await settle(tester);
+      expect(stack.names, ['/home_screen', searchRouteName], reason: tab.name);
+      await back(tester);
+      expect(stack.names, ['/home_screen']);
+    }
+    expect(corners[ForYouTab.mySpace], corners[ForYouTab.today]);
+    expect(corners[ForYouTab.discovery], corners[ForYouTab.today]);
+    await finish(tester);
+    // Search's landing reads leave a retry of up to a minute behind.
+    await tester.pump(const Duration(seconds: 61));
+  });
 
   // ---------------------------------------------------------------------------
   testWidgets('a route to the section already open brings the dock back', (

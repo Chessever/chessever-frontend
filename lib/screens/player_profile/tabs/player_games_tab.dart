@@ -45,11 +45,16 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// The full-page skeleton the Games list shows only while its first answer
 /// loads.
 @visibleForTesting
 const Key playerGamesSkeletonKey = ValueKey<String>('player_games_skeleton');
+
+/// The rows of the list, stepping back while a query's hits are on the way.
+@visibleForTesting
+const Key playerGamesStaleRowsKey = ValueKey<String>('player_games_rows');
 
 /// Games tab showing all games of a player with comprehensive filters
 /// Opens the Games list's filter sheet for [playerKey]: the list toolbar's
@@ -183,6 +188,20 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   bool _answered = false;
 
   String get _liveCardsPauseReason => 'player_games_scroll_$hashCode';
+
+  /// How far the rows of a list being replaced by a query's hits step back.
+  static const double _staleDim = 0.5;
+  static const CupertinoMotion _staleMotion = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 240),
+    snapToEnd: true,
+  );
+
+  /// The rows on screen answer an older query than the one asked: the
+  /// query's first page is still on its way.
+  bool _answersAnotherQuery(PlayerProfileGamesState state) =>
+      state.isLoading &&
+      state.allGames.isNotEmpty &&
+      state.searchQuery != _shownQuery;
 
   /// Opening the search alone changes nothing on the list: only hits do.
   Set<String> get _activeCollapsedKeys => _searching && _shownQuery.isNotEmpty
@@ -687,14 +706,27 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
             ),
 
-            // Content
-            SliverLayoutBuilder(
-              builder: (context, constraints) => _buildContentSliver(
-                state,
-                viewMode,
-                eventsAsync,
-                isSelectionMode,
-                constraints.crossAxisExtent,
+            // Content. While a typed query is asked and not answered, the
+            // rows it will replace step back (still there, still in reach):
+            // TWIC answers after three round trips, and the quiet line over
+            // the list alone read as "typing does nothing".
+            SingleMotionBuilder(
+              motion: _staleMotion,
+              value: _answersAnotherQuery(state) ? 1.0 : 0.0,
+              active: !MediaQuery.disableAnimationsOf(context),
+              child: SliverLayoutBuilder(
+                builder: (context, constraints) => _buildContentSliver(
+                  state,
+                  viewMode,
+                  eventsAsync,
+                  isSelectionMode,
+                  constraints.crossAxisExtent,
+                ),
+              ),
+              builder: (context, stale, child) => SliverOpacity(
+                key: playerGamesStaleRowsKey,
+                opacity: 1 - _staleDim * stale.clamp(0.0, 1.0),
+                sliver: child,
               ),
             ),
 

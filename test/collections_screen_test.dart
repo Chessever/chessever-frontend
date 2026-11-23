@@ -963,6 +963,86 @@ void main() {
     await _teardown(tester);
   });
 
+  // 38.17 listed a book search's matching openings above its games; the
+  // overhaul's in-place search lost them (found 2026-11-22).
+  testWidgets('a book search names its openings again: they head the Games '
+      'hits, an ECO code finds one too, and a tap opens its games', (
+    tester,
+  ) async {
+    final najdorf = _game('najdorf-game', eco: 'B90');
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'book',
+        slug: 'book',
+        kind: CollectionKind.book,
+        title: 'Search book',
+        access: CollectionAccess.free,
+      ),
+      games: [
+        najdorf,
+        _game('petrov-game', eco: 'C42'),
+      ],
+      openings: const [
+        CollectionOpening(eco: 'B90', name: 'Sicilian, Najdorf', gameCount: 1),
+        CollectionOpening(eco: 'B33', name: 'Sicilian, Sveshnikov'),
+        CollectionOpening(eco: 'C42', name: 'Petrov Defence', gameCount: 1),
+      ],
+      // The server matches the opening's name in the games' PGN.
+      searchResult: (query) =>
+          query.text.toLowerCase().contains('sicilian') ? [najdorf] : const [],
+    );
+    await _pump(tester, repo, size: const Size(390, 844), premium: true);
+    await tester.pumpAndSettle();
+    final input = find.byKey(const ValueKey('collection_games_search'));
+    final gamesList = find.byKey(const PageStorageKey('collection_games'));
+    Finder opening(String eco) =>
+        find.byKey(ValueKey('book_search_opening_$eco'));
+    // Nothing of it before a search.
+    expect(find.byKey(const ValueKey('book_search_openings')), findsNothing);
+
+    await _openSearch(tester);
+    await tester.enterText(input, 'sicilian');
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(opening('B90'), findsOneWidget);
+    expect(opening('B33'), findsOneWidget);
+    expect(opening('C42'), findsNothing);
+    // Above the games the words found, in the same list.
+    expect(
+      find.descendant(of: gamesList, matching: find.byType(GameCard)),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(opening('B33')).dy,
+      lessThan(tester.getTopLeft(find.byType(GameCard)).dy),
+    );
+
+    // An ECO code names its opening; no game matched the words.
+    await tester.enterText(input, 'c42');
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(opening('C42'), findsOneWidget);
+    expect(opening('B90'), findsNothing);
+    expect(find.byType(GameCard), findsNothing);
+    expect(find.text(SearchNoMatches.titleFor(query: 'c42')), findsOneWidget);
+
+    await tester.tap(opening('C42'));
+    await tester.pumpAndSettle();
+    // That opening's games in the book, on a page of their own.
+    expect(find.text('Petrov Defence'), findsWidgets);
+    expect(repo.filteredQueries.any((q) => q.query.eco == 'C42'), isTrue);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    // Back on the search as it was left; closed, the openings go with it.
+    expect(opening('C42'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('book_search_openings')), findsNothing);
+    expect(find.byType(GameCard), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
+
   testWidgets('the filters are in reach with the search closed, and only '
       'on the tabs it covers', (tester) async {
     final repo = _FakeCollections(

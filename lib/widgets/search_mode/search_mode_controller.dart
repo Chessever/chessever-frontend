@@ -101,10 +101,14 @@ class SearchModeController extends ChangeNotifier {
   /// Opens the search from code (a shortcut, a deep link). With no search
   /// button to lift the glass from, the header springs straight to the
   /// search; a close in flight turns round instead.
-  void open() {
+  ///
+  /// [focus] false opens it without the cursor (a search the page brings
+  /// back with its words, the keyboard left down): the reader taps the
+  /// field to type.
+  void open({bool focus = true}) {
     final host = _host;
     if (host != null) {
-      host._open(fromButton: false);
+      host._open(fromButton: false, focus: focus);
     } else {
       _setSearching(true);
     }

@@ -5,7 +5,7 @@ import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
     show BottomNavBarItem;
 import 'package:chessever2/screens/collections/opening_event_card.dart'
-    show collectionOpeningName;
+    show OpeningEventCard, collectionOpeningName;
 import 'package:chessever2/screens/collections/collection_catalog_views.dart';
 import 'package:chessever2/screens/collections/collection_counts_refresher.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
@@ -961,6 +961,18 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     );
   }
 
+  void _showOpeningGames(Collection collection, CollectionOpening opening) {
+    HapticFeedbackService.cardTap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _CollectionScopedGamesScreen(
+          collection: collection,
+          opening: opening,
+        ),
+      ),
+    );
+  }
+
   void _showRelated(String label) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1208,6 +1220,9 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
               viewMode: _gamesViewMode,
               opening: _opening,
               onClearOpening: () => setState(() => _opening = null),
+              // A book's search names its openings too, as its 38.17
+              // results did, each opening that opening's games.
+              onOpeningMatch: _isBook ? (o) => _showOpeningGames(c, o) : null,
             ),
             loading: () => ListView(
               padding: EdgeInsets.symmetric(vertical: 16.sp),
@@ -2294,10 +2309,15 @@ class _GamesPage extends ConsumerStatefulWidget {
     this.groupByDate = false,
     this.flatList = false,
     required this.searchState,
+    this.onOpeningMatch,
   });
   final String slug;
   final bool groupByDate;
   final bool flatList;
+
+  /// A book's: while words are searched, the book's openings they name head
+  /// the hits ([_BookOpeningMatches]), each opening its games.
+  final ValueChanged<CollectionOpening>? onOpeningMatch;
 
   /// The page's search, typed in the screen's search header.
   final _CollectionGamesSearchState searchState;
@@ -2415,6 +2435,19 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     return EventViewSearchList(busy: false, child: _body(contents));
   }
 
+  /// The book's openings the words name, for the head of the hits; null
+  /// when this list is not a book's or no words are searched.
+  Widget? _openingMatches() {
+    final pick = widget.onOpeningMatch;
+    if (pick == null || !_searchingWords) return null;
+    return _BookOpeningMatches(
+      key: const ValueKey('book_search_openings'),
+      slug: widget.slug,
+      text: _query.text,
+      onPick: pick,
+    );
+  }
+
   /// The space after the last row, clear of the home indicator. The list's
   /// last child keeps it clear of the floating search button
   /// ([EventViewSearchButtonGap]).
@@ -2424,6 +2457,23 @@ class _GamesPageState extends ConsumerState<_GamesPage>
   Widget _body(CollectionContents contents) {
     final opening = widget.opening;
     if (contents.games.isEmpty && _query.isActive) {
+      final openings = _openingMatches();
+      if (openings != null) {
+        // The openings the words name still lead; no game matched them.
+        return ListView(
+          key: const ValueKey('collection_games_no_matches'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          children: [
+            openings,
+            SearchNoMatches(
+              query: _query.text,
+              filtered: !_searchState.hasWords,
+              onClear: _searchState.clearNarrowing,
+            ),
+          ],
+        );
+      }
       return _SearchNoHits(
         key: const ValueKey('collection_games_no_matches'),
         query: _query.text,
@@ -2459,7 +2509,8 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     final perRow = widget.viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
     final opening = widget.opening;
     final showOpeningLine = opening != null && widget.onClearOpening != null;
-    final lead = showOpeningLine ? 1 : 0;
+    final openings = _openingMatches();
+    final lead = (showOpeningLine ? 1 : 0) + (openings != null ? 1 : 0);
     final count = lead + (ordered.length / perRow).ceil();
     return ListView.builder(
       key: const PageStorageKey('collection_games'),
@@ -2474,6 +2525,7 @@ class _GamesPageState extends ConsumerState<_GamesPage>
             onClear: widget.onClearOpening!,
           );
         }
+        if (openings != null && index == lead - 1) return openings;
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
           child: DiscoveryGameList(
@@ -2950,6 +3002,103 @@ class _CollectionGameMark extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A book's openings that the searched words name (by ECO code or by
+/// name), heading its Games hits as its 38.17 search results did: each in
+/// the opening card the book's catalog draws, a tap opening that opening's
+/// games in the book. Nothing at all while the openings load, fail, or none
+/// match: the games under it are the search.
+class _BookOpeningMatches extends ConsumerWidget {
+  const _BookOpeningMatches({
+    super.key,
+    required this.slug,
+    required this.text,
+    required this.onPick,
+  });
+
+  final String slug;
+  final String text;
+  final ValueChanged<CollectionOpening> onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final words = text.trim().toLowerCase();
+    final all =
+        ref.watch(collectionOpeningsProvider(slug)).valueOrNull ??
+        const <CollectionOpening>[];
+    bool matches(String value) => value.toLowerCase().contains(words);
+    final found = [
+      for (final item in all)
+        if (matches(item.eco) || matches(collectionOpeningName(item))) item,
+    ];
+    if (words.isEmpty || found.isEmpty) return const SizedBox.shrink();
+    final colors = context.colors;
+    return Padding(
+      padding: EdgeInsets.only(bottom: 4.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(_headerInset, 0, _headerInset, 8.sp),
+            child: Semantics(
+              header: true,
+              child: Text.rich(
+                TextSpan(
+                  text: 'Openings',
+                  children: [
+                    TextSpan(
+                      text: '  ${found.length}',
+                      style: TextStyle(color: colors.textSecondary),
+                    ),
+                  ],
+                ),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+          for (final item in found)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                discoveryGutter,
+                0,
+                discoveryGutter,
+                8.sp,
+              ),
+              child: OpeningEventCard(
+                key: ValueKey('book_search_opening_${item.eco}'),
+                name: collectionOpeningName(item),
+                eco: item.eco,
+                fen: item.fen,
+                gameCount: item.gameCount,
+                useEventImageFrame: true,
+                onTap: () => onPick(item),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              _headerInset,
+              8.sp,
+              _headerInset,
+              8.sp,
+            ),
+            child: Semantics(
+              header: true,
+              child: Text(
+                'Games',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

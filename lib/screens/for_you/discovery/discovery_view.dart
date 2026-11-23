@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_share.dart';
@@ -17,6 +19,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/hub_tile_captions.dart';
+import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -62,10 +65,19 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
           parent: BouncingScrollPhysics(),
         ),
         // The home dock floats over the page's foot ([MediaQuery.paddingOf]
-        // is its slot): the last row ends clear of it.
+        // is its slot), Home's Search button over it: the last row ends
+        // clear of both ([InkFabStack.reach] holds the home indicator's
+        // inset, the dock's share of the slot comes on top).
         padding: EdgeInsets.only(
           top: 16.sp,
-          bottom: 24.sp + MediaQuery.paddingOf(context).bottom,
+          bottom:
+              24.sp +
+              InkFabStack.reach(context) +
+              math.max(
+                0.0,
+                MediaQuery.paddingOf(context).bottom -
+                    MediaQuery.viewPaddingOf(context).bottom,
+              ),
         ),
         children: [
           Align(

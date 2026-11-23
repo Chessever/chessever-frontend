@@ -4220,6 +4220,18 @@ class PlayerProfileGamesNotifier
       _unsearched = settled ? state : null;
       _unsearchedCache = settled ? _globalSearchFallbackCache : null;
     }
+    if (twic && query.isNotEmpty) {
+      // The words go out with their load, in one state: the list on screen
+      // never reads, even for one notification, as answering words it has
+      // not been asked for yet (the Games tab dims it until it does).
+      state = state.copyWith(
+        searchQuery: query,
+        isLoading: true,
+        isLoadingMore: false,
+      );
+      _loadGames();
+      return;
+    }
     state = state.copyWith(searchQuery: query);
     if (!twic) return;
     if (query.isEmpty && _restoreUnsearched()) return;

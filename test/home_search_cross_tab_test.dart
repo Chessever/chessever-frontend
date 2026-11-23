@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
@@ -1689,6 +1690,117 @@ void main() {
       await app.dispose();
     });
   });
+  group('results opened from are there on the way back', () {
+    String fieldText(WidgetTester tester) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byKey(const ValueKey('search_tab_field')),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .controller
+        .text;
+
+    NavigatorState navigator(WidgetTester tester) =>
+        tester.state<NavigatorState>(find.byType(Navigator).first);
+
+    // Bug found 2026-11-22: an event page leaving resets the app-wide query
+    // (TournamentDetailScreen's cleanup), and the page read its results
+    // from it: back from an event, the field still said "tata" over Recent.
+    testWidgets('an event page leaving resets the shared query; the page '
+        'takes its words back and the results stay', (tester) async {
+      final app = await _pump(tester, observer: routeObserver);
+      await _type(tester, const ValueKey('search_tab_field'), 'tata');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+
+      navigator(tester).push(
+        MaterialPageRoute<void>(builder: (_) => const _LeavingEventPage()),
+      );
+      await _frames(tester);
+      navigator(tester).pop();
+      // Every frame of the way back shows the results, never the landing.
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+      }
+      expect(find.byType(_LeavingEventPage), findsNothing);
+      expect(fieldText(tester), 'tata');
+      expect(app.read(searchQueryProvider), 'tata');
+      expect(app.read(debouncedSearchQueryProvider), 'tata');
+      expect(find.text('Tata Steel Masters 2026'), findsWidgets);
+      await app.dispose();
+    });
+
+    testWidgets('a failed search says so with Try again, which asks it '
+        'again; a pull on the results asks again too', (tester) async {
+      var asked = 0;
+      final app = await _pump(
+        tester,
+        answer: (query) {
+          if (query != 'tata') return null;
+          asked++;
+          if (asked == 1) return Future.error(StateError('offline'));
+          return Future.value(_eventResults([_pastTataEvent]));
+        },
+      );
+      await _type(tester, const ValueKey('search_tab_field'), 'tata');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await _frames(tester);
+      expect(find.text('Search failed'), findsOneWidget);
+      expect(asked, 1);
+
+      await tester.tap(find.byKey(const ValueKey('search_failed_retry')));
+      await _frames(tester);
+      expect(asked, 2);
+      expect(find.text('Search failed'), findsNothing);
+      expect(find.text('Tata Steel Masters 2026'), findsWidgets);
+
+      await tester.fling(
+        find.byKey(const ValueKey('search_results')),
+        const Offset(0, 400),
+        1000,
+      );
+      await _frames(tester);
+      expect(asked, 3);
+      expect(find.text('Tata Steel Masters 2026'), findsWidgets);
+      await app.dispose();
+    });
+
+    testWidgets('reset while another page covers Search, the words come back '
+        'as Search is uncovered', (tester) async {
+      final app = await _pump(tester, observer: routeObserver);
+      await _type(tester, const ValueKey('search_tab_field'), 'carlsen');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+
+      // Search > a profile > an event, then back twice.
+      navigator(tester).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('a profile')),
+        ),
+      );
+      await _frames(tester);
+      navigator(tester).push(
+        MaterialPageRoute<void>(builder: (_) => const _LeavingEventPage()),
+      );
+      await _frames(tester);
+      navigator(tester).pop();
+      await _frames(tester);
+      // Covered, the page leaves the shared query alone.
+      expect(app.read(searchQueryProvider), isEmpty);
+      navigator(tester).pop();
+      await _frames(tester);
+      expect(app.read(searchQueryProvider), 'carlsen');
+      expect(fieldText(tester), 'carlsen');
+      expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+      expect(find.text('Magnus Carlsen'), findsWidgets);
+      await app.dispose();
+    });
+  });
+
   group('the sections: a row each, and its own page', () {
     /// Every section the landing shows, as the fixtures hold them.
     Future<_App> pumpAll(
@@ -2536,6 +2648,7 @@ Future<_App> _pump(
   NavigatorObserver? observer,
   _Builds? builds,
   (String, Completer<EnhancedSearchResult>)? slowQuery,
+  Future<EnhancedSearchResult>? Function(String query)? answer,
   FavoriteEventsNotifier Function()? favorites,
   List<Collection> collections = const [],
   List<FeedNews> news = const [],
@@ -2611,6 +2724,8 @@ Future<_App> _pump(
         ),
         subscriptionProvider.overrideWith((ref) => _FreeSubscription()),
         supabaseCombinedSearchProvider.overrideWith((ref, query) async {
+          final answered = answer?.call(query.trim());
+          if (answered != null) return answered;
           final slow = slowQuery;
           if (slow != null && slow.$1 == query.trim()) return slow.$2.future;
           return _resultsByQuery[query.trim()] ?? EnhancedSearchResult.empty();
@@ -3345,3 +3460,23 @@ class _PagedCollections implements CollectionsRepository {
 Finder _row(String section) => find.byWidgetPredicate(
   (widget) => widget is SearchCarousel && widget.section == section,
 );
+
+/// An event page as it leaves: TournamentDetailScreen's cleanup resets the
+/// app-wide query as its page goes.
+class _LeavingEventPage extends ConsumerStatefulWidget {
+  const _LeavingEventPage();
+
+  @override
+  ConsumerState<_LeavingEventPage> createState() => _LeavingEventPageState();
+}
+
+class _LeavingEventPageState extends ConsumerState<_LeavingEventPage> {
+  @override
+  void deactivate() {
+    ref.invalidate(searchQueryProvider);
+    super.deactivate();
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(body: Text('an event'));
+}

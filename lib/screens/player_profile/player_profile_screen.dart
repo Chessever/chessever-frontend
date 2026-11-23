@@ -157,19 +157,64 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     vsync: this,
   );
 
-  /// The Games tab's full-page search (Trello #1420): the field in the
-  /// header's place over the same tab, list and toolbar untouched, filtered
-  /// as the reader types. Opened from the floating search; the host owns the
-  /// morph, back, focus and the query's life.
+  /// The Games tab's search (Trello #1420): the field in the name row's
+  /// place, the tabs, the Games actions, the list and its toolbar untouched
+  /// under it, narrowed as the reader types. Opened from the floating
+  /// search; the host owns the morph, back, focus and the query's life.
   final SearchModeController _search = SearchModeController();
 
   /// The rotating second word of the search hint ("Search event").
   static const List<String> _searchHintWords = ['event', 'opponent', 'opening'];
 
+  /// Under the name row, above the tabs (and under the search row, which is
+  /// padded to it).
+  double get _tabsGap => 8.h;
+
+  /// Set while the field closes for a tab change: the words stay with the
+  /// list (as they did in 38.17), so the close does not clear them.
+  bool _keepingQuery = false;
+
   /// Hands a settled query to the Games list (TWIC asks the server).
   void _applySearchQuery(String query) => ref
       .read(playerProfileGamesKeyProvider(_gamesKey).notifier)
       .setSearchQuery(query);
+
+  /// The host's query, except the '' of a close that keeps the words.
+  void _onSearchQuery(String query) {
+    if (_keepingQuery && query.isEmpty) return;
+    _applySearchQuery(query);
+  }
+
+  /// The search follows the tab, its words follow the list (38.17): leaving
+  /// Games puts the field away and keeps what it searched, so About's
+  /// filtered stats still read it and Save to Library still offers the
+  /// searched games; back on Games the field comes back with those words,
+  /// the keyboard left down. Only this profile's own tab changes count: a
+  /// profile route pushed from the hits writes the shared tab too.
+  void _searchFollowTab(PlayerProfileTab tab) {
+    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    if (tab != PlayerProfileTab.games) {
+      if (!_search.isSearching) return;
+      // What the field holds now, even inside the pause.
+      final words = _search.query;
+      if (words.isNotEmpty) _applySearchQuery(words);
+      _keepingQuery = true;
+      try {
+        _search.close();
+      } finally {
+        _keepingQuery = false;
+      }
+      return;
+    }
+    if (_search.isSearching) return;
+    final kept = ref.read(playerProfileGamesKeyProvider(_gamesKey)).searchQuery;
+    if (kept.trim().isEmpty) return;
+    _search.open(focus: false);
+    _search.text.value = TextEditingValue(
+      text: kept,
+      selection: TextSelection.collapsed(offset: kept.length),
+    );
+  }
 
   /// The Games tab's list, as the tab itself keys it.
   PlayerProfileKey get _gamesKey => PlayerProfileKey(
@@ -251,6 +296,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     _pageController = PageController(
       initialPage: _availableTabs.indexOf(initialTab),
     );
+    // The list may already be searched (another route of the same player
+    // shares it): on Games the field comes up with those words.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFollowTab(_currentTab);
+    });
 
     _favoriteAnimationController = AnimationController(
       vsync: this,
@@ -857,13 +907,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
     final streakFideId = _streakFideId;
 
-    // The search belongs to the Games tab: leaving it (another profile
-    // route moved the shared tab) closes it.
-    ref.listen<PlayerProfileTab>(selectedPlayerProfileTabProvider, (_, next) {
-      if (next != PlayerProfileTab.games && _search.isSearching) {
-        _search.close();
-      }
-    });
+    // The field belongs to the Games tab, its words to the list.
+    ref.listen<PlayerProfileTab>(
+      selectedPlayerProfileTabProvider,
+      (_, next) => _searchFollowTab(next),
+    );
     // The list cleared its search itself (No matching games, Clear Filters):
     // the field follows.
     ref.listen<String>(
@@ -922,8 +970,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // The profile's header and the Games search take turns
-                        // here; the chevron holds its spot between them.
+                        // The name row and the Games search take turns here,
+                        // the chevron holding its spot between them. Only that
+                        // row: the tabs and the Games actions (Build Tree,
+                        // Save to Library, "Filtered games" for a search) stay
+                        // drawn and in reach under the field, as they did
+                        // over the 38.17 search row (PM report 2026-11-22).
                         SearchModeHeaderSlot(
                           header: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -947,49 +999,62 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                                   playerName: effectiveName,
                                 ),
 
-                              SizedBox(height: 8.h),
-
-                              _buildTabSwitcher(selectedTab),
-
-                              // A live streak that arrives after first paint
-                              // opens here, under the tabs, so the tab bar never
-                              // moves.
-                              if (streakFideId != null &&
-                                  _streakLineAboveTabs == false)
-                                _ProfileStreakRow(
-                                  fideId: streakFideId,
-                                  playerName: effectiveName,
-                                  growIn: true,
-                                ),
-                              if (hasPlayerExplorer &&
-                                  selectedTab == PlayerProfileTab.about)
-                                _buildStudyOpeningRow(),
-                              if (selectedTab == PlayerProfileTab.games)
-                                _buildGamesActionButtons(
-                                  showStudyOpening: hasPlayerExplorer,
-                                  playerKey: activePlayerKey,
-                                  hasActiveFilter: hasActiveFilter,
-                                  knownTotalCount:
-                                      twicSummaryAsync.valueOrNull?.totalGames,
-                                ),
+                              SizedBox(height: _tabsGap),
                             ],
                           ),
-                          search: SearchModeHeader(
-                            hintText: 'Search',
-                            rotatingHints: _searchHintWords,
-                            textFieldKey: e2eKey(E2eIds.playerGamesSearchField),
-                            closeKey: const ValueKey(
-                              'player_games_search_close',
-                            ),
-                            // The list's board view and Filters, as every Games
-                            // search header ends; its toolbar keeps the count.
-                            trailing: [
-                              PlayerGamesSearchControls(
-                                playerKey: activePlayerKey,
+                          // Padded to the name row's gap above the tabs, so
+                          // the tabs hold still as the two trade places.
+                          search: Padding(
+                            padding: EdgeInsets.only(
+                              bottom: math.max(
+                                0.0,
+                                _tabsGap - SearchHeaderMetrics.bottomGap,
                               ),
-                            ],
+                            ),
+                            child: SearchModeHeader(
+                              hintText: 'Search',
+                              rotatingHints: _searchHintWords,
+                              textFieldKey: e2eKey(
+                                E2eIds.playerGamesSearchField,
+                              ),
+                              closeKey: const ValueKey(
+                                'player_games_search_close',
+                              ),
+                              // The list's board view and Filters, as every
+                              // Games search header ends; its toolbar keeps
+                              // the count.
+                              trailing: [
+                                PlayerGamesSearchControls(
+                                  playerKey: activePlayerKey,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
+
+                        _buildTabSwitcher(selectedTab),
+
+                        // A live streak that arrives after first paint
+                        // opens here, under the tabs, so the tab bar never
+                        // moves.
+                        if (streakFideId != null &&
+                            _streakLineAboveTabs == false)
+                          _ProfileStreakRow(
+                            fideId: streakFideId,
+                            playerName: effectiveName,
+                            growIn: true,
+                          ),
+                        if (hasPlayerExplorer &&
+                            selectedTab == PlayerProfileTab.about)
+                          _buildStudyOpeningRow(),
+                        if (selectedTab == PlayerProfileTab.games)
+                          _buildGamesActionButtons(
+                            showStudyOpening: hasPlayerExplorer,
+                            playerKey: activePlayerKey,
+                            hasActiveFilter: hasActiveFilter,
+                            knownTotalCount:
+                                twicSummaryAsync.valueOrNull?.totalGames,
+                          ),
 
                         // Filter and loading line, right over the list under
                         // either header: where a TWIC query shows it working
@@ -1006,12 +1071,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                   Expanded(
                     child: ScrollChromeRegion(
                       controller: _chrome,
-                      child: ListenableBuilder(
-                        listenable: _search,
-                        builder: (context, _) => _buildTabContent(
-                          effectiveTitle: effectiveTitle,
-                          effectiveFederation: effectiveFederation,
-                        ),
+                      child: _buildTabContent(
+                        effectiveTitle: effectiveTitle,
+                        effectiveFederation: effectiveFederation,
                       ),
                     ),
                   ),
@@ -1039,10 +1101,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         chrome: _chrome,
         // TWIC searches on the server: one query per pause, not per key.
         debounce: const Duration(milliseconds: 400),
-        onQuery: _applySearchQuery,
-        // The query goes with the search; the filters stay, as the list's
-        // toolbar says.
-        onClose: () => _applySearchQuery(''),
+        onQuery: _onSearchQuery,
+        // The query goes with the search (not with a tab change, which keeps
+        // it); the filters stay, as the list's toolbar says.
+        onClose: () {
+          if (!_keepingQuery) _applySearchQuery('');
+        },
         child: scaffold,
       ),
     );
@@ -1409,9 +1473,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     return ScrollToTopScope(
       bus: _scrollToTopBus,
       child: PageView.builder(
+        // The tabs stay in reach while searching (as over the 38.17 search
+        // row), so the swipe does too: the field follows the tab, the words
+        // stay with the list ([_searchFollowTab]).
         controller: _pageController,
-        // Searching holds the Games tab: the search belongs to it.
-        physics: _search.pagePhysics(),
         itemCount: _availableTabs.length,
         onPageChanged: _handlePageChanged,
         itemBuilder: (context, index) {

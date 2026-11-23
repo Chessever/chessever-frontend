@@ -433,7 +433,7 @@ class _SearchModeHostState extends State<SearchModeHost>
 
   // Opening and closing.
 
-  void _open({required bool fromButton, GlobalKey? tapped}) {
+  void _open({required bool fromButton, GlobalKey? tapped, bool focus = true}) {
     if (!mounted) return;
     final controller = widget.controller;
     if (controller.isSearching) return;
@@ -445,16 +445,18 @@ class _SearchModeHostState extends State<SearchModeHost>
     widget.chrome?.show();
     // At the tap: the field is built in the next frame and takes it as it
     // attaches, so the keyboard rises alongside the glass.
-    controller.focusNode.requestFocus();
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      final node = widget.controller.focusNode;
-      if (mounted &&
-          widget.controller.isSearching &&
-          !node.hasFocus &&
-          node.context != null) {
-        node.requestFocus();
-      }
-    });
+    if (focus) {
+      controller.focusNode.requestFocus();
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        final node = widget.controller.focusNode;
+        if (mounted &&
+            widget.controller.isSearching &&
+            !node.hasFocus &&
+            node.context != null) {
+          node.requestFocus();
+        }
+      });
+    }
     // A close still flying turns round from where it is.
     final resting = !_flight.active;
     final button = resting && fromButton ? _pickButton(tapped: tapped) : null;

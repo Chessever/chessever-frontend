@@ -9,7 +9,7 @@ import 'package:chessever2/screens/feed/news/news_reader_pager.dart';
 import 'package:chessever2/screens/for_you/discovery/news_screen.dart'
     show NewsArticleCard, newsGridMetrics;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction;
+    show DiscoveryAction, DiscoveryType, discoveryType;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart'
@@ -26,6 +26,7 @@ import 'package:chessever2/screens/search/sections/search_section_pages.dart'
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
@@ -245,7 +246,12 @@ class SearchPageResults extends ConsumerWidget {
         return const SearchPageSpinner();
       }
       final failure = snapshot.failure;
-      if (failure != null) return _SearchFailed(message: failure);
+      if (failure != null) {
+        return _SearchFailed(
+          message: failure,
+          onRetry: () => _searchAgain(ref, query),
+        );
+      }
       // Nothing matched: the app's one empty-search line, on the page's
       // gutter where the first result would have been.
       return SearchNoMatches(
@@ -364,10 +370,30 @@ class SearchPageResults extends ConsumerWidget {
       ],
     );
     // A new search starts at its top; the last one's scroll is not its own.
+    // A pull asks the same words again, as the 38.17 Search page's did.
     return KeyedSubtree(
       key: ValueKey<String>('search_results_${snapshot.query}'),
-      child: list,
+      child: RefreshIndicator(
+        key: const ValueKey('search_results_refresh'),
+        color: context.colors.textPrimary,
+        backgroundColor: context.colors.surface,
+        onRefresh: () => _searchAgain(ref, query),
+        child: list,
+      ),
     );
+  }
+}
+
+/// Asks [query] of the app-wide search and the catalog again (a pull on the
+/// results, the failed search's Try again); the results on screen stay
+/// until the new ones land.
+Future<void> _searchAgain(WidgetRef ref, String query) async {
+  ref.invalidate(searchCollectionResultsProvider(query));
+  ref.invalidate(supabaseCombinedSearchProvider(query));
+  try {
+    await ref.read(supabaseCombinedSearchProvider(query).future);
+  } catch (_) {
+    // The page says it failed.
   }
 }
 
@@ -574,11 +600,13 @@ class _PageNote extends StatelessWidget {
   }
 }
 
-/// The search itself failed and nothing local matched.
+/// The search itself failed and nothing local matched: what happened, and
+/// the way to ask again.
 class _SearchFailed extends StatelessWidget {
-  const _SearchFailed({required this.message});
+  const _SearchFailed({required this.message, required this.onRetry});
 
   final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -608,6 +636,35 @@ class _SearchFailed extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textSecondary,
+              ),
+            ),
+            // The words as the section rows' retry says them, a 44pt
+            // target on the page's gutter.
+            Semantics(
+              button: true,
+              child: GestureDetector(
+                key: const ValueKey('search_failed_retry'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedbackService.light();
+                  onRetry();
+                },
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 44),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: 1,
+                    child: Text(
+                      'Try again',
+                      style: discoveryType(
+                        context,
+                        DiscoveryType.label,
+                        weight: FontWeight.w600,
+                        color: context.colors.accentText,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

@@ -97,50 +97,20 @@ Future<(ScrollChromeController, NavigatorState)> _pump(
 void main() {
   setUp(() => ResponsiveHelper.initFromSize(const Size(393, 852)));
 
-  testWidgets('with the header shown there is nothing extra on the page', (
+  // Owner + PM, 2026-11-22: a standalone floating back on the top left is
+  // redundant. The page's way back is its header (scrolling up brings it
+  // home), the iOS edge swipe and the system back.
+  testWidgets('no floating back, with the header shown or folded away', (
     tester,
   ) async {
-    await _pump(tester);
+    final (chrome, _) = await _pump(tester);
+    expect(_float, findsNothing);
+    chrome.hide(animate: false);
+    await tester.pump();
+    expect(_float, findsNothing);
+    chrome.show(animate: false);
+    await tester.pump();
     expect(_float, findsNothing);
     expect(find.byKey(const ValueKey('header_back')), findsOneWidget);
-  });
-
-  testWidgets('with the header folded away, a back stays in reach where its '
-      'chevron was, and goes back', (tester) async {
-    final (chrome, navigator) = await _pump(tester);
-    await tester.drag(find.text('row 3'), const Offset(0, -400));
-    await tester.pumpAndSettle();
-    expect(chrome.value, 0);
-
-    expect(_float, findsOneWidget);
-    final disc = tester.getCenter(_float);
-    expect(disc.dx, closeTo(SearchHeaderMetrics.backGlyphCenter, 0.5));
-    expect(disc.dy, closeTo(4.h + SearchHeaderMetrics.backTarget / 2, 0.5));
-    expect(find.bySemanticsLabel('Back'), findsWidgets);
-
-    await tester.tap(_float);
-    await tester.pumpAndSettle();
-    expect(navigator.canPop(), isFalse);
-    expect(find.text('home'), findsOneWidget);
-  });
-
-  testWidgets('it leaves as the header comes home', (tester) async {
-    final (chrome, _) = await _pump(tester);
-    await tester.drag(find.text('row 3'), const Offset(0, -400));
-    await tester.pumpAndSettle();
-    expect(_float, findsOneWidget);
-
-    chrome.show();
-    await tester.pumpAndSettle();
-    expect(chrome.value, 1);
-    expect(_float, findsNothing);
-  });
-
-  test('presence follows the fold: none while the header\'s chevron is half '
-      'in view or more, all of it with the header gone', () {
-    expect(PageBackFloat.presence(1), 0);
-    expect(PageBackFloat.presence(0.5), 0);
-    expect(PageBackFloat.presence(0.25), closeTo(0.5, 1e-9));
-    expect(PageBackFloat.presence(0), 1);
   });
 }

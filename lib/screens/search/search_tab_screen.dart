@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/collections/collections_data.dart'
     show Collection;
@@ -73,8 +74,9 @@ void keepSearchLandingWarm(WidgetRef ref) {
 
 /// Search: the app-wide search (players, events, openings, smart events,
 /// collections, news) as one page, behaving as X's search does. It opens
-/// over Home from Today's floating button ([open]); it left the dock, whose
-/// slot Collections holds now.
+/// over Home from the Search button in the corner of My Space, Today and
+/// Discovery ([open], `homeSearchFab`), where the 38.17 field stood over
+/// all three; it left the dock, whose slot Collections holds now.
 ///
 /// A pushed page in the pushed pages' language: the way back
 /// ([PageBackButton], where every pushed page's chevron is) and the field
@@ -135,6 +137,33 @@ class SearchTabScreen extends HookConsumerWidget {
         ref.read(debouncedSearchQueryProvider.notifier).state = text;
       }
     }
+
+    // The shared query moves under the page while it is covered and as it
+    // is uncovered: an event page leaving resets it, and the Events page
+    // hands it back empty. Results opened from (an event, a player, an
+    // opening) must still be there on the way back, as Home's Search
+    // segment's were in 38.17: whenever the shared query leaves this
+    // field's words, or the page is uncovered, the page takes them back.
+    // After the frame: providers cannot change while the tree builds or
+    // unmounts.
+    void reclaimWhenInFront() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+        reclaimSharedQuery();
+      });
+    }
+
+    ref.listen<String>(searchQueryProvider, (_, next) {
+      if (next.trim() != controller.text.trim()) reclaimWhenInFront();
+    });
+    final route = ModalRoute.of(context);
+    useEffect(() {
+      if (route == null) return null;
+      final watcher = _Uncovered(reclaimWhenInFront);
+      routeObserver.subscribe(watcher, route);
+      return () => routeObserver.unsubscribe(watcher);
+    }, [route]);
 
     // The landing's sources live as long as the page does, and the home
     // shell holds them between visits ([keepSearchLandingWarm]): a search
@@ -474,7 +503,7 @@ class SearchTabScreen extends HookConsumerWidget {
 ///
 /// Raw keystrokes reach it only when the query becomes (or stops being) a
 /// search, so typing a search never rebuilds the landing.
-class SearchTabPage extends ConsumerWidget {
+class SearchTabPage extends HookConsumerWidget {
   const SearchTabPage({
     super.key,
     required this.picks,
@@ -492,8 +521,12 @@ class SearchTabPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final searching = ref.watch(
-      searchQueryProvider.select((raw) => isSearchableQuery(raw.trim())),
+    // The field's own words decide it, not the app-wide query they are
+    // written to: another page moving that one (an event page leaving
+    // resets it) must not take the results away from under the field.
+    final searching = useListenableSelector(
+      controller,
+      () => isSearchableQuery(controller.text.trim()),
     );
     if (searching) {
       final debounced = ref.watch(debouncedSearchQueryProvider).trim();
@@ -538,4 +571,14 @@ class SearchTabPage extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Calls [onUncovered] when the route above Search is popped.
+class _Uncovered extends RouteAware {
+  _Uncovered(this.onUncovered);
+
+  final VoidCallback onUncovered;
+
+  @override
+  void didPopNext() => onUncovered();
 }

@@ -328,6 +328,20 @@ const String kForYouLiveFirstButtonKey = 'for_you_live_first_button';
 /// The key of Today's Search button.
 const String kForYouSearchButtonKey = E2eIds.forYouSearchButton;
 
+/// The keys of My Space's and Discovery's Search buttons.
+const String kMySpaceSearchButtonKey = 'my_space_search_button';
+const String kDiscoverySearchButtonKey = 'discovery_search_button';
+
+/// Home's Search button, the same on My Space, Today and Discovery and in
+/// the same corner on each, as the 38.17 search field stood over all three:
+/// it opens Search over Home ([SearchTabScreen.open]). [key] tells the
+/// three apart.
+SearchInkFab homeSearchFab(BuildContext context, {required String key}) =>
+    SearchInkFab(
+      key: ValueKey(key),
+      onTap: () => unawaited(SearchTabScreen.open(context)),
+    );
+
 /// Today's floating buttons, in the thumb's reach where the search field and
 /// Botvinnik used to be (Trello #1420), stacked as every page's are
 /// ([InkFabStack]: the main button at the bottom, the smaller one above it,
@@ -378,10 +392,7 @@ class ForYouTodayFabs extends HookConsumerWidget {
               }
             },
           ),
-        SearchInkFab(
-          key: const ValueKey(kForYouSearchButtonKey),
-          onTap: () => unawaited(SearchTabScreen.open(context)),
-        ),
+        homeSearchFab(context, key: kForYouSearchButtonKey),
       ],
     );
   }

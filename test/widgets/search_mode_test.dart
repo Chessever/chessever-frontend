@@ -845,6 +845,23 @@ void main() {
     await _done(tester, search);
   });
 
+  testWidgets('opened from code without focus: the field is there, the '
+      'keyboard stays down, and words put in it are searched', (tester) async {
+    final queries = <String>[];
+    final search = await _pump(tester, onQuery: queries.add);
+    search.open(focus: false);
+    search.text.text = 'carlsen';
+    await tester.pumpAndSettle();
+    expect(search.isSearching, isTrue);
+    expect(find.byKey(_closeKey).hitTestable(), findsOneWidget);
+    expect(search.focusNode.hasFocus, isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(queries, ['carlsen']);
+    // Not focused is not put away: the search stays open with its words.
+    expect(search.text.text, 'carlsen');
+    await _done(tester, search);
+  });
+
   testWidgets('one filter count: the accent coin, on the button and field', (
     tester,
   ) async {
