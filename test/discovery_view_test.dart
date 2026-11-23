@@ -26,8 +26,7 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:chessever2/screens/my_profile/profile_hub_screen.dart'
-    show eventsScreenRoute;
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
 import 'package:chessever2/widgets/hub_illustration.dart';
@@ -209,6 +208,9 @@ Future<ProviderContainer> _pump(
   GamesListViewMode? mode,
   List<Override> extra = const [],
   List<NavigatorObserver> observers = const [],
+  // Discovery inside the home shell, as the app holds it: its route is the
+  // shell's, so a dock section opens there ([openHomeSection]).
+  bool shell = false,
 }) async {
   // Tall enough that every section builds without scrolling.
   tester.view.physicalSize = size;
@@ -283,7 +285,8 @@ Future<ProviderContainer> _pump(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const Scaffold(body: DiscoveryView());
+            const page = Scaffold(body: DiscoveryView());
+            return shell ? const _ShellRoute(child: page) : page;
           },
         ),
       ),
@@ -293,17 +296,49 @@ Future<ProviderContainer> _pump(
   return container;
 }
 
+/// Registers its route as the home shell's, as HomeScreen does.
+class _ShellRoute extends StatefulWidget {
+  const _ShellRoute({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ShellRoute> createState() => _ShellRouteState();
+}
+
+class _ShellRouteState extends State<_ShellRoute> {
+  ModalRoute<Object?>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    registerHomeShellRoute(_route);
+  }
+
+  @override
+  void dispose() {
+    unregisterHomeShellRoute(_route);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// Records the page each push would open, without opening it (a page with
 /// reads of its own the test does not stand up): the route is taken back
 /// off before its first frame.
 class _PushedPages extends NavigatorObserver {
   final pages = <Widget>[];
+  final routeNames = <String?>[];
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     if (previousRoute == null || route is! MaterialPageRoute) return;
     final nav = navigator!;
     pages.add(route.builder(nav.context));
+    routeNames.add(route.settings.name);
     scheduleMicrotask(() => nav.removeRoute(route));
   }
 }
@@ -870,7 +905,46 @@ void main() {
     );
 
     testWidgets(
-      'Events opens the Events lists, the page Profile\'s Events row opens',
+      'in the home shell, Events opens the dock\'s Events section, pushing '
+      'nothing; Collections pushes its page with its back',
+      (tester) async {
+        final pushed = _PushedPages();
+        final container = await _pump(
+          tester,
+          observers: [pushed],
+          shell: true,
+          // The dock's sections, Botvinnik's switch (SQLite) left alone.
+          extra: [botvinnikTabAvailableProvider.overrideWithValue(true)],
+        );
+        final section = container.listen(
+          selectedBottomNavBarItemProvider,
+          (_, _) {},
+        );
+        addTearDown(section.close);
+        expect(section.read(), BottomNavBarItem.forYou);
+
+        await tester.tap(find.byKey(const ValueKey('discovery_events_tile')));
+        await _settle(tester);
+        // The dock's Events, never a second copy pushed over Home.
+        expect(section.read(), BottomNavBarItem.tournaments);
+        expect(pushed.pages, isEmpty);
+
+        // Collections has no dock slot: its page, over Home, even with the
+        // shell under it.
+        await tester.tap(
+          find.byKey(const ValueKey('discovery_collections_tile')),
+        );
+        await _settle(tester);
+        expect(pushed.pages, hasLength(1));
+        expect(pushed.pages.single, isA<CollectionsScreen>());
+        expect(section.read(), BottomNavBarItem.tournaments);
+        expect(tester.takeException(), isNull);
+        await _teardownCards(tester, container);
+      },
+    );
+
+    testWidgets(
+      'with no home shell under it, Events pushes the Events lists page',
       (tester) async {
         final pushed = _PushedPages();
         final container = await _pump(tester, observers: [pushed]);
@@ -891,14 +965,11 @@ void main() {
         await _settle(tester);
         expect(pushed.pages, hasLength(1));
         expect(pushed.pages.single, isA<GroupEventScreen>());
-        // The very route Profile's row and the /app/events link push.
-        final route = eventsScreenRoute() as MaterialPageRoute<void>;
-        expect(
-          route.builder(tester.element(tile)).runtimeType,
-          pushed.pages.single.runtimeType,
-        );
+        // The pushed page, with its back: not the dock's root.
+        expect((pushed.pages.single as GroupEventScreen).root, isFalse);
+        expect(pushed.routeNames.single, eventsScreenRouteName);
         // No hold menu: /app/events has no page on the web to share yet, so
-        // a hold is a tap, as on Profile's row.
+        // a hold is a tap.
         expect(
           find.ancestor(of: tile, matching: find.byType(CardContextMenu)),
           findsNothing,

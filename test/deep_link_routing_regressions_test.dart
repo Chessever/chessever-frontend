@@ -916,12 +916,14 @@ void main() {
     });
 
     for (final entry in {
-      'https://chessever.com/app/collections': BottomNavBarItem.collections,
+      // Events is a dock section again (2026-11-23): never a second Events
+      // page pushed over Home.
+      'https://chessever.com/app/events': BottomNavBarItem.tournaments,
       'https://chessever.com/app/feed': BottomNavBarItem.feed,
       'https://chessever.com/app/home/today': BottomNavBarItem.forYou,
     }.entries) {
-      testWidgets('route ${entry.key} lands on its dock tab with the dock in '
-          'view', (tester) async {
+      testWidgets('route ${entry.key} lands on its dock section with the dock '
+          'in view', (tester) async {
         await pumpApp(tester);
         DeepLinkService.notifyAppReady();
         await coverHome(tester);
@@ -938,6 +940,50 @@ void main() {
         );
       });
     }
+
+    testWidgets('route /app/collections pushes the Collections page over '
+        'Home, the dock section unchanged', (tester) async {
+      final opened = <Widget>[];
+      await pumpApp(
+        tester,
+        overrides: [
+          // The page the link asks for, pushed under its route name as the
+          // app does; a stand-in is drawn, so the catalog reads nothing.
+          appDestinationPageNavigationProvider.overrideWithValue((
+            context,
+            page,
+            name,
+          ) {
+            opened.add(page);
+            unawaited(
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  settings: RouteSettings(name: name),
+                  builder: (_) => Text('page $name'),
+                ),
+              ),
+            );
+          }),
+        ],
+      );
+      DeepLinkService.notifyAppReady();
+      await coverHome(tester);
+      DeepLinkService.instance.ingestNotificationData({
+        'route': 'https://chessever.com/app/collections',
+      });
+      await settle(tester);
+      // Collections has no dock slot: its page, with its back, over Home.
+      expect(stack.names, ['/home_screen', '/app/collections']);
+      expect(opened.single, isA<CollectionsScreen>());
+      expect(generated, isEmpty);
+      expect(
+        container().read(selectedBottomNavBarItemProvider),
+        BottomNavBarItem.forYou,
+      );
+      navigatorKey.currentState!.pop();
+      await tester.pumpAndSettle();
+      expect(stack.names, ['/home_screen']);
+    });
   });
 
   // ---------------------------------------------------------------------------

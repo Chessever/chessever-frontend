@@ -1,9 +1,4 @@
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
-import 'package:chessever2/screens/collections/collections_root.dart';
-import 'package:chessever2/widgets/home_top_bar.dart' show HomeTopBarMetrics;
-import 'package:chessever2/screens/home/start_screen.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
-    show BottomNavBarItem;
 import 'package:chessever2/screens/collections/opening_event_card.dart'
     show OpeningEventCard, collectionOpeningName;
 import 'package:chessever2/screens/collections/collection_catalog_views.dart';
@@ -72,15 +67,12 @@ import 'package:intl/intl.dart';
 /// The primary Collections destination: About, published collections and
 /// authors in the established event-card language.
 ///
-/// Two ways in: the dock's Collections tab ([embedded], a root:
-/// [CollectionsRoot], the bar every root wears with the pages as its tabs,
-/// no way back) and [open] (a page pushed over another, from Discovery's
-/// tile or Search: back and a centred title over the page tabs).
+/// A page pushed over another ([open]): from Discovery's first tile,
+/// Search's Collections section, and `/app/collections` links. It has its
+/// back and a centred title over the page tabs, and opens on the catalog.
+/// It has no dock slot (Events took it, 2026-11-23).
 class CollectionsScreen extends ConsumerStatefulWidget {
-  const CollectionsScreen({super.key, this.embedded = false});
-
-  /// The dock's Collections tab: a root page in the home shell.
-  final bool embedded;
+  const CollectionsScreen({super.key});
 
   static Future<void> open(BuildContext context) {
     HapticFeedbackService.cardTap();
@@ -98,16 +90,10 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   /// button opens it.
   final SearchModeController _search = SearchModeController();
   CollectionSearchQuery _query = const CollectionSearchQuery();
-  bool get embedded => widget.embedded;
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
-  }
-
-  void _rememberTab(int index) {
-    ref.read(selectedCollectionsTabProvider.notifier).state =
-        CollectionsTab.values[index];
   }
 
   void _searchFor(String text) {
@@ -169,75 +155,19 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     onClose: () => _searchFor(''),
   );
 
-  /// Page [index]. As the dock's tab ([root]) every page opens on the
-  /// roots' one lead-in under the bar ([HomeTopBarMetrics.contentGap]), so
-  /// its first card starts on the line Home's, Botvinnik's and Profile's
-  /// first content does; pushed, under the page tabs, the catalogs keep
-  /// their own tighter lead-ins.
-  Widget _page(
-    BuildContext context,
-    CollectionSearchQuery query,
-    int index, {
-    double bottomPadding = 0,
-    bool root = false,
-  }) {
-    final top = root ? HomeTopBarMetrics.contentGap : null;
+  /// Page [index], under the page tabs, each catalog on its own lead-in.
+  Widget _page(BuildContext context, CollectionSearchQuery query, int index) {
     return switch (index) {
-      // 0 => CollectionOpeningCatalog(query: query, bottomPadding: ...),
-      0 => _CollectionsAboutPage(bottomPadding: bottomPadding, topPadding: top),
+      // 0 => CollectionOpeningCatalog(query: query, ...),
+      0 => const _CollectionsAboutPage(),
       // Each catalog is searched in place, and ends clear of the floating
-      // search button while it is there (CollectionCatalogList; the root
-      // hands the button's room in [bottomPadding]).
-      1 => CollectionBooksCatalog(
-        query: query,
-        onClear: _clearNarrowing,
-        bottomPadding: bottomPadding,
-        topPadding: top,
-      ),
-      _ => CollectionAuthorsCatalog(
-        query: query,
-        onClear: _clearNarrowing,
-        bottomPadding: bottomPadding,
-        topPadding: top,
-      ),
+      // search button while it is there (CollectionCatalogList).
+      1 => CollectionBooksCatalog(query: query, onClear: _clearNarrowing),
+      _ => CollectionAuthorsCatalog(query: query, onClear: _clearNarrowing),
     };
   }
 
-  /// The dock's tab: the root composition, remembering its page for the
-  /// session, a held tab title making it the start screen's page.
-  Widget _root(BuildContext context, CollectionSearchQuery query) {
-    StartPage page(int index) =>
-        collectionsStartPage(CollectionsTab.values[index]);
-    return CollectionsRoot(
-      // The ids the dock's Collections tabs wore before 38.18: Nudges
-      // published for them light here, as on the pushed page below.
-      dotScope: 'collections.tab',
-      tabs: [for (final tab in CollectionsTab.values) tab.label],
-      initialTab: ref.read(selectedCollectionsTabProvider).index,
-      onTabChanged: _rememberTab,
-      onHoldTab: (index) => unawaited(
-        makeStartScreenDefault(
-          context,
-          ref,
-          section: BottomNavBarItem.collections,
-          page: page(index),
-        ),
-      ),
-      holdHint: (index) =>
-          startScreenHint(BottomNavBarItem.collections, page(index)),
-      search: _catalogSearch(),
-      pageBuilder: (context, index, bottomPadding) => _page(
-        context,
-        query,
-        index,
-        bottomPadding: bottomPadding,
-        root: true,
-      ),
-    );
-  }
-
   Widget _shell(BuildContext context, CollectionSearchQuery query) {
-    if (embedded) return _root(context, query);
     return EventViewShell(
       dotScope: 'collections.tab',
       key: e2eKey(E2eIds.collectionsRoot),
@@ -249,8 +179,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       // Opening discovery is paused; retain its catalog and wiring below.
       // tabs: const ['Openings', 'Collections', 'Authors'],
       tabs: [for (final tab in CollectionsTab.values) tab.label],
-      // Only the dock's tab remembers its page; a pushed copy always opens
-      // on the catalog.
+      // It always opens on the catalog.
       initialTab: CollectionsTab.collections.index,
       pageBuilder: (context, index) => _page(context, query, index),
     );
@@ -258,22 +187,13 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
 }
 
 class _CollectionsAboutPage extends StatelessWidget {
-  const _CollectionsAboutPage({this.bottomPadding = 0, this.topPadding});
-
-  final double bottomPadding;
-
-  /// Where the heading starts: the tab lists' own lead-in unless given.
-  final double? topPadding;
+  const _CollectionsAboutPage();
 
   @override
   Widget build(BuildContext context) {
-    final list = _tabListPadding(context);
     return ListView(
       key: const PageStorageKey('collections_about'),
-      padding: list.copyWith(
-        top: topPadding ?? list.top,
-        bottom: list.bottom + bottomPadding,
-      ),
+      padding: _tabListPadding(context),
       children: [
         Text('About collections', style: _aboutHeadingStyle(context)),
         SizedBox(height: 12.sp),

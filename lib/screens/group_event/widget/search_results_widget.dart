@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/game/games.dart'
     show SearchPlayer;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
@@ -252,6 +253,12 @@ class _SearchResultsListView extends ConsumerWidget {
       phone: 16.sp,
       tablet: 24.sp,
     );
+    // The results float under Live first and, on the dock's Events, run on
+    // under the dock: the last one stays clear of both, as the lists do.
+    final endClearance = AllEventsTabWidget.endClearance(
+      context,
+      clearsFloatingButtons: true,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = ResponsiveHelper.isTablet
@@ -282,8 +289,13 @@ class _SearchResultsListView extends ConsumerWidget {
                     horizontalPadding,
                     columns,
                     EventCard.gridMainAxisExtent(context, cardWidth),
+                    endClearance,
                   )
-                : _buildPhoneListLayout(hasPlayerCards, horizontalPadding),
+                : _buildPhoneListLayout(
+                    hasPlayerCards,
+                    horizontalPadding,
+                    endClearance,
+                  ),
           ),
         );
       },
@@ -295,6 +307,7 @@ class _SearchResultsListView extends ConsumerWidget {
     double horizontalPadding,
     int crossAxisCount,
     double cardHeight,
+    double endClearance,
   ) {
     return CustomScrollView(
       key: PageStorageKey<String>('search_results_$searchQuery'),
@@ -315,9 +328,11 @@ class _SearchResultsListView extends ConsumerWidget {
             ),
           ),
         SliverPadding(
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: hasPlayerCards ? 0 : 16.sp,
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            hasPlayerCards ? 0 : 16.sp,
+            horizontalPadding,
+            endClearance,
           ),
           sliver: SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -342,13 +357,19 @@ class _SearchResultsListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildPhoneListLayout(bool hasPlayerCards, double horizontalPadding) {
+  Widget _buildPhoneListLayout(
+    bool hasPlayerCards,
+    double horizontalPadding,
+    double endClearance,
+  ) {
     return ListView.builder(
       key: PageStorageKey<String>('search_results_$searchQuery'),
       controller: scrollController,
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        16.sp,
+        horizontalPadding,
+        endClearance,
       ),
       // Add 1 to item count if we have player cards to show
       itemCount: tournaments.length + (hasPlayerCards ? 1 : 0),

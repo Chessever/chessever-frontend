@@ -14,8 +14,8 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// An ad on a Feed page of its own ([FeedAdEntry]), swiped past like any
-/// post: the disclosure line at the top, an inline adaptive banner as large
-/// as the page leaves room for, and Remove Ads at the foot.
+/// post: an inline adaptive banner as large as the page leaves room for
+/// (the network labels it as an ad), and Remove Ads at its foot.
 ///
 /// The ad is asked for when the page is first built, which Feed does while
 /// the post before it is still on screen, so it has usually landed by the
@@ -61,9 +61,7 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
   /// most often served, so a landing ad moves little.
   static const double _placeholderRatio = 250 / 300;
 
-  /// Between the disclosure line and the ad, and between the ad and Remove
-  /// Ads.
-  static const double _lineGap = 10;
+  /// Between the ad and Remove Ads.
   static const double _buttonGap = 16;
 
   @override
@@ -194,17 +192,14 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
           FeedLayout.sidePadding,
           6,
         ),
-        // The line, the ad and Remove Ads travel as one group, centred on
-        // the page: the words sit right above and below the ad, never at the
-        // page's far edges (Berkay, 2026-11-20).
+        // The ad and Remove Ads travel as one group, centred on the page:
+        // the button sits right below the ad, never at the page's far edge
+        // (Berkay, 2026-11-20).
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // The line and the button take their share first; the ad gets
-            // the rest of the page's height.
-            final lineHeight =
-                (MediaQuery.textScalerOf(context).scale(12) * 1.5)
-                    .ceilToDouble();
-            final reserve = lineHeight + _lineGap + _buttonGap + 44;
+            // The button takes its share first; the ad gets the rest of the
+            // page's height.
+            const reserve = _buttonGap + 44;
             final room = BoxConstraints(
               maxWidth: constraints.maxWidth,
               maxHeight: math.max(0.0, constraints.maxHeight - reserve),
@@ -235,11 +230,6 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    height: lineHeight,
-                    child: const Center(child: AdDisclosureLine()),
-                  ),
-                  const SizedBox(height: _lineGap),
                   slot,
                   // Clear of the ad, so a tap meant for one never lands on
                   // the other.

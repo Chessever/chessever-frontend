@@ -44,15 +44,15 @@ void main() {
       final seed = await seedBaselineData($);
 
       try {
-        // Home opens on For You. Events lives on Profile; Collections has
-        // the dock's tab (and opens pushed from Discovery and Search);
-        // Library opens as its own pushed route.
+        // Home opens on For You. Events has the dock's slot beside Home;
+        // Collections opens pushed (from Discovery and Search); Library
+        // opens as its own pushed route.
         await expectVisible($, E2eIds.forYouRoot);
 
         await tapBottomNavRoot(
           $,
-          navId: E2eIds.navCollections,
-          expectedRoot: E2eIds.collectionsRoot,
+          navId: E2eIds.navEvents,
+          expectedRoot: E2eIds.eventsRoot,
         );
         await tapBottomNavRoot(
           $,
@@ -67,12 +67,6 @@ void main() {
         await expectVisible($, E2eIds.libraryRoot);
         await expectVisible($, E2eIds.libraryBoardButton);
         await expectVisible($, E2eIds.libraryCreateFolderButton);
-        await popRoute($);
-        await openProfileDestination(
-          $,
-          itemId: E2eIds.profileEvents,
-          expectedRoot: E2eIds.eventsRoot,
-        );
         await popRoute($);
 
         await openSettingsDialog($);
@@ -205,9 +199,9 @@ void main() {
 
       try {
         await resetToHome($);
-        await openProfileDestination(
+        await tapBottomNavRoot(
           $,
-          itemId: E2eIds.profileEvents,
+          navId: E2eIds.navEvents,
           expectedRoot: E2eIds.eventsRoot,
         );
         await expectVisible($, E2eIds.eventsSearchField);
@@ -252,7 +246,7 @@ void main() {
         );
 
         // The calendar is a row on the Profile tab, pushed as an ordinary
-        // route. Events is open over Home: go back to the shell first.
+        // route. Events is the dock's section: back to Home first.
         await resetToHome($);
         await openProfileDestination(
           $,

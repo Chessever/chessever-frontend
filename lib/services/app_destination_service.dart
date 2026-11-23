@@ -43,7 +43,6 @@ import 'package:chessever2/screens/streaks/streak_player_screen.dart';
 import 'package:chessever2/screens/streaks/streaks_screen.dart';
 import 'package:chessever2/services/app_destination.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
-import 'package:chessever2/screens/my_profile/profile_hub_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -114,13 +113,16 @@ Future<bool> openAppDestination(
 
     switch (destination.kind) {
       case AppDestinationKind.home:
-      case AppDestinationKind.events:
-      // Feed and Collections have the dock's tabs: they open there, as Home
+      // Events and Feed have the dock's slots: they open there, as Home
       // does, never as a second copy pushed over the shell.
+      case AppDestinationKind.events:
       case AppDestinationKind.feed:
-      case AppDestinationKind.collections:
         if (!canOpen()) return true;
         _openHome(context, ref, destination);
+      case AppDestinationKind.collections:
+        // No dock slot: the Collections page, with its back, over the page
+        // the link lands on (Home, from outside the app).
+        push(const CollectionsScreen());
       case AppDestinationKind.collection:
         // Opens for every reader, as a shared collection link, a collection
         // push and the catalog do: a Premium collection gates when a game in
@@ -381,7 +383,7 @@ void _openHome(
   ref
       .read(selectedBottomNavBarItemProvider.notifier)
       .state = switch (destination.kind) {
-    AppDestinationKind.collections => BottomNavBarItem.collections,
+    AppDestinationKind.events => BottomNavBarItem.tournaments,
     AppDestinationKind.feed => BottomNavBarItem.feed,
     _ => BottomNavBarItem.forYou,
   };
@@ -406,14 +408,6 @@ void _openHome(
   });
   if (!foundHome) {
     unawaited(navigator.pushNamed('/home_screen'));
-  }
-  // Events left the bottom bar for Profile: it opens over Home.
-  if (destination.kind == AppDestinationKind.events) {
-    unawaited(
-      WidgetsBinding.instance.endOfFrame.then((_) {
-        if (navigator.mounted) unawaited(navigator.push(eventsScreenRoute()));
-      }),
-    );
   }
   unawaited(WidgetsBinding.instance.endOfFrame.then((_) => hold.close()));
 }

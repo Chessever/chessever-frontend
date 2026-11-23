@@ -1,5 +1,5 @@
-import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -21,17 +21,26 @@ class StartPage {
 StartPage forYouStartPage(ForYouTab tab) =>
     StartPage(label: tab.label, save: () => writeDefaultForYouTab(tab));
 
-StartPage collectionsStartPage(CollectionsTab tab) =>
-    StartPage(label: tab.label, save: () => writeDefaultCollectionsTab(tab));
+StartPage eventsStartPage(GroupEventCategory category) => StartPage(
+  label: groupEventCategoryLabel(category),
+  save: () => writeDefaultEventsCategory(category),
+);
 
 /// The page [section] is on now: the tab its bar highlights. Home and
-/// Collections have pages; the other sections open as they are.
+/// Events have pages; the other sections open as they are.
 StartPage? currentStartPage(WidgetRef ref, BottomNavBarItem section) {
   switch (section) {
     case BottomNavBarItem.forYou:
       return forYouStartPage(ref.read(selectedForYouTabProvider));
-    case BottomNavBarItem.collections:
-      return collectionsStartPage(ref.read(selectedCollectionsTabProvider));
+    case BottomNavBarItem.tournaments:
+      final selected = ref.read(selectedGroupCategoryProvider);
+      // Search is a transient segment: hold the list it hands back to.
+      final category = eventsHomeCategories.contains(selected)
+          ? selected
+          : ref
+                .read(groupEventSearchTabControllerProvider)
+                .categoryBeforeSearch;
+      return eventsStartPage(category);
     case BottomNavBarItem.feed:
     case BottomNavBarItem.botvinnik:
     case BottomNavBarItem.profile:
@@ -39,9 +48,9 @@ StartPage? currentStartPage(WidgetRef ref, BottomNavBarItem section) {
   }
 }
 
-/// "Home → Discovery": the section, then the tab inside it. A section with
-/// no pages is just its name, and so is one on the page that shares its name
-/// (Collections on its Collections page), never "Collections → Collections".
+/// "Home → Discovery", "Events → Upcoming": the section, then the tab inside
+/// it. A section with no pages is just its name, and so is one on a page that
+/// shares its name, never "Events → Events".
 String startScreenName(BottomNavBarItem section, StartPage? page) {
   final name = namesBottomNavBarIcons[section]!;
   return page == null || page.label == name ? name : '$name → ${page.label}';

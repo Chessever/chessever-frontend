@@ -1,7 +1,7 @@
 // Renders of the dock leaving as a root is read down (shown, part-way out,
-// gone) in both themes, driven by a real scroll, and the Collections root's
-// top against Home's: the two bars and their first content side by side on
-// one guide line. PNGs are written only with --dart-define=NAV_DIR=/abs/dir;
+// gone) in both themes, driven by a real scroll, and the Events root's top
+// against Home's: the two bars and their first content side by side on one
+// guide line. PNGs are written only with --dart-define=NAV_DIR=/abs/dir;
 // without it every scene still pumps and must throw nothing.
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -10,14 +10,10 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
-import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/screens/collections/collections_data.dart';
-import 'package:chessever2/screens/collections/collections_screen.dart';
-import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
@@ -29,7 +25,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:dio/dio.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -60,51 +56,6 @@ class _MemoryRecentSearches implements RecentSearchStorage {
 
   @override
   Future<void> write(String value) async {}
-}
-
-const _books = [
-  Collection(
-    id: 'zurich-1953',
-    slug: 'zurich-1953',
-    kind: CollectionKind.event,
-    title: 'Zurich 1953',
-    location: 'Zurich',
-    access: CollectionAccess.free,
-  ),
-  Collection(
-    id: 'my-60',
-    slug: 'my-60',
-    kind: CollectionKind.book,
-    title: 'My 60 Memorable Games',
-    author: 'Bobby Fischer',
-    access: CollectionAccess.free,
-  ),
-  Collection(
-    id: 'candidates-1959',
-    slug: 'candidates-1959',
-    kind: CollectionKind.event,
-    title: 'Candidates 1959',
-    location: 'Bled, Zagreb, Belgrade',
-    access: CollectionAccess.free,
-  ),
-];
-
-class _Books extends CollectionsRepository {
-  _Books() : super(GamebaseRepository(Dio(), apiKey: 'test'));
-
-  @override
-  Future<List<String>> fetchAuthors() async => const ['Bobby Fischer'];
-
-  @override
-  Future<CollectionsPage> searchBooks(
-    CollectionSearchQuery query,
-    int offset,
-  ) async => CollectionsPage(
-    items: offset == 0 ? _books : const [],
-    total: _books.length,
-    limit: 40,
-    offset: offset,
-  );
 }
 
 /// Today's cards, in the size and tone of the event cards, under the bar
@@ -220,6 +171,17 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
 Widget _todayPage(BuildContext context, ForYouTab tab, ScrollController c) =>
     PrimaryScrollController(controller: c, child: const _Cards());
 
+/// Stands in for an Events list, which reads the network.
+Widget _eventsPage(
+  BuildContext context,
+  GroupEventCategory category,
+  ScrollController c,
+) => ListView(
+  controller: c,
+  padding: EdgeInsets.zero,
+  children: [SizedBox(height: 120, child: Text('events:${category.name}'))],
+);
+
 List<Override> _overrides(BottomNavBarItem section) => [
   botvinnikTabAvailableProvider.overrideWithValue(true),
   currentUserProvider.overrideWithValue(
@@ -229,11 +191,8 @@ List<Override> _overrides(BottomNavBarItem section) => [
   inboxHasUnreadProvider.overrideWithValue(false),
   subscriptionProvider.overrideWith((ref) => _Subscription()),
   selectedBottomNavBarItemProvider.overrideWith((ref) => section),
-  selectedCollectionsTabProvider.overrideWith(
-    (ref) => CollectionsTab.collections,
-  ),
   todayLiveEventCountProvider.overrideWith((ref) => 3),
-  collectionsRepositoryProvider.overrideWithValue(_Books()),
+  eventsLiveEventCountProvider.overrideWith((ref) => 3),
   favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new),
   recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
 ];
@@ -380,9 +339,7 @@ void main() {
       await _shot(tester, 'dock_hidden_$theme');
     });
 
-    _scene('the Collections root\'s top against Home\'s, $theme', (
-      tester,
-    ) async {
+    _scene('the Events root\'s top against Home\'s, $theme', (tester) async {
       // Where every root's first content starts: under the bar, by the
       // roots' one lead-in.
       double firstLine(WidgetTester tester) =>
@@ -409,7 +366,7 @@ void main() {
       await _pump(
         tester,
         light: light,
-        section: BottomNavBarItem.collections,
+        section: BottomNavBarItem.tournaments,
         home: Builder(
           builder: (context) {
             final metrics = HomeNavMetrics.of(context, count: 5);
@@ -422,7 +379,10 @@ void main() {
                   metrics: metrics,
                   child: ScrollChromeRegion(
                     controller: chrome,
-                    child: const CollectionsScreen(embedded: true),
+                    child: const GroupEventScreen(
+                      root: true,
+                      pageBuilder: _eventsPage,
+                    ),
                   ),
                 ),
               ),
@@ -431,16 +391,15 @@ void main() {
         ),
       );
       expect(chrome.value, 1);
-      final collectionsLine = firstLine(tester);
-      final collectionsFirst = tester
-          .getTopLeft(find.byType(CollectionCard).first)
-          .dy;
-      expect(collectionsLine, closeTo(homeLine, 0.5));
-      expect(collectionsFirst, closeTo(homeFirst, 0.5));
-      expect(collectionsFirst, closeTo(collectionsLine, 0.5));
+      final eventsLine = firstLine(tester);
+      // Its first content: the segments, on the line Home's first card is.
+      final eventsFirst = tester.getTopLeft(find.byType(SegmentedSwitcher)).dy;
+      expect(eventsLine, closeTo(homeLine, 0.5));
+      expect(eventsFirst, closeTo(homeFirst, 0.5));
+      expect(eventsFirst, closeTo(eventsLine, 0.5));
       expect(tester.takeException(), isNull);
       if (home == null) return;
-      final collections = await _image(tester);
+      final events = await _image(tester);
 
       // Side by side, the top 360pt of each, one guide line across both at
       // the roots' first-content line.
@@ -461,7 +420,7 @@ void main() {
         final src = Rect.fromLTWH(0, 0, width, top);
         canvas.drawImageRect(home, src, src, Paint());
         canvas.drawImageRect(
-          collections,
+          events,
           src,
           src.shift(Offset(width + gap, 0)),
           Paint(),
@@ -478,10 +437,10 @@ void main() {
         return picture.toImage((width * 2 + gap).round(), top.round());
       });
       await _write(tester, composite!, 'roots_top_alignment_$theme');
-      await _write(tester, collections, 'collections_root_$theme');
+      await _write(tester, events, 'events_root_$theme');
       await _write(tester, home, 'home_root_$theme');
       composite.dispose();
-      collections.dispose();
+      events.dispose();
       home.dispose();
     });
   }

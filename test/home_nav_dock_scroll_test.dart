@@ -5,8 +5,8 @@
 // brings both back. Gone, the dock takes no tap and the page under it does;
 // the page's own layout never changes as it comes and goes.
 //
-// Also: a page that would push a second Collections (Discovery's tile,
-// Search's section) switches to the dock's Collections tab instead.
+// Also: a page that would push a second Events (Discovery's tile, Search's
+// Coming up section) switches to the dock's Events section instead.
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
@@ -236,7 +236,7 @@ void main() {
     expect(chrome.value, 0);
   });
 
-  group('a second Collections', () {
+  group('a second Events', () {
     Future<ProviderContainer> pumpShell(
       WidgetTester tester, {
       required bool register,
@@ -270,7 +270,7 @@ void main() {
                                 onPressed: () {
                                   if (!openHomeSection(
                                     context,
-                                    BottomNavBarItem.collections,
+                                    BottomNavBarItem.tournaments,
                                   )) {
                                     Navigator.of(context).push(
                                       MaterialPageRoute<void>(
@@ -281,7 +281,7 @@ void main() {
                                     );
                                   }
                                 },
-                                child: const Text('Collections'),
+                                child: const Text('Events'),
                               ),
                             ),
                           ),
@@ -300,7 +300,7 @@ void main() {
     }
 
     testWidgets('from a page over the shell, the page closes onto the '
-        'dock\'s Collections tab', (tester) async {
+        'dock\'s Events section', (tester) async {
       final container = await pumpShell(tester, register: true);
       expect(
         container.read(selectedBottomNavBarItemProvider),
@@ -310,13 +310,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('open')));
       await tester.pumpAndSettle();
-      // Back on the shell, on Collections; nothing was pushed.
+      // Back on the shell, on Events; nothing was pushed.
       expect(find.byKey(const ValueKey('open')), findsNothing);
       expect(find.byKey(const ValueKey('push')), findsOneWidget);
       expect(find.text('pushed copy'), findsNothing);
       expect(
         container.read(selectedBottomNavBarItemProvider),
-        BottomNavBarItem.collections,
+        BottomNavBarItem.tournaments,
       );
     });
 

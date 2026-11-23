@@ -12,6 +12,8 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
+import 'package:chessever2/screens/home/start_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -74,8 +76,8 @@ final _mappedName = {
 };
 
 /// The list Events opens on unless a Premium viewer picked another (hold a
-/// segment, or hold the Events tab while on it). Search is a transient
-/// segment, never a start page.
+/// segment, or hold the dock's Events slot while on it). Search is a
+/// transient segment, never a start page.
 const GroupEventCategory kDefaultEventsCategory = GroupEventCategory.current;
 
 const String defaultEventsCategoryPrefsKey = 'default_events_tab_v1';
@@ -138,6 +140,43 @@ class GroupEventSearchTabController {
   }
 }
 
+/// Opens the Events lists: the dock's Events section ([openHomeSection]),
+/// never a second copy of it over the home shell. Discovery's Events tile,
+/// Search's Coming up section and anything else that used to push the page
+/// come through here.
+///
+/// Only with no home shell under [context]'s navigator (a page reached with
+/// no Home under it, a page pumped alone in a test) is the page pushed, with
+/// its back ([eventsScreenRoute]).
+Future<void> openEventsScreen(
+  BuildContext context, {
+  String navigationType = 'link',
+}) {
+  HapticFeedbackService.navigation();
+  if (openHomeSection(
+    context,
+    BottomNavBarItem.tournaments,
+    navigationType: navigationType,
+  )) {
+    return Future<void>.value();
+  }
+  return Navigator.of(context).push(eventsScreenRoute());
+}
+
+/// The pushed Events page's route, for a caller with no home shell to hand
+/// it to ([openEventsScreen]). Named as the `/group_event_screen` route is,
+/// so the store-update reminder treats it the same way.
+///
+/// The page is its own Scaffold (its floating buttons and snacks need one
+/// of their own), so the route holds it bare.
+Route<void> eventsScreenRoute() => MaterialPageRoute<void>(
+  settings: const RouteSettings(name: eventsScreenRouteName),
+  builder: (_) => const GroupEventScreen(),
+);
+
+/// The pushed Events page's route name (`main.dart`'s named route too).
+const String eventsScreenRouteName = '/group_event_screen';
+
 /// Builds the body of one Events list around the scroll controller the screen
 /// owns for it (re-tapping the nav item scrolls that controller to the top).
 typedef GroupEventPageBuilder =
@@ -147,8 +186,21 @@ typedef GroupEventPageBuilder =
       ScrollController scrollController,
     );
 
+/// The Events lists: Current, Upcoming and Past, and their search.
+///
+/// Two ways in. As the dock's Events section ([root]) it wears the bar every
+/// root wears ([HomeTopBarFrame], the search field on its centre line, no
+/// way back), folding on the home shell's chrome so the dock leaves and
+/// comes back with it; Live first rides over the dock as Home's buttons
+/// do; a second tap on the dock's slot takes the open list to its top; and
+/// holding a segment makes it the start screen. Pushed (the default: the
+/// `/group_event_screen` route, and [openEventsScreen] with no home shell
+/// under it) it has its back, its own chrome and no dock.
 class GroupEventScreen extends HookConsumerWidget {
-  const GroupEventScreen({super.key, this.pageBuilder});
+  const GroupEventScreen({super.key, this.root = false, this.pageBuilder});
+
+  /// The dock's Events section in the home shell.
+  final bool root;
 
   /// Replaces the list bodies, so widget tests can drive the screen (its top
   /// bar above all) without the network- and database-backed lists. Null in
@@ -200,17 +252,25 @@ class GroupEventScreen extends HookConsumerWidget {
     // spring toward it and the guard holds until the last one lands.
     final pagingFlights = useRef(0);
     final focusNode = useFocusNode();
-    final chrome = useScrollChromeController();
+    final ownChrome = useScrollChromeController();
+    // As the dock's section the bar folds on the home shell's chrome, the
+    // one the dock rides: they leave and come back together. Pushed (or
+    // pumped alone), the page folds its own.
+    final shellChrome = root ? ScrollChromeScope.maybeOf(context) : null;
+    final chrome = shellChrome ?? ownChrome;
+    final ownsChrome = shellChrome == null;
     // While the field has the keyboard the bar holds still, shown: the
     // field sits on the bar, outside the lists' region, so the page holds
     // it ([ScrollChromeController.held]) and the bar springs back if it was
-    // away, instead of snapping as a disabled region would.
+    // away, instead of snapping as a disabled region would. The shell's
+    // region holds over the whole section, field included, by itself.
     useEffect(() {
+      if (!ownsChrome) return null;
       void hold() => chrome.held = focusNode.hasFocus;
       hold();
       focusNode.addListener(hold);
       return () => focusNode.removeListener(hold);
-    }, [focusNode, chrome]);
+    }, [focusNode, chrome, ownsChrome]);
 
     // The field's panel reads the app-wide search providers, which the
     // Search tab's field writes too. This page opens with its own query (or
@@ -335,6 +395,22 @@ class GroupEventScreen extends HookConsumerWidget {
       );
     }
 
+    // The dock's Events slot tapped again (or Events opened while it is
+    // the section in view): the open list goes back to its top on a
+    // spring, with its bars.
+    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
+      previous,
+      next,
+    ) {
+      if (!root || next.item != BottomNavBarItem.tournaments) return;
+      if (previous != null && previous.sequence == next.sequence) return;
+      chrome.show();
+      final list = scrollControllerFor(activeCategory);
+      if (list.hasClients) {
+        unawaited(list.springToOffset(0, context: context));
+      }
+    });
+
     // Past pages in as its end comes near: on a scroll, and on a change of
     // the list's size or its viewport (a page landing, a spinner going, the
     // bars folding), so a list that stops short of the screen asks for the
@@ -364,23 +440,39 @@ class GroupEventScreen extends HookConsumerWidget {
     // every page's floating buttons use ([SlidingFabs] over an
     // [InkFabStack]), on the window's insets, and a snack it raises lands
     // above it rather than over it.
+    final Widget liveFirst = SlidingFabs(
+      controller: chrome,
+      child: InkFabStack(
+        children: [
+          EventsLiveFirstFab(
+            key: const ValueKey(kHomeLiveFirstButtonKey),
+            onTurnedOn: showCurrentTop,
+          ),
+        ],
+      ),
+    );
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.background,
       // Live first floats in the thumb's reach (Trello #1420), while an
       // event is in play, while its count is not known yet, or while it is
-      // on, and steps away with the bar as the list scrolls.
-      floatingActionButton: SlidingFabs(
-        controller: chrome,
-        child: InkFabStack(
-          children: [
-            EventsLiveFirstFab(
-              key: const ValueKey(kHomeLiveFirstButtonKey),
-              onTurnedOn: showCurrentTop,
-            ),
-          ],
-        ),
-      ),
+      // on, and steps away with the bar as the list scrolls. As the dock's
+      // section the shell hands this Scaffold the dock's slot as bottom
+      // padding beyond the home indicator's: lifted by that share, it stands
+      // where Home's buttons stand over the dock, and leaves and comes back
+      // with the dock.
+      floatingActionButton: root
+          ? Padding(
+              padding: EdgeInsets.only(
+                bottom: max(
+                  0.0,
+                  MediaQuery.paddingOf(context).bottom -
+                      MediaQuery.viewPaddingOf(context).bottom,
+                ),
+              ),
+              child: liveFirst,
+            )
+          : liveFirst,
       body: Material(
         key: e2eKey(E2eIds.eventsRoot),
         color: context.colors.background,
@@ -405,8 +497,8 @@ class GroupEventScreen extends HookConsumerWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          HomeTopBarFrame(
-                            statusBar: false,
+                          _EventsBar(
+                            root: root,
                             // Plain SizedBox, not an AnimatedSwitcher: the switcher's child
                             // key never changed, so it never transitioned — it only added a
                             // Stack for the search bar's own morph to relayout through
@@ -567,9 +659,13 @@ class GroupEventScreen extends HookConsumerWidget {
                                   );
                                 },
                                 showProfile: false,
-                                leading: const PageBackButton(
-                                  key: ValueKey('events_back'),
-                                ),
+                                // The dock's section has no way back; the
+                                // dock holds Profile, so no avatar either.
+                                leading: root
+                                    ? null
+                                    : const PageBackButton(
+                                        key: ValueKey('events_back'),
+                                      ),
                                 onClearSearchField: () {
                                   // ignore: unused_result
                                   ref.refresh(groupEventScreenProvider);
@@ -589,7 +685,15 @@ class GroupEventScreen extends HookConsumerWidget {
                             ),
                           ),
 
-                          SizedBox(height: 16.h),
+                          // As a root the page starts under the band, and
+                          // the segments open it on the roots' one lead-in,
+                          // where every root's first content starts.
+                          SizedBox(
+                            key: root
+                                ? const ValueKey(kEventsRootPageTopKey)
+                                : null,
+                            height: root ? HomeTopBarMetrics.contentGap : 16.h,
+                          ),
                           Padding(
                             padding: EdgeInsets.symmetric(
                               horizontal: horizontalPadding,
@@ -598,6 +702,7 @@ class GroupEventScreen extends HookConsumerWidget {
                               children: [
                                 Expanded(
                                   child: _SegmentedSwitcher(
+                                    root: root,
                                     searchController: searchController,
                                     selectedTourEvent: activeCategory,
                                     visibleCategories: visibleCategories,
@@ -643,8 +748,9 @@ class GroupEventScreen extends HookConsumerWidget {
                       ),
                     ),
                     Expanded(
-                      child: ScrollChromeRegion(
+                      child: _OwnChromeRegion(
                         controller: chrome,
+                        owned: ownsChrome,
                         child: NotificationListener<ScrollMetricsNotification>(
                           // The list in a page, one scrollable below the
                           // pager: Past asks for its next page when its end
@@ -926,16 +1032,18 @@ class GroupEventScreen extends HookConsumerWidget {
                   ],
                 ),
                 // The way back while the bar is folded away, centred where the
-                // bar's chevron was (on the bar's row, under its top gap).
-                PageBackFloat(
-                  controller: chrome,
-                  top:
-                      MediaQuery.viewPaddingOf(context).top +
-                      HomeTopBarMetrics.topGap +
-                      (HomeTopBarMetrics.rowExtent(context) -
-                              SearchHeaderMetrics.backTarget) /
-                          2,
-                ),
+                // bar's chevron was (on the bar's row, under its top gap). The
+                // dock's section has no way back.
+                if (!root)
+                  PageBackFloat(
+                    controller: chrome,
+                    top:
+                        MediaQuery.viewPaddingOf(context).top +
+                        HomeTopBarMetrics.topGap +
+                        (HomeTopBarMetrics.rowExtent(context) -
+                                SearchHeaderMetrics.backTarget) /
+                            2,
+                  ),
               ],
             ),
           ),
@@ -945,14 +1053,60 @@ class GroupEventScreen extends HookConsumerWidget {
   }
 }
 
+/// The key of the line the dock's Events page starts on, under the bar.
+const String kEventsRootPageTopKey = 'events_root_page_top';
+
+/// The Events bar: the search field on the row every root shares. As the
+/// dock's section it is the root's band ([HomeTopBarFrame]: the row as tall
+/// as every root's, the gap under it), its status bar strip left outside the
+/// part that folds; pushed, the older form, the row as tall as the field.
+class _EventsBar extends StatelessWidget {
+  const _EventsBar({required this.root, required this.child});
+
+  final bool root;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!root) return HomeTopBarFrame(statusBar: false, child: child);
+    return MediaQuery.removeViewPadding(
+      context: context,
+      removeTop: true,
+      child: HomeTopBarFrame(child: child),
+    );
+  }
+}
+
+/// The lists' scroll region when the page folds its own bar. The dock's
+/// section needs none: the shell's region already holds the whole page,
+/// and a second one would move the bars twice for every scroll.
+class _OwnChromeRegion extends StatelessWidget {
+  const _OwnChromeRegion({
+    required this.controller,
+    required this.owned,
+    required this.child,
+  });
+
+  final ScrollChromeController controller;
+  final bool owned;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      owned ? ScrollChromeRegion(controller: controller, child: child) : child;
+}
+
 class _SegmentedSwitcher extends ConsumerWidget {
   const _SegmentedSwitcher({
+    required this.root,
     required this.searchController,
     required this.selectedTourEvent,
     required this.visibleCategories,
     required this.onSelectedChanged,
   });
 
+  /// The dock's section: holding a segment makes it the start screen.
+  final bool root;
   final TextEditingController searchController;
   final GroupEventCategory selectedTourEvent;
   final List<GroupEventCategory> visibleCategories;
@@ -1050,6 +1204,29 @@ class _SegmentedSwitcher extends ConsumerWidget {
           .clamp(0, visibleCategories.length - 1),
       onSelectionChanged: onSelectedChanged,
       notifyOnReselect: true,
+      // As the dock's section a held segment makes it the start screen, as
+      // the Events tab's did before 38.18. Search is a transient segment
+      // and never a start page.
+      longPressFor: root
+          ? (index) {
+              final category = visibleCategories[index];
+              if (category == GroupEventCategory.search) return null;
+              return () => unawaited(
+                makeStartScreenDefault(
+                  context,
+                  ref,
+                  section: BottomNavBarItem.tournaments,
+                  page: eventsStartPage(category),
+                ),
+              );
+            }
+          : null,
+      longPressHint: root
+          ? (index) => startScreenHint(
+              BottomNavBarItem.tournaments,
+              eventsStartPage(visibleCategories[index]),
+            )
+          : null,
     );
   }
 }

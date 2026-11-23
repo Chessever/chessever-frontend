@@ -84,16 +84,17 @@ final editorialAccessRequestProvider = Provider<EditorialAccessRequest>(
 
 final editorialPageNavigationProvider = Provider<EditorialPageNavigation>(
   (ref) => (context, page) {
-    // Feed and Collections are dock sections: open the dock's tab, as a tap
-    // on it would, rather than push a second copy over the shell. A page
-    // reached with no Home under it pushes its own.
-    final section = switch (page) {
-      EditorialPage.feed => BottomNavBarItem.feed,
-      EditorialPage.collections => BottomNavBarItem.collections,
-      _ => null,
-    };
-    if (section != null &&
-        openHomeSection(context, section, navigationType: 'editorial')) {
+    // Feed is a dock section: open the dock's slot, as a tap on it would,
+    // rather than push a second copy over the shell. A page reached with no
+    // Home under it pushes its own. Collections has no slot: its page is
+    // pushed over the message, so Back returns to it. (`/app/events` is no
+    // hub page: it lands on the dock's Events through the app's links.)
+    if (page == EditorialPage.feed &&
+        openHomeSection(
+          context,
+          BottomNavBarItem.feed,
+          navigationType: 'editorial',
+        )) {
       return;
     }
     final screen = switch (page) {

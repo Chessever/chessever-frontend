@@ -145,16 +145,18 @@ void main() {
 
     controller.jumpToPage(2);
     await settle();
-    expect(find.text(AdDisclosureLine.text), findsOneWidget);
+    // No line of our own over the ad (2026-11-23): the network labels it.
+    expect(
+      find.textContaining('We use ads to keep ChessEver available'),
+      findsNothing,
+    );
     expect(find.text(RemoveAdsButton.label), findsOneWidget);
     expect(find.byKey(const ValueKey('feed_ad_placeholder')), findsOneWidget);
-    // The line and Remove Ads hug the ad, never the page's far edges.
+    // Remove Ads hugs the ad, never the page's far edge.
     final slot = tester.getRect(
       find.byKey(const ValueKey('feed_ad_placeholder')),
     );
-    final line = tester.getRect(find.text(AdDisclosureLine.text));
     final remove = tester.getRect(find.byType(RemoveAdsButton));
-    expect(slot.top - line.bottom, inInclusiveRange(0, 24));
     expect(remove.top - slot.bottom, inInclusiveRange(0, 24));
     // An ad page is never the place Feed brings the viewer back to.
     expect(container.read(feedCurrentEntryKeyProvider), posts[1]);
@@ -216,7 +218,7 @@ void main() {
     expect(controller.page, 2);
     expect(after[2].key, before[3].key);
     expect(container.read(feedCurrentEntryKeyProvider), before[3].key);
-    expect(find.text(AdDisclosureLine.text), findsNothing);
+    expect(find.byType(RemoveAdsButton), findsNothing);
     expect(tester.takeException(), isNull);
     await _tearDown(tester);
   });

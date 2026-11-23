@@ -20,10 +20,11 @@ class PhoneUpdateRouteObserver extends NavigatorObserver {
   };
 
   /// Whether the section [homeRoute] shows is a page to browse. Home's route
-  /// holds every bottom-bar section, and Botvinnik, Feed and Search were
-  /// unnamed pages (so deferred) before they became tabs: a chat, a clip
-  /// playing or a query being typed must still not be interrupted. The bar's
-  /// selection keeps this current; true when nothing has set it.
+  /// holds every dock section, and Botvinnik and Feed were unnamed pages (so
+  /// deferred) before they became tabs: a chat or a clip playing must still
+  /// not be interrupted. Events browses as its `/group_event_screen` page
+  /// does. The dock's selection keeps this current (`updatePromptSections`);
+  /// true when nothing has set it.
   static final homeSectionSafe = ValueNotifier<bool>(true);
 
   final safeToPrompt = ValueNotifier<bool>(false);

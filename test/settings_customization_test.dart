@@ -419,8 +419,8 @@ void main() {
       await _tap(tester, find.text('Dark'));
       expect(container.read(themeModeProvider), ThemeMode.dark);
       await _tap(tester, find.text('Start section'));
-      await _tap(tester, find.text('Collections'));
-      expect(readDefaultBottomTab(), BottomNavBarItem.collections);
+      await _tap(tester, find.text('Events'));
+      expect(readDefaultBottomTab(), BottomNavBarItem.tournaments);
       await _tap(tester, find.text('Home page'));
       await _tap(tester, find.text('My Space'));
       expect(readDefaultForYouTab(), ForYouTab.mySpace);
@@ -429,29 +429,32 @@ void main() {
     },
   );
 
-  testWidgets('a start section saved as Search reads, and opens, as Home', (
-    tester,
-  ) async {
-    // Search left the dock for Today's button; Collections took its slot.
-    await SharedPreferencesService.instance.prefsOrNull!.setString(
-      defaultBottomTabPrefsKey,
-      'search',
-    );
-    await _pumpSettings(
+  for (final saved in ['search', 'collections']) {
+    testWidgets('a start section saved as $saved reads, and opens, as Home', (
       tester,
-      initiallyExpanded: SettingsSection.customization,
-    );
-    final row = find.ancestor(
-      of: find.text('Start section'),
-      matching: find.byType(InkWell),
-    );
-    expect(
-      find.descendant(of: row.first, matching: find.text('Home')),
-      findsOneWidget,
-    );
-    expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
-    expect(tester.takeException(), isNull);
-  });
+    ) async {
+      // Search left the dock for Today's button, Collections for Discovery
+      // (2026-11-23).
+      await SharedPreferencesService.instance.prefsOrNull!.setString(
+        defaultBottomTabPrefsKey,
+        saved,
+      );
+      await _pumpSettings(
+        tester,
+        initiallyExpanded: SettingsSection.customization,
+      );
+      final row = find.ancestor(
+        of: find.text('Start section'),
+        matching: find.byType(InkWell),
+      );
+      expect(
+        find.descendant(of: row.first, matching: find.text('Home')),
+        findsOneWidget,
+      );
+      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('start section offers only the sections on the bar', (
     tester,
@@ -474,13 +477,17 @@ void main() {
     );
     await _tap(tester, find.text('Start section'));
     final sheet = find.byType(BottomSheet);
-    for (final title in ['Home', 'Feed', 'Collections', 'Profile']) {
+    for (final title in ['Home', 'Events', 'Feed', 'Profile']) {
       expect(
         find.descendant(of: sheet, matching: find.text(title)),
         findsOneWidget,
         reason: title,
       );
     }
+    expect(
+      find.descendant(of: sheet, matching: find.text('Collections')),
+      findsNothing,
+    );
     expect(
       find.descendant(of: sheet, matching: find.text('Botvinnik')),
       findsNothing,

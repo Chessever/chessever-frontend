@@ -13,20 +13,16 @@ class E2eIds {
   static const standingsRoot = 'e2e_standings_root';
   static const boardColorDialogRoot = 'e2e_board_color_dialog_root';
 
+  /// The dock's Events slot (beside Home). The value is the one the Events
+  /// tab wore before 38.18.
   static const navEvents = 'e2e_nav_events';
   static const navForYou = 'e2e_nav_for_you';
   static const navFeed = 'e2e_nav_feed';
   static const navBotvinnik = 'e2e_nav_botvinnik';
   static const navProfile = 'e2e_nav_profile';
 
-  /// The dock's Collections slot, where Search's stood (Search opens from
-  /// Today's floating button, [forYouSearchButton]).
-  static const navCollections = 'e2e_nav_collections';
-  static const navLibrary = navCollections;
-
   /// The Profile tab's page, which holds what the sidebar used to.
   static const profileRoot = 'e2e_profile_root';
-  static const profileEvents = 'e2e_profile_events';
   static const searchRoot = 'e2e_search_root';
 
   static const drawerSettings = 'e2e_drawer_settings';

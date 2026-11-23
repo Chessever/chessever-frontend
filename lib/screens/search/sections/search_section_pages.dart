@@ -5,9 +5,7 @@ import 'package:chessever2/screens/for_you/discovery/news_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
     show BottomNavBarItem, openHomeSection;
 import 'package:chessever2/screens/group_event/group_event_screen.dart'
-    show GroupEventCategory, selectedGroupCategoryProvider;
-import 'package:chessever2/screens/my_profile/profile_hub_screen.dart'
-    show eventsScreenRoute;
+    show GroupEventCategory, eventsScreenRoute, selectedGroupCategoryProvider;
 import 'package:chessever2/screens/my_space/actions/space_star_pin.dart'
     show SpaceStarPins;
 import 'package:chessever2/screens/search/sections/search_openings_page.dart';
@@ -49,10 +47,11 @@ enum SearchSectionId {
 /// * Openings: every opening as its smart event ([SearchOpeningsPage]);
 ///   [onOpening] opens one (the tab remembers the pick).
 /// * Smart events: every built-in smart event ([SearchSmartEventsPage]).
-/// * Coming up: Events on Upcoming.
-/// * Collections: the dock's Collections tab, Search closing onto it
-///   ([openHomeSection]); the pushed Collections page only with no home
-///   shell under Search.
+/// * Coming up: the dock's Events section on Upcoming, Search closing onto
+///   it ([openHomeSection]); the pushed Events page only with no home shell
+///   under Search.
+/// * Collections: the Collections page pushed over Search, so Back returns
+///   to Search. It has no dock slot.
 /// * News: the News page.
 Future<void> openSearchSectionPage(
   BuildContext context,
@@ -69,6 +68,15 @@ Future<void> openSearchSectionPage(
     case SearchSectionId.comingUp:
       container.read(selectedGroupCategoryProvider.notifier).state =
           GroupEventCategory.upcoming;
+      // The dock holds Events: Search closes onto it, on Upcoming. Only
+      // with no home shell under Search is a page of its own pushed.
+      if (openHomeSection(
+        context,
+        BottomNavBarItem.tournaments,
+        navigationType: 'search',
+      )) {
+        return Future<void>.value();
+      }
       return navigator.push(eventsScreenRoute());
     case SearchSectionId.topPlayers:
       return push(
@@ -79,15 +87,6 @@ Future<void> openSearchSectionPage(
     case SearchSectionId.smartEvents:
       return push(const SearchSmartEventsPage());
     case SearchSectionId.collections:
-      // The dock holds Collections: Search closes onto its tab. Only with
-      // no home shell under Search is a page of its own pushed.
-      if (openHomeSection(
-        context,
-        BottomNavBarItem.collections,
-        navigationType: 'search',
-      )) {
-        return Future<void>.value();
-      }
       return push(const CollectionsScreen());
     case SearchSectionId.news:
       return NewsScreen.open(context);

@@ -8,7 +8,6 @@ import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/inbox/inbox_screen.dart';
@@ -40,20 +39,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Pushes the Events lists (Current, Upcoming, Past and search), which left
-/// the bottom bar for Profile.
-Future<void> openEventsScreen(BuildContext context) {
-  HapticFeedbackService.navigation();
-  return Navigator.of(context).push(eventsScreenRoute());
-}
-
-/// The Events page's route, for callers holding a navigator (a deep link).
-///
-/// The page is its own Scaffold (its floating buttons and snacks need one
-/// of their own), so the route holds it bare.
-Route<void> eventsScreenRoute() =>
-    MaterialPageRoute<void>(builder: (_) => const GroupEventScreen());
-
 /// Scroll-to-top on re-tap settles on a spring, with no overshoot past the
 /// top edge (the same one Home's re-tap rides).
 const CupertinoMotion _scrollTopMotion = CupertinoMotion.smooth(
@@ -61,9 +46,9 @@ const CupertinoMotion _scrollTopMotion = CupertinoMotion.smooth(
 );
 final Curve _scrollTopCurve = _scrollTopMotion.toCurve;
 
-/// The Profile tab: the reader, then everything the sidebar used to hold
-/// and Events, which left the bottom bar. Collections and Botvinnik (while
-/// it is on) have tabs of their own on the dock and no row here.
+/// The Profile tab: the reader, then everything the sidebar used to hold.
+/// Events and Botvinnik (while it is on) have slots of their own on the dock
+/// and no row here; Collections opens from Discovery's first tile.
 ///
 /// One quiet page in My Profile's language under the bar every root wears
 /// ([HomeTopBarFrame], its name set as every root's is): the reader at the
@@ -104,13 +89,6 @@ class ProfileHubScreen extends HookConsumerWidget {
     }
 
     final places = <Widget>[
-      _HubRow(
-        key: e2eKey(E2eIds.profileEvents),
-        title: 'Events',
-        dotId: 'home.nav.events',
-        mark: _svgMark(context, SvgAsset.tournamentIcon),
-        onTap: () => openEventsScreen(context),
-      ),
       if (inbox)
         _HubRow(
           key: const ValueKey('profile-inbox'),

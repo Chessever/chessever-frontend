@@ -24,6 +24,13 @@ Audited 2026-11-22 against:
   are on branch `fix/push-routing-audit-o-items` (cfa224e), admin PR #19:
   open, migrations not applied, Worker not deployed.
 
+Updated 2026-11-23 for the dock change (39.2.13): the dock is Home, Events,
+Botvinnik, Feed, Profile (no Botvinnik when it is switched off), Events is
+the Events lists as a root again (`BottomNavBarItem.tournaments`), Profile
+has no Events row, and Collections is a pushed page (Discovery's first tile,
+Search's Collections section, `/app/collections`, editorial `/collections`).
+Rows naming the dock below follow that.
+
 Related: `docs/mobile-app-routes.md` (the `/app/...` catalog for admins; its
 WebView paragraph predates the outside-link allowlist in rule 7 below),
 `docs/push_notifications.md`, `docs/onesignal-removal.md`.
@@ -205,12 +212,12 @@ Same handling for `https://chessever.com/app/...`, `www`, port 443,
 
 | Route | Lands on | Test |
 |---|---|---|
-| `/app`, `/app/home`, `/app/home/today` | Home dock tab, Today; dock shown | regressions "route ... lands on its dock tab with the dock in view"; `home_screen_link_landing_test` "a route to the section already open brings the dock back" (real HomeScreen) |
+| `/app`, `/app/home`, `/app/home/today` | Home dock section, Today; dock shown | regressions "route ... lands on its dock section with the dock in view"; `home_screen_link_landing_test` "a route to the section already open brings the dock back" (real HomeScreen) |
 | `/app/home/my-space`, `/app/home/discovery`, `/app/my-space` | Home, that page | `app_destination_test` (parse); `home_screen_link_landing_test` "/app/my-space lands on Home, My Space" |
-| `/app/events` | Events page over Home (Events left the dock for Profile) | `app_destination_test` (parse only) |
-| `/app/collections` | Collections dock tab | regressions (dock tab test); `home_screen_link_landing_test` (phone dock and tablet rail) |
+| `/app/events` | Events dock section (beside Home since 39.2.13), dock shown, nothing pushed; the pages over Home close. Phone dock and tablet rail alike. (38.18 to 39.2.12 pushed an Events page over Home; 38.17 and earlier selected the Events tab) | regressions "route ... lands on its dock section"; `app_destination_service_test`; `home_screen_link_landing_test` (phone dock and tablet rail) |
+| `/app/collections` | Collections page pushed over Home (route `/app/collections`), with its back and title; the dock section is unchanged. In place, over the message. (39.2.0 to 39.2.12 selected a Collections dock tab) | regressions "route /app/collections pushes the Collections page"; `app_destination_service_test`; `home_screen_link_landing_test` |
 | `/app/collections/<slug>` | CollectionScreen over Home, no page paywall (game gate, as L14) | `app_destination_service_test` "Premium locked collection opens its page with no paywall" |
-| `/app/feed` | Feed dock tab (never a second FeedScreen) | regressions (dock tab test) |
+| `/app/feed` | Feed dock section (never a second FeedScreen) | regressions (dock section test) |
 | `/app/likes[/<period>][?from&to&players]` | Most liked, period and range restored | `app_destination_service_test` (one pre-existing date failure, see section 9) |
 | `/app/miniatures[/about\|games\|players]` | Miniatures on that tab | `deep_link_notification_router_test` "Miniatures ..." |
 | `/app/reports[/<type>]` | Reports on that type, after the `game_reports` gate | `app_destination_service_test` (dismissed paywall consumes the route) |
@@ -237,7 +244,7 @@ switch (`:2118`) → id hints in the default branch → Home.
 | `round_started` (dispatcher `:1694`) | `round_id`, `group_broadcast_id`, `grouped_round_start_key` | Event on Games, that category and round | Same | `home_screen_link_landing_test` "an event push opens the event over Home"; regressions O17 group |
 | `round_started` (admin automation, `tournament_started`) | campaign data plus `url` → delivery turns it into `data.route` `/app/broadcast/<gb>/<tour>` | Event of that tour on Games (`route` wins over `round_id`) | Builds without `route` use type + ids | `app_destination_test` (legacy broadcast parse) |
 | `round_heads_up` (`:705`), `round_finished` (`:1031`) | `round_id`, `tour_id`, `group_broadcast_id` (nulls arrive as `"null"` over FCM) | Event on Games on that round; `"null"` and `"undefined"` read as absent (`:2947`) | Old builds treated `"null"` as an id; the dispatcher drops nulls since 2026-11-22 (`compactPushData`, deployed, `bf65fcfc`, O5 closed) | regressions 'a round push whose ids arrived as the string "null"' |
-| `collection_games_added` (gamebase outbox → dispatcher `:845`) | `collection_slug`, `collection_title?`, `added` (string) | CollectionScreen over Home, then "N new games just landed"; unreadable: Home with Try again | Handler 36.3.6+; older: Home | `collections_screen_test` (~2964), regressions "signed out opens sign-in, not Home", "a collection push lands over Home; Back returns to it", O17 group; `home_screen_link_landing_test` (over the Collections tab, Back returns to it) |
+| `collection_games_added` (gamebase outbox → dispatcher `:845`) | `collection_slug`, `collection_title?`, `added` (string) | CollectionScreen over Home, then "N new games just landed"; unreadable: Home with Try again | Handler 36.3.6+; older: Home | `collections_screen_test` (~2964), regressions "signed out opens sign-in, not Home", "a collection push lands over Home; Back returns to it", O17 group; `home_screen_link_landing_test` (over the Events section, Back returns to it) |
 | `smart_event_games` (queue `20261117200000_smart_event_push_stories.sql`, types `smart_event_live` / `smart_event_digest`; dispatcher `:2505,2572`) | `smart_event_id`, `smart_event_kind`, `games`, `min_elo`, `max_elo`, `formats` (CSV), `eco_code?`, `label?`, `smart_event_name?`, `game_id?` | SmartEventScreen on Games over Home | Queue gate: a device on build 3676 (37.0.4)+; older devices of that user open `game_id` | `smart_event_push_tap_test`, regressions signed-out case and O17 group; `home_screen_link_landing_test` |
 | `prep_games_added` (dispatcher `:890`) | `prep_profile_id`, `added` (string), `profile_name?` | PrepProfileScreen on Games over Home; profile not on this device: My Prep plus "starred on another device / Stop alerts" | 36.10.10+ | `my_prep_profile_flow_test` (~2159), regressions signed-out case and O17 group |
 | `book_game_added\|updated\|removed`, `book_folder_*` (dispatcher `:933-970`) | `folder_id`, `analysis_id`; `url` `https://chessever.com/databases/<id>` → `data.route` `/app/databases/<id>` | FolderContentsScreen over Home (route path) | Same | none (no campaigns in 14 days) |
@@ -252,7 +259,7 @@ switch (`:2118`) → id hints in the default branch → Home.
 
 | Surface | Order of handling | Lands on | Test |
 |---|---|---|---|
-| Inbox message buttons and markdown, Nudge "See", Botvinnik Inbox (`editorial_link_service.dart:123-236`) | 1. ten bare hub paths (`editorialPageForUri`, `:51`; Feed and Collections switch the dock tab, `:95-98`); 2. `/collections/<slug>` (paywalled page, product call O9); 3. everything else the app opens → `DeepLinkService.openLinkInPlace`: `/webview?url=`, every `/app` route, every `newsInAppRoute` shape (`/app/my-space/*`, `/app/likes\|miniatures\|reports/<x>`, legacy game, event, scorecard, profile, book and folder paths, share-image shapes, news); 4. own pages → `openOwnWebPage`; 5. other sites → system browser | As section 3, over the message, so Back returns to it; Reports still ask `game_reports`; a destination that cannot open leaves the message with a snack. Dock sections switch the dock and news opens Discovery's reader (both close the message, by design) | regressions "Inbox and Nudge links open the whole catalog in place" (incl. the O7 cases), `editorial_link_service_test`; `home_screen_link_landing_test` (a link in a real Inbox message) |
+| Inbox message buttons and markdown, Nudge "See", Botvinnik Inbox (`editorial_link_service.dart:123-236`) | 1. ten bare hub paths (`editorialPageForUri`, `:51`; Feed switches the dock section, Collections pushes its page over the message); 2. `/collections/<slug>` (paywalled page, product call O9); 3. everything else the app opens → `DeepLinkService.openLinkInPlace`: `/webview?url=`, every `/app` route, every `newsInAppRoute` shape (`/app/my-space/*`, `/app/likes\|miniatures\|reports/<x>`, legacy game, event, scorecard, profile, book and folder paths, share-image shapes, news); 4. own pages → `openOwnWebPage`; 5. other sites → system browser | As section 3, over the message, so Back returns to it; Reports still ask `game_reports`; a destination that cannot open leaves the message with a snack. Dock sections switch the dock and news opens Discovery's reader (both close the message, by design) | regressions "Inbox and Nudge links open the whole catalog in place" (incl. the O7 cases), `editorial_link_service_test`; `home_screen_link_landing_test` (a link in a real Inbox message) |
 | News article links (`news_reader_screen.dart:195-215`) | another article in place; `newsInAppRoute` → `openLinkInPlace` (O21); else browser | As section 3, over the article, so Back returns to it, by the rules of an Inbox link: a destination that cannot open leaves the article with a snack; an article not in the reader's list still opens in Discovery's reader | regressions "a news article's links open over the article (O21)" (real `NewsReaderScreen`: game, event, a game that cannot be found); `news_universal_reader_test` |
 | My Space shortcuts (`space_shortcut_navigator.dart:158-186,817-843`) | `open*ForShortcut` with `preserveCurrentRoute`; link shortcuts via `openLinkFromApp` | Over My Space; event shortcuts pass the past-event gate | `my_space_navigator_test` |
 
@@ -260,12 +267,13 @@ switch (`:2118`) → id hints in the default branch → Home.
 
 | Stored value | Read by | Mapping | Test |
 |---|---|---|---|
-| `default_bottom_tab_v1` (by `Enum.name`) | `readDefaultBottomTab` (`bottom_nav_bar.dart:456`); HomeScreen falls back to Home when the section is not on the bar | `search` (38.18-38.21) and `tournaments` (35.x) → Home; `collections` → Collections; `botvinnik` switched off → Home | `start_screen_test` ("a saved section that left the bar opens Home"), `settings_customization_test` |
+| `default_bottom_tab_v1` (by `Enum.name`) | `readDefaultBottomTab` (`bottom_nav_bar.dart`); HomeScreen falls back to Home when the section is not on the dock | `tournaments` (35.x to 38.17) → Events, on the dock again; `collections` (before 38.18, and 39.2.0 to 39.2.12) and `search` (38.18 to 39.1.x) → Home; `botvinnik` switched off → Home | `start_screen_test` ("a saved section that left the dock opens Home", "Events, on the dock again"), `settings_customization_test`, `home_screen_link_landing_test` ("a start screen saved as ... launches ...", real HomeScreen) |
 | `for_you_last_tab_v1` | dropped each launch (`forgetForYouPageForLaunch`, `home_screen.dart:55,114`) | Today unless a Premium reader saved another page | `start_screen_test` |
-| `default_foryou_tab_v1`, `default_events_tab_v1`, `default_collections_tab_v1` | by name | unknown names → default | `start_screen_test` |
+| `default_foryou_tab_v1`, `default_events_tab_v1` | by name | unknown names → default | `start_screen_test` |
+| `default_collections_tab_v1` | nothing since 39.2.13 (the pushed Collections page always opens on its catalog) | left on the device, unread | none |
 | `search_tab_recents_v1` | `SearchRecentPick.fromJson` (tolerant) | the Search page reads the old tab's recents | `search_recents_store_test` |
-| Discovery dot ids `home.nav.*`, `home.menu`, `drawer.*` | `bottomNavBarDotIds` (`bottom_nav_bar.dart:98`) | kept; the Profile tab carries `home.menu` | `home_shell_default_route_test` |
-| Nudge marker ids `home.tab.*`, `collections.tab.*` (dark on 38.18-39.2.6: `ForYouPageTabs` carried no anchor) | `ForYouPageTabs(dotScope:)` (`for_you_screen.dart`): Home's header passes `home.tab`, the dock's Collections tab (`CollectionsRoot`) passes `collections.tab` | the same ids as the old segmented tabs; the dot sits off the word's shoulder, a tap or standing on the page retires it | `nudge_marker_anchors_test` (every catalog placement against the real shell's widget tree; drawn and retired on both tab rows) |
+| Discovery dot ids `home.nav.*`, `home.menu`, `drawer.*` | `bottomNavBarDotIds` (`bottom_nav_bar.dart`) | kept; the Profile tab carries `home.menu`; the dock's Events slot carries `home.nav.events` (the Events tab's before 38.18, Profile's Events row's from 38.18 to 39.2.12); `home.nav.collections` has no surface since 39.2.13 (retired) | `home_shell_default_route_test`, `nudge_marker_anchors_test` |
+| Nudge marker ids `home.tab.*` (dark on 38.18-39.2.6: `ForYouPageTabs` carried no anchor), `collections.tab.*`, `events.tab.*` | `ForYouPageTabs(dotScope:)` (`for_you_screen.dart`): Home's header passes `home.tab`; the pushed Collections page (`EventViewShell`) passes `collections.tab`; the Events segments (`SegmentedSwitcher`) pass `events.tab` | the same ids as the old segmented tabs; the dot sits off the word's shoulder, a tap or standing on the page retires it | `nudge_marker_anchors_test` (every catalog placement against the real shell's widget tree or the source) |
 | My Space shortcut kinds | parsed by name; unknown → null | unchanged | `my_space_add_sheet_test` |
 
 No tab state is persisted by index anywhere.
@@ -360,11 +368,14 @@ a path is in both) and update the "as of" date.
   loading auth state read as signed out, the game route ignoring a sign-in
   under way, HomeScreen not draining a held link, HomeScreen ignoring the
   dock reveal) each fail at least one test too.
-- The real `HomeScreen` is covered (`test/home_screen_link_landing_test.dart`,
-  13 tests): game, event, collection (over the Collections tab), smart event,
-  `/app/my-space`, `/app/collections` and an Inbox nudge route landing from
+- The real `HomeScreen` is covered (`test/home_screen_link_landing_test.dart`):
+  game, event, collection (over the Events section), smart event,
+  `/app/my-space`, `/app/events` (the dock's Events), `/app/collections`
+  (its page pushed over Home) and an Inbox nudge route landing from
   the Search page on the same Home; a link inside the real Inbox message
-  opening over it; the tablet rail for `/app/collections` and a game push;
+  opening over it; the tablet rail for `/app/events` and a game push; a
+  start screen saved by an older build (`collections`, `search`,
+  `tournaments`) launching the right section;
   held links draining after the real `markOnboardingComplete`; the dock
   reveal on a route to the section already open; a game push during a
   guest's sign-in. Only the section pages, their background syncs and the
@@ -598,7 +609,7 @@ merge), **Console change**, or open.
 | O9 | `/collections/<slug>` in an Inbox message paywalls the page; the same collection from a link, push or `/app/collections/<slug>` route gates at the game | Product decision |
 | O10 | **Closed 2026-11-22: migration `20261122180200` applied, delivery Worker `58c3191f` deployed, dispatcher sends `image`/`collapseKey` (`1b215c14`, deployed).** Hand-off drops the push image and collapse key (Inbox images missing, Prep pushes stack). With the PR, `/internal/notifications` accepts optional `image` and `collapseKey`. FCM gets the image on Android and iOS, and the key becomes the Android notification tag and the `apns-collapse-id`. OneSignal gets `collapse_id`. Senders that don't send them are unchanged, and a bad value drops only that extra | In order: apply the migration, deploy the delivery Worker, then make `onesignal-dispatch` (`notification_handoff.ts`, this repo) send `image` and `collapseKey`, and deploy it. Sent earlier, the strict ingest rejects the whole push |
 | O11 | **Closed 2026-11-22: migration `20261122180100` applied.** Event starrers get the admin "tournament started" campaign and the dispatcher's first `round_started`. With the PR, `observe` also suppresses the dispatcher's follower `round_started` when an all-user `tournament_started` is reserved for that section's first round, the same rule as `round_started`. Game alerts are unchanged | Apply the migration; the dispatcher already acts on `observe`'s answer |
-| O12 | **Closed 2026-11-22: admin PR #19 merged and the admin Worker `f93a4588` deployed.** Admin Nudges list still describes the old shell (Events trail, no Feed/Botvinnik). With the PR, `shared/nudges.ts` follows the current dock, Home pages and Profile rows, keeps every legacy id with a version note, shows where each "See" link opens, refuses `/app/` links the app cannot open, and a test checks every marker id against this checkout | Deploy the admin portal after the merge Follow-up for that PR: `home.tab.*` and `collections.tab.*` are drawn again from the next phone build (Home's and the dock Collections tab's page tabs carry them, `ForYouPageTabs(dotScope:)`), so their `builds` note should read "all builds except 38.18 to 39.2.6" instead of "before 38.18 only", and the catalog's shell comment and its test ("ids older builds light ...") change with it. `test/nudge_marker_anchors_test.dart` here checks every catalog id against the real shell (sibling checkout or the pinned copy `test/fixtures/nudge_surfaces_pinned.ts`, refresh it when the catalog changes); only `drawer.desktop` is retired |
+| O12 | **Closed 2026-11-22: admin PR #19 merged and the admin Worker `f93a4588` deployed.** Admin Nudges list still describes the old shell (Events trail, no Feed/Botvinnik). With the PR, `shared/nudges.ts` follows the current dock, Home pages and Profile rows, keeps every legacy id with a version note, shows where each "See" link opens, refuses `/app/` links the app cannot open, and a test checks every marker id against this checkout | Deploy the admin portal after the merge Follow-up for that PR: `home.tab.*` and `collections.tab.*` are drawn again from the next phone build (Home's and the dock Collections tab's page tabs carry them, `ForYouPageTabs(dotScope:)`), so their `builds` note should read "all builds except 38.18 to 39.2.6" instead of "before 38.18 only", and the catalog's shell comment and its test ("ids older builds light ...") change with it. `test/nudge_marker_anchors_test.dart` here checks every catalog id against the real shell (sibling checkout or the pinned copy `test/fixtures/nudge_surfaces_pinned.ts`, refresh it when the catalog changes); `drawer.desktop` is retired, and since 39.2.13 `home.nav.collections` (the admin catalog still offers it with no builds note: give it one naming 38.17 and earlier and 39.2.0 to 39.2.12, move `home.nav.events` to the Bottom bar with an empty trail, and trail `collections.tab.*` through Discovery's Collections tile) |
 | O13 | Old Android builds keep the catch-all filter: own pages bounce back into them until they update | None client-side; optionally serve account and legal pages from an unclaimed host |
 | O14 | **Fixed in this tree.** A collection link that cannot be read keeps the reader in place with a snack that says why (`_linkFailed`, `userFacingError`); a cold start still lands on Home | Regressions "a collection link that cannot open keeps the reader in place (O14)" |
 | O15 | Unverified: AppsFlyer GCD routes `payload['link']` without checking `is_first_launch` (`appsflyer_service.dart:871-876`); whether `www.chessever.com` App Link verification survives a redirect | Device / AppsFlyer check |
@@ -650,8 +661,11 @@ Change these together, in the same commit or PR pair:
    route it; a regression test; section 4 here. Old builds in the wild will
    receive it otherwise.
 4. **Dock and sections:** open a dock section through `_openHome` /
-   `openHomeSection`, never by pushing a second copy; persist tabs by
-   `Enum.name` and keep fallbacks for removed names (`search`, `tournaments`);
+   `openHomeSection`, never by pushing a second copy (Events: Discovery's
+   Events tile, Search's Coming up and `/app/events` all select it,
+   `openEventsScreen`); a page with no dock slot (Collections, Search) is
+   pushed with its back. Persist tabs by `Enum.name` and keep fallbacks for
+   removed names (`search`, `collections`);
    keep discovery dot ids stable. A tab row, dock slot or menu row that is
    rebuilt keeps its Nudge anchor (`DiscoveryDotAnchor`, `dotScope`, the
    same ids); `test/nudge_marker_anchors_test.dart` fails when a placement

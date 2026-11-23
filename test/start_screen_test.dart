@@ -1,6 +1,5 @@
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
-import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/home/start_screen.dart';
@@ -28,15 +27,12 @@ void main() {
     test('each section opens on its default until one is saved', () {
       expect(readDefaultForYouTab(), ForYouTab.today);
       expect(readDefaultEventsCategory(), GroupEventCategory.current);
-      expect(readDefaultCollectionsTab(), CollectionsTab.collections);
     });
 
-    test('Events and Collections read back what was saved', () async {
+    test('Events reads back what was saved', () async {
       await writeDefaultEventsCategory(GroupEventCategory.upcoming);
-      await writeDefaultCollectionsTab(CollectionsTab.authors);
 
       expect(readDefaultEventsCategory(), GroupEventCategory.upcoming);
-      expect(readDefaultCollectionsTab(), CollectionsTab.authors);
 
       final container = ProviderContainer(
         overrides: [
@@ -48,10 +44,6 @@ void main() {
         container.read(selectedGroupCategoryProvider),
         GroupEventCategory.upcoming,
       );
-      expect(
-        container.read(selectedCollectionsTabProvider),
-        CollectionsTab.authors,
-      );
     });
 
     test(
@@ -59,10 +51,8 @@ void main() {
       () async {
         // Search is a transient Events segment, never a start page.
         await prefs.setString(defaultEventsCategoryPrefsKey, 'search');
-        await prefs.setString(defaultCollectionsTabPrefsKey, 'openings');
 
         expect(readDefaultEventsCategory(), GroupEventCategory.current);
-        expect(readDefaultCollectionsTab(), CollectionsTab.collections);
       },
     );
 
@@ -76,37 +66,30 @@ void main() {
       );
       expect(
         startScreenName(
-          BottomNavBarItem.collections,
-          collectionsStartPage(CollectionsTab.authors),
+          BottomNavBarItem.tournaments,
+          eventsStartPage(GroupEventCategory.upcoming),
         ),
-        'Collections → Authors',
+        'Events → Upcoming',
       );
-      // Sections without pages are named alone, and so is a page that
-      // shares its section's name.
+      // Sections without pages are named alone.
       expect(startScreenName(BottomNavBarItem.feed, null), 'Feed');
       expect(startScreenName(BottomNavBarItem.profile, null), 'Profile');
-      expect(
-        startScreenName(
-          BottomNavBarItem.collections,
-          collectionsStartPage(CollectionsTab.collections),
-        ),
-        'Collections',
-      );
     });
 
-    test('a saved section that left the bar opens Home', () async {
-      // Events moved to Profile (2026-11-18).
+    test('a saved section that left the dock opens Home', () async {
+      // Collections left the dock for Discovery (2026-11-23), Search for
+      // Today's button: a reader who launched on one opens on Home, one tap
+      // from it.
+      for (final name in ['collections', 'search']) {
+        await prefs.setString(defaultBottomTabPrefsKey, name);
+        expect(readDefaultBottomTab(), BottomNavBarItem.forYou, reason: name);
+      }
+    });
+
+    test('Events, on the dock again, reads back as itself', () async {
+      // The name Events was saved under before 38.18.
       await prefs.setString(defaultBottomTabPrefsKey, 'tournaments');
-      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
-      // Search left the dock for Today's button (Collections took its
-      // slot): a reader who launched on it opens on Home, one tap from it.
-      await prefs.setString(defaultBottomTabPrefsKey, 'search');
-      expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
-    });
-
-    test('Collections, on the dock again, reads back as itself', () async {
-      await prefs.setString(defaultBottomTabPrefsKey, 'collections');
-      expect(readDefaultBottomTab(), BottomNavBarItem.collections);
+      expect(readDefaultBottomTab(), BottomNavBarItem.tournaments);
     });
   });
 
@@ -217,32 +200,59 @@ void main() {
       container.dispose();
     });
 
-    testWidgets('Collections saves the page it is showing', (tester) async {
+    testWidgets('Events saves the list it is showing', (tester) async {
       await pumpHost(
         tester,
         (context, ref) => makeStartScreenDefault(
           context,
           ref,
-          section: BottomNavBarItem.collections,
+          section: BottomNavBarItem.tournaments,
         ),
       );
-      container.read(selectedCollectionsTabProvider.notifier).state =
-          CollectionsTab.authors;
+      container.read(selectedGroupCategoryProvider.notifier).state =
+          GroupEventCategory.upcoming;
 
       await tester.tap(find.text('hold'));
       await settle(tester);
       expect(
-        find.text('Make Collections → Authors your start screen?'),
+        find.text('Make Events → Upcoming your start screen?'),
         findsOneWidget,
       );
       await tester.tap(find.text('Apply'));
       await settle(tester);
 
-      expect(prefs.getString(defaultBottomTabPrefsKey), 'collections');
-      expect(prefs.getString(defaultCollectionsTabPrefsKey), 'authors');
-      expect(readDefaultBottomTab(), BottomNavBarItem.collections);
-      expect(readDefaultCollectionsTab(), CollectionsTab.authors);
+      expect(prefs.getString(defaultBottomTabPrefsKey), 'tournaments');
+      expect(prefs.getString(defaultEventsCategoryPrefsKey), 'upcoming');
+      expect(readDefaultBottomTab(), BottomNavBarItem.tournaments);
+      expect(readDefaultEventsCategory(), GroupEventCategory.upcoming);
       await tester.pump(const Duration(seconds: 6));
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+    });
+
+    testWidgets('Events on a search saves the list the search hands back to', (
+      tester,
+    ) async {
+      await pumpHost(
+        tester,
+        (context, ref) => makeStartScreenDefault(
+          context,
+          ref,
+          section: BottomNavBarItem.tournaments,
+        ),
+      );
+      container.read(selectedGroupCategoryProvider.notifier).state =
+          GroupEventCategory.past;
+      container.read(groupEventSearchTabControllerProvider).showSearch();
+
+      await tester.tap(find.text('hold'));
+      await settle(tester);
+      expect(
+        find.text('Make Events → Past your start screen?'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Cancel'));
+      await settle(tester);
       await tester.pumpWidget(const SizedBox.shrink());
       container.dispose();
     });

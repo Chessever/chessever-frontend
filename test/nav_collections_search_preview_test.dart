@@ -1,8 +1,9 @@
-// Renders of the dock with Collections where Search stood, Today's floating
-// Search (Live first above it), the Collections root and its search, and
-// Search as a pushed page, in both themes. PNGs are written only with
-// --dart-define=NAV_DIR=/absolute/dir; without it every scene still pumps
-// and must throw nothing.
+// Renders of the dock (Home, Events, Botvinnik, Feed, Profile), Today's
+// floating Search (Live first above it), the dock's Events (its bar, its
+// Live first over the dock, the bar and the dock leaving together), the
+// Collections page pushed with its back, and Search as a pushed page, in
+// both themes. PNGs are written only with --dart-define=NAV_DIR=/absolute/dir;
+// without it every scene still pumps and must throw nothing.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -20,6 +21,7 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
@@ -34,7 +36,12 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show PageBackButton;
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:dio/dio.dart';
@@ -199,8 +206,47 @@ class _TodayPage extends StatelessWidget {
   }
 }
 
-/// The home shell's frame around [body]: the dock (Collections in Search's
-/// slot) under it and [fabs] riding it, as the shell stands them.
+/// The home shell's frame around [body]: the dock under it and [fabs]
+/// riding it, as the shell stands them.
+/// Stands in for an Events list, which reads the network: rows the size
+/// and tone of event cards, long enough to read down.
+Widget _eventsPage(
+  BuildContext context,
+  GroupEventCategory category,
+  ScrollController controller,
+) {
+  final colors = context.colors;
+  return ListView(
+    controller: controller,
+    padding: EdgeInsets.fromLTRB(
+      20,
+      0,
+      20,
+      MediaQuery.paddingOf(context).bottom + 24,
+    ),
+    children: [
+      for (var i = 0; i < 12; i++) ...[
+        Container(
+          height: 112,
+          decoration: BoxDecoration(
+            color: colors.popup,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.all(16),
+          alignment: Alignment.topLeft,
+          child: Text(
+            ['Tata Steel Masters', 'Grand Chess Tour', 'Norway Chess'][i % 3],
+            style: AppTypography.textSmMedium.copyWith(
+              color: colors.textPrimary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    ],
+  );
+}
+
 class _Shell extends StatefulWidget {
   const _Shell({required this.body, this.fabs});
 
@@ -271,6 +317,7 @@ Future<void> _pump(
           subscriptionProvider.overrideWith((ref) => _Subscription()),
           selectedBottomNavBarItemProvider.overrideWith((ref) => section),
           todayLiveEventCountProvider.overrideWith((ref) => 3),
+          eventsLiveEventCountProvider.overrideWith((ref) => 3),
           collectionsRepositoryProvider.overrideWithValue(_Books()),
           favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new),
           favoritePlayersProviderNew.overrideWith(_NoFavoritePlayers.new),
@@ -403,44 +450,137 @@ void main() {
       await _shot(tester, 'today_search_fab', light);
     });
 
-    _scene('the Collections tab, $theme', (tester) async {
+    _scene('the dock\'s Events: its bar, no way back, Live first over the '
+        'dock, $theme', (tester) async {
       await _pump(
         tester,
         light: light,
-        section: BottomNavBarItem.collections,
-        home: const _Shell(body: CollectionsScreen(embedded: true)),
+        section: BottomNavBarItem.tournaments,
+        home: const _Shell(
+          body: GroupEventScreen(root: true, pageBuilder: _eventsPage),
+        ),
       );
-      expect(find.text('Zurich 1953'), findsOne);
-      // Where Home's main button stands over the dock: 16 above the full
-      // capsule's top, on the 16 gutter.
+      expect(find.text('Tata Steel Masters'), findsWidgets);
+      // A root: no back.
+      expect(find.byKey(const ValueKey('events_back')), findsNothing);
+      // Live first where Home's main button stands over the dock: 16 above
+      // the full capsule's top, on the 16 gutter.
       final dock = tester.getRect(find.byKey(const ValueKey('home-nav-dock')));
       final fab = tester.getRect(
-        find.byKey(const ValueKey('event_view_search_fab')),
+        find.byKey(const ValueKey(kHomeLiveFirstButtonKey)),
       );
       expect(fab.right, closeTo(393 - 16, 0.5));
       expect(fab.bottom, closeTo(dock.top - 16, 0.5));
-      await _shot(tester, 'collections_tab', light);
+      await _shot(tester, 'events_section', light);
     });
 
-    _scene('the Collections tab searching, $theme', (tester) async {
+    _scene('the dock\'s Events read down: its bar, Live first and the dock '
+        'leave together; a second tap on its slot brings them back at the '
+        'top, $theme', (tester) async {
       await _pump(
         tester,
         light: light,
-        section: BottomNavBarItem.collections,
-        home: const _Shell(body: CollectionsScreen(embedded: true)),
+        section: BottomNavBarItem.tournaments,
+        home: const _Shell(
+          body: GroupEventScreen(root: true, pageBuilder: _eventsPage),
+        ),
       );
-      await tester.tap(find.byKey(const ValueKey('event_view_search_fab')));
-      await _frames(tester);
-      await tester.enterText(
-        find.byKey(const ValueKey('collections_search')),
-        'Fischer',
+      final dock = tester.widget<HomeNavDock>(find.byType(HomeNavDock));
+      final chrome = dock.chrome! as ScrollChromeController;
+      final field = find.byType(EnhancedRoundedSearchBar);
+      final shown = tester.getRect(field);
+      expect(chrome.value, 1);
+
+      await tester.drag(
+        find.text('Grand Chess Tour').first,
+        const Offset(0, -500),
       );
       await _frames(tester);
-      FocusManager.instance.primaryFocus?.unfocus();
+      // One value: the dock, the bar and the buttons all left.
+      expect(chrome.value, 0);
+      expect(
+        tester.widget<SlidingFabs>(find.byType(SlidingFabs)).controller,
+        same(chrome),
+      );
+      expect(field.hitTestable(), findsNothing);
+      final list = tester
+          .state<ScrollableState>(
+            // The list's own, the nearest (the pages' is around it).
+            find
+                .ancestor(
+                  of: find.text('Grand Chess Tour').first,
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      expect(list.axis, Axis.vertical);
+      expect(list.pixels, greaterThan(0));
+
+      // The dock's Events slot tapped again: the list goes to its top, and
+      // the bars come back with it.
+      ProviderScope.containerOf(tester.element(find.byType(GroupEventScreen)))
+          .read(bottomNavBarReTapRequestProvider.notifier)
+          .request(BottomNavBarItem.tournaments);
       await _frames(tester);
-      expect(find.text('My 60 Memorable Games'), findsOne);
-      expect(find.text('Zurich 1953'), findsNothing);
-      await _shot(tester, 'collections_tab_search', light);
+      expect(list.pixels, 0);
+      expect(chrome.value, 1);
+      expect(tester.getRect(field), shown);
+    });
+
+    _scene('the dock\'s Events: holding a segment offers it as the start '
+        'screen, Search never, $theme', (tester) async {
+      await _pump(
+        tester,
+        light: light,
+        section: BottomNavBarItem.tournaments,
+        home: const _Shell(
+          body: GroupEventScreen(root: true, pageBuilder: _eventsPage),
+        ),
+      );
+      final segments = tester.widget<SegmentedSwitcher>(
+        find.byType(SegmentedSwitcher),
+      );
+      expect(segments.options, ['Past', 'Current', 'Upcoming']);
+      for (var i = 0; i < segments.options.length; i++) {
+        expect(segments.longPressFor!(i), isNotNull);
+        expect(
+          segments.longPressHint!(i),
+          'Make Events → ${segments.options[i]} the start screen',
+        );
+      }
+    });
+
+    _scene('Collections, pushed over Home with its back and its name, '
+        '$theme', (tester) async {
+      await _pump(
+        tester,
+        light: light,
+        section: BottomNavBarItem.forYou,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => CollectionsScreen.open(context),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await _frames(tester);
+      expect(find.byType(CollectionsScreen), findsOneWidget);
+      expect(find.byType(PageBackButton), findsOneWidget);
+      expect(find.widgetWithText(PageTitle, 'Collections'), findsOneWidget);
+      // No dock under it, and no button riding one.
+      expect(find.byType(HomeNavDock), findsNothing);
+      expect(find.text('Zurich 1953'), findsOne);
+      await _shot(tester, 'collections_pushed', light);
+      await tester.tap(find.byType(PageBackButton));
+      await _frames(tester);
+      expect(find.byType(CollectionsScreen), findsNothing);
+      expect(find.text('open'), findsOneWidget);
     });
 
     _scene('Search, pushed over Home, $theme', (tester) async {

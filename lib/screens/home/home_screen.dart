@@ -5,8 +5,8 @@ import 'package:chessever2/chat/chat_screen.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
-import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/my_profile/profile_hub_screen.dart';
 import 'package:chessever2/screens/my_space/widgets/space_add_fab.dart';
@@ -34,7 +34,6 @@ import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'package:chessever2/services/deep_link_service.dart';
@@ -74,10 +73,10 @@ void forgetForYouPageForLaunch() {
 final homeSectionPageOverrideProvider =
     Provider<Widget Function(BottomNavBarItem item)?>((ref) => null);
 
-/// The app's home: five sections over one dock (Home, Feed, Botvinnik,
-/// Collections, Profile). There is no sidebar; what it held lives on
-/// Profile. Search is a page of its own, opened from Today's floating
-/// button.
+/// The app's home: five sections over one dock (Home, Events, Botvinnik,
+/// Feed, Profile; four with Botvinnik switched off). There is no sidebar;
+/// what it held lives on Profile. Search is a page of its own, opened from
+/// Today's floating button, and so is Collections, opened from Discovery.
 ///
 /// Every section wears the same top bar ([HomeTopBarFrame]): one inset, one
 /// height, one gutter, one centre line, and the page under it starting at
@@ -109,8 +108,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   final GlobalKey _sectionKey = GlobalKey(debugLabel: 'home-section');
   static const int _favoritePromptThreshold = 5;
 
-  /// Each section's own chrome state: Collections can sit with its tabs
-  /// scrolled away while Home's strip is in view.
+  /// Each section's own chrome state: Events can sit with its bar scrolled
+  /// away while Home's strip is in view.
   final Map<BottomNavBarItem, ScrollChromeController> _chromes = {};
 
   ScrollChromeController _chromeFor(BottomNavBarItem item) =>
@@ -120,10 +119,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   void initState() {
     super.initState();
     forgetForYouPageForLaunch();
-    // The Collections mark is not in the app's SVG warm-up: read it now, so
-    // the dock never shows an empty slot while it loads.
-    final loader = const SvgAssetLoader(collectionsNavIcon);
-    svg.cache.putIfAbsent(loader.cacheKey(null), () => loader.loadBytes(null));
     if (!E2eConfig.suppressInterruptivePrompts) {
       unawaited(ReviewPromptService.instance.incrementSessionCount());
     }
@@ -578,11 +573,11 @@ extension on BottomNavBarItem {
 /// The selected section, switched in place. No scale or fade on a switch:
 /// the section is simply there, and nothing is ever drawn from nothing.
 ///
-/// Botvinnik and Collections stay alive once visited, out of sight: a
-/// conversation mid-answer, or the catalog page, tab and place the reader
-/// left, must survive a look at another tab. The others are built fresh, as
-/// before, so a section the reader is not on costs nothing (Feed's playback
-/// above all).
+/// Botvinnik stays alive once visited, out of sight: a conversation
+/// mid-answer must survive a look at another tab. The others are built
+/// fresh, as before, so a section the reader is not on costs nothing (Feed's
+/// playback above all). Events keeps its segment and its query in app-wide
+/// providers, so it opens where the reader left it, at the top of the list.
 class BottomNavBarView extends HookConsumerWidget {
   const BottomNavBarView({super.key, this.chromeFor});
 
@@ -590,10 +585,7 @@ class BottomNavBarView extends HookConsumerWidget {
   /// leaves the bars where they are.
   final ScrollChromeController Function(BottomNavBarItem item)? chromeFor;
 
-  static const _kept = {
-    BottomNavBarItem.botvinnik,
-    BottomNavBarItem.collections,
-  };
+  static const _kept = {BottomNavBarItem.botvinnik};
 
   Widget _buildScreen(
     BottomNavBarItem item,
@@ -614,6 +606,11 @@ class BottomNavBarView extends HookConsumerWidget {
     switch (item) {
       case BottomNavBarItem.forYou:
         return const ForYouScreen();
+      case BottomNavBarItem.tournaments:
+        // The root: the bar every root wears, no way back
+        // ([openEventsScreen] pushes a copy with its back only when no home
+        // shell stands under the navigator).
+        return const GroupEventScreen(root: true);
       case BottomNavBarItem.feed:
         return const FeedScreen(embedded: true);
       case BottomNavBarItem.botvinnik:
@@ -621,10 +618,6 @@ class BottomNavBarView extends HookConsumerWidget {
           embedded: true,
           screenContext: ChatScreenContext(screen: 'home'),
         );
-      case BottomNavBarItem.collections:
-        // The root: the bar every root wears, no way back ([CollectionsScreen
-        // .open] is the pushed copy, with its back).
-        return const CollectionsScreen(embedded: true);
       case BottomNavBarItem.profile:
         return const ProfileHubScreen();
     }
@@ -677,8 +670,8 @@ class BottomNavBarView extends HookConsumerWidget {
 /// add menu over it (Edit's save while editing); Today has Live first
 /// over it while an event is in play or while it is on, so a flag left on
 /// can always be turned off ([ForYouTodayFabs]). Botvinnik has a tab now;
-/// it no longer floats over Home. Collections floats its own catalog
-/// search, on its own page ([CollectionsScreen]).
+/// it no longer floats over Home. Events floats its own Live first on its
+/// own page, lifted over the dock ([GroupEventScreen]).
 ///
 /// Every set stands in an [InkFabStack], as the event screen's do: one
 /// right edge, one step, the main button in the corner.

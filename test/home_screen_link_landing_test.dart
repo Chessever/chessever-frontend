@@ -50,6 +50,7 @@ import 'package:chessever2/screens/group_event/providers/home_live_first_provide
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
 import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/screens/home/widget/tablet_nav_rail.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
@@ -440,8 +441,8 @@ void main() {
         await finish(tester);
       });
 
-      testWidgets('a collection push opens the collection over the Collections '
-          'tab; Back returns to that tab', (tester) async {
+      testWidgets('a collection push opens the collection over the Events '
+          'section; Back returns to Events', (tester) async {
         await pumpHome(
           tester,
           overrides: [
@@ -449,13 +450,13 @@ void main() {
           ],
         );
         DeepLinkService.notifyAppReady();
-        // The reader is on the Collections tab (a tap on the dock), then
-        // opens Search.
+        // The reader is on Events (a tap on the dock), then a page opens
+        // over it.
         await tester.tap(
-          find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+          find.byKey(bottomNavBarItemKey(BottomNavBarItem.tournaments)),
         );
         await tester.pump(const Duration(milliseconds: 400));
-        expect(find.text('collections 0'), findsOneWidget);
+        expect(find.text('tournaments 0'), findsOneWidget);
         await openSearch(tester);
         DeepLinkService.instance.ingestNotificationData({
           'type': 'collection_games_added',
@@ -468,16 +469,58 @@ void main() {
         expect(generated, isEmpty);
 
         await back(tester);
-        expect(section(), BottomNavBarItem.collections);
-        expect(find.text('collections 0'), findsOneWidget);
+        expect(section(), BottomNavBarItem.tournaments);
+        expect(find.text('tournaments 0'), findsOneWidget);
         expect(dock(tester), 1);
         await finish(tester);
       });
 
-      testWidgets('/app/collections lands on the Collections dock tab', (
-        tester,
-      ) async {
-        await pumpHome(tester);
+      // Events is a dock section again (2026-11-23): the link selects it,
+      // never a second Events page over Home.
+      for (final link in ['/app/events', 'https://chessever.com/app/events']) {
+        testWidgets('$link lands on the Events dock section', (tester) async {
+          await pumpHome(tester);
+          DeepLinkService.notifyAppReady();
+          await openSearch(tester);
+          final shell = home(tester);
+          DeepLinkService.instance.ingestNotificationData({'route': link});
+          await settle(tester);
+          expect(stack.names, ['/home_screen']);
+          expect(generated, isEmpty);
+          expect(pages, isEmpty);
+          expect(section(), BottomNavBarItem.tournaments);
+          expect(find.text('tournaments 0'), findsOneWidget);
+          expect(home(tester), same(shell));
+          expect(dock(tester), 1);
+          await finish(tester);
+        });
+      }
+
+      testWidgets('/app/collections pushes the Collections page over Home, '
+          'Back returning to the section the reader was on', (tester) async {
+        final opened = <Widget>[];
+        await pumpHome(
+          tester,
+          overrides: [
+            // The page the link asks for, under its route name as the app
+            // pushes it; a stand-in is drawn, so the catalog reads nothing.
+            appDestinationPageNavigationProvider.overrideWithValue((
+              context,
+              page,
+              name,
+            ) {
+              opened.add(page);
+              unawaited(
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    settings: RouteSettings(name: name),
+                    builder: (_) => Scaffold(body: Text('page $name')),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
         DeepLinkService.notifyAppReady();
         await openSearch(tester);
         final shell = home(tester);
@@ -485,11 +528,15 @@ void main() {
           'route': '/app/collections',
         });
         await settle(tester);
-        expect(stack.names, ['/home_screen']);
-        expect(generated, isEmpty);
-        expect(section(), BottomNavBarItem.collections);
-        expect(find.text('collections 0'), findsOneWidget);
+        expect(stack.names, ['/home_screen', '/app/collections']);
+        expect(opened.single, isA<CollectionsScreen>());
+        expect(section(), BottomNavBarItem.forYou);
         expect(home(tester), same(shell));
+
+        await back(tester);
+        expect(stack.names, ['/home_screen']);
+        expect(section(), BottomNavBarItem.forYou);
+        expect(find.text('forYou 0'), findsOneWidget);
         expect(dock(tester), 1);
         await finish(tester);
       });
@@ -599,21 +646,18 @@ void main() {
   group('the tablet rail routes as the phone dock does', () {
     const iPad = Size(1024, 1366);
 
-    testWidgets('/app/collections selects Collections on the rail', (
-      tester,
-    ) async {
+    testWidgets('/app/events selects Events on the rail', (tester) async {
       await pumpHome(tester, size: iPad);
       DeepLinkService.notifyAppReady();
       expect(find.byType(TabletNavRail), findsOneWidget);
       expect(find.byType(HomeNavDock), findsNothing);
       await openSearch(tester);
-      DeepLinkService.instance.ingestNotificationData({
-        'route': '/app/collections',
-      });
+      DeepLinkService.instance.ingestNotificationData({'route': '/app/events'});
       await settle(tester);
       expect(stack.names, ['/home_screen']);
-      expect(section(), BottomNavBarItem.collections);
-      expect(find.text('collections 0'), findsOneWidget);
+      expect(pages, isEmpty);
+      expect(section(), BottomNavBarItem.tournaments);
+      expect(find.text('tournaments 0'), findsOneWidget);
       await finish(tester);
     });
 
@@ -741,6 +785,36 @@ void main() {
     // Search's landing reads leave a retry of up to a minute behind.
     await tester.pump(const Duration(seconds: 61));
   });
+
+  // ---------------------------------------------------------------------------
+  // A start screen saved by an older build: 'collections' (39.2.0 to
+  // 39.2.12, and before 38.18) has no slot now and opens Home; 'tournaments'
+  // (Events, before 38.18) opens Events, on the dock again.
+  for (final (saved, want) in [
+    ('collections', BottomNavBarItem.forYou),
+    ('search', BottomNavBarItem.forYou),
+    ('tournaments', BottomNavBarItem.tournaments),
+  ]) {
+    testWidgets('a start screen saved as $saved launches ${want.name}', (
+      tester,
+    ) async {
+      final prefs = SharedPreferencesService.instance.prefsOrNull!;
+      await prefs.setString(defaultBottomTabPrefsKey, saved);
+      addTearDown(() => prefs.remove(defaultBottomTabPrefsKey));
+      await pumpHome(tester);
+      await settle(tester);
+      expect(section(), want);
+      expect(find.text('${want.name} 0'), findsOneWidget);
+      expect(
+        tester
+            .widget<BottomNavBarWidget>(find.byKey(bottomNavBarItemKey(want)))
+            .isSelected,
+        isTrue,
+        reason: 'the dock highlights the section it opened on',
+      );
+      await finish(tester);
+    });
+  }
 
   // ---------------------------------------------------------------------------
   testWidgets('a route to the section already open brings the dock back', (

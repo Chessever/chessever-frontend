@@ -468,8 +468,8 @@ class ForYouPageTabs extends StatelessWidget {
   /// Home's ("Make Home → Today the start screen").
   final String Function(int index)? holdHint;
 
-  /// The Nudge surfaces' scope (`home.tab`, `collections.tab`); null for
-  /// tabs that carry none.
+  /// The Nudge surfaces' scope (`home.tab`); null for tabs that carry
+  /// none.
   final String? dotScope;
 
   static const double _barHeight = 3;

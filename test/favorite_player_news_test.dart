@@ -256,7 +256,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         captured.read(selectedBottomNavBarItemProvider.notifier).state =
-            BottomNavBarItem.collections;
+            BottomNavBarItem.feed;
         captured
             .read(selectedForYouTabProvider.notifier)
             .select(ForYouTab.today);

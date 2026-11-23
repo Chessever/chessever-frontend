@@ -37,6 +37,11 @@ class SvgAsset {
   static const feedNavIcon = 'assets/svgs/feed_nav.svg';
   static const forYouNavIcon = 'assets/svgs/for_you_nav.svg';
   static const botvinnikNavIcon = 'assets/svgs/botvinnik_nav.svg';
+
+  /// The dock's Events mark: the trophy the Events tab wore before 38.18,
+  /// redrawn in the dock's line weight (1.8 on 24, as Feed's and
+  /// Botvinnik's).
+  static const eventsNavIcon = 'assets/svgs/events_nav.svg';
   static const searchNavIcon = 'assets/svgs/search_nav.svg';
 
   /// X's own mark (the About dialog's follow link).
@@ -115,6 +120,7 @@ class SvgAsset {
       libraryNavIcon,
       feedNavIcon,
       botvinnikNavIcon,
+      eventsNavIcon,
       searchNavIcon,
       websiteIcon,
       infoIcon,
@@ -151,7 +157,10 @@ class SvgAsset {
 
     for (final asset in assets) {
       final loader = SvgAssetLoader(asset);
-      svg.cache.putIfAbsent(loader.cacheKey(null), () => loader.loadBytes(null));
+      svg.cache.putIfAbsent(
+        loader.cacheKey(null),
+        () => loader.loadBytes(null),
+      );
     }
   }
 }

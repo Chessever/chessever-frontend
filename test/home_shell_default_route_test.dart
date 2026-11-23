@@ -12,6 +12,7 @@ import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -66,43 +67,67 @@ void main() {
       expect(sub.read(), BottomNavBarItem.forYou);
     });
 
-    test('the icon bar names Home, Feed, Botvinnik, Collections, Profile: '
-        'Collections took Search\'s slot', () {
+    test('the dock names Home, Events, Botvinnik, Feed, Profile: Events '
+        'beside Home, Feed beside Profile, no Collections', () {
       expect(bottomNavBarOrder.map((item) => item.name), [
         'forYou',
-        'feed',
+        'tournaments',
         'botvinnik',
-        'collections',
+        'feed',
         'profile',
       ]);
       expect(bottomNavBarOrder.map((item) => namesBottomNavBarIcons[item]), [
         'Home',
-        'Feed',
+        'Events',
         'Botvinnik',
-        'Collections',
+        'Feed',
         'Profile',
       ]);
-      // Analytics and the discovery dots name it as its tab did before.
-      expect(BottomNavBarItem.collections.name, 'collections');
       expect(
-        bottomNavBarDotIds[BottomNavBarItem.collections],
-        'home.nav.collections',
+        BottomNavBarItem.values.map((item) => item.name),
+        isNot(contains('collections')),
+      );
+      // Analytics, the start screen and the discovery dots name Events as
+      // its tab did before 38.18.
+      expect(BottomNavBarItem.tournaments.name, 'tournaments');
+      expect(
+        bottomNavBarDotIds[BottomNavBarItem.tournaments],
+        'home.nav.events',
       );
       expect(
-        bottomNavBarItemKey(BottomNavBarItem.collections),
-        e2eKey(E2eIds.navCollections),
+        bottomNavBarItemKey(BottomNavBarItem.tournaments),
+        e2eKey(E2eIds.navEvents),
+      );
+      expect(
+        bottomNavBarDotIds.values,
+        isNot(contains('home.nav.collections')),
       );
     });
 
-    test('Botvinnik switched off leaves four tabs', () {
+    test('Botvinnik switched off leaves four tabs: Home, Events, Feed, '
+        'Profile', () {
       final container = ProviderContainer(
         overrides: [botvinnikTabAvailableProvider.overrideWithValue(false)],
       );
       addTearDown(container.dispose);
       expect(container.read(visibleBottomNavItemsProvider), [
         BottomNavBarItem.forYou,
+        BottomNavBarItem.tournaments,
         BottomNavBarItem.feed,
-        BottomNavBarItem.collections,
+        BottomNavBarItem.profile,
+      ]);
+    });
+
+    test('Botvinnik on: the dock holds all five, in the dock\'s order', () {
+      final container = ProviderContainer(
+        overrides: [botvinnikTabAvailableProvider.overrideWithValue(true)],
+      );
+      addTearDown(container.dispose);
+      expect(container.read(visibleBottomNavItemsProvider), [
+        BottomNavBarItem.forYou,
+        BottomNavBarItem.tournaments,
+        BottomNavBarItem.botvinnik,
+        BottomNavBarItem.feed,
         BottomNavBarItem.profile,
       ]);
     });
@@ -217,9 +242,9 @@ void main() {
             );
             expect(icon.colorFilter, ColorFilter.mode(ink, BlendMode.srcIn));
             expect(icon.width, icon.height, reason: 'square icon box');
-            if (item == BottomNavBarItem.collections) {
-              // The stacked plates, drawn in the dock's line weight.
-              expect(icon.path, collectionsNavIcon);
+            if (item == BottomNavBarItem.tournaments) {
+              // The trophy, drawn in the dock's line weight.
+              expect(icon.path, SvgAsset.eventsNavIcon);
             }
           }
         }
@@ -237,8 +262,8 @@ void main() {
         isSemantics(label: 'Home', isButton: true, isSelected: true),
       );
       expect(
-        tester.getSemantics(find.byKey(e2eKey(E2eIds.navCollections))),
-        isSemantics(label: 'Collections', isButton: true, isSelected: false),
+        tester.getSemantics(find.byKey(e2eKey(E2eIds.navEvents))),
+        isSemantics(label: 'Events', isButton: true, isSelected: false),
       );
       expect(
         tester.getSemantics(find.byKey(e2eKey(E2eIds.navProfile))),
@@ -251,7 +276,7 @@ void main() {
       'a press takes the slot down under the finger and springs it back',
       (tester) async {
         await pumpBar(tester, theme: AppTheme.darkTheme);
-        final slot = find.byKey(e2eKey(E2eIds.navCollections));
+        final slot = find.byKey(e2eKey(E2eIds.navEvents));
 
         double scale() {
           final transform = tester.widget<Transform>(
@@ -304,9 +329,9 @@ void main() {
       expect(tester.takeException(), isNull);
       for (final id in [
         E2eIds.navForYou,
-        E2eIds.navFeed,
+        E2eIds.navEvents,
         E2eIds.navBotvinnik,
-        E2eIds.navCollections,
+        E2eIds.navFeed,
         E2eIds.navProfile,
       ]) {
         final size = tester.getSize(find.byKey(e2eKey(id)));
@@ -469,10 +494,10 @@ void main() {
       final chrome = ValueNotifier<double>(1);
       addTearDown(chrome.dispose);
       await pumpDock(tester, chrome: chrome);
-      final collections = tester.getRect(
-        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+      final events = tester.getRect(
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.tournaments)),
       );
-      final point = collections.center;
+      final point = events.center;
       expect(hitsDock(tester, point), isTrue);
 
       chrome.value = 0;
@@ -504,13 +529,13 @@ void main() {
       chrome.value = HomeNavDock.tapFloor - 0.01;
       await tester.pump();
       final low = tester.getRect(
-        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.tournaments)),
       );
       expect(hitsDock(tester, Offset(low.center.dx, low.top + 4)), isFalse);
       chrome.value = HomeNavDock.tapFloor + 0.01;
       await tester.pump();
       final high = tester.getRect(
-        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.tournaments)),
       );
       // Where it is drawn (its top, still on the screen), it takes the
       // tap.
@@ -576,14 +601,14 @@ void main() {
       await pumpDock(tester, chrome: chrome);
       final container = ProviderScope.containerOf(tester.element(dock));
       // Under the capsule, in the strip to the screen's edge: still a tap.
-      final collections = tester.getRect(
-        find.byKey(bottomNavBarItemKey(BottomNavBarItem.collections)),
+      final events = tester.getRect(
+        find.byKey(bottomNavBarItemKey(BottomNavBarItem.tournaments)),
       );
-      await tester.tapAt(Offset(collections.center.dx, collections.bottom - 4));
+      await tester.tapAt(Offset(events.center.dx, events.bottom - 4));
       await tester.pumpAndSettle();
       expect(
         container.read(selectedBottomNavBarItemProvider),
-        BottomNavBarItem.collections,
+        BottomNavBarItem.tournaments,
       );
     });
 

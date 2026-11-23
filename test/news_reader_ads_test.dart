@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
@@ -107,6 +108,31 @@ ScrollPosition _position(WidgetTester tester) => tester
     .position;
 
 void main() {
+  // Every ad surface (Feed's and the reader's ad pages, Today's native ad,
+  // which only draws once a real ad has loaded) lost the line of our own
+  // above the ad on 2026-11-23. The network's own Ad label and Remove Ads
+  // stay.
+  test('no ad surface carries the "We use ads" line', () {
+    final surfaces = [
+      'lib/widgets/ads/ad_disclosure.dart',
+      'lib/widgets/ads/today_native_ad.dart',
+      'lib/screens/feed/widgets/feed_ad_page.dart',
+    ];
+    for (final path in surfaces) {
+      final source = File(path).readAsStringSync();
+      expect(source, isNot(contains('We use ads')), reason: path);
+      expect(source, isNot(contains('AdDisclosureLine')), reason: path);
+    }
+    // Remove Ads stays, under the ad, on both.
+    for (final path in surfaces.skip(1)) {
+      expect(
+        File(path).readAsStringSync(),
+        contains('RemoveAdsButton('),
+        reason: path,
+      );
+    }
+  });
+
   for (final back in [false, true]) {
     testWidgets(
       'ad vertical swipe ${back ? 'down returns to the previous' : 'up opens the next'} article',
@@ -279,7 +305,11 @@ void main() {
       for (final expected in <int?>[1, 2, null, 3, 4, 5, 6, null, 7, 8]) {
         if (expected == null) {
           expect(find.byType(FeedAdPage), findsOneWidget);
-          expect(find.text(AdDisclosureLine.text), findsOneWidget);
+          // No line of our own over the ad (2026-11-23); Remove Ads stays.
+          expect(
+            find.textContaining('We use ads to keep ChessEver available'),
+            findsNothing,
+          );
           expect(
             tester
                 .widget<RemoveAdsButton>(find.byType(RemoveAdsButton))

@@ -8,8 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-/// The tablet's navigation rail: the phone bar's five sections, stood on
-/// end, each with its name under its mark.
+/// The tablet's navigation rail: the phone dock's sections in the dock's
+/// order (Home, Events, Botvinnik, Feed, Profile; no Botvinnik when it is
+/// switched off), stood on end, each with its name under its mark.
 class TabletNavRail extends ConsumerWidget {
   const TabletNavRail({super.key});
 

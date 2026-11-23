@@ -43,18 +43,19 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
-      // The rail carries the phone bar's sections and nothing else: no menu
-      // button, Events lives on the Profile page, and Collections has the
-      // slot Search left (Search opens from Today's button).
+      // The rail carries the phone dock's sections in the dock's order and
+      // nothing else: no menu button, Events beside Home, no Collections
+      // (it opens from Discovery) and no Search (Today's button).
       final items = ProviderScope.containerOf(
         tester.element(find.byType(TabletNavRail)),
       ).read(visibleBottomNavItemsProvider);
       expect(items, bottomNavBarOrder);
+      expect(items[1], BottomNavBarItem.tournaments);
       expect(items.last, BottomNavBarItem.profile);
       expect(find.byTooltip('Menu'), findsNothing);
-      expect(find.text('Events'), findsNothing);
+      expect(find.text('Events'), findsOneWidget);
       expect(find.text('Search'), findsNothing);
-      expect(find.text('Collections'), findsOneWidget);
+      expect(find.text('Collections'), findsNothing);
 
       // 300dp tall at 2x text cannot fit every slot: each one, down to the
       // last (Profile), must scroll into view and take a hit.

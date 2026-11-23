@@ -21,9 +21,9 @@ void main() {
   for (final botvinnik in [true, false]) {
     final titles = [
       'Home',
-      'Feed',
+      'Events',
       if (botvinnik) 'Botvinnik',
-      'Collections',
+      'Feed',
       'Profile',
     ];
 
@@ -92,9 +92,9 @@ void main() {
             .toList(),
         titles,
       );
-      // The tabs that left the bar stay off it.
-      expect(find.text('Events'), findsNothing);
+      // The sections that left the dock stay off it.
       expect(find.text('Collections'), findsNothing);
+      expect(find.text('Search'), findsNothing);
       expect(find.text('Calendar'), findsNothing);
       // Marks only: no names drawn, but every slot announces its own.
       for (final title in titles) {
@@ -286,9 +286,13 @@ void main() {
     expect(PhoneUpdateRouteObserver.homeSectionSafe.value, isTrue);
     for (final item in BottomNavBarItem.values) {
       container.read(selectedBottomNavBarItemProvider.notifier).state = item;
+      // Pages to browse (Events as its pushed page always was); a chat
+      // and a clip playing keep the reminder waiting.
       expect(
         PhoneUpdateRouteObserver.homeSectionSafe.value,
-        item == BottomNavBarItem.forYou || item == BottomNavBarItem.profile,
+        item == BottomNavBarItem.forYou ||
+            item == BottomNavBarItem.tournaments ||
+            item == BottomNavBarItem.profile,
         reason: item.name,
       );
     }

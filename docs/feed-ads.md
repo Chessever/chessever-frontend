@@ -6,10 +6,11 @@ any post. Only viewers without a paid subscription see it, on Android and iOS,
 once the subscription has first been checked. Nothing gates scrolling: the old Watch ad / Upgrade prompt
 between posts is gone.
 
-Each ad page carries the ad surfaces' shared frame (`ad_disclosure.dart`):
-"We use ads to keep ChessEver available for all" above the ad and "Remove Ads"
-under it, which opens the subscription paywall (`featureId: remove_ads`,
-`returnTo: feed`, no rewarded option).
+Each ad page carries the ad surfaces' shared action (`ad_disclosure.dart`):
+"Remove Ads" under the ad, which opens the subscription paywall
+(`featureId: remove_ads`, `returnTo: feed`, no rewarded option). The ad itself
+carries the network's own Ad (or Test Ad) label. No ad surface has a line of
+our own above the ad (product decision, 2026-11-23).
 
 ## News reader
 

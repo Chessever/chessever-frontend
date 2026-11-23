@@ -111,10 +111,6 @@ class _TodayNativeAdState extends ConsumerState<TodayNativeAd>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(bottom: 6),
-                child: AdDisclosureLine(),
-              ),
               SizedBox(height: 350, child: AdWidget(ad: _ad!)),
               const RemoveAdsButton(),
             ],

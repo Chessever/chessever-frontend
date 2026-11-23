@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The one top bar every root (Home, Feed, Botvinnik, Search, Profile)
+/// The one top bar every root (Home, Events, Botvinnik, Feed, Profile)
 /// wears, and the pages that borrow its geometry.
 ///
 /// Each root owns only its content slot (its page tabs, a title, the search

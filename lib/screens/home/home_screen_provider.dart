@@ -13,7 +13,8 @@ class _HomeScreenController {
 
   final Ref ref;
 
-  /// Pull to refresh on the Events lists (opened from Profile).
+  /// Pull to refresh on the Events lists (the dock's Events, or its pushed
+  /// copy).
   Future<void> onEventsPullRefresh() async {
     HapticFeedbackService.medium();
     ref.read(groupEventScreenProvider.notifier).onRefresh();

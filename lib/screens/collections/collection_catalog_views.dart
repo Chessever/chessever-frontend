@@ -36,8 +36,7 @@ class CollectionBooksCatalog extends ConsumerWidget {
   final double bottomPadding;
 
   /// Where the first card starts in the list: 12 under a pushed page's
-  /// tabs by default; the dock's Collections tab passes the roots' one
-  /// lead-in (`HomeTopBarMetrics.contentGap`).
+  /// tabs unless the host gives its own lead-in.
   final double? topPadding;
 
   /// Clears what leaves the catalog empty ([CollectionCatalogList.onClear]).
@@ -91,8 +90,7 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
   final double bottomPadding;
 
   /// Where the first author starts in the list: 8 under a pushed page's
-  /// tabs by default; the dock's Collections tab passes the roots' one
-  /// lead-in (`HomeTopBarMetrics.contentGap`).
+  /// tabs unless the host gives its own lead-in.
   final double? topPadding;
 
   /// Clears what leaves the catalog empty ([CollectionCatalogList.onClear]).

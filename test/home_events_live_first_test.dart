@@ -23,6 +23,7 @@ import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -45,6 +46,20 @@ void main() {
         publishableKey: 'test-anon-key',
       );
     }
+  });
+
+  // The pushed copy (the `/group_event_screen` route, and Events opened
+  // with no home shell under it) keeps its back; only the dock's section
+  // is a root without one.
+  testWidgets('the pushed Events page keeps its back and holds no start '
+      'screen on its segments', (tester) async {
+    await _pumpEvents(tester, liveIds: const []);
+    expect(find.byKey(const ValueKey('events_back')), findsOneWidget);
+    final segments = tester.widget<SegmentedSwitcher>(
+      find.byType(SegmentedSwitcher),
+    );
+    expect(segments.longPressFor, isNull);
+    await _unmount(tester);
   });
 
   group('liveEventsFirst', () {

@@ -88,6 +88,7 @@ import 'package:chessever2/widgets/search/search_overlay_widget.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show SearchHeaderMetrics;
 import 'package:chessever2/screens/search/search_tab_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
@@ -1810,8 +1811,10 @@ void main() {
       bool reduceMotion = false,
       EdgeInsets padding = EdgeInsets.zero,
       _Ranking? ranking,
+      List<Override> overrides = const [],
     }) => _pump(
       tester,
+      overrides: overrides,
       size: size,
       players: () async => _topPlayers,
       openings: _landingOpenings,
@@ -1939,6 +1942,49 @@ void main() {
         await app.dispose();
       });
     }
+
+    // Over the home shell (Search pushed over Home, as Today's button opens
+    // it): Coming up closes Search onto the dock's Events on Upcoming, never
+    // a second Events page; Collections has no slot and pushes its page.
+    testWidgets('over the home shell, Coming up opens the dock\'s Events on '
+        'Upcoming, pushing nothing; Collections pushes its page', (
+      tester,
+    ) async {
+      final observer = _PushObserver();
+      final app = await pumpAll(
+        tester,
+        observer: observer,
+        // The dock's sections, Botvinnik's switch (SQLite) left alone.
+        overrides: [botvinnikTabAvailableProvider.overrideWithValue(true)],
+      );
+      final searchPage = tester.element(
+        find.byType(SearchTabScreen, skipOffstage: false),
+      );
+      final shell = ModalRoute.of(searchPage);
+      registerHomeShellRoute(shell);
+      addTearDown(() => unregisterHomeShellRoute(shell));
+      final section = ProviderScope.containerOf(
+        searchPage,
+      ).listen(selectedBottomNavBarItemProvider, (_, _) {});
+      addTearDown(section.close);
+      final pushes = observer.pushed.length;
+
+      await tester.tap(find.byKey(const ValueKey('search-upcoming-open')));
+      await tester.pump();
+      expect(observer.pushed, hasLength(pushes));
+      expect(section.read(), BottomNavBarItem.tournaments);
+      expect(
+        app.read(selectedGroupCategoryProvider),
+        GroupEventCategory.upcoming,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('search-collections-open')));
+      await tester.pump();
+      expect(observer.pushed, hasLength(pushes + 1));
+      expect(observer.lastPage(tester), isA<CollectionsScreen>());
+      expect(section.read(), BottomNavBarItem.tournaments);
+      await app.dispose();
+    });
 
     testWidgets('Top players never draws a player alone while more of the '
         'ranking is coming; once it is spent, a last player alone stands '
@@ -2657,6 +2703,7 @@ Future<_App> _pump(
   bool reduceMotion = false,
   EdgeInsets padding = EdgeInsets.zero,
   _MemorySearchRecents? recentsStorage,
+  List<Override> overrides = const [],
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -2730,6 +2777,7 @@ Future<_App> _pump(
           if (slow != null && slow.$1 == query.trim()) return slow.$2.future;
           return _resultsByQuery[query.trim()] ?? EnhancedSearchResult.empty();
         }),
+        ...overrides,
       ],
       child: MaterialApp(
         theme: theme ?? AppTheme.darkTheme,

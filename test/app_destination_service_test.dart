@@ -20,6 +20,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -466,13 +467,15 @@ void main() {
   );
 
   for (final entry in {
-    '/app/collections': BottomNavBarItem.collections,
+    // Events is back on the dock (2026-11-23): /app/events used to push a
+    // second, back-chevroned Events page over Home.
+    '/app/events': BottomNavBarItem.tournaments,
     // Feed is always on the dock: /app/feed used to push a second FeedScreen
     // over the shell that already holds one.
     '/app/feed': BottomNavBarItem.feed,
   }.entries) {
     testWidgets(
-      '${entry.key} opens on its dock tab, over Home, pushing nothing',
+      '${entry.key} opens on its dock section, over Home, pushing nothing',
       (tester) async {
         late BuildContext homeContext;
         late WidgetRef homeRef;
@@ -528,8 +531,12 @@ void main() {
           isTrue,
         );
         await tester.pump();
+        await tester.pump();
         expect(section.read(), entry.value);
         expect(opened, isEmpty);
+        // Nothing pushed over Home by the navigator either: no second copy
+        // of a section the dock holds.
+        expect(find.byType(GroupEventScreen), findsNothing);
         expect(find.text('home'), findsOneWidget);
         expect(
           container.read(homeChromeRevealRequestProvider),
@@ -539,6 +546,30 @@ void main() {
       },
     );
   }
+
+  testWidgets('/app/collections pushes the Collections page, the dock '
+      'section unchanged', (tester) async {
+    await host(tester);
+    final container = ProviderScope.containerOf(context);
+    final section = container.listen(
+      selectedBottomNavBarItemProvider,
+      (_, _) {},
+    );
+    addTearDown(section.close);
+    expect(
+      await openAppDestination(
+        context,
+        ref,
+        parseAppDestination('/app/collections')!,
+        openLegacyLink: (_) async => throw StateError('Must not resolve'),
+      ),
+      isTrue,
+    );
+    expect(opened, hasLength(1));
+    expect(opened.single, isA<CollectionsScreen>());
+    expect(routeNames, ['/app/collections']);
+    expect(section.read(), BottomNavBarItem.forYou);
+  });
 
   // Shared collection links, collection pushes and the catalog open a
   // Premium collection for every reader and gate when a game opens; the

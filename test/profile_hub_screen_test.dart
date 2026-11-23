@@ -316,8 +316,8 @@ void main() {
     expect(find.byType(DiscoveryDotMark), findsOneWidget);
     await _close(tester);
 
-    // An Events-list tab's trail runs through the old Events tab, which is
-    // the Events row now.
+    // Events has its dock slot again (2026-11-23): Profile holds no Events
+    // row, and a Nudge trailed through the Events slot lights nothing here.
     await _pump(
       tester,
       dots: const [
@@ -329,7 +329,8 @@ void main() {
         },
       ],
     );
-    expect(dotIn('Events'), findsOneWidget);
+    expect(find.text('Events'), findsNothing);
+    expect(find.byType(DiscoveryDotMark), findsNothing);
     await _close(tester);
   });
 }

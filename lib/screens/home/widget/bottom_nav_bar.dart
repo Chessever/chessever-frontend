@@ -19,31 +19,34 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The five main sections: Home, Feed, Botvinnik, Collections, Profile.
+/// The main sections, in the dock's order: Home, Events, Botvinnik, Feed,
+/// Profile (Home, Events, Feed, Profile with Botvinnik switched off).
+/// ChessEver is a broadcasting platform first (PM and owner, 2026-11-23), so
+/// Events sits beside Home and Feed beside Profile.
 ///
-/// Events lives on the Profile page with everything the sidebar used to
-/// hold; the sidebar itself is gone. Search left the bar for Home's floating
-/// button (Today), which opens it as a page of its own.
+/// Events ([tournaments]) is the broadcast lists (Current, Upcoming, Past
+/// and their search) as a root. It keeps the identity it had as a tab before
+/// 38.18: analytics, a saved start screen and Nudges read back unchanged.
+/// Collections is not a section: it opens as a page of its own from
+/// Discovery's first tile, Search's Collections section, stories and
+/// collection links. Search opens from Today's floating button, a page of
+/// its own too. What the sidebar held lives on Profile.
 ///
 /// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
 /// the name, a launch reads it back), never by index, so reordering the bar
-/// moves nothing else. A name no longer here (`search`, saved as the start
-/// screen before Collections took its place) reads as Home
+/// moves nothing else. A name no longer here (`collections`, `search`, saved
+/// as the start screen when they had a slot) reads as Home
 /// ([readDefaultBottomTab]).
-enum BottomNavBarItem { forYou, feed, botvinnik, collections, profile }
+enum BottomNavBarItem { forYou, tournaments, botvinnik, feed, profile }
 
 /// Keep enum identities stable for callers; presentation has its own order.
 const bottomNavBarOrder = [
   BottomNavBarItem.forYou,
-  BottomNavBarItem.feed,
+  BottomNavBarItem.tournaments,
   BottomNavBarItem.botvinnik,
-  BottomNavBarItem.collections,
+  BottomNavBarItem.feed,
   BottomNavBarItem.profile,
 ];
-
-/// The Collections slot's mark: three stacked plates, drawn in the dock's
-/// line weight (1.8 on 24, as Feed's and Botvinnik's).
-const String collectionsNavIcon = 'assets/svgs/collections_nav.svg';
 
 /// Whether Botvinnik has a tab: built in and not switched off in Settings.
 final botvinnikTabAvailableProvider = Provider<bool>((ref) {
@@ -97,11 +100,11 @@ final bottomNavBarReTapRequestProvider =
 /// and the tablet rail.
 const bottomNavBarDotIds = {
   BottomNavBarItem.forYou: 'home.nav.home',
-  BottomNavBarItem.feed: 'home.nav.feed',
+  // The id the Events tab wore before 38.18 and the Profile row wore after
+  // it: dots published for either light the slot.
+  BottomNavBarItem.tournaments: 'home.nav.events',
   BottomNavBarItem.botvinnik: 'home.nav.botvinnik',
-  // The id Collections wore when it last had a tab: dots published for it
-  // light it again.
-  BottomNavBarItem.collections: 'home.nav.collections',
+  BottomNavBarItem.feed: 'home.nav.feed',
   // Profile took over the side menu the avatar used to open, so it keeps the
   // avatar's id: published `drawer.*` dots trail through `home.menu`.
   BottomNavBarItem.profile: 'home.menu',
@@ -109,18 +112,18 @@ const bottomNavBarDotIds = {
 
 final namesBottomNavBarIcons = {
   BottomNavBarItem.forYou: 'Home',
-  BottomNavBarItem.feed: 'Feed',
+  BottomNavBarItem.tournaments: 'Events',
   BottomNavBarItem.botvinnik: 'Botvinnik',
-  BottomNavBarItem.collections: 'Collections',
+  BottomNavBarItem.feed: 'Feed',
   BottomNavBarItem.profile: 'Profile',
 };
 
 /// The e2e key of each slot.
 Key bottomNavBarItemKey(BottomNavBarItem item) => e2eKey(switch (item) {
   BottomNavBarItem.forYou => E2eIds.navForYou,
-  BottomNavBarItem.feed => E2eIds.navFeed,
+  BottomNavBarItem.tournaments => E2eIds.navEvents,
   BottomNavBarItem.botvinnik => E2eIds.navBotvinnik,
-  BottomNavBarItem.collections => E2eIds.navCollections,
+  BottomNavBarItem.feed => E2eIds.navFeed,
   BottomNavBarItem.profile => E2eIds.navProfile,
 });
 
@@ -144,9 +147,9 @@ Widget bottomNavBarGlyph(
       size: side + 4,
       color: ink,
     ),
-    BottomNavBarItem.feed => svg(SvgAsset.feedNavIcon),
+    BottomNavBarItem.tournaments => svg(SvgAsset.eventsNavIcon),
     BottomNavBarItem.botvinnik => svg(SvgAsset.botvinnikNavIcon),
-    BottomNavBarItem.collections => svg(collectionsNavIcon),
+    BottomNavBarItem.feed => svg(SvgAsset.feedNavIcon),
     BottomNavBarItem.profile => _NavAvatar(
       side: side + 4,
       ink: ink,
@@ -335,11 +338,12 @@ final selectedBottomNavBarItemProvider =
     });
 
 /// The sections the store-update reminder may open over: pages to browse.
-/// Botvinnik (a chat), Feed (a clip playing) and Collections (whose catalog
-/// search may hold a query being typed, as Search's tab did in its slot)
+/// Events is one, as its tab was before 38.18 and as its named pushed page
+/// (`/group_event_screen`) is. Botvinnik (a chat) and Feed (a clip playing)
 /// keep it waiting until the reader is back on one of these.
 const updatePromptSections = {
   BottomNavBarItem.forYou,
+  BottomNavBarItem.tournaments,
   BottomNavBarItem.profile,
 };
 
@@ -391,9 +395,9 @@ bool popToHomeShell(NavigatorState navigator) {
 final homeChromeRevealRequestProvider = StateProvider<int>((ref) => 0);
 
 /// Opens the dock's [item] as a tap on its slot would, from a page pushed
-/// over the home shell (Search's Collections section) or from inside it
-/// (Discovery's Collections tile), instead of pushing a second copy of a
-/// section the dock already holds: the section is selected (so the page
+/// over the home shell (Search's Coming up section, an Inbox link) or from
+/// inside it (Discovery's Events tile), instead of pushing a second copy of
+/// a section the dock already holds: the section is selected (so the page
 /// closing over it reveals it) and every page over the shell closes.
 ///
 /// Returns false, changing nothing, when no home shell stands under
@@ -448,9 +452,10 @@ void _selectSection(
 
 /// The launch section a Premium viewer picked (long-press a tab, or Settings
 /// › Customization). Unset or unreadable means For You. Sections that are no
-/// longer on the bar (Events, Search) fall back to For You: Search is a page
-/// opened from Home now, so a reader who launched on it lands on Home, one
-/// tap from it.
+/// longer on the bar (Collections, Search) fall back to For You: both are
+/// pages opened from Home now, so a reader who launched on one lands on
+/// Home, one tap from it. Events saved as the start screen before 38.18
+/// (`tournaments`) opens Events again.
 const String defaultBottomTabPrefsKey = 'default_bottom_tab_v1';
 
 BottomNavBarItem readDefaultBottomTab() {

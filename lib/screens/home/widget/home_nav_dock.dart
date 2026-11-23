@@ -121,7 +121,7 @@ class HomeNavMetrics {
 
 /// The dock's metrics, for a page under it that composes itself between the
 /// bars (Feed keeps its posts centred in the room the dock leaves) or rides
-/// buttons over it (Collections). Absent on a tablet, which has the rail
+/// buttons over it (Events' Live first). Absent on a tablet, which has the rail
 /// instead, and on pushed pages.
 class HomeNavScope extends InheritedWidget {
   const HomeNavScope({super.key, required this.metrics, required super.child});

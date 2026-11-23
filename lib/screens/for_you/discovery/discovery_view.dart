@@ -11,12 +11,9 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/todays_miniatures_section.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
-    show BottomNavBarItem, openHomeSection;
-import 'package:chessever2/screens/my_profile/profile_hub_screen.dart'
+import 'package:chessever2/screens/group_event/group_event_screen.dart'
     show openEventsScreen;
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hub_context_art.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
@@ -94,9 +91,9 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                 child: Column(
                   children: [
                     // Collections leads Discovery: the catalog's books and
-                    // collections, one tap from Discovery as from Search: the
-                    // dock's Collections tab, never a second copy pushed over
-                    // Home.
+                    // collections, one tap from Discovery as from Search. It
+                    // has no dock slot, so it opens as a page of its own
+                    // over Home, with its back.
                     HubTileRow(
                       left: DiscoveryTileShare(
                         component: DiscoveryShareDestination.collections,
@@ -108,18 +105,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                           artwork: const HubSceneBackdrop(
                             scene: HubScene.collections,
                           ),
-                          onTap: () {
-                            if (openHomeSection(
-                              context,
-                              BottomNavBarItem.collections,
-                              navigationType: 'discovery',
-                            )) {
-                              HapticFeedbackService.cardTap();
-                              return;
-                            }
-                            // No dock under Discovery: the pushed page.
-                            CollectionsScreen.open(context);
-                          },
+                          onTap: () => CollectionsScreen.open(context),
                         ),
                       ),
                       right: DiscoveryTileShare(
@@ -192,8 +178,9 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                     // destination has no partner, and a full row keeps the
                     // grid's edges square. Its picture keeps the right
                     // column's width, under Likes, Feed and Miniatures. It
-                    // opens the Events lists exactly as Profile's row does.
-                    // No hold-to-share: /app/events has no page on the web
+                    // opens the dock's Events section, never a second copy
+                    // pushed over Home (a pushed page only with no dock
+                    // under Discovery). No hold-to-share: /app/events has no page on the web
                     // yet (test/app_share_url_contract_test.dart).
                     Padding(
                       padding: EdgeInsets.only(bottom: HubTileRow.spacing),
@@ -205,7 +192,10 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                         artwork: const HubRowSceneBackdrop(
                           scene: HubScene.events,
                         ),
-                        onTap: () => openEventsScreen(context),
+                        onTap: () => openEventsScreen(
+                          context,
+                          navigationType: 'discovery',
+                        ),
                       ),
                     ),
                   ],

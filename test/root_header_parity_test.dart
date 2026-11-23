@@ -1,24 +1,23 @@
-// The five bottom-bar roots are one composition: switching tabs must never
+// The five dock roots are one composition: switching sections must never
 // make the page jump or the bar change colour. Every root wears the same bar
 // (HomeTopBarFrame): the same top inset, the same band height, the same
 // gutter, its title, tabs or field on the same centre line, the same ground
 // under it, its page starting at the same y and, on every root that is a
 // page to read down, its first content on the same line under that
-// (HomeTopBarMetrics.contentGap). This pumps Home, Feed, Botvinnik,
-// Collections and Profile as the home shell holds them (in a
-// ScrollChromeRegion over a bottom bar) and measures each, on three phones,
-// light and dark: the geometry from the layout, the colours from the pixels
-// actually drawn. Search is no root any more: it opens over Home from
-// Today's button, a pushed page with the pushed pages' back row.
+// (HomeTopBarMetrics.contentGap). This pumps Home, Events, Botvinnik, Feed
+// and Profile as the home shell holds them (in a ScrollChromeRegion over a
+// bottom bar) and measures each, on three phones, light and dark: the
+// geometry from the layout, the colours from the pixels actually drawn.
+// Search and Collections are no roots: they open as pushed pages with the
+// pushed pages' back row.
 //
-// Collections wears Home's composition (its pages as the bar's tabs). Its
-// bar trades places with its catalog search, so the status bar's strip is
-// laid outside the band that folds rather than inside the frame: it is
-// measured from the screen's top all the same, and its band is held to
-// start exactly at the status bar. It is the real page (CollectionsScreen as
-// the dock's tab holds it, its catalog answered by a fake repository), and
-// each of its pages is measured: the catalog it opens on, Authors and About
-// all start their first content on the roots' one line.
+// Events wears its search field on the bar's row, and its segments open the
+// page on the roots' one lead-in. The field and the segments fold away
+// together, so the status bar's strip is laid outside the band that folds
+// rather than inside the frame: it is measured from the screen's top all
+// the same, and its band is held to start exactly at the status bar. It is
+// the real page (GroupEventScreen as the dock's section holds it), with its
+// lists stood in, as they read the network.
 //
 // Feed wears no bar at all: no title and no controls, its posts start under
 // the status bar's strip (the page's own ground), so it is held to that
@@ -41,11 +40,6 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
-import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/screens/collections/collections_data.dart';
-import 'package:chessever2/screens/collections/collections_screen.dart';
-import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
@@ -58,6 +52,8 @@ import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
@@ -69,9 +65,9 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:chessever2/widgets/figma_player_card.dart';
-import 'package:dio/dio.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -328,69 +324,22 @@ Widget _fakePage(BuildContext context, ForYouTab tab, ScrollController c) {
   );
 }
 
-/// The catalog the real Collections root reads: a few books and authors,
-/// answered at once, with no network.
-class _Catalog extends CollectionsRepository {
-  _Catalog() : super(GamebaseRepository(Dio(), apiKey: 'test'));
-
-  static const _books = [
-    Collection(
-      id: 'zurich-1953',
-      slug: 'zurich-1953',
-      kind: CollectionKind.event,
-      title: 'Zurich 1953',
-      location: 'Zurich',
-      access: CollectionAccess.free,
-    ),
-    Collection(
-      id: 'my-60',
-      slug: 'my-60',
-      kind: CollectionKind.book,
-      title: 'My 60 Memorable Games',
-      author: 'Bobby Fischer',
-      access: CollectionAccess.free,
-    ),
-  ];
-
-  static const _authors = [
-    CollectionAuthor(id: 'fischer', name: 'Bobby Fischer', bookCount: 1),
-    CollectionAuthor(id: 'bronstein', name: 'David Bronstein', bookCount: 1),
-  ];
-
-  @override
-  Future<List<String>> fetchAuthors() async => const ['Bobby Fischer'];
-
-  @override
-  Future<CollectionsPage> searchBooks(
-    CollectionSearchQuery query,
-    int offset,
-  ) async => CollectionsPage(
-    items: offset == 0 ? _books : const [],
-    total: _books.length,
-    limit: 40,
-    offset: offset,
-  );
-
-  @override
-  Future<({List<CollectionAuthor> items, int total})> searchAuthors(
-    CollectionSearchQuery query,
-    int offset,
-  ) async => (
-    items: offset == 0 ? _authors : const <CollectionAuthor>[],
-    total: _authors.length,
-  );
-}
+/// Stands in for an Events list, which reads the network: a list opening
+/// at the top of its own scroll, under the segments.
+Widget _eventsPage(
+  BuildContext context,
+  GroupEventCategory category,
+  ScrollController c,
+) => ListView(
+  controller: c,
+  padding: EdgeInsets.zero,
+  children: [SizedBox(height: 120, child: Text('events:${category.name}'))],
+);
 
 class _NoFavoriteEvents extends FavoriteEventsNotifier {
   @override
   Future<List<FavoriteEvent>> build() async => const <FavoriteEvent>[];
 }
-
-/// The selected page tab of the Collections root's bar.
-Finder _collectionsTab(String label) => find.descendant(
-  of: find.byType(ForYouPageTabs),
-  matching: find.text(label),
-);
 
 /// Profile's first row: the reader.
 final Finder _profileFirst = find.byWidgetPredicate(
@@ -412,15 +361,16 @@ List<Override> _homeOverrides() => [
   ),
 ];
 
-List<Override> _collectionsOverrides() => [
+List<Override> _eventsOverrides() => [
   recentSearchStorageProvider.overrideWithValue(_MemoryRecentSearches()),
   selectedBottomNavBarItemProvider.overrideWith(
-    (ref) => BottomNavBarItem.collections,
+    (ref) => BottomNavBarItem.tournaments,
   ),
-  selectedCollectionsTabProvider.overrideWith(
-    (ref) => CollectionsTab.collections,
+  selectedGroupCategoryProvider.overrideWith(
+    (ref) => GroupEventCategory.current,
   ),
-  collectionsRepositoryProvider.overrideWithValue(_Catalog()),
+  // Nothing in play: Live first stays away, and nothing reads the network.
+  eventsLiveEventCountProvider.overrideWith((ref) => 0),
   favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new),
   subscriptionProvider.overrideWith((ref) => _Subscription()),
   currentUserProvider.overrideWith(
@@ -600,50 +550,20 @@ Future<List<_Measure>> _measureRoots(
 
   await _pumpRoot(
     tester,
-    root: const CollectionsScreen(embedded: true),
-    overrides: _collectionsOverrides(),
+    root: const GroupEventScreen(root: true, pageBuilder: _eventsPage),
+    overrides: _eventsOverrides(),
     light: light,
     phone: phone,
   );
-  // The catalog it opens on: its first card.
+  // The field on the bar's row; the page starts under the band, its
+  // segments first.
   out.add(
     await _measure(
       tester,
-      'Collections',
-      // Its selected tab, as Home's Today.
-      label: _collectionsTab('Collections'),
-      page: find.byType(PageView),
-      firstContent: find.byType(CollectionCard),
-      statusBarOutside: phone.statusBar,
-    ),
-  );
-  // Authors: its first author.
-  await tester.tap(_collectionsTab('Authors'));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 600));
-  await tester.pump(const Duration(milliseconds: 100));
-  out.add(
-    await _measure(
-      tester,
-      'Collections: Authors',
-      label: _collectionsTab('Authors'),
-      page: find.byType(PageView),
-      firstContent: find.byType(FigmaPlayerCard),
-      statusBarOutside: phone.statusBar,
-    ),
-  );
-  // About: its heading.
-  await tester.tap(_collectionsTab('About'));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 600));
-  await tester.pump(const Duration(milliseconds: 100));
-  out.add(
-    await _measure(
-      tester,
-      'Collections: About',
-      label: _collectionsTab('About'),
-      page: find.byType(PageView),
-      firstContent: find.text('About collections'),
+      'Events',
+      label: find.byType(EnhancedRoundedSearchBar),
+      page: find.byKey(const ValueKey(kEventsRootPageTopKey)),
+      firstContent: find.byType(SegmentedSwitcher),
       statusBarOutside: phone.statusBar,
     ),
   );
@@ -747,14 +667,7 @@ void main() {
         expect(tester.takeException(), isNull);
         final want = await _wanted(tester, light: light, phone: phone);
 
-        const names = [
-          'Home',
-          'Botvinnik',
-          'Collections',
-          'Collections: Authors',
-          'Collections: About',
-          'Profile',
-        ];
+        const names = ['Home', 'Botvinnik', 'Events', 'Profile'];
         expect(roots.map((r) => r.name), names);
         // Every root that is a page to read down states where it starts.
         expect([
@@ -923,26 +836,23 @@ void main() {
     );
     await _tearDown(tester);
 
-    // Collections' pages run the bar's width on the same gutter as Home's.
+    // Events' field and its segments run the bar's width on the same gutter
+    // as Home's tabs.
     await _pumpRoot(
       tester,
-      root: const CollectionsScreen(embedded: true),
-      overrides: _collectionsOverrides(),
+      root: const GroupEventScreen(root: true, pageBuilder: _eventsPage),
+      overrides: _eventsOverrides(),
       light: false,
     );
-    expect(
-      tester.getTopLeft(find.byType(ForYouPageTabs)).dx,
-      closeTo(gutter, 0.5),
-    );
-    expect(
-      tester.getTopRight(find.byType(ForYouPageTabs)).dx,
-      closeTo(width - gutter, 0.5),
-    );
-    // The selected page sits on the screen's centre, as Home's Today does.
-    expect(
-      tester.getCenter(_collectionsTab('Collections')).dx,
-      closeTo(width / 2, 0.5),
-    );
+    for (final finder in [
+      find.byType(EnhancedRoundedSearchBar),
+      find.byType(SegmentedSwitcher),
+    ]) {
+      expect(tester.getTopLeft(finder).dx, closeTo(gutter, 0.5));
+      expect(tester.getTopRight(finder).dx, closeTo(width - gutter, 0.5));
+    }
+    // No way back on a root.
+    expect(find.byKey(const ValueKey('events_back')), findsNothing);
     await _tearDown(tester);
   });
 
@@ -973,16 +883,6 @@ void main() {
       still: true,
     );
     want['Botvinnik'] = styleOf('Botvinnik');
-    await _tearDown(tester);
-    await _pumpRoot(
-      tester,
-      root: const CollectionsScreen(embedded: true),
-      overrides: _collectionsOverrides(),
-      light: true,
-    );
-    want['Collections'] = tester
-        .widget<Text>(_collectionsTab('Collections'))
-        .style!;
     await _tearDown(tester);
     await _pumpRoot(
       tester,

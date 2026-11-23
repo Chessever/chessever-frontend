@@ -11,16 +11,18 @@
 // there (`NUDGE_CATALOG` names another file), and otherwise from the pinned
 // copy in test/fixtures/nudge_surfaces_pinned.ts, so the check never depends
 // on a sibling repo. Shell placements (dock, Home's pages and tabs,
-// Discovery and My Space tiles, Profile rows, the Collections tab's pages)
-// are looked up in the widget tree of the real screens: HomeNavDock,
-// ForYouScreen with the real My Space and Discovery pages, the real
-// CollectionsScreen as the dock's tab, the real ProfileHubScreen. Tabs
-// inside pushed screens (an event, a player, a collection, ...) are drawn by
+// Discovery and My Space tiles, Profile rows) are looked up in the widget
+// tree of the real screens: HomeNavDock, ForYouScreen with the real My Space
+// and Discovery pages, the real Events lists as the dock's section, the real
+// ProfileHubScreen. Tabs inside pushed screens (an event, a player, the
+// Collections page, a collection, ...) and the Events segments are drawn by
 // SegmentedSwitcher / EventViewShell from their `dotScope`; those are
 // checked against the source.
 //
 // Retired: `drawer.desktop` (the side menu's Desktop row left with the side
-// menu at 38.18; nothing in the current shell is that surface).
+// menu at 38.18; nothing in the current shell is that surface) and
+// `home.nav.collections` (Collections left the dock for Discovery on
+// 2026-11-23; Events took its slot, `home.nav.events`).
 
 import 'dart:convert';
 import 'dart:io';
@@ -39,11 +41,11 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
-import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/home_live_first_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
@@ -64,6 +66,7 @@ import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -151,7 +154,13 @@ File? _siblingCatalog() {
 
 /// Ids no current surface carries: published Nudges on them light only on
 /// the builds that had them.
-const _retired = {'drawer.desktop'};
+const _retired = {'drawer.desktop', 'home.nav.collections'};
+
+/// Retired here before the admin catalog says so: it still offers these
+/// with no builds note until its follow-up to the 2026-11-23 dock change
+/// lands (a note naming the builds that drew it). Exempt from the note check
+/// until then.
+const _catalogNotePending = {'home.nav.collections'};
 
 /// The shell's placements: what the dock, Home's pages and Profile hold.
 bool _isShell(String id) =>
@@ -163,7 +172,6 @@ bool _isShell(String id) =>
       'my_space.tile.',
       'drawer.',
       'profile.',
-      'collections.tab.',
     ].any(id.startsWith);
 
 // ------------------------------------------------------------ the doubles
@@ -268,6 +276,21 @@ class _MemoryStore implements DiscoveryDotsSeenStore {
 
 /// Today's page stood in (its feed reads the network); My Space and
 /// Discovery are the real pages.
+class _MemoryRecents implements RecentSearchStorage {
+  @override
+  Future<String?> read() async => null;
+
+  @override
+  Future<void> write(String value) async {}
+}
+
+/// Stands in for an Events list, which reads the network.
+Widget _eventsPage(
+  BuildContext context,
+  GroupEventCategory category,
+  ScrollController c,
+) => ListView(controller: c, children: [Text('events:${category.name}')]);
+
 Widget _homePage(BuildContext context, ForYouTab tab, ScrollController c) =>
     tab == ForYouTab.today
     ? ListView(controller: c, children: const [Text('page:today')])
@@ -315,6 +338,9 @@ Future<_MemoryStore> _pump(
   required BottomNavBarItem section,
   required Widget body,
   List<Map<String, Object?>> dots = const [],
+  // What the device already remembers (a test going on to another
+  // section).
+  _MemoryStore? seen,
 }) async {
   tester.view
     ..physicalSize = const Size(393, 852)
@@ -322,7 +348,7 @@ Future<_MemoryStore> _pump(
     ..padding = const FakeViewPadding(top: 59, bottom: 34)
     ..viewPadding = const FakeViewPadding(top: 59, bottom: 34);
   addTearDown(tester.view.reset);
-  final seen = _MemoryStore();
+  final store = seen ?? _MemoryStore();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -345,6 +371,9 @@ Future<_MemoryStore> _pump(
         ),
         selectedBottomNavBarItemProvider.overrideWith((ref) => section),
         todayLiveEventCountProvider.overrideWith((ref) => 0),
+        eventsLiveEventCountProvider.overrideWith((ref) => 0),
+        // The Events field's recent searches live in SQLite.
+        recentSearchStorageProvider.overrideWithValue(_MemoryRecents()),
         collectionsRepositoryProvider.overrideWithValue(_Books()),
         favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new),
         favoritePlayersProviderNew.overrideWith(_NoFavoritePlayers.new),
@@ -366,7 +395,7 @@ Future<_MemoryStore> _pump(
         discoveryDotsSourceProvider.overrideWithValue(
           _DotsSource(jsonEncode({'dots': dots})),
         ),
-        discoveryDotsSeenStoreProvider.overrideWithValue(seen),
+        discoveryDotsSeenStoreProvider.overrideWithValue(store),
         discoveryDotsDeliveryStoreProvider.overrideWithValue(_MemoryStore()),
         accountCreatedAtProvider.overrideWithValue(DateTime.utc(2020)),
         attentionClockProvider.overrideWithValue(inboxFixtureNow),
@@ -388,7 +417,7 @@ Future<_MemoryStore> _pump(
     ),
   );
   await _frames(tester);
-  return seen;
+  return store;
 }
 
 Future<void> _frames(WidgetTester tester, [int count = 30]) async {
@@ -406,7 +435,7 @@ Set<String> _anchors(WidgetTester tester) => {
 };
 
 /// The anchors the real shell carries: the dock, Home on each of its pages,
-/// the dock's Collections tab, and Profile.
+/// the dock's Events, and Profile.
 Future<Set<String>> _shellAnchors(WidgetTester tester) async {
   final ids = <String>{};
   await _pump(
@@ -424,8 +453,8 @@ Future<Set<String>> _shellAnchors(WidgetTester tester) async {
 
   await _pump(
     tester,
-    section: BottomNavBarItem.collections,
-    body: const CollectionsScreen(embedded: true),
+    section: BottomNavBarItem.tournaments,
+    body: const GroupEventScreen(root: true, pageBuilder: _eventsPage),
   );
   ids.addAll(_anchors(tester));
   await tester.pumpWidget(const SizedBox.shrink());
@@ -502,10 +531,13 @@ void _expectCatalogAnchored(
     reason: 'placements in $source with no surface in the current app',
   );
   // A retired id is retired in the catalog too, once it says which builds
-  // draw what.
+  // draw what: a note, never one that says current builds do.
   if (catalog.any((surface) => surface.builds != null)) {
-    for (final surface in catalog.where((s) => _retired.contains(s.id))) {
-      expect(surface.builds, 'OLD_SHELL', reason: surface.id);
+    for (final surface in catalog.where(
+      (s) => _retired.contains(s.id) && !_catalogNotePending.contains(s.id),
+    )) {
+      expect(surface.builds, isNotNull, reason: surface.id);
+      expect(surface.builds, isNot('NEW_SHELL'), reason: surface.id);
     }
   }
 }
@@ -546,18 +578,21 @@ void main() {
   testWidgets('every placement of the pinned catalog is a surface of the '
       'current app', (tester) async {
     final shell = await _shellAnchors(tester);
-    // The two page-tab rows the 38.18 shell left dark carry their ids again.
+    // Home's page tabs, which the 38.18 shell left dark, carry their ids
+    // again; the dock's Events slot carries the id the Events tab and then
+    // Profile's Events row wore; nothing carries Collections' old slot.
     expect(
       shell,
       containsAll([
         'home.tab.my_space',
         'home.tab.today',
         'home.tab.discovery',
-        'collections.tab.about',
-        'collections.tab.collections',
-        'collections.tab.authors',
+        'home.nav.events',
       ]),
     );
+    expect(shell, isNot(contains('home.nav.collections')));
+    // The Collections page's tabs are drawn by the pushed page.
+    expect(_screenDraws('collections.tab.authors'), isTrue);
     _expectCatalogAnchored(
       parseNudgeCatalog(File(_pinnedCatalog).readAsStringSync()),
       shell,
@@ -580,8 +615,7 @@ void main() {
     skip: sibling == null,
   );
 
-  group('Home\'s page tabs and the Collections tab\'s pages are Nudge '
-      'surfaces again', () {
+  group('Home\'s page tabs and the dock\'s Events are Nudge surfaces', () {
     Finder dotIn(String label) => find.descendant(
       of: find.ancestor(
         of: find.text(label).first,
@@ -673,35 +707,46 @@ void main() {
       expect(seen.seen['today-tab'], 1);
     });
 
-    testWidgets('a Nudge on the Collections tab\'s Authors page draws on the '
-        'dock\'s tab and retires on a tap', (tester) async {
+    testWidgets('a Nudge on an Events segment lights the dock\'s Events '
+        'slot on the way, then the segment on the dock\'s Events', (
+      tester,
+    ) async {
+      const dots = [
+        {
+          'id': 'past-events',
+          'rev': 1,
+          'target': 'events.tab.past',
+          'trail': ['home.nav.events'],
+        },
+      ];
+      Finder slotDot() => find.descendant(
+        of: find.byKey(bottomNavBarItemKey(BottomNavBarItem.tournaments)),
+        matching: find.byType(DiscoveryDotMark),
+      );
+      // On Home, the way there: the dock's Events slot (Profile no longer
+      // holds an Events row).
       final seen = await _pump(
         tester,
-        section: BottomNavBarItem.collections,
-        body: const CollectionsScreen(embedded: true),
-        dots: const [
-          {
-            'id': 'authors-tab',
-            'rev': 1,
-            'target': 'collections.tab.authors',
-            'trail': ['home.nav.collections'],
-          },
-        ],
+        section: BottomNavBarItem.forYou,
+        body: const ForYouScreen(pageBuilder: _homePage),
+        dots: dots,
       );
-      expect(dotIn('Authors'), findsOneWidget);
-      // Collections is the page on screen: its own tab would retire a Nudge
-      // at once, so only Authors is lit.
-      expect(dotIn('About'), findsNothing);
-      await tester.tap(find.text('Authors').first);
-      await _frames(tester);
-      expect(
-        find.descendant(
-          of: find.byType(ForYouPageTabs),
-          matching: find.byType(DiscoveryDotMark),
-        ),
-        findsNothing,
+      expect(slotDot(), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      // On Events: the slot is passed, the segment is lit.
+      await _pump(
+        tester,
+        section: BottomNavBarItem.tournaments,
+        body: const GroupEventScreen(root: true, pageBuilder: _eventsPage),
+        dots: dots,
+        seen: seen,
       );
-      expect(seen.seen['authors-tab'], 1);
+      expect(slotDot(), findsNothing);
+      expect(seen.seen['past-events@home.nav.events'], 1);
+      expect(dotIn('Past'), findsOneWidget);
+      expect(dotIn('Current'), findsNothing);
+      expect(find.byType(DiscoveryDotMark), findsOneWidget);
     });
   });
 }
