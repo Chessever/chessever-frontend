@@ -726,6 +726,34 @@ void main() {
       contains('muted=false'),
     );
   });
+  test('YouTube requests English captions and honors video options', () {
+    String htmlFor(String url, {bool showCaptionsByDefault = true}) =>
+        videoPlayerHtml(
+          VideoSource.parse(url),
+          Uri.parse('https://embed.test.example.com'),
+          revision: 3,
+          play: false,
+          muted: false,
+          showCaptionsByDefault: showCaptionsByDefault,
+        );
+    const url = 'https://youtu.be/abcdefghijk';
+    final broadcast = htmlFor(url);
+    expect(broadcast, contains('"cc_load_policy":"1"'));
+    expect(broadcast, contains('"cc_lang_pref":"en"'));
+    expect(broadcast, contains('"hl":"en"'));
+
+    final analysis = htmlFor(url, showCaptionsByDefault: false);
+    expect(analysis, isNot(contains('cc_load_policy')));
+    expect(analysis, contains('"cc_lang_pref":"en"'));
+
+    final localized = htmlFor(
+      '$url?cc_load_policy=1&cc_lang_pref=pt-BR&hl=tr',
+      showCaptionsByDefault: false,
+    );
+    expect(localized, contains('"cc_load_policy":"1"'));
+    expect(localized, contains('"cc_lang_pref":"pt-BR"'));
+    expect(localized, contains('"hl":"tr"'));
+  });
   test('provider embeds always carry classic controls', () {
     String htmlFor(String url) => videoPlayerHtml(
       VideoSource.parse(url),

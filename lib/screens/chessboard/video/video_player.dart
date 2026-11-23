@@ -311,6 +311,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               play: session.playRequested,
               muted: session.muted,
               nativeFullscreen: defaultTargetPlatform != TargetPlatform.iOS,
+              showCaptionsByDefault: !selected.isAnalysis,
             ),
             baseUrl: '${embedOrigin.toString()}/',
           );
@@ -487,19 +488,22 @@ String videoPlayerHtml(
   required bool play,
   required bool muted,
   bool nativeFullscreen = true,
+  bool showCaptionsByDefault = true,
 }) {
   final id = jsonEncode(source.id), host = jsonEncode(origin.host);
   final youtube = source.platform == VideoPlatform.youtube
       ? YoutubeVideo.parse(source.url.toString())
       : null;
-  final youtubeVars = jsonEncode(
-    youtube == null
-        ? <String, String>{}
-        : (youtube.parameters
-            ..remove('autoplay')
-            ..remove('mute')
-            ..remove('loop')),
-  );
+  final youtubeOptions = youtube?.parameters
+    ?..remove('autoplay')
+    ..remove('mute')
+    ..remove('loop');
+  final youtubeVars = jsonEncode({
+    'hl': 'en',
+    'cc_lang_pref': 'en',
+    if (showCaptionsByDefault) 'cc_load_policy': '1',
+    ...?youtubeOptions,
+  });
   final youtubeRepeat = youtube?.loop == true
       ? 'if(e.data===0){ytPlayer.loadVideoById(${jsonEncode({'videoId': source.id, 'startSeconds': youtube!.start, if (youtube.end != null) 'endSeconds': youtube.end})});}'
       : '';
