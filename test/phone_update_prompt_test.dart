@@ -135,6 +135,7 @@ void main() {
     WidgetTester tester, {
     String initial = '/home_screen',
     bool enabled = true,
+    Widget home = const Scaffold(body: Text('Home')),
   }) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpWidget(
@@ -145,7 +146,7 @@ void main() {
         initialRoute: initial,
         routes: {
           '/': (_) => const Scaffold(body: Text('Splash')),
-          '/home_screen': (_) => const Scaffold(body: Text('Home')),
+          '/home_screen': (_) => home,
           '/board': (_) => const Scaffold(body: Text('Game board')),
           '/calendar_screen': (_) => const Scaffold(body: Text('Calendar')),
         },
@@ -262,6 +263,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(updater.checks, 1);
+  });
+
+  testWidgets('a query being typed on a section it may open over (the '
+      'Events bar) holds it until the keyboard goes', (tester) async {
+    await reminder.snooze('35.25.4');
+    await pumpShell(
+      tester,
+      home: const Scaffold(
+        body: Column(
+          children: [
+            Text('Home'),
+            TextField(key: ValueKey('home-query')),
+          ],
+        ),
+      ),
+    );
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('home-query')));
+    await tester.enterText(find.byKey(const ValueKey('home-query')), 'Norw');
+    await tester.pumpAndSettle();
+    // A check that comes due mid-query (an explicit one: the field's own
+    // lifecycle listener allows no paused-to-resumed jump here).
+    alert.currentState!.checkForUpdate(manual: true);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Norw'), findsOneWidget);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
   });
 
   testWidgets('due resume on game waits for pop to home', (tester) async {

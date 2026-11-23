@@ -87,7 +87,7 @@ Future<void> openSearchSectionPage(
     case SearchSectionId.smartEvents:
       return push(const SearchSmartEventsPage());
     case SearchSectionId.collections:
-      return push(const CollectionsScreen());
+      return navigator.push(CollectionsScreen.route());
     case SearchSectionId.news:
       return NewsScreen.open(context);
   }

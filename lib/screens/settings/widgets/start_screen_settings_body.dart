@@ -48,8 +48,14 @@ class _StartScreenSettingsBodyState
       selected: _launchSection(sections),
     );
     // Against the saved section: picking Home over a hidden Botvinnik saves
-    // Home, so switching Botvinnik back on does not bring it back.
-    if (picked == null || picked == _saved) return;
+    // Home, so switching Botvinnik back on does not bring it back. Against
+    // what is stored too: a section that left the dock reads as Home, and
+    // picking Home must replace it, or a later build that offers it again
+    // would open there.
+    if (picked == null ||
+        (picked == _saved && defaultBottomTabStoredAs(picked))) {
+      return;
+    }
     await writeDefaultBottomTab(picked);
     HapticFeedbackService.success();
     if (mounted) setState(() => _saved = picked);

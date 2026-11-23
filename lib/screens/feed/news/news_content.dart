@@ -1223,12 +1223,24 @@ String newsSourceContextLabel(String href) {
 Uri? newsInAppRoute(Uri uri) {
   if (NewsLink.parse(uri) != null) return uri;
   if (!isChesseverUri(uri)) return null;
+  // The Events lists have no page of that name on the web: a bare `/events`
+  // is the dock's Events, as `/app/events` is.
+  if (uri.path.replaceFirst(RegExp(r'/$'), '') == '/events' &&
+      uri.query.isEmpty) {
+    return Uri.parse('$kChesseverSiteUrl/app/events');
+  }
   final destination = parseAppDestination(uri.toString());
   if (destination != null && uri.path.startsWith('/app/my-space')) {
     return destination.uri;
   }
+  // The dock's sections and Collections open in the app as an Inbox link
+  // opens them, never in a browser that has no such page.
   if (destination != null &&
       const {
+        AppDestinationKind.home,
+        AppDestinationKind.events,
+        AppDestinationKind.feed,
+        AppDestinationKind.collections,
         AppDestinationKind.likes,
         AppDestinationKind.miniatures,
         AppDestinationKind.reports,

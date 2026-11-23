@@ -899,6 +899,9 @@ void main() {
         expect(pushed.pages[2], isA<MiniaturesScreen>());
         expect(pushed.pages[3], isA<ReportsScreen>());
         expect(pushed.pages[4], isA<CollectionsScreen>());
+        // Named as `/app/collections` links name it: one page in
+        // analytics, however it was reached.
+        expect(pushed.routeNames[4], '/app/collections');
         expect(tester.takeException(), isNull);
         await _teardownCards(tester, container);
       },

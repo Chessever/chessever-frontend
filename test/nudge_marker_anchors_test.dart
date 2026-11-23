@@ -19,10 +19,12 @@
 // SegmentedSwitcher / EventViewShell from their `dotScope`; those are
 // checked against the source.
 //
-// Retired: `drawer.desktop` (the side menu's Desktop row left with the side
-// menu at 38.18; nothing in the current shell is that surface) and
-// `home.nav.collections` (Collections left the dock for Discovery on
-// 2026-11-23; Events took its slot, `home.nav.events`).
+// Moved and retired placements are read as the app reads a published Nudge
+// (`currentDiscoveryPath`): `home.nav.collections` (Collections left the dock
+// for Discovery on 2026-11-23; Events took its slot, `home.nav.events`) is
+// checked where it is now, Discovery's Collections tile. `drawer.desktop`
+// (the side menu's Desktop row left with the side menu at 38.18) has no
+// surface: its Nudges are dropped.
 
 import 'dart:convert';
 import 'dart:io';
@@ -152,15 +154,12 @@ File? _siblingCatalog() {
   return null;
 }
 
-/// Ids no current surface carries: published Nudges on them light only on
-/// the builds that had them.
-const _retired = {'drawer.desktop', 'home.nav.collections'};
+/// Ids no current surface carries: the app drops published Nudges on them
+/// (`currentDiscoveryPath`), so they light only on the builds that had them.
+const _retired = {'drawer.desktop'};
 
-/// Retired here before the admin catalog says so: it still offers these
-/// with no builds note until its follow-up to the 2026-11-23 dock change
-/// lands (a note naming the builds that drew it). Exempt from the note check
-/// until then.
-const _catalogNotePending = {'home.nav.collections'};
+/// Ids that moved, and the surface a published Nudge on one lights now.
+const _moved = {'home.nav.collections': 'discovery.tile.collections'};
 
 /// The shell's placements: what the dock, Home's pages and Profile hold.
 bool _isShell(String id) =>
@@ -519,10 +518,12 @@ void _expectCatalogAnchored(
   expect(catalog.length, greaterThan(20), reason: 'read $source');
   final missing = <String>[];
   for (final surface in catalog) {
-    if (_retired.contains(surface.id)) continue;
-    final drawn = _isShell(surface.id)
-        ? shell.contains(surface.id)
-        : _screenDraws(surface.id);
+    final path = currentDiscoveryPath(surface.id, const []);
+    expect(path == null, _retired.contains(surface.id), reason: surface.id);
+    if (path == null) continue;
+    expect(path.target, _moved[surface.id] ?? surface.id, reason: surface.id);
+    final id = path.target;
+    final drawn = _isShell(id) ? shell.contains(id) : _screenDraws(id);
     if (!drawn) missing.add('${surface.id} (${surface.group})');
   }
   expect(
@@ -533,9 +534,7 @@ void _expectCatalogAnchored(
   // A retired id is retired in the catalog too, once it says which builds
   // draw what: a note, never one that says current builds do.
   if (catalog.any((surface) => surface.builds != null)) {
-    for (final surface in catalog.where(
-      (s) => _retired.contains(s.id) && !_catalogNotePending.contains(s.id),
-    )) {
+    for (final surface in catalog.where((s) => _retired.contains(s.id))) {
       expect(surface.builds, isNotNull, reason: surface.id);
       expect(surface.builds, isNot('NEW_SHELL'), reason: surface.id);
     }
@@ -747,6 +746,112 @@ void main() {
       expect(dotIn('Past'), findsOneWidget);
       expect(dotIn('Current'), findsNothing);
       expect(find.byType(DiscoveryDotMark), findsOneWidget);
+    });
+
+    testWidgets('an Events Nudge the catalog still trails through Profile '
+        'lights the dock\'s Events slot, never Profile', (tester) async {
+      await _pump(
+        tester,
+        section: BottomNavBarItem.forYou,
+        body: const ForYouScreen(pageBuilder: _homePage),
+        dots: const [
+          {
+            'id': 'upcoming-events',
+            'rev': 1,
+            'target': 'events.tab.upcoming',
+            'trail': ['home.menu', 'home.nav.events'],
+          },
+        ],
+      );
+      Finder slotDot(BottomNavBarItem item) => find.descendant(
+        of: find.byKey(bottomNavBarItemKey(item)),
+        matching: find.byType(DiscoveryDotMark),
+      );
+      expect(slotDot(BottomNavBarItem.tournaments), findsOneWidget);
+      expect(slotDot(BottomNavBarItem.profile), findsNothing);
+      expect(find.byType(DiscoveryDotMark), findsOneWidget);
+    });
+  });
+
+  group('a Nudge on Collections\' old dock slot', () {
+    Finder anchorDot(String id) => find.descendant(
+      of: find.byWidgetPredicate(
+        (widget) => widget is DiscoveryDotAnchor && widget.id == id,
+      ),
+      matching: find.byType(DiscoveryDotMark),
+    );
+
+    testWidgets('lights the way to Discovery\'s Collections tile, and the '
+        'tile once Discovery is open', (tester) async {
+      final seen = await _pump(
+        tester,
+        section: BottomNavBarItem.forYou,
+        body: const ForYouScreen(pageBuilder: _homePage),
+        dots: const [
+          {
+            'id': 'collections-slot',
+            'rev': 1,
+            'target': 'home.nav.collections',
+            'message': 'Collections moved to Discovery.',
+          },
+        ],
+      );
+      // Home opens on Today: Discovery's tab is the way there.
+      expect(anchorDot('home.tab.discovery'), findsOneWidget);
+      expect(find.byType(DiscoveryDotMark), findsOneWidget);
+
+      await tester.tap(find.text('Discovery').first);
+      await _frames(tester);
+      expect(anchorDot('home.tab.discovery'), findsNothing);
+      expect(anchorDot('discovery.tile.collections'), findsOneWidget);
+      expect(seen.seen['collections-slot@home.tab.discovery'], 1);
+    });
+
+    test('does not hold a later Nudge back', () {
+      // The slot's Nudge delivered first: it is the one that lights, and
+      // it lights a surface the reader can reach.
+      final dots = parseDiscoveryDots(
+        jsonEncode({
+          'dots': [
+            {
+              'id': 'collections-slot',
+              'rev': 1,
+              'target': 'home.nav.collections',
+            },
+            {
+              'id': 'past-events',
+              'rev': 1,
+              'target': 'events.tab.past',
+              'trail': ['home.menu', 'home.nav.events'],
+            },
+          ],
+        }),
+      );
+      final now = DateTime.utc(2026, 11, 23);
+      final first = nextDiscoveryDot(
+        dots,
+        seen: const {},
+        delivered: {
+          discoveryDotDeliveryKey(dots[0]): now.millisecondsSinceEpoch - 1000,
+          discoveryDotDeliveryKey(dots[1]): now.millisecondsSinceEpoch,
+        },
+        now: now,
+        shelfLife: announcementShelfLife,
+      )!;
+      expect(first.id, 'collections-slot');
+      expect(first.target, 'discovery.tile.collections');
+      expect(first.trail, ['home.nav.home', 'home.tab.discovery']);
+      // Reached, it hands the slot on to the Events Nudge, trailed through
+      // the dock's Events alone.
+      final next = nextDiscoveryDot(
+        dots,
+        seen: {'collections-slot': 1},
+        delivered: const {},
+        now: now,
+        shelfLife: announcementShelfLife,
+      )!;
+      expect(next.id, 'past-events');
+      expect(next.trail, ['home.nav.events']);
     });
   });
 }

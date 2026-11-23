@@ -74,11 +74,19 @@ import 'package:intl/intl.dart';
 class CollectionsScreen extends ConsumerStatefulWidget {
   const CollectionsScreen({super.key});
 
+  /// The page's route name, the one `/app/collections` links give it, so
+  /// every way in reads as one page in analytics ('Screen Viewed').
+  static const routeName = '/app/collections';
+
+  /// The page as a route of its own, named [routeName].
+  static Route<void> route() => MaterialPageRoute<void>(
+    settings: const RouteSettings(name: routeName),
+    builder: (_) => const CollectionsScreen(),
+  );
+
   static Future<void> open(BuildContext context) {
     HapticFeedbackService.cardTap();
-    return Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const CollectionsScreen()));
+    return Navigator.of(context).push(route());
   }
 
   @override

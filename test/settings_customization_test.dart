@@ -452,6 +452,23 @@ void main() {
         findsOneWidget,
       );
       expect(readDefaultBottomTab(), BottomNavBarItem.forYou);
+
+      // Picking Home replaces the stale name: a later build that offers
+      // the section again must not open there.
+      await _tap(tester, find.text('Start section'));
+      await _tap(
+        tester,
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('Home'),
+        ),
+      );
+      expect(
+        SharedPreferencesService.instance.prefsOrNull!.getString(
+          defaultBottomTabPrefsKey,
+        ),
+        BottomNavBarItem.forYou.name,
+      );
       expect(tester.takeException(), isNull);
     });
   }

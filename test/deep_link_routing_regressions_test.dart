@@ -1148,6 +1148,24 @@ void main() {
       await tester.pump(const Duration(seconds: 30));
     });
 
+    testWidgets('a bare chessever.com/events selects the dock\'s Events, '
+        'pushing nothing and opening no browser', (tester) async {
+      // The web has no Events page; an admin's `/events` means the dock's.
+      await pumpApp(tester);
+      DeepLinkService.notifyAppReady();
+      await tapLink(tester, 'https://chessever.com/events');
+      expect(
+        container().read(selectedBottomNavBarItemProvider),
+        BottomNavBarItem.tournaments,
+      );
+      expect(stack.names, ['/home_screen']);
+      expect(generated, isEmpty);
+      expect(launched, isEmpty);
+      // Analytics for the section change leaves a timer behind.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 30));
+    });
+
     testWidgets('an account page opens in a browser over the app', (
       tester,
     ) async {

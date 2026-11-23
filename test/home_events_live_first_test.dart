@@ -411,42 +411,61 @@ void main() {
         await _unmount(tester);
       });
 
-      testWidgets('a press while the count is unknown that finds nothing says '
+      for (final root in const [false, true]) {
+        testWidgets(
+          'a press while the count is unknown that finds nothing says '
           '${narrowed ? 'the filters keep it out' : 'nothing is live'}, '
-          'above the button', (tester) async {
-        final container = await _pumpEvents(
-          tester,
-          liveIds: const ['gb_live'],
-          liveCurrentError: true,
-          filters: narrowed
-              ? defaultFilterPopupState.copyWith(formatsAndStates: {'Blitz'})
-              : null,
-        );
-        // Current on screen, loaded, and without the live event.
-        final list = container.listen(groupEventScreenProvider, (_, __) {});
-        addTearDown(list.close);
-        for (var i = 0; i < 40 && !list.read().hasValue; i++) {
-          await tester.pump(const Duration(milliseconds: 10));
-        }
-        expect(list.read().requireValue, isEmpty);
+          'above the button${root ? ', on the dock\'s Events' : ''}',
+          (tester) async {
+            final container = await _pumpEvents(
+              tester,
+              liveIds: const ['gb_live'],
+              liveCurrentError: true,
+              filters: narrowed
+                  ? defaultFilterPopupState.copyWith(
+                      formatsAndStates: {'Blitz'},
+                    )
+                  : null,
+              root: root,
+            );
+            // Current on screen, loaded, and without the live event.
+            final list = container.listen(groupEventScreenProvider, (_, __) {});
+            addTearDown(list.close);
+            for (var i = 0; i < 40 && !list.read().hasValue; i++) {
+              await tester.pump(const Duration(milliseconds: 10));
+            }
+            expect(list.read().requireValue, isEmpty);
 
-        await tester.tap(toggle);
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+            await tester.tap(toggle);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 400));
 
-        expect(container.read(homeEventsLiveFirstProvider), isFalse);
-        final message = narrowed
-            ? kNoLiveEventsMatchFiltersMessage
-            : kNoLiveEventsRightNowMessage;
-        expect(find.text(message), findsOneWidget);
-        // The page's own Scaffold knows its button: the snack lands above
-        // it, never over the button just pressed.
-        expect(
-          tester.getRect(find.byType(SnackBar)).bottom,
-          lessThanOrEqualTo(tester.getRect(toggle).top + 0.01),
+            expect(container.read(homeEventsLiveFirstProvider), isFalse);
+            final message = narrowed
+                ? kNoLiveEventsMatchFiltersMessage
+                : kNoLiveEventsRightNowMessage;
+            expect(find.text(message), findsOneWidget);
+            // The page's own Scaffold knows its button: the snack lands above
+            // it, never over the button just pressed. As the dock's section the
+            // page sits in the shell's Scaffold, whose button slot is empty
+            // there: the snack must still be the page's, not the shell's.
+            final snack = tester.getRect(find.byType(SnackBar));
+            expect(
+              snack.bottom,
+              lessThanOrEqualTo(tester.getRect(toggle).top + 0.01),
+            );
+            if (root) {
+              expect(
+                snack.bottom,
+                lessThanOrEqualTo(
+                  tester.getRect(find.byKey(const ValueKey('test-dock'))).top,
+                ),
+              );
+            }
+            await _unmount(tester);
+          },
         );
-        await _unmount(tester);
-      });
+      }
     }
 
     for (final textScale in const [1.0, 2.0]) {
@@ -693,6 +712,9 @@ Future<ProviderContainer> _pumpEvents(
   double textScale = 1,
   List<GroupBroadcast>? liveCurrent,
   bool liveCurrentError = false,
+  // The dock's Events section: the page inside a shell's Scaffold that
+  // holds the dock and an empty button slot, as HomeScreen stands it.
+  bool root = false,
 }) async {
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = size * 2;
@@ -740,6 +762,17 @@ Future<ProviderContainer> _pumpEvents(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
+            if (root) {
+              return const Scaffold(
+                extendBody: true,
+                floatingActionButton: SizedBox.shrink(),
+                bottomNavigationBar: SizedBox(
+                  key: ValueKey('test-dock'),
+                  height: 90,
+                ),
+                body: GroupEventScreen(root: true, pageBuilder: _page),
+              );
+            }
             // The page is its own Scaffold, held bare by its route.
             return const GroupEventScreen(pageBuilder: _page);
           },

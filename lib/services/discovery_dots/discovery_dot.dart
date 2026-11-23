@@ -150,6 +150,14 @@ DiscoveryDot? _readDot(
   if (rev is! int || rev < 1) return null;
   if (row['enabled'] == false) return null;
   final trail = row['trail'];
+  final path = currentDiscoveryPath(target, [
+    if (trail is List)
+      for (final hop in trail)
+        if (hop is String && hop.isNotEmpty) hop,
+  ]);
+  // Its surface is gone from every build since this one: it could light
+  // nothing, and would hold the one Nudge slot for its shelf life.
+  if (path == null) return null;
   final message = row['message'];
   final rawMessages = row['messages'];
   final messages = rawMessages is List
@@ -161,13 +169,8 @@ DiscoveryDot? _readDot(
   return DiscoveryDot(
     id: id,
     rev: rev,
-    target: target,
-    trail: trail is List
-        ? [
-            for (final hop in trail)
-              if (hop is String && hop.isNotEmpty && hop != target) hop,
-          ]
-        : const [],
+    target: path.target,
+    trail: path.trail,
     message: message is String && message.trim().isNotEmpty
         ? message.trim()
         : null,
@@ -175,6 +178,67 @@ DiscoveryDot? _readDot(
     messages: messages,
     audienceId: audienceId,
   );
+}
+
+/// Anchors the admin console may still offer that moved in this build, and
+/// the way to where each surface is now (outermost first, the surface last).
+///
+/// `home.nav.collections`: Collections left the dock on 2026-11-23 (39.2.13)
+/// and opens from Discovery's first tile, reached through Home's Discovery
+/// page.
+const _movedDiscoveryAnchors = {
+  'home.nav.collections': [
+    'home.nav.home',
+    'home.tab.discovery',
+    'discovery.tile.collections',
+  ],
+};
+
+/// Anchors no surface of this build carries, with nowhere to go.
+/// `drawer.desktop`: the side menu's Desktop row left with the side menu
+/// (38.18).
+const _retiredDiscoveryAnchors = {'drawer.desktop'};
+
+/// The dock's Events slot. Events was a Profile row from 38.18 to 39.2.12,
+/// so the catalog still leads to it through Profile (`home.menu`).
+const _eventsSlotAnchor = 'home.nav.events';
+const _profileSlotAnchor = 'home.menu';
+
+/// [target] and its [trail] as this build draws them, or null when the
+/// target has no surface at all.
+///
+/// Only one Nudge lights at a time ([nextDiscoveryDot]), so a Nudge pointing
+/// at a surface that is gone would light nothing and hold every later Nudge
+/// back until its shelf life ran out. A moved surface is pointed at where it
+/// is now; a retired one drops the Nudge (or the hop, in a trail). Profile is
+/// no longer on the way to Events, which is on the dock again, so that hop
+/// goes too: a reader is never sent to Profile for a row it no longer has.
+({String target, List<String> trail})? currentDiscoveryPath(
+  String target,
+  List<String> trail,
+) {
+  if (_retiredDiscoveryAnchors.contains(target)) return null;
+  List<String> expand(String anchor) =>
+      _movedDiscoveryAnchors[anchor] ?? [anchor];
+  final way = expand(target);
+  final current = way.last;
+  final hops = [
+    for (final hop in trail)
+      if (!_retiredDiscoveryAnchors.contains(hop)) ...expand(hop),
+    ...way.take(way.length - 1),
+  ];
+  // Every hop before the Events slot, or all of them when it is the target.
+  final eventsAt = current == _eventsSlotAnchor
+      ? hops.length
+      : hops.indexOf(_eventsSlotAnchor);
+  final kept = <String>[];
+  for (var i = 0; i < hops.length; i++) {
+    final hop = hops[i];
+    if (hop == current || kept.contains(hop)) continue;
+    if (hop == _profileSlotAnchor && i < eventsAt) continue;
+    kept.add(hop);
+  }
+  return (target: current, trail: kept);
 }
 
 /// The dots this person sees: every dot for everyone, and the targeted dots

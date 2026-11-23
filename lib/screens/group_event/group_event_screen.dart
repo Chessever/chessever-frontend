@@ -439,7 +439,8 @@ class GroupEventScreen extends HookConsumerWidget {
     // The page is its own Scaffold, so Live first floats in the button slot
     // every page's floating buttons use ([SlidingFabs] over an
     // [InkFabStack]), on the window's insets, and a snack it raises lands
-    // above it rather than over it.
+    // above it rather than over it (as the dock's section, through a
+    // messenger of its own: see the end of this build).
     final Widget liveFirst = SlidingFabs(
       controller: chrome,
       child: InkFabStack(
@@ -451,7 +452,7 @@ class GroupEventScreen extends HookConsumerWidget {
         ],
       ),
     );
-    return Scaffold(
+    final page = Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.background,
       // Live first floats in the thumb's reach (Trello #1420), while an
@@ -1050,6 +1051,13 @@ class GroupEventScreen extends HookConsumerWidget {
         ),
       ),
     );
+    // As the dock's section this Scaffold stands inside the shell's, and a
+    // messenger shows snacks only on the outermost Scaffold of a nested set:
+    // the shell's, whose button slot is empty on Events, so a snack would
+    // land on the dock, right over Live first. With a messenger of its own
+    // the page's snacks stay on this Scaffold, above Live first, as on the
+    // pushed page.
+    return root ? ScaffoldMessenger(child: page) : page;
   }
 }
 

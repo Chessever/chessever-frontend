@@ -1923,6 +1923,8 @@ void main() {
             SearchSectionId.collections,
             (app, route, page) {
               expect(page, isA<CollectionsScreen>());
+              // One page in analytics, however it was reached.
+              expect(route.settings.name, '/app/collections');
             },
           ),
           (

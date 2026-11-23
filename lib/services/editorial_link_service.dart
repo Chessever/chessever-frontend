@@ -110,9 +110,15 @@ final editorialPageNavigationProvider = Provider<EditorialPageNavigation>(
       EditorialPage.inbox => const InboxScreen(),
     };
     unawaited(
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => screen)),
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          // Named as every way into Collections names it.
+          settings: page == EditorialPage.collections
+              ? const RouteSettings(name: CollectionsScreen.routeName)
+              : null,
+          builder: (_) => screen,
+        ),
+      ),
     );
   },
 );

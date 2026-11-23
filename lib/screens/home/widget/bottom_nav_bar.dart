@@ -339,8 +339,10 @@ final selectedBottomNavBarItemProvider =
 
 /// The sections the store-update reminder may open over: pages to browse.
 /// Events is one, as its tab was before 38.18 and as its named pushed page
-/// (`/group_event_screen`) is. Botvinnik (a chat) and Feed (a clip playing)
-/// keep it waiting until the reader is back on one of these.
+/// (`/group_event_screen`) is; while a query is typed on its bar the
+/// reminder waits, as it does for any field with the keyboard
+/// ([PhoneUpdateRouteObserver.isSafe]). Botvinnik (a chat) and Feed (a clip
+/// playing) keep it waiting until the reader is back on one of these.
 const updatePromptSections = {
   BottomNavBarItem.forYou,
   BottomNavBarItem.tournaments,
@@ -467,6 +469,17 @@ BottomNavBarItem readDefaultBottomTab() {
     if (item.name == name) return item;
   }
   return BottomNavBarItem.forYou;
+}
+
+/// Whether the stored start section is [item] under its own name (nothing
+/// stored counts as Home). A name no longer on the dock reads as Home
+/// ([readDefaultBottomTab]) but stays stored until a pick replaces it, so a
+/// picker compares with this, not with what a launch reads.
+bool defaultBottomTabStoredAs(BottomNavBarItem item) {
+  final name = SharedPreferencesService.instance.prefsOrNull?.getString(
+    defaultBottomTabPrefsKey,
+  );
+  return name == null ? item == BottomNavBarItem.forYou : name == item.name;
 }
 
 Future<void> writeDefaultBottomTab(BottomNavBarItem item) async {

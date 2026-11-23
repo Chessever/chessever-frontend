@@ -639,6 +639,36 @@ void main() {
       expect(route('https://lichess.org/broadcast/x/y'), isNull);
     });
 
+    test('the dock\'s sections and Collections open in the app, never in a '
+        'browser with no such page', () {
+      Uri? route(String href) => newsInAppRoute(resolveNewsHref(href)!);
+      for (final path in [
+        '/app/events',
+        '/app/collections',
+        '/app/feed',
+        '/app/home/today',
+      ]) {
+        expect(
+          route('https://chessever.com$path'),
+          Uri.parse('https://chessever.com$path'),
+          reason: path,
+        );
+      }
+      // The web has no Events page: a bare `/events` is the dock's Events.
+      for (final href in [
+        'https://chessever.com/events',
+        'https://www.chessever.com/events/',
+        '/events',
+      ]) {
+        expect(
+          route(href),
+          Uri.parse('https://chessever.com/app/events'),
+          reason: href,
+        );
+      }
+      expect(route('https://chessever.com/events?x=1'), isNull);
+    });
+
     test('unsafe or empty targets are ignored', () {
       expect(resolveNewsHref('javascript:alert(1)'), isNull);
       expect(resolveNewsHref('#top'), isNull);

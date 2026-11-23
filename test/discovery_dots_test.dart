@@ -96,6 +96,68 @@ void main() {
       expect(dots.map((d) => d.id), ['feed']);
     });
 
+    test('a Nudge on a surface that moved points at it where it is now; '
+        'one on a surface that is gone is dropped', () {
+      final dots = {
+        for (final dot in parseDiscoveryDots(
+          _config([
+            // Collections left the dock for Discovery's first tile.
+            {'id': 'slot', 'rev': 1, 'target': 'home.nav.collections'},
+            {
+              'id': 'authors',
+              'rev': 1,
+              'target': 'collections.tab.authors',
+              'trail': ['home.nav.collections'],
+            },
+            // Events is on the dock again: Profile is no hop to it.
+            {
+              'id': 'upcoming',
+              'rev': 1,
+              'target': 'events.tab.upcoming',
+              'trail': ['home.menu', 'home.nav.events'],
+            },
+            {
+              'id': 'events',
+              'rev': 1,
+              'target': 'home.nav.events',
+              'trail': ['home.menu'],
+            },
+            // Profile's own rows still go through Profile.
+            {
+              'id': 'inbox',
+              'rev': 1,
+              'target': 'drawer.inbox',
+              'trail': ['home.menu'],
+            },
+            // The side menu's Desktop row left with the side menu.
+            {
+              'id': 'desktop',
+              'rev': 1,
+              'target': 'drawer.desktop',
+              'trail': ['home.menu'],
+            },
+          ]),
+        ))
+          dot.id: dot,
+      };
+      expect(dots.keys, ['slot', 'authors', 'upcoming', 'events', 'inbox']);
+      expect(dots['slot']!.target, 'discovery.tile.collections');
+      expect(dots['slot']!.trail, ['home.nav.home', 'home.tab.discovery']);
+      expect(dots['authors']!.target, 'collections.tab.authors');
+      expect(dots['authors']!.trail, [
+        'home.nav.home',
+        'home.tab.discovery',
+        'discovery.tile.collections',
+      ]);
+      expect(dots['upcoming']!.trail, ['home.nav.events']);
+      expect(dots['events']!.trail, isEmpty);
+      expect(dots['inbox']!.trail, ['home.menu']);
+      expect(litDiscoveryAnchors([dots['upcoming']!], const {}), {
+        'home.nav.events',
+        'events.tab.upcoming',
+      });
+    });
+
     test('treats garbage as no dots', () {
       expect(parseDiscoveryDots(''), isEmpty);
       expect(parseDiscoveryDots('not json'), isEmpty);
