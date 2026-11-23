@@ -444,6 +444,52 @@ void main() {
     expect(chevron, findsNothing);
   });
 
+  for (final choice in ['Just star', 'Notify me', 'Dismiss']) {
+    testWidgets('Prep star asks before subscribing: $choice', (tester) async {
+      final profile = _profile(PrepKind.opponent, PrepSource.lichess);
+      final (container, _) = await _loadedPrep(tester, profile);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(body: PrepWatchStar(profileId: profile.id));
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(star);
+      await tester.pumpAndSettle();
+      expect(find.text('Get notifications for this player?'), findsOneWidget);
+      final notifier = container.read(prepProfilesProvider.notifier);
+      expect(notifier.byId(profile.id)!.watching, isFalse);
+      if (choice == 'Dismiss') {
+        await tester.tapAt(const Offset(790, 590));
+      } else {
+        await tester.tap(find.text(choice));
+      }
+      await tester.pumpAndSettle();
+      final saved = notifier.byId(profile.id)!;
+      expect(saved.watching, choice == 'Notify me');
+      expect(find.bySemanticsLabel('Unstar ${profile.name}'), findsOneWidget);
+      final restored = PrepProfile.fromJson(saved.toJson())!;
+      expect(restored.watching, saved.watching);
+      expect(restored.isStarred, isTrue);
+      expect(
+        prepProfileFromPin(prepProfileSpaceDraft(restored))!.isStarred,
+        isTrue,
+      );
+      expect(prepProfileSpaceDraft(restored).targetId, profile.id);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  }
+
   testWidgets('your own online account is starred too', (tester) async {
     await pumpRow(tester, _profile(PrepKind.mine, PrepSource.lichess));
     expect(star, findsOneWidget);

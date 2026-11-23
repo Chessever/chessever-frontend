@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:io' as io;
@@ -568,7 +569,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   Future<void> _toggleFavorite() async {
     final allowed = await requireFullAuthGuard(context);
-    if (!allowed) return;
+    if (!allowed || !mounted) return;
 
     // Check if adding (not removing) and enforce limit
     final fideIdStr = widget.fideId?.toString();
@@ -588,7 +589,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (!currentlyFavorited) {
       if (!mounted) return;
       final canAdd = await canAddMoreFavorites(context, ref);
-      if (!canAdd) return;
+      if (!canAdd || !mounted) return;
     }
 
     HapticFeedbackService.buttonPress();
@@ -597,6 +598,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       final isNowFavorite = await ref
           .read(favoritePlayersProviderNew.notifier)
           .toggleFavorite(
+            starFlow: playerStarNotificationFlow(context),
             fideId: widget.fideId?.toString(),
             playerName: widget.playerName,
             countryCode: widget.federation,
@@ -606,7 +608,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             memorialSourceIdentity: widget.memorialSourceIdentity,
             memorialRouteId: widget.memorialRouteId,
           );
-      if (isNowFavorite) {
+      if (isNowFavorite && mounted) {
         _favoriteAnimationController.forward().then(
           (_) => _favoriteAnimationController.reverse(),
         );

@@ -282,11 +282,6 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
         '(requested=$eventId)',
       );
 
-      // Starring an event is an opt-in for event-round alerts. Do not force
-      // push_enabled (needs OS permission); only ensure the category flag.
-      // A collection or a smart event asks first (see star_notifications).
-      if (isEvent) unawaited(_ensureFavoriteEventAlertsEnabled(userId));
-
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
       state = AsyncValue.data(freshEvents);
@@ -522,22 +517,6 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       debugPrint('[FavoriteEvents] Canonical id lookup failed: $e');
     }
     return (storeId: eventId, sourceEventId: null);
-  }
-
-  /// Ensure starred-event push category is on after the user stars an event.
-  ///
-  /// Update-only: never upsert a partial prefs row (DB defaults would force
-  /// `push_enabled=false` and other columns). Missing prefs rows already
-  /// fail-open in onesignal-dispatch for this category.
-  Future<void> _ensureFavoriteEventAlertsEnabled(String userId) async {
-    try {
-      await _supabase
-          .from('user_notification_preferences')
-          .update({'favorite_event_alerts': true})
-          .eq('user_id', userId);
-    } catch (e) {
-      debugPrint('[FavoriteEvents] Could not enable favorite_event_alerts: $e');
-    }
   }
 
   /// Refresh favorites from Supabase

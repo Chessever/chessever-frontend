@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/collections/collections_data.dart'
@@ -618,6 +619,7 @@ Future<void> toggleSearchPlayerFavorite(
       );
     } else {
       await favorites.addFavorite(
+        starFlow: playerStarNotificationFlow(context),
         fideId: player.fideId?.toString(),
         playerName: player.name,
         countryCode: player.countryCode,

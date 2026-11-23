@@ -515,6 +515,16 @@ void main() {
           await tester.tap(star);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
+          // A new star asks first; its answer fits this window too.
+          expect(
+            find.text('Get notifications for this player?'),
+            findsOneWidget,
+          );
+          expect(container.read(prepProfileProvider(id))?.watching, isFalse);
+          await expectHittable(tester, find.text('Notify me'));
+          await tester.tap(find.text('Notify me'));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
           expect(container.read(prepProfileProvider(id))?.watching, isTrue);
           await tester.pump(const Duration(seconds: 5));
           await tester.pumpAndSettle();

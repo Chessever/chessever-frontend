@@ -85,6 +85,8 @@ import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
+import 'package:chessever2/widgets/star_notifications.dart'
+    show kFavoriteAlertChoiceKey;
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show SearchHeaderMetrics;
 import 'package:chessever2/screens/search/search_tab_screen.dart';
@@ -996,7 +998,14 @@ void main() {
       await tester.tap(star);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
+      // A new star asks first; nothing is written until it is answered.
+      expect(find.text('Get notifications for this event?'), findsOneWidget);
+      expect(favorites.toggles, isEmpty);
+      await tester.tap(find.text('Just star'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(favorites.toggles, [_upcomingEvent.id]);
+      expect(favorites.alertChoices, [false]);
       expect(app.read(spaceShortcutExistsProvider(key)), isTrue);
       expect(find.text('Added to My Space'), findsOneWidget);
 
@@ -2951,16 +2960,23 @@ class _NoFavoriteEvents extends FavoriteEventsNotifier {
   Future<List<FavoriteEvent>> build() async => const <FavoriteEvent>[];
 }
 
-/// Stars in memory: every toggle recorded, starring then unstarring.
+/// Stars in memory: every star and unstar recorded, with the alert choice
+/// each star was saved with. An event star asks first and then adds or
+/// removes the row (`toggleEventStarWithNotifications`).
 class _RecordingFavoriteEvents extends FavoriteEventsNotifier {
   final toggles = <String>[];
+  final alertChoices = <Object?>[];
   final _starred = <String>{};
 
   @override
   Future<List<FavoriteEvent>> build() async => const <FavoriteEvent>[];
 
   @override
-  Future<bool> toggleFavorite({
+  bool isFavorited(String eventId, {String? eventName}) =>
+      _starred.contains(eventId);
+
+  @override
+  Future<void> addFavorite({
     required String eventId,
     required String eventName,
     String? timeControl,
@@ -2969,9 +2985,14 @@ class _RecordingFavoriteEvents extends FavoriteEventsNotifier {
     Map<String, dynamic>? extraMetadata,
   }) async {
     toggles.add(eventId);
-    if (_starred.remove(eventId)) return false;
+    alertChoices.add(extraMetadata?[kFavoriteAlertChoiceKey]);
     _starred.add(eventId);
-    return true;
+  }
+
+  @override
+  Future<void> removeFavorite(String eventId, {String? eventName}) async {
+    toggles.add(eventId);
+    _starred.remove(eventId);
   }
 }
 

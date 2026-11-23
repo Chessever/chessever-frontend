@@ -94,6 +94,7 @@ class _Favorites extends FavoritePlayersNotifierNew {
     String? gamebasePlayerId,
     String? memorialSourceIdentity,
     String? memorialRouteId,
+    PlayerStarFlow? starFlow,
   }) async {
     writes++;
     return false;

@@ -145,7 +145,7 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
 Future<bool?> showSmoothConfirmDialog({
   required BuildContext context,
   required String title,
-  required String message,
+  String? message,
   String confirmText = 'Confirm',
   String cancelText = 'Cancel',
   Color? confirmColor,
@@ -169,15 +169,16 @@ Future<bool?> showSmoothConfirmDialog({
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 12.h),
-          Text(
-            message,
-            style: TextStyle(
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              fontSize: 14.sp,
+          if (message != null) SizedBox(height: 12.h),
+          if (message != null)
+            Text(
+              message,
+              style: TextStyle(
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
+                fontSize: 14.sp,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
           SizedBox(height: 24.h),
           Row(
             children: [

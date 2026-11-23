@@ -1818,6 +1818,10 @@ function calendarEventFavoriteIdFromName(name: string): string {
   return `cal_event_${sanitized}`;
 }
 
+// Missing is legacy behavior; only an explicit Just star opts out.
+const STAR_ALERT_CHOICE =
+  "metadata->>starAlertsOptIn.is.null,metadata->>starAlertsOptIn.neq.false";
+
 async function resolveRecipients(args: {
   groupBroadcastId: string | null;
   eventName?: string | null;
@@ -1847,6 +1851,7 @@ async function resolveRecipients(args: {
         supabase
           .from("user_favorite_events")
           .select("user_id")
+          .or(STAR_ALERT_CHOICE)
           .in("event_id", Array.from(eventIds))
           .order("id")
           .range(from, to),
@@ -1867,6 +1872,7 @@ async function resolveRecipients(args: {
           supabase
             .from("user_favorite_events")
             .select("user_id")
+            .or(STAR_ALERT_CHOICE)
             .ilike("event_name", name)
             .not("event_id", "like", "collection:%")
             .not("event_id", "like", "smart_event:%")
@@ -1889,6 +1895,7 @@ async function resolveRecipients(args: {
         supabase
           .from("user_favorite_players")
           .select("user_id,fide_id,player_name")
+          .or(STAR_ALERT_CHOICE)
           .in(column, values)
           .order("id")
           .range(from, to),
@@ -2478,7 +2485,7 @@ async function sendSmartEventDigest(
     return { id: item.id, status: "skipped", reason: "no_games" };
   }
 
-  // Unstarring is the opt-out: the star may have come off since the queue.
+  // Recheck the star and its alert choice: either may have changed since queueing.
   if (!await isSmartEventStarred(userId, smartEventId)) {
     await markSkipped(item.id, "not_starred");
     return { id: item.id, status: "skipped", reason: "not_starred" };
@@ -2547,7 +2554,7 @@ async function sendSmartEventLive(
     return { id: item.id, status: "skipped", reason: "no_live_board" };
   }
 
-  // Unstarring is the opt-out: the star may have come off since the queue.
+  // Recheck the star and its alert choice: either may have changed since queueing.
   if (!await isSmartEventStarred(userId, smartEventId)) {
     await markSkipped(item.id, "not_starred");
     return { id: item.id, status: "skipped", reason: "not_starred" };
@@ -2601,6 +2608,7 @@ async function isSmartEventStarred(
       supabase
         .from("user_favorite_events")
         .select("id")
+        .or(STAR_ALERT_CHOICE)
         .eq("user_id", userId)
         .eq("event_id", smartEventId)
         .limit(1),
@@ -3052,6 +3060,7 @@ async function resolvePlayerFavoriteMap(
       supabase
         .from("user_favorite_players")
         .select("user_id,fide_id,player_name")
+        .or(STAR_ALERT_CHOICE)
         .in(column, values)
         .order("id")
         .range(from, to),

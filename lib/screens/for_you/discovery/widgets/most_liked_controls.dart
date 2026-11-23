@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
@@ -237,6 +238,7 @@ class _PlayerRow extends ConsumerWidget {
           );
         } else {
           await notifier.addFavorite(
+            starFlow: playerStarNotificationFlow(context),
             fideId: p.fideId?.toString(),
             playerName: p.name,
             countryCode: flag,
