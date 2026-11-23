@@ -60,6 +60,12 @@ ScrollCacheExtent _forYouCacheExtentForMode(GamesListViewMode mode) {
       : _kForYouBoardCacheExtent;
 }
 
+/// Keep pinned event cards visible before their game previews are available.
+bool _showEventCard(
+  GroupEventCardModel event,
+  ForYouEventGamesSnapshot? snapshot,
+) => event.pinnedAt != null || snapshot?.hasGames != false;
+
 LiveGamesBatchKey _forYouLiveBatchKey({
   required String eventId,
   required String tourId,
@@ -432,14 +438,13 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // Smart events never appear on Today, starred or filtered: My Space is
     // their only home.
 
-    // Each event section hides itself once its boards resolve empty. When
-    // nothing is left to draw and no further page can follow, the list would
-    // hold only the collection cards above a blank page; say there is nothing
-    // instead.
+    // When no event has a visible card and no further page can follow, show
+    // the empty state beneath the collection cards.
     final everyEventHidden = ref.watch(
       forYouTopGamesSnapshotCacheProvider.select(
-        (snapshots) =>
-            events.every((event) => snapshots[event.id]?.hasGames == false),
+        (snapshots) => events.every(
+          (event) => !_showEventCard(event, snapshots[event.id]),
+        ),
       ),
     );
     if (everyEventHidden && (events.isEmpty || !state.hasMore)) {
@@ -832,8 +837,7 @@ class _TabletColumnSkeleton extends StatelessWidget {
 }
 
 /// Section for one event: event card + 4 game cards.
-/// Owns a single shared snapshot for both visibility and content —
-/// hides itself only after the snapshot resolves empty.
+/// Uses a single snapshot to decide visibility and draw the game cards.
 class _ForYouEventSection extends ConsumerWidget {
   const _ForYouEventSection({
     super.key,
@@ -873,9 +877,8 @@ class _ForYouEventSection extends ConsumerWidget {
       forYouEventGamesWithAutoRefreshProvider(event.id),
     );
 
-    // Hide section after snapshot resolves with no games.
     final shouldHide = snapshotAsync.maybeWhen(
-      data: (snapshot) => !snapshot.hasGames,
+      data: (snapshot) => !_showEventCard(event, snapshot),
       orElse: () => false,
     );
 
@@ -928,9 +931,8 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
       forYouEventGamesWithAutoRefreshProvider(event.id),
     );
 
-    // Hide column after snapshot resolves with no games.
     final shouldHide = snapshotAsync.maybeWhen(
-      data: (snapshot) => !snapshot.hasGames,
+      data: (snapshot) => !_showEventCard(event, snapshot),
       orElse: () => false,
     );
 

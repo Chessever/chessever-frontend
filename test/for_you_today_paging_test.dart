@@ -35,6 +35,37 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 void main() {
   const slot = ValueKey('for_you_load_more_slot');
 
+  testWidgets('a pinned broadcast draws on phone Today before games arrive', (
+    tester,
+  ) async {
+    const title = 'FIDE World Chess Championship 2026';
+    final broadcasts = _Pages(
+      pageCount: 1,
+      lastPageSize: 2,
+      firstBroadcast: GroupBroadcast(
+        id: 'fide_world_chess_championship_2026',
+        name: title,
+        createdAt: DateTime.utc(2026, 11, 21),
+        dateStart: DateTime.utc(2026, 11, 24, 14),
+        dateEnd: DateTime.utc(2026, 12, 11, 14),
+        pinnedAt: DateTime.utc(2026, 11, 21),
+        search: const [],
+      ),
+    );
+    final container = _container(
+      broadcasts,
+      _Boards(empty: true),
+      overrides: [storyCollectionsProvider.overrideWith((ref) async => [])],
+    );
+    await _pumpToday(tester, container);
+
+    expect(container.read(forYouEventsProvider).events.first.title, title);
+    expect(find.text(title), findsOneWidget);
+    expect(find.text('e1'), findsNothing);
+    expect(find.text('No events available'), findsNothing);
+    await _unmount(tester);
+  });
+
   testWidgets('a first page that ends short of the screen pages on by '
       'itself', (tester) async {
     // Every section of the first page hides itself (no boards): nothing
@@ -233,10 +264,11 @@ void main() {
 /// The feed by pages of 20; the last one [lastPageSize] long. Pages from
 /// [holdFrom] wait on [hold].
 class _Pages implements GroupBroadcastRepository {
-  _Pages({required this.pageCount, this.lastPageSize = 5});
+  _Pages({required this.pageCount, this.lastPageSize = 5, this.firstBroadcast});
 
   final int pageCount;
   final int lastPageSize;
+  final GroupBroadcast? firstBroadcast;
   final List<int> offsets = [];
   int? holdFrom;
   Future<void>? hold;
@@ -263,7 +295,13 @@ class _Pages implements GroupBroadcastRepository {
     final page = offset ~/ limit;
     if (page >= pageCount) return const [];
     final size = page == pageCount - 1 ? lastPageSize : limit;
-    return [for (var i = 0; i < size; i++) _broadcast('e${offset + i}')];
+    return [
+      for (var i = 0; i < size; i++)
+        if (offset + i == 0 && firstBroadcast != null)
+          firstBroadcast!
+        else
+          _broadcast('e${offset + i}'),
+    ];
   }
 
   @override
