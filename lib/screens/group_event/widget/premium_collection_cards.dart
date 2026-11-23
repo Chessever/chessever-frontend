@@ -11,6 +11,7 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
@@ -26,6 +27,13 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const Color _kOnTile = kHubTileOnMedia;
 
 Color _onTile(BuildContext context) => hubTileOnTile(context);
+
+/// The pair's ground in light mode: the palette's own teal, one step deeper
+/// than the page, under the player photos and the flag (Berkay, 2026-11-23:
+/// the dark tile read as a heavy black slab on the light page). Dark mode
+/// keeps the dark tile.
+Color _lightGround(BuildContext context) =>
+    Color.lerp(context.colors.background, context.colors.accentText, 0.10)!;
 
 /// Collection cards displayed at the top of For You tab.
 /// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
@@ -113,12 +121,21 @@ class _PremiumCollectionCard extends ConsumerWidget {
 
   Widget _buildTile(BuildContext context, WidgetRef ref) {
     // Full background: the player grid for Favorites, the flag for
-    // Countrymen. One tile in both themes: light mode draws the dark tile
-    // as it is (Berkay, 2026-11-21: the dark pair is the design; the light
-    // drawings of these two were rejected).
+    // Countrymen, in both themes (the drawn light versions of these two were
+    // rejected on 2026-11-21). Dark mode shows the dark tile; light mode sets
+    // the same pictures on the palette's teal with dark type, not the dark
+    // tile (Berkay, 2026-11-23).
     final artwork = type == PremiumGamesType.favorites
         ? const _FavoritePlayersGridBackground()
         : _FlagFullBackground(ref: ref);
+    if (context.isLightTheme) {
+      return HubTileFace(
+        title: title,
+        ramp: true,
+        artwork: artwork,
+        lightGround: _lightGround(context),
+      );
+    }
     return MediaTheme(
       child: HubTileFace(title: title, ramp: true, artwork: artwork),
     );
@@ -424,7 +441,14 @@ class _PlayerPhotoCell extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: _kOnTile.withValues(alpha: 0.35), width: 1.5),
+        // A ring in the tile's own ink family: white on the dark tile, the
+        // palette's deep teal on the light one.
+        border: Border.all(
+          color: context.isLightTheme
+              ? context.colors.accentText.withValues(alpha: 0.28)
+              : _kOnTile.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
       ),
       child: photo,
     );
@@ -589,6 +613,34 @@ class _FloatingHeartsPainter extends CustomPainter {
       oldDelegate.accentColor != accentColor;
 }
 
+/// How much of the flag shows through on the light tile's teal.
+const double _lightFlagOpacity = 0.5;
+
+/// The flag drawn in the palette's teal on the light tile: each colour's
+/// lightness mapped from the deep accent teal (its darkest) to the surface
+/// (its lightest), so the flag keeps its shapes (crescent, cross, sun) and
+/// sits in the tile's own hue instead of washing out to pink.
+ColorFilter _tealFlag(BuildContext context) {
+  final dark = context.colors.accentText;
+  final light = context.colors.surface;
+  // Rec. 709 lightness, then one ramp per channel from dark to light.
+  List<double> channel(double from, double to) {
+    final k = to - from;
+    return [k * 0.2126, k * 0.7152, k * 0.0722, 0, from * 255];
+  }
+
+  return ColorFilter.matrix([
+    ...channel(dark.r, light.r),
+    ...channel(dark.g, light.g),
+    ...channel(dark.b, light.b),
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]);
+}
+
 /// Full background country flag for Countrymen card
 class _FlagFullBackground extends StatelessWidget {
   const _FlagFullBackground({required this.ref});
@@ -608,6 +660,17 @@ class _FlagFullBackground extends StatelessWidget {
             theme: ImageTheme(width: 200, height: 150),
           ),
         );
+        if (context.isLightTheme) {
+          return SizedBox.expand(
+            child: Opacity(
+              opacity: _lightFlagOpacity,
+              child: ColorFiltered(
+                colorFilter: _tealFlag(context),
+                child: flag,
+              ),
+            ),
+          );
+        }
         return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
       },
       loading: () => _FlagPlaceholder(),

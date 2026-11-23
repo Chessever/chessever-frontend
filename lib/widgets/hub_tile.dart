@@ -175,6 +175,7 @@ class HubTileFace extends StatelessWidget {
     this.ramp = true,
     this.caption = kHubTileCaption,
     this.titleIcon,
+    this.lightGround,
   }) : assert(
          (artwork == null) != (mark == null),
          'A hub tile has either full-bleed artwork or a mark.',
@@ -186,6 +187,10 @@ class HubTileFace extends StatelessWidget {
   final bool ramp;
   final String caption;
   final IconData? titleIcon;
+
+  /// The tile's ground in light mode, under its artwork and its ramp, in
+  /// place of the page-toned paper. Dark mode never reads it.
+  final Color? lightGround;
 
   /// Between the title and the mark beside it.
   static double get markGap => 12.sp;
@@ -297,10 +302,24 @@ class HubTileFace extends StatelessWidget {
     // bright white: a full-white slab (and a ramp fading into it) glares
     // next to the page's own tone.
     final base = isLight
-        ? Color.lerp(context.colors.background, context.colors.surface, 0.45)!
+        ? lightGround ??
+              Color.lerp(
+                context.colors.background,
+                context.colors.surface,
+                0.45,
+              )!
         : kHubTileInk;
+    // On a ground of its own (photos or a flag under a teal ramp) the
+    // caption takes a deeper ink than on paper, to clear 4.5:1 over the
+    // picture that shows through.
     final quiet = isLight
-        ? context.colors.textSecondary
+        ? (lightGround == null
+              ? context.colors.textSecondary
+              : Color.lerp(
+                  context.colors.textSecondary,
+                  context.colors.textPrimary,
+                  0.5,
+                )!)
         : kHubTileOnMedia.withValues(alpha: 0.85);
     // On paper the type needs no help; on the media tile a pale photo can
     // land right under the label, so the type carries its own contrast. A

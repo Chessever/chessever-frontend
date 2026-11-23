@@ -37,7 +37,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // The media cards as a phone shows them, in light and in dark: Today's
-// Favorites and Countrymen tiles, the My Space Countrymen tile and the My
+// Favorites and Countrymen tiles (light sets their pictures on the
+// palette's teal, so they are not held to the dark picture), the My Space Countrymen tile and the My
 // Space Prep and Library tiles, the Discovery tiles, the Discovery tour's
 // Countrymen picture, the player search cards (full width and half width)
 // and the TWIC player cards, at a 393x852 view and 3x.
@@ -286,6 +287,8 @@ void main() {
       build: (_) => const PremiumCollectionCards(),
       target: find.byType(PremiumCollectionCards),
       cards: find.byType(HubTileFace),
+      // Light sets the pictures on the palette's teal (2026-11-23).
+      sameInBothThemes: false,
     );
   }
   _surface(
@@ -297,6 +300,7 @@ void main() {
     build: (_) => const PremiumCollectionCards(),
     target: find.byType(PremiumCollectionCards),
     cards: find.byType(HubTileFace),
+    sameInBothThemes: false,
   );
   // The largest standard iOS text size (xxxLarge).
   _surface(
@@ -309,6 +313,7 @@ void main() {
     build: (_) => const PremiumCollectionCards(),
     target: find.byType(PremiumCollectionCards),
     cards: find.byType(HubTileFace),
+    sameInBothThemes: false,
   );
 
   // --------------------------------------------------------- My Space
@@ -615,6 +620,7 @@ void _surface(
   bool saveAll = false,
   List<String> names = const [],
   bool mediaCard = true,
+  bool sameInBothThemes = true,
 }) {
   testWidgets('media cards: $name', (tester) async {
     final shots = <bool, List<_Pixels>>{};
@@ -699,7 +705,8 @@ void _surface(
     // (Berkay, 2026-11-21): rendered for review, never held to it.
     final dark = shots[false]!;
     final light = shots[true]!;
-    if (_asserting && mediaCard) expect(light.length, dark.length);
+    final identical = mediaCard && sameInBothThemes;
+    if (_asserting && identical) expect(light.length, dark.length);
     for (var i = 0; i < math.min(dark.length, light.length); i++) {
       final difference = dark[i].meanDifference(light[i]);
       _report.add(
@@ -715,7 +722,7 @@ void _surface(
           '',
         ].join('\t'),
       );
-      if (_asserting && mediaCard) {
+      if (_asserting && identical) {
         expect(
           difference,
           lessThan(1.0),
