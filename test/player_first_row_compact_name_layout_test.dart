@@ -42,6 +42,7 @@ void main() {
     ),
     GameSource source = GameSource.gamebase,
     bool hasStarted = false,
+    String? clock,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);
@@ -53,11 +54,11 @@ void main() {
       source: source,
       whitePlayer: _player(whiteName),
       blackPlayer: _player(blackName),
-      whiteTimeDisplay: showClock ? '46:24' : '--:--',
+      whiteTimeDisplay: clock ?? (showClock ? '46:24' : '--:--'),
       blackTimeDisplay: showClock ? '44:28' : '--:--',
       whiteClockCentiseconds: 0,
       blackClockCentiseconds: 0,
-      gameStatus: GameStatus.ongoing,
+      gameStatus: clock == null ? GameStatus.ongoing : GameStatus.draw,
       roundId: 'r1',
       tourId: 't1',
       fen: hasStarted
@@ -99,7 +100,7 @@ void main() {
                       playerView: playerView,
                       isWhitePlayer: true,
                       gamesTourModel: game,
-                      showClock: showClock,
+                      showClock: showClock || clock != null,
                       showSubSecondClock: playerView == PlayerView.boardView,
                       replayMoveTimes: showClock ? const [] : null,
                       compactName: compactName,
@@ -116,6 +117,60 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
+
+  testWidgets(
+    'grid rating stays whole beside the clock; the name fades at its size',
+    (tester) async {
+      Future<double> nameWidth(String clock) async {
+        await pumpCompactRow(
+          tester,
+          whiteName: 'Fernández de la Vega Martínez, Alejandra María',
+          blackName: 'Other',
+          // Widget tests take the tablet type scale: 260 here gives the
+          // name/rating/clock proportions of a phone grid card.
+          maxWidth: 260,
+          compactName: false,
+          hasStarted: true,
+          clock: clock,
+        );
+        final rating = find.text(' 2830', findRichText: true);
+        final clockLabel = find.text(clock);
+        final name = find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText &&
+              widget.text.toPlainText().contains('Fernández'),
+        );
+        expect(rating, findsOneWidget);
+        expect(clockLabel, findsOneWidget);
+        // Fixed size, faded end: never an ellipsis, never shrunk to fit.
+        final paragraph = tester.widget<RichText>(name);
+        expect(paragraph.overflow, TextOverflow.fade);
+        expect(paragraph.text.toPlainText(), isNot(contains('…')));
+        expect(
+          find.ancestor(of: name, matching: find.byType(FittedBox)),
+          findsNothing,
+        );
+        expect(
+          find.ancestor(of: rating, matching: find.byType(FittedBox)),
+          findsNothing,
+        );
+        expect(
+          tester.getTopRight(name).dx,
+          lessThanOrEqualTo(tester.getTopLeft(rating).dx),
+        );
+        expect(
+          tester.getTopRight(rating).dx,
+          lessThan(tester.getTopLeft(clockLabel).dx),
+        );
+        expect(tester.takeException(), isNull);
+        return tester.getSize(name).width;
+      }
+
+      // A shorter clock hands its space back to the name.
+      final hoursWidth = await nameWidth('2:00:00');
+      expect(await nameWidth('55:40'), greaterThan(hoursWidth));
+    },
+  );
 
   testWidgets(
     'a long surname keeps the board size and fades beside the clock',

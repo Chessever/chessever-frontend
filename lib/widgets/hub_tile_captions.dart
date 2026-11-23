@@ -85,10 +85,10 @@ String hubFeedCaption(FeedItem? item) {
   return '$white vs $black';
 }
 
-/// Collection: what the team has published, by kind. "6 events · 2 books",
-/// "6 annotated events" (events alone), "2 books", "1 book", "Nothing
-/// published yet"; "Tap to view" until the list is read (and for a read
-/// that failed).
+/// Collection: what the team has published, by kind. "6 events · 2
+/// collections" (a book reads as a collection), "6 annotated events" (events
+/// alone), "2 collections", "1 collection", "2 analyses", "Nothing published
+/// yet"; "Tap to view" until the list is read (and for a read that failed).
 String hubCollectionsCaption(AsyncValue<List<Collection>> collections) {
   final list = collections.valueOrNull;
   if (list == null) return kHubTileCaption;

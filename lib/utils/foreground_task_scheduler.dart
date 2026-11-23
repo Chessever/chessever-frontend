@@ -32,17 +32,25 @@ class ForegroundTaskScheduler {
   static final Map<String, Timer> _timers = <String, Timer>{};
   static final Map<String, int> _generations = <String, int>{};
 
+  /// Runs [task] after [delay] and the next frame, if the app is in the
+  /// foreground then. A task due while the app is not resumed is dropped,
+  /// unless [runWhenResumed]: then it waits for the next resume and runs
+  /// once. Use that for work that must happen once per launch (the startup
+  /// intake of a shared file or an attribution link), never for refreshes.
   static void schedule({
     required String key,
     required FutureOr<void> Function() task,
     Duration delay = kForegroundRefreshDelay,
+    bool runWhenResumed = false,
   }) {
     cancel(key);
     final generation = (_generations[key] ?? 0) + 1;
     _generations[key] = generation;
     _timers[key] = Timer(delay, () {
       _timers.remove(key);
-      unawaited(_runAfterFrame(key, generation, task));
+      unawaited(
+        _runAfterFrame(key, generation, task, runWhenResumed: runWhenResumed),
+      );
     });
   }
 
@@ -63,17 +71,26 @@ class ForegroundTaskScheduler {
   static Future<void> _runAfterFrame(
     String key,
     int generation,
-    FutureOr<void> Function() task,
-  ) async {
+    FutureOr<void> Function() task, {
+    bool runWhenResumed = false,
+  }) async {
     try {
       if (_generations[key] != generation) return;
       await WidgetsBinding.instance.endOfFrame;
       if (_generations[key] != generation) return;
 
-      final lifecycleState = WidgetsBinding.instance.lifecycleState;
+      var lifecycleState = WidgetsBinding.instance.lifecycleState;
       if (lifecycleState != null &&
           lifecycleState != AppLifecycleState.resumed) {
-        return;
+        if (!runWhenResumed) return;
+        _addBreadcrumb(
+          key,
+          'foreground task waiting for resume',
+          data: {'lifecycle_state': lifecycleState.name},
+        );
+        await _nextResume();
+        if (_generations[key] != generation) return;
+        lifecycleState = WidgetsBinding.instance.lifecycleState;
       }
 
       _addBreadcrumb(
@@ -108,6 +125,23 @@ class ForegroundTaskScheduler {
         _generations.remove(key);
       }
     }
+  }
+
+  /// Completes the next time the app is resumed (at once if it already is).
+  static Future<void> _nextResume() {
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      return Future<void>.value();
+    }
+    final resumed = Completer<void>();
+    late final AppLifecycleListener listener;
+    listener = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state != AppLifecycleState.resumed || resumed.isCompleted) return;
+        listener.dispose();
+        resumed.complete();
+      },
+    );
+    return resumed.future;
   }
 
   static void _addBreadcrumb(

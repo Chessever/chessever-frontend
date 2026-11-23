@@ -599,7 +599,9 @@ class _ScoreCardPage extends HookConsumerWidget {
     var homeCatalogComplete = !fromHome;
 
     if (combined != null) {
-      allGames = combined.games;
+      // Home opens without a settled event snapshot. Avoid showing an older
+      // stage as the first group before the remaining catalogs resolve.
+      allGames = combined.gamesForDisplay(fromHome: fromHome);
       isLoadingGames = combined.loading && allGames.isEmpty;
     } else if (homeCategories?.isLoading == true) {
       isLoadingGames = true;
@@ -1766,7 +1768,7 @@ class _ScoreCardPage extends HookConsumerWidget {
             [XFile(file.path, mimeType: 'image/png')],
             text: playerShareUrl,
             subject: subject,
-            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+            sharePositionOrigin: sharePreviewOrigin(),
           );
         },
         onShareLink: playerShareUrl == null || playerShareUrl.isEmpty
@@ -1775,7 +1777,7 @@ class _ScoreCardPage extends HookConsumerWidget {
                 await Share.share(
                   playerShareUrl,
                   subject: subject,
-                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  sharePositionOrigin: sharePreviewOrigin(),
                 );
               },
       );

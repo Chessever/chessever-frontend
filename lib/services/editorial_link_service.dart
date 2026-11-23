@@ -12,7 +12,12 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/my_prep/my_prep_home_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
+    show BottomNavBarItem, openHomeSection;
+import 'package:chessever2/services/app_destination.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/services/webview_link.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:flutter/material.dart';
@@ -79,6 +84,18 @@ final editorialAccessRequestProvider = Provider<EditorialAccessRequest>(
 
 final editorialPageNavigationProvider = Provider<EditorialPageNavigation>(
   (ref) => (context, page) {
+    // Feed and Collections are dock sections: open the dock's tab, as a tap
+    // on it would, rather than push a second copy over the shell. A page
+    // reached with no Home under it pushes its own.
+    final section = switch (page) {
+      EditorialPage.feed => BottomNavBarItem.feed,
+      EditorialPage.collections => BottomNavBarItem.collections,
+      _ => null,
+    };
+    if (section != null &&
+        openHomeSection(context, section, navigationType: 'editorial')) {
+      return;
+    }
     final screen = switch (page) {
       EditorialPage.feed => const FeedScreen(),
       EditorialPage.news => const NewsScreen(),
@@ -172,17 +189,33 @@ final editorialLinkOpenerProvider = Provider<EditorialLinkOpener>((ref) {
         return;
       }
 
-      final route = newsInAppRoute(uri);
+      // Everything else the app can open opens over the message, so Back
+      // returns to it: `/webview?url=` (ChessEver's own message may open any
+      // page in the app's WebView), every route of the app catalog
+      // (/app/events, My Space's pages, Likes, Reports, a player's games,
+      // settings, the calendar...) and every content path (a game, an event,
+      // a scorecard, a profile, a book, the share-image shapes). Never the
+      // browser, never a reset of Home; dock sections open on the dock.
+      final route = webViewLinkTarget(uri) != null
+          ? uri
+          : newsInAppRoute(uri) ??
+                (_isInternal(uri) && parseAppDestination(uri.toString()) != null
+                    ? uri
+                    : null);
       if (route != null) {
-        if (!DeepLinkService.instance.openLinkFromApp(route)) {
-          if (messenger?.mounted ?? false) {
-            showAppSnackOn(messenger!, 'Please try again in a moment.');
-          }
+        if (!DeepLinkService.instance.openLinkInPlace(route) &&
+            (messenger?.mounted ?? false)) {
+          showAppSnackOn(messenger!, 'Please try again in a moment.');
         }
         return;
       }
       if (uri.scheme != 'https' && uri.scheme != 'http') return;
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      // A chessever.com page with no screen in the app (account, legal)
+      // opens over the app: on Android the plain browser intent used to
+      // resolve to ChessEver itself and do nothing.
+      final opened = isOwnWebHost(uri)
+          ? await openOwnWebPage(uri)
+          : await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!opened && (messenger?.mounted ?? false)) {
         showAppSnackOn(
           messenger!,

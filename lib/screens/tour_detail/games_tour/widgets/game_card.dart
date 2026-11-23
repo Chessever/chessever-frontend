@@ -201,18 +201,31 @@ class GameCardFrame extends StatelessWidget {
   /// The footer strip's height.
   static double get footerHeight => 24.h;
 
+  static double _lineHeight(BuildContext context, TextStyle style) =>
+      MediaQuery.textScalerOf(context).scale(style.fontSize!) *
+      (style.height ?? 1);
+
+  /// The player strip's height at the reader's text size: [stripHeight],
+  /// taller when two text lines need it at accessibility sizes. Skeletons
+  /// read it too, so a plate stands as tall as the row that replaces it.
+  static double stripHeightOf(BuildContext context) => math.max(
+    stripHeight,
+    _lineHeight(context, nameStyle(context)) * 2 + 16.sp,
+  );
+
+  /// The footer strip's height at the reader's text size: [footerHeight],
+  /// taller when its one line needs it.
+  static double footerHeightOf(BuildContext context) =>
+      math.max(footerHeight, _lineHeight(context, footerStyle(context)) + 4.sp);
+
   /// The row's player strip around [child]: its height, inset, surface,
   /// top corners and (on paper) the divider under it. [GameCard] draws its
   /// players in this very strip.
   static Widget playerStrip(BuildContext context, {required Widget child}) {
     final isLight = context.isLightTheme;
-    final style = nameStyle(context);
-    final lineHeight =
-        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
-        (style.height ?? 1);
     return Container(
       // Two text lines must remain inside the strip at accessibility sizes.
-      height: math.max(stripHeight, lineHeight * 2 + 16.sp),
+      height: stripHeightOf(context),
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
@@ -237,12 +250,8 @@ class GameCardFrame extends StatelessWidget {
   /// The row's footer strip around [child] (clocks and the last move on a
   /// game): its height, inset, surface and bottom corners.
   static Widget footerStrip(BuildContext context, {required Widget child}) {
-    final style = footerStyle(context);
-    final lineHeight =
-        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
-        (style.height ?? 1);
     return Container(
-      height: math.max(footerHeight, lineHeight + 4.sp),
+      height: footerHeightOf(context),
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: context.colors.surface,
@@ -385,7 +394,8 @@ class GamesTourGameCardBody extends ConsumerWidget {
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              overflow: TextOverflow.fade,
             ),
           ),
         // Main card content with adjusted corners
@@ -620,7 +630,8 @@ class _BottomSection extends ConsumerWidget {
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
                   ),
                 ),
               )
@@ -631,53 +642,40 @@ class _BottomSection extends ConsumerWidget {
       );
     }
 
+    final desiredClockWidth = _gameCardClockColumnWidth(context);
+    Widget clock(Side side, double width) => SizedBox(
+      width: width,
+      child: _TimerWidget(
+        turn: game.activePlayer == side,
+        time:
+            side == Side.white ? game.whiteTimeDisplay : game.blackTimeDisplay,
+        gamesTourModel: game,
+        isWhitePlayer: side == Side.white,
+      ),
+    );
+    final leftSide =
+        matchComparison.comparison == MatchComparison.sameOrder
+            ? Side.white
+            : Side.black;
     return GameCardFrame.footerStrip(
       context,
-      child: Row(
-        children:
-            matchComparison.comparison == MatchComparison.sameOrder
-                ? [
-                  SizedBox(
-                    width: 60.w, // Fixed width for clock
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.white,
-                      time: matchComparison.game.whiteTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: true,
-                    ),
-                  ),
-                  lastMoveWidget,
-                  SizedBox(
-                    width: 60.w, // Fixed width for clock
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.black,
-                      time: matchComparison.game.blackTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: false,
-                    ),
-                  ),
-                ]
-                : [
-                  SizedBox(
-                    width: 60.w, // Fixed width for clock
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.black,
-                      time: matchComparison.game.blackTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: false,
-                    ),
-                  ),
-                  lastMoveWidget,
-                  SizedBox(
-                    width: 60.w, // Fixed width for clock
-                    child: _TimerWidget(
-                      turn: matchComparison.game.activePlayer == Side.white,
-                      time: matchComparison.game.whiteTimeDisplay,
-                      gamesTourModel: matchComparison.game,
-                      isWhitePlayer: true,
-                    ),
-                  ),
-                ],
+      // The two clock columns never take more than the strip: on a narrow
+      // card at a large text size each holds half of it, and the last move
+      // between them fades. No clock is scaled down.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final clockWidth = math.min(
+            desiredClockWidth,
+            constraints.maxWidth / 2,
+          );
+          return Row(
+            children: [
+              clock(leftSide, clockWidth),
+              lastMoveWidget,
+              clock(leftSide.opposite, clockWidth),
+            ],
+          );
+        },
       ),
     );
   }
@@ -709,7 +707,9 @@ class _GamesRound extends ConsumerWidget {
     final name = Text(
       ref.read(stringUtilsProvider).getTrimmedString(player.name),
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      softWrap: false,
+      // Fixed size; a name still too wide fades at its end, never "…".
+      overflow: TextOverflow.fade,
       style: AppTypography.textXsMedium.copyWith(color: nameColor),
     );
     final color = pieceColor;
@@ -744,7 +744,9 @@ class _GamesRound extends ConsumerWidget {
                   if (player.rating > 0) '${player.rating}',
                 ].join(' '),
                 style: AppTypography.textXsMedium.copyWith(color: ratingColor),
-                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
               ),
             ),
           ],
@@ -863,10 +865,15 @@ class _TimerWidget extends StatelessWidget {
                   )
                   : null,
         ),
-        child: FittedBox(
-          // Clock box is fixed-width; scale down instead of clipping digits
-          // off both ends (e.g. "1:07:32" rendering as "1:07:3").
-          fit: BoxFit.scaleDown,
+        // Full size always: the column is sized for the widest clock
+        // (_gameCardClockColumnWidth), so nothing shrinks to fit. Only when
+        // half the strip is narrower than that (a narrow card at a large
+        // text size) can a clock run out of room; it then fades on one
+        // line, like the names, never wrapping or shrinking.
+        child: DefaultTextStyle.merge(
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
           child: AtomicCountdownText(
             clockSeconds:
                 clockSeconds, // Primary source: time in seconds from last_clock fields
@@ -1076,7 +1083,8 @@ class _LastMoveNotation extends StatelessWidget {
           color: context.colors.textPrimary,
         ),
         textAlign: TextAlign.center,
-        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        overflow: TextOverflow.fade,
         maxLines: 1,
       ),
     );
@@ -1149,3 +1157,44 @@ String _displayTextSupporter(MatchWithComparison game) {
 }
 
 /// Motor-powered popup wrapper for smooth spring animations
+
+final Map<double, double> _clockColumnWidths = <double, double>{};
+bool _clockColumnWidthsWatchFonts = false;
+
+/// Width of both clock columns on a game card: the widest clock it can show
+/// ("h:mm:ss" in the widest digit) at the reader's text size, plus the box's
+/// padding and border, and never under the original 60.w. Both columns share
+/// it, so the last move stays centred and no clock is scaled down or clipped.
+/// [_BottomSection] caps it at half the strip, so the two always fit; only a
+/// clock wider than that half (a narrow card at a large text size) fades.
+double _gameCardClockColumnWidth(BuildContext context) {
+  final style = AppTypography.textXsMedium;
+  final scaler = MediaQuery.textScalerOf(context);
+  final fontSize = scaler.scale(style.fontSize ?? 12);
+  if (!_clockColumnWidthsWatchFonts) {
+    // A font that finishes loading changes the measured width.
+    _clockColumnWidthsWatchFonts = true;
+    PaintingBinding.instance.systemFonts.addListener(_clockColumnWidths.clear);
+  }
+  final textWidth =
+      _clockColumnWidths[fontSize] ??= () {
+        final painter = TextPainter(
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+          textScaler: scaler,
+        );
+        var widest = 0.0;
+        for (var digit = 0; digit <= 9; digit++) {
+          painter.text = TextSpan(
+            text: '$digit:$digit$digit:$digit$digit',
+            style: style,
+          );
+          painter.layout();
+          if (painter.width > widest) widest = painter.width;
+        }
+        painter.dispose();
+        return widest;
+      }();
+  // _TimerWidget pads 6.w a side and may draw a 0.7 border.
+  return math.max(60.w, textWidth.ceilToDouble() + 12.w + 2);
+}

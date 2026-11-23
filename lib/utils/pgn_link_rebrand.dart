@@ -5,12 +5,6 @@ const String kChesseverHost = 'chessever.com';
 /// host-swapped chessever.com paths that still use Lichess path shapes).
 const String _linkHostAlt = r'(?:www\.)?(?:lichess\.(?:org|dev)|chessever\.com)';
 
-/// Lichess hosts only (for residual host-only cleanup, e.g. annotator links).
-final RegExp _lichessHostPattern = RegExp(
-  r'lichess\.(?:org|dev)',
-  caseSensitive: false,
-);
-
 /// Broadcast game URL (4 segments after /broadcast/):
 /// `…/broadcast/{tourSlug}/{roundSlug}/{roundId}/{gameId}`
 /// → `https://chessever.com/games/{gameId}`
@@ -25,6 +19,9 @@ final RegExp _broadcastGameUrlPattern = RegExp(
 /// `…/broadcast/{tourSlug}/{roundSlug}/{tourOrRoundId}`
 /// → `https://chessever.com/broadcast/{tourSlug}/{tourOrRoundId}`
 /// (web serves `/broadcast/[slug]/[id]`, not the Lichess round slug middle).
+/// The id is usually a ROUND id (Lichess BroadcastURL); the app's deep-link
+/// router resolves it as a round when it is no tour and opens the event on
+/// that round.
 final RegExp _broadcastRoundUrlPattern = RegExp(
   'https?://$_linkHostAlt/broadcast/'
   r'([^/\s"#?]+)/([^/\s"#?]+)/([A-Za-z0-9]{8})'
@@ -71,8 +68,9 @@ String rebrandPgnLinks(String pgn) {
     return 'https://$kChesseverHost/games/$id';
   });
 
-  // Any remaining lichess.org / lichess.dev hosts (annotator, odd paths).
-  out = out.replaceAll(_lichessHostPattern, kChesseverHost);
+  // Every other Lichess link (a profile `/@/<user>`, a study, an analysis
+  // board) stays on Lichess: chessever.com serves none of those paths, so a
+  // host swap only made a working link a dead one.
 
   return out;
 }

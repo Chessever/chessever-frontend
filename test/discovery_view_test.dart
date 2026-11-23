@@ -705,12 +705,12 @@ void main() {
           find.byType(HubSceneBackdrop),
         );
         expect(scenes.map((art) => art.scene), [
-          HubScene.feed,
+          HubScene.collections,
           HubScene.mostLiked,
           HubScene.news,
+          HubScene.feed,
           HubScene.reports,
           HubScene.miniatures,
-          HubScene.collections,
         ]);
         expect(find.byType(DiscoveryMiniBoard), findsNothing);
         expect(container.exists(discoveryReviewCurveProvider), isFalse);
@@ -791,7 +791,7 @@ void main() {
           tester
               .widgetList<HubTile>(find.byType(HubTile))
               .map((tile) => tile.title),
-          ['Feed', 'Likes', 'News', 'Reports', 'Miniatures', 'Collections'],
+          ['Collections', 'Likes', 'News', 'Feed', 'Reports', 'Miniatures'],
         );
         expect(find.byType(DiscoveryGameList), findsNothing);
         expect(container.exists(feedProvider), isFalse);
@@ -923,15 +923,15 @@ void main() {
         );
         Rect box(String name) =>
             tester.getRect(find.byKey(ValueKey('discovery_${name}_tile')));
-        expect(box('feed').top, box('likes').top);
-        expect(box('news').top, box('reports').top);
-        expect(box('miniatures').top, box('collections').top);
-        expect(box('miniatures').top, greaterThan(box('news').bottom));
-        expect(box('feed').left, box('miniatures').left);
-        expect(box('feed').left, box('news').left);
-        expect(box('likes').left, box('reports').left);
-        expect(box('likes').left, box('collections').left);
-        expect(box('feed').height, box('likes').height);
+        expect(box('collections').top, box('likes').top);
+        expect(box('news').top, box('feed').top);
+        expect(box('reports').top, box('miniatures').top);
+        expect(box('reports').top, greaterThan(box('news').bottom));
+        expect(box('collections').left, box('news').left);
+        expect(box('collections').left, box('reports').left);
+        expect(box('likes').left, box('feed').left);
+        expect(box('likes').left, box('miniatures').left);
+        expect(box('collections').height, box('likes').height);
         expect(tester.takeException(), isNull);
         await _teardownCards(tester, container);
       });

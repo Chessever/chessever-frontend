@@ -370,6 +370,22 @@ void main() {
         await _expectNoScreenBlur(tester, glass);
         await b.settle();
         expect(glass, findsOneWidget);
+        // The keyboard lifts the editor: its field and Save stay above it.
+        const keyboard = 300.0;
+        await tester.tap(find.byType(TextField));
+        tester.view.viewInsets = const FakeViewPadding(bottom: keyboard * 3);
+        await b.settle();
+        final keyboardTop = _phone.height - keyboard;
+        expect(
+          tester.getRect(find.byType(TextField)).bottom,
+          lessThan(keyboardTop),
+        );
+        expect(
+          tester.getRect(find.text('Save comment')).bottom,
+          lessThan(keyboardTop),
+        );
+        expect(tester.takeException(), isNull);
+        tester.view.resetViewInsets();
         FocusManager.instance.primaryFocus?.unfocus();
         b.navigator.pop();
         await b.settle();
@@ -381,11 +397,16 @@ void main() {
         await tester.pump();
         await _expectNoScreenBlur(tester, glass);
         await b.settle();
-        expect(find.text('QUALITY'), findsOneWidget);
+        // The groups are their glyphs alone: no category labels or hints.
+        expect(find.text('QUALITY'), findsNothing);
+        expect(
+          find.text('One glyph per category. Tap a glyph again to remove it.'),
+          findsNothing,
+        );
         expect(glass, findsOneWidget);
         _expectOwnFilter(tester, glass);
-        final context = tester.element(glass);
-        expect(_barrierColor(tester), ChessSheetGlass.barrierColor(context));
+        // The board stays lit behind the marks: no scrim at all.
+        expect(_barrierColor(tester), isNull);
         // Its glass reaches the bottom edge; the safe area is inside it.
         expect(tester.getRect(glass).bottom, _phone.height);
         expect(tester.takeException(), isNull);
@@ -404,7 +425,7 @@ void main() {
       await tester.tap(find.text('Annotate (!? ± ∞ =)'));
       await tester.pump();
       await b.settle();
-      expect(find.text('QUALITY'), findsOneWidget);
+      expect(find.text('QUALITY'), findsNothing);
 
       final params = ChessBoardProviderParams(game: b.games.first, index: 0);
       final provider = chessBoardScreenProviderNew(params);

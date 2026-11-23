@@ -19,6 +19,8 @@ void main() {
     WidgetTester tester, {
     required MatchComparison comparison,
     required bool showPieceColorMarks,
+    GamesTourModel? game,
+    TextScaler textScaler = TextScaler.noScaling,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);
@@ -38,6 +40,10 @@ void main() {
           ),
         ],
         child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+            child: child!,
+          ),
           home: Builder(
             builder: (context) {
               ResponsiveHelper.init(context);
@@ -47,7 +53,7 @@ void main() {
                     width: 360,
                     child: GameCard(
                       matchComparison: MatchWithComparison(
-                        game: _gameTwo(),
+                        game: game ?? _gameTwo(),
                         comparison: comparison,
                       ),
                       onPinToggle: (_) {},
@@ -116,6 +122,70 @@ void main() {
     expect(white.dx, lessThan(black.dx));
     expect(find.text('1–0'), findsOneWidget);
   });
+
+  for (final scale in const [1.0, 1.3]) {
+    testWidgets(
+      'long names fade and hour clocks keep full size (text x$scale)',
+      (tester) async {
+        await pumpCard(
+          tester,
+          comparison: MatchComparison.sameOrder,
+          showPieceColorMarks: false,
+          textScaler: TextScaler.linear(scale),
+          game: GamesTourModel(
+            gameId: 'long-name-hour-clock',
+            whitePlayer: _player(
+              'Fernández de la Vega Martínez, Alejandra María',
+              1,
+            ),
+            blackPlayer: _player('Nakamura, Hikaru', 2016192),
+            whiteTimeDisplay: '1:07:32',
+            blackTimeDisplay: '1:12:05',
+            whiteClockSeconds: 4052,
+            blackClockSeconds: 4325,
+            whiteClockCentiseconds: 405200,
+            blackClockCentiseconds: 432500,
+            gameStatus: GameStatus.draw,
+            roundId: 'r1',
+            tourId: 't1',
+            fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+            lastMove: 'e7e5',
+          ),
+        );
+        expect(tester.takeException(), isNull);
+
+        // Shortened to "Surname, A." and then faded, never cut with "…".
+        final name = find.text('Fernández de la Vega Martínez, A.');
+        expect(name, findsOneWidget);
+        expect(tester.widget<Text>(name).overflow, TextOverflow.fade);
+        for (final text in tester.widgetList<Text>(find.byType(Text))) {
+          expect(text.data ?? '', isNot(contains('…')));
+          expect(text.overflow, isNot(TextOverflow.ellipsis));
+        }
+
+        // Clocks are never scaled down to fit: no FittedBox, and the whole
+        // label sits inside its column.
+        expect(
+          find.descendant(
+            of: find.byType(GameCard),
+            matching: find.byType(FittedBox),
+          ),
+          findsNothing,
+        );
+        for (final label in ['1:07:32', '1:12:05']) {
+          final clock = find.text(label);
+          expect(clock, findsOneWidget);
+          final column = find
+              .ancestor(of: clock, matching: find.byType(SizedBox))
+              .first;
+          final box = tester.getRect(column);
+          final text = tester.getRect(clock);
+          expect(text.left, greaterThanOrEqualTo(box.left));
+          expect(text.right, lessThanOrEqualTo(box.right));
+        }
+      },
+    );
+  }
 }
 
 GamesTourModel _gameTwo() => GamesTourModel(

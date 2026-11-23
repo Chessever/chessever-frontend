@@ -38,6 +38,16 @@ class GameReviewSheetScope extends InheritedWidget {
       oldWidget.target != target || oldWidget.anchorPixels != anchorPixels;
 }
 
+/// The visible board page's measured peek height: the sheet size whose top
+/// edge lands just under the board's lower player row.
+///
+/// The notation's own sheets (move actions, comment editor) open from inside
+/// the moves list, which is not a child of [GameReviewSheetScope], so the
+/// anchor is also published here for them.
+final ValueNotifier<double?> boardSheetAnchorPixels = ValueNotifier<double?>(
+  null,
+);
+
 /// Measures [child] (the board's bottom player row) and publishes the sheet
 /// height that would stop right underneath it.
 ///
@@ -96,6 +106,7 @@ class _GameReviewBoardAnchorState extends State<GameReviewBoardAnchor> {
       // Sub-pixel churn would rebuild the sheet (and re-snap it) every frame.
       if (previous != null && (previous - peek).abs() < 0.5) return;
       notifier.value = peek;
+      boardSheetAnchorPixels.value = peek;
     });
   }
 }

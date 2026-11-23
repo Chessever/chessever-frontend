@@ -47,12 +47,35 @@ import app_links
   private var pushTapListenerReady = false
   private var pendingPushTap: [String: Any]?
 
+  // A push in OneSignal's envelope: an iPhone that updated from a build with
+  // the OneSignal SDK still gets them until it registers directly. Its id is
+  // `custom.i` (`custom` a dictionary, or its JSON as a string); there is no
+  // `gcm.message_id`. Dart unwraps `custom.a` (onesignal_push_payload.dart).
+  static func oneSignalNotificationId(_ info: [AnyHashable: Any]) -> String? {
+    var custom: Any? = info["custom"]
+    if let text = custom as? String, let json = text.data(using: .utf8) {
+      custom = try? JSONSerialization.jsonObject(with: json)
+    }
+    guard let envelope = custom as? [String: Any],
+          let id = envelope["i"] as? String,
+          !id.isEmpty else { return nil }
+    return id
+  }
+
   // Scene-based launches do not put the response in UIApplication launchOptions.
   // Keep the tap until Dart has registered its listener.
   func captureDirectPushTap(_ response: UNNotificationResponse) {
     guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
     let info = response.notification.request.content.userInfo
-    guard let messageId = info["gcm.message_id"] as? String else { return }
+    let messageId: String
+    if let firebaseId = info["gcm.message_id"] as? String {
+      messageId = firebaseId
+    } else if let oneSignalId = AppDelegate.oneSignalNotificationId(info) {
+      // Firebase ignores it (no gcm.message_id): this is its only route in.
+      messageId = "onesignal:\(oneSignalId)"
+    } else {
+      return
+    }
     var data: [String: Any] = [:]
     for (key, value) in info {
       guard let key = key as? String, key != "aps" else { continue }

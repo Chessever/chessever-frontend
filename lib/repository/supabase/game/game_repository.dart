@@ -1121,9 +1121,28 @@ class GameRepository extends BaseRepository {
   /// Lives in `games.id`, so it must resolve there, not via `lichess_id`.
   static final _directGameIdPattern = RegExp(r'^[A-Za-z0-9]{8}-[A-Za-z0-9]+$');
 
+  /// The game whose games.id is [id], or null when there is none. Unlike
+  /// [getGameById] a miss is not an error.
+  Future<Games?> findGameById(String id) async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('id', id)
+          .maybeSingle();
+      return response == null ? null : Games.fromJson(response);
+    });
+  }
+
   /// Resolves a game from a canonical database ID or a Lichess short ID.
   /// UUID / namespaced / Direct ID → queries games.id
-  /// Other                          → queries games.lichess_id (e.g. "4uVwSr9q")
+  /// Other (e.g. "4uVwSr9q")       → games.id first, then games.lichess_id
+  ///
+  /// Share links and game pushes carry games.id, and an 8-character games.id
+  /// is not always the game's lichess_id (XBnzfSW7 is lichess q83KAyaw), so a
+  /// short id must try games.id before it is read as a Lichess id. Never one
+  /// `.or()` query with `.single()`: an id that is also another game's
+  /// lichess_id would match two rows and throw.
   Future<Games> getGameByAnyId(String id) async {
     final trimmed = id.trim();
     if (_uuidPattern.hasMatch(trimmed) ||
@@ -1131,6 +1150,8 @@ class GameRepository extends BaseRepository {
         _directGameIdPattern.hasMatch(trimmed)) {
       return getGameById(trimmed);
     }
+    final byId = await findGameById(trimmed);
+    if (byId != null) return byId;
     return getGameByLichessId(trimmed);
   }
 

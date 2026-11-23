@@ -503,7 +503,7 @@ Future<void> _shareTeamScorecard({
           [XFile(file.path, mimeType: 'image/png')],
           text: shareUrl,
           subject: subject,
-          sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          sharePositionOrigin: sharePreviewOrigin(),
         );
       },
       onShareLink: shareUrl == null || shareUrl.isEmpty
@@ -512,7 +512,7 @@ Future<void> _shareTeamScorecard({
               await Share.share(
                 shareUrl,
                 subject: subject,
-                sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                sharePositionOrigin: sharePreviewOrigin(),
               );
             },
     );

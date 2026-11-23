@@ -291,7 +291,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       files,
       subject: _shareSubject,
       text: _effectiveShareUrl,
-      sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+      // The overlay's share row sits at the bottom of the screen.
+      sharePositionOrigin: shareScreenBottomOrigin(),
     );
   }
 

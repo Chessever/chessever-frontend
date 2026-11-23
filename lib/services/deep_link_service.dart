@@ -3,6 +3,7 @@ import 'package:chessever2/screens/webview/app_webview_screen.dart';
 import 'package:chessever2/services/webview_link.dart';
 import 'package:chessever2/screens/feed/news/news_links.dart';
 import 'favorite_player_news_destination.dart';
+import 'onesignal_push_payload.dart';
 import 'package:chessever2/providers/event_video_provider.dart';
 import 'dart:io' show Platform;
 
@@ -70,7 +71,7 @@ import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provid
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart'
     show PlayerProfileDataSource;
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
-    show PlayerProfileScreen;
+    show PlayerProfileScreen, PlayerProfileTab;
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/streak_player_screen.dart';
 import 'package:chessever2/screens/streaks/streaks_screen.dart';
@@ -81,6 +82,12 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart'
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/widgets/paywall/past_event_access.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/guest_session_gate_listener.dart'
+    show GuestGateRouteObserver;
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart'
+    show homeChromeRevealRequestProvider, popToHomeShell, hasHomeShellOn;
+import 'package:chessever2/utils/own_web_page.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -191,10 +198,8 @@ String prepPushElsewhereMessage(String? profileName) {
 }
 
 /// 1240 → "1,240".
-String _thousands(int n) => n.toString().replaceAllMapped(
-  RegExp(r'\B(?=(\d{3})+(?!\d))'),
-  (_) => ',',
-);
+String _thousands(int n) =>
+    n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 
 /// What a collection push says once the collection is open: the count it
 /// announced. Null when the push carried none.
@@ -208,6 +213,14 @@ String? collectionPushArrivalMessage({int? added, String? title}) {
       : '$games just landed in $name.';
 }
 
+/// What a link or push that could not open says, over the page the reader
+/// stays on.
+const String kLinkFailedMessage = "Couldn't open that link.";
+
+/// What a link or push held during a sign-in says when the sign-in ended
+/// with no session to open it for (O20): quietly, over the page in view.
+const String kHeldLinkNeedsSignInMessage = 'Sign in to open that link.';
+
 /// What a collection push says when the collection cannot be opened.
 @visibleForTesting
 String collectionPushFailedMessage(String? title) {
@@ -215,6 +228,95 @@ String collectionPushFailedMessage(String? title) {
   return name == null || name.isEmpty
       ? 'That collection could not be opened right now.'
       : '$name could not be opened right now.';
+}
+
+/// Where a player profile link points: the profile identity and the view
+/// named after it, if any.
+typedef PlayerProfileLinkTarget = ({String routeId, PlayerProfileTab? tab});
+
+/// The web's `parsePlayerProfileRoute` identity: a FIDE id (with an old
+/// accidental `-NN` suffix, or `-reused` for a recycled historical id) or a
+/// Memorial route id.
+final _playerIdentitySegment = RegExp(
+  r'^(?:\d+(?:(?:-\d+)|-reused)?|memorial-[0-9a-f]{16})$',
+);
+
+/// Reads a player profile path as the web does (src/lib/player-profile-view.ts):
+/// the identity is the FIRST segment that looks like one, the segment after
+/// it is the view. `[1503014, games]`, `[magnus-carlsen, 1503014, events]`
+/// and `[x, memorial-<16 hex>, news]` all resolve; `games` alone does not.
+/// A `-NN` suffix is dropped (`5000017-63` is 5000017). Views the app has no
+/// tab for (overview, news, streaming) open About. Null without an identity.
+@visibleForTesting
+PlayerProfileLinkTarget? playerProfileLinkTarget(Iterable<String> segments) {
+  final parts = [for (final s in segments) s.trim()];
+  final index = parts.indexWhere(_playerIdentitySegment.hasMatch);
+  if (index < 0) return null;
+  final segment = parts[index];
+  final routeId = segment.startsWith('memorial-') || segment.endsWith('-reused')
+      ? segment
+      : RegExp(r'^(\d+)').firstMatch(segment)!.group(1)!;
+  final view = index + 1 < parts.length ? parts[index + 1] : null;
+  final tab = switch (view) {
+    null => null,
+    'games' => PlayerProfileTab.games,
+    'events' => PlayerProfileTab.events,
+    _ => PlayerProfileTab.about,
+  };
+  return (routeId: routeId, tab: tab);
+}
+
+final _shortIdSegment = RegExp(r'^[A-Za-z0-9]{8}$');
+
+/// The game or round a Lichess-shaped broadcast path on chessever.com names,
+/// as the web's `legacyShareRedirectPath` reads it: five segments with two
+/// short ids at the end are a game, four segments ending in a short id
+/// after a round-like (or non-id) slug are a round. Null for every
+/// ChessEver shape (player, team, round pages).
+@visibleForTesting
+({String? gameId, String? roundId})? lichessShapedBroadcastTarget(Uri uri) {
+  if (!isOwnWebHost(uri)) return null;
+  final parts = [
+    for (final s in uri.pathSegments)
+      if (s.isNotEmpty) s,
+  ];
+  if (parts.isEmpty || parts.first != 'broadcast') return null;
+  if (parts.length == 5 &&
+      _shortIdSegment.hasMatch(parts[3]) &&
+      _shortIdSegment.hasMatch(parts[4])) {
+    return (gameId: parts[4], roundId: parts[3]);
+  }
+  if (parts.length == 4 &&
+      _shortIdSegment.hasMatch(parts[3]) &&
+      parts[2] != 'player' &&
+      parts[2] != 'team' &&
+      (RegExp('round', caseSensitive: false).hasMatch(parts[2]) ||
+          !_shortIdSegment.hasMatch(parts[2]))) {
+    return (gameId: null, roundId: parts[3]);
+  }
+  return null;
+}
+
+/// chessever.com pages under the app's claimed prefixes (`/broadcast/*`,
+/// `/games/*`) that are no event, game or profile: the broadcast sign-in,
+/// editor, settings and hubs index, a hub page (`/broadcast/<hub-slug>`,
+/// kebab-case where event ids are short ids or snake_case), an event's team
+/// list and game search. The app opens them on the web.
+@visibleForTesting
+bool isWebOnlyChesseverPage(Uri uri) {
+  if (!isOwnWebHost(uri)) return false;
+  final parts = [
+    for (final s in uri.pathSegments)
+      if (s.isNotEmpty) s,
+  ];
+  if (parts.length < 2) return false;
+  if (parts.first == 'games') return parts[1] == 'search';
+  if (parts.first != 'broadcast') return false;
+  if (const {'editor', 'hubs', 'settings', 'signin'}.contains(parts[1])) {
+    return true;
+  }
+  if (parts.length == 2) return parts[1].contains('-');
+  return parts.length == 3 && parts[2] == 'teams';
 }
 
 class DeepLinkService {
@@ -225,11 +327,43 @@ class DeepLinkService {
   StreamSubscription<Uri>? _subscription;
   bool _isInitialized = false;
 
-  // Guards to prevent duplicate/concurrent navigation
-  bool _isNavigating = false;
+  // Guards against duplicate and stale navigation. Every inbound link, push
+  // and in-app reference takes the next generation; one that is no longer
+  // the newest when its awaits return opens nothing (the newest tap wins,
+  // never the first). The same game twice within [_debounceDuration] is one
+  // tap.
   String? _lastHandledGameId;
   DateTime? _lastHandledTime;
   int _destinationGeneration = 0;
+
+  /// The link or push being routed now. Kept as [_pending] when it cannot
+  /// open yet (no session, or onboarding or sign-in on screen) and routed
+  /// again once Home is up ([drainPendingDestination]).
+  _InboundDestination? _inbound;
+  _InboundDestination? _pending;
+
+  /// How long a held destination waits for sign-in or onboarding to finish.
+  static const _pendingLifetime = Duration(minutes: 30);
+
+  /// Routes on which a link must wait instead of opening: the reader is
+  /// signing in or onboarding, and Home is where it lands next.
+  static const _signInRoutes = {
+    '/auth_screen',
+    '/onboarding',
+    '/player_selection_screen',
+  };
+
+  /// Test seam: what the board route of a resolved game shows. Null in the
+  /// app (the real board).
+  @visibleForTesting
+  Widget Function(GamesTourModel game)? debugBoardPageBuilder;
+
+  /// Test seam: every other page this service pushes (profile, collection,
+  /// smart event, prep, book, folder) passes through it. Null in the app.
+  @visibleForTesting
+  Widget Function(Widget page)? debugPageOverride;
+
+  Widget _page(Widget page) => debugPageOverride?.call(page) ?? page;
 
   // Debounce duration to prevent duplicate link events
   static const _debounceDuration = Duration(milliseconds: 500);
@@ -258,7 +392,12 @@ class DeepLinkService {
 
   /// Feed a notification tap in. Routes immediately when the app can navigate,
   /// buffers otherwise. Safe to call from anywhere, including before `runApp`.
-  void ingestNotificationData(Map<String, dynamic> data) {
+  ///
+  /// A push in OneSignal's envelope (a phone that updated from an SDK build
+  /// and has not registered directly yet, O6) is unwrapped first, so it
+  /// routes exactly like the same push sent directly.
+  void ingestNotificationData(Map<String, dynamic> raw) {
+    final data = unwrapOneSignalPush(raw);
     final navigatorKey = _routerNavigatorKey;
     final ref = _routerRef;
     if (navigatorKey != null && ref != null) {
@@ -299,6 +438,7 @@ class DeepLinkService {
 
   void detachNotificationRouter() {
     _destinationGeneration++;
+    _stopWatchingSignInAttempt();
     _routerNavigatorKey = null;
     _routerRef = null;
   }
@@ -312,6 +452,8 @@ class DeepLinkService {
     if (navigatorKey == null || ref == null || normalizedId.isEmpty) {
       return false;
     }
+    // An in-app reference is no inbound link to hold for sign-in.
+    _inbound = null;
     unawaited(
       _navigateToGame(
         normalizedId,
@@ -336,6 +478,8 @@ class DeepLinkService {
         (normalizedTourId?.isNotEmpty ?? false) ||
         (normalizedRoundId?.isNotEmpty ?? false);
     if (navigatorKey == null || ref == null || !hasIdentifier) return false;
+    // An in-app reference is no inbound link to hold for sign-in.
+    _inbound = null;
     unawaited(
       _navigateToEvent(
         normalizedEventId,
@@ -364,6 +508,7 @@ class DeepLinkService {
     if (navigatorKey == null || ref == null || normalizedId.isEmpty) {
       return false;
     }
+    _inbound = null;
     return _navigateToGame(
       normalizedId,
       navigatorKey,
@@ -397,6 +542,7 @@ class DeepLinkService {
             normalizedRoundId == null)) {
       return false;
     }
+    _inbound = null;
     return _navigateToEvent(
       normalizedEventId,
       navigatorKey,
@@ -426,6 +572,7 @@ class DeepLinkService {
         fideId <= 0) {
       return false;
     }
+    _inbound = null;
     return _navigateToPlayerScorecard(
       normalizedEventId,
       fideId,
@@ -453,6 +600,7 @@ class DeepLinkService {
         normalizedTeam == null) {
       return false;
     }
+    _inbound = null;
     return _navigateToTeamScorecard(
       normalizedEventId,
       normalizedTeam,
@@ -462,6 +610,22 @@ class DeepLinkService {
     );
   }
 
+  /// Opens a link tapped on a page in the app (an Inbox message, a nudge, a
+  /// Botvinnik Inbox card) above that page, so Back returns to it: every
+  /// `/app/...` route (My Space's pages, Likes, Reports, a player's games,
+  /// settings) and every content path (a game, an event, a scorecard, a
+  /// collection, a profile, a book) alike. Dock sections still open on the
+  /// dock, and an article still opens in Discovery's reader. A link that
+  /// cannot open leaves the reader on the page, with a snack. False while
+  /// the router is not attached.
+  bool openLinkInPlace(Uri uri) {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    if (navigatorKey == null || ref == null) return false;
+    _handleDeepLink(uri, navigatorKey, ref, trusted: true, inPlace: true);
+    return true;
+  }
+
   /// Routes a chessever.com (or app-scheme) link from inside the app exactly
   /// like one tapped outside it. Returns false while the router is not yet
   /// attached.
@@ -469,7 +633,7 @@ class DeepLinkService {
     final navigatorKey = _routerNavigatorKey;
     final ref = _routerRef;
     if (navigatorKey == null || ref == null) return false;
-    handleDeepLink(uri, navigatorKey, ref);
+    _handleDeepLink(uri, navigatorKey, ref, trusted: true);
     return true;
   }
 
@@ -529,31 +693,61 @@ class DeepLinkService {
     );
   }
 
-  /// Parse and handle incoming deep link
+  /// Parse and handle an incoming deep link: a universal link, an App Link
+  /// or a custom-scheme link from outside the app.
   void handleDeepLink(
     Uri uri,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
-  ) {
+  ) => _handleDeepLink(uri, navigatorKey, ref, trusted: false);
+
+  /// [trusted] is false for links from outside the app, which anyone can
+  /// write: their `/webview?url=` opens only ChessEver's own pages in the
+  /// app's WebView (any other page goes to the system browser, never inside
+  /// the ChessEver chrome). Links the app itself routes (Inbox, articles,
+  /// configured push routes) are trusted.
+  ///
+  /// [inPlace] marks a link tapped on a page in the app ([openLinkInPlace]):
+  /// it opens over that page instead of replacing the pages over Home, a
+  /// failure leaves the reader there with a snack, and it is never held for
+  /// sign-in (the reader is in the app).
+  void _handleDeepLink(
+    Uri uri,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    required bool trusted,
+    bool inPlace = false,
+  }) {
     debugPrint('DeepLinkService: Received link: $uri');
+    _inbound = inPlace ? null : _InboundDestination.link(uri, trusted: trusted);
 
     if (isWebViewLink(uri)) {
       final target = webViewLinkTarget(uri);
       if (target != null) {
-        unawaited(
-          _navigateToWebView(
-            target,
-            navigatorKey,
-            ref,
-            generation: ++_destinationGeneration,
-          ),
-        );
+        if (trusted || isExternalWebViewTarget(target)) {
+          unawaited(
+            _navigateToWebView(
+              target,
+              navigatorKey,
+              ref,
+              generation: ++_destinationGeneration,
+              inPlace: inPlace,
+            ),
+          );
+        } else {
+          _addBreadcrumb(
+            'outside webview link opened in the browser',
+            data: {'host': target.host},
+          );
+          unawaited(openExternalWebPage(target));
+        }
       }
       return;
     }
 
     final newsLink = NewsLink.parse(uri);
-    final appDestination = parseAppDestination(uri.toString()) ??
+    final appDestination =
+        parseAppDestination(uri.toString()) ??
         (newsLink == null ? null : parseAppDestination('/app${newsLink.path}'));
     if (appDestination != null) {
       unawaited(
@@ -562,7 +756,8 @@ class DeepLinkService {
           navigatorKey,
           ref,
           generation: ++_destinationGeneration,
-          preserveCurrentRoute: newsLink != null && _appReadyCompleter.isCompleted,
+          preserveCurrentRoute:
+              inPlace || (newsLink != null && _appReadyCompleter.isCompleted),
         ),
       );
       return;
@@ -610,8 +805,31 @@ class DeepLinkService {
       String? teamName;
       String? profileRouteId;
 
+      String? roundId;
+      PlayerProfileTab? profileTab;
+
+      // chessever.com pages under the claimed prefixes that the app has no
+      // screen for (hubs, sign-in, editor, team lists, game search) open on
+      // the web instead of resolving a bogus id and failing.
+      if (isWebOnlyChesseverPage(uri)) {
+        _openUnroutedWebPage(uri, reason: 'web-only page');
+        return;
+      }
+
+      // Lichess-shaped paths a host-only rebrand put on chessever.com:
+      // /broadcast/<tour>/<roundSlug>/<roundId>/<gameId> is a game,
+      // /broadcast/<tour>/<roundSlug>/<roundId> a round (as the web's
+      // legacyShareRedirectPath reads them).
+      final lichess = lichessShapedBroadcastTarget(uri);
+      if (lichess != null) {
+        gameId = lichess.gameId;
+        roundId = lichess.roundId;
+      }
+
       // Universal link: https://chessever.com/games/<id>
-      if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
+      if (gameId == null &&
+          uri.pathSegments.length >= 2 &&
+          uri.pathSegments[0] == 'games') {
         gameId = uri.pathSegments[1];
       }
 
@@ -635,13 +853,20 @@ class DeepLinkService {
       // Also accept /broadcast/<id> for links without a slug.
       // Player scorecard: https://chessever.com/broadcast/<slug>/<id>/player/<fideId>
       // Team scorecard:   https://chessever.com/broadcast/<slug>/<id>/team/<teamName>
-      if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'broadcast') {
+      // Round page:      https://chessever.com/broadcast/<slug>/<id>/round/<roundId>
+      if (lichess == null &&
+          uri.pathSegments.isNotEmpty &&
+          uri.pathSegments[0] == 'broadcast') {
         if (uri.pathSegments.length >= 3) {
           broadcastId = uri.pathSegments[2];
         } else if (uri.pathSegments.length == 2) {
           broadcastId = uri.pathSegments[1];
         }
-        if (uri.pathSegments.length >= 5 && uri.pathSegments[3] == 'player') {
+        if (uri.pathSegments.length >= 5 && uri.pathSegments[3] == 'round') {
+          final round = uri.pathSegments[4].trim();
+          if (round.isNotEmpty) roundId = round;
+        } else if (uri.pathSegments.length >= 5 &&
+            uri.pathSegments[3] == 'player') {
           playerFideId = int.tryParse(uri.pathSegments[4]);
         } else if (uri.pathSegments.length >= 5 &&
             uri.pathSegments[3] == 'team') {
@@ -651,13 +876,15 @@ class DeepLinkService {
         }
       }
 
-      // Player profile: https://chessever.com/player/<fideId>, plus the
-      // canonical SEO form https://chessever.com/player/<name-slug>/<fideId>.
-      // The immutable player identity is always the last segment. It is a FIDE
-      // id for current profiles and a reviewed route id for Memorial profiles.
+      // Player profile: https://chessever.com/player/<fideId>, the canonical
+      // SEO form /player/<name-slug>/<fideId>, and either with a view
+      // (/games, /events, /about, /news). The identity is the first segment
+      // the web's route parser accepts: a FIDE id or a reviewed Memorial
+      // route id; the segment after it is the view.
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'player') {
-        profileRouteId = uri.pathSegments.last.trim();
-        if (profileRouteId.isEmpty) profileRouteId = null;
+        final target = playerProfileLinkTarget(uri.pathSegments.skip(1));
+        profileRouteId = target?.routeId;
+        profileTab = target?.tab;
       }
 
       // Custom scheme: com.chessever.app://games/<id>
@@ -667,12 +894,13 @@ class DeepLinkService {
         gameId = uri.pathSegments[0];
       }
 
-      // Custom scheme: com.chessever.app://player/<fideId>
+      // Custom scheme: com.chessever.app://player/<fideId>[/<view>]
       if (profileRouteId == null &&
           uri.host == 'player' &&
           uri.pathSegments.isNotEmpty) {
-        profileRouteId = uri.pathSegments.last.trim();
-        if (profileRouteId.isEmpty) profileRouteId = null;
+        final target = playerProfileLinkTarget(uri.pathSegments);
+        profileRouteId = target?.routeId;
+        profileTab = target?.tab;
       }
 
       // Custom scheme: com.chessever.app://books/<shareToken>
@@ -747,13 +975,15 @@ class DeepLinkService {
             extras: {'gameId': gameId, 'preferGamebase': preferGamebase},
           ),
         );
-        _navigateToGame(
+        final opening = _navigateToGame(
           gameId,
           navigatorKey,
           ref,
           initialFen: initialFen,
           preferGamebase: preferGamebase,
+          preserveCurrentRoute: inPlace,
         );
+        if (inPlace) _snackUnlessOpened(opening, navigatorKey);
       } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
         _addBreadcrumb(
           'routing to shared book',
@@ -771,7 +1001,12 @@ class DeepLinkService {
           'routing to collection',
           data: {'collectionSlug': collectionSlug},
         );
-        _navigateToCollection(collectionSlug, navigatorKey, ref);
+        _navigateToCollection(
+          collectionSlug,
+          navigatorKey,
+          ref,
+          preserveCurrentRoute: inPlace,
+        );
       } else if (broadcastId != null &&
           broadcastId.isNotEmpty &&
           playerFideId != null) {
@@ -782,12 +1017,14 @@ class DeepLinkService {
             'fideId': playerFideId.toString(),
           },
         );
-        _navigateToPlayerScorecard(
+        final opening = _navigateToPlayerScorecard(
           broadcastId,
           playerFideId,
           navigatorKey,
           ref,
+          preserveCurrentRoute: inPlace,
         );
+        if (inPlace) _snackUnlessOpened(opening, navigatorKey);
       } else if (broadcastId != null &&
           broadcastId.isNotEmpty &&
           teamName != null &&
@@ -799,22 +1036,65 @@ class DeepLinkService {
             'teamName': teamName,
           },
         );
-        _navigateToTeamScorecard(broadcastId, teamName, navigatorKey, ref);
+        final opening = _navigateToTeamScorecard(
+          broadcastId,
+          teamName,
+          navigatorKey,
+          ref,
+          preserveCurrentRoute: inPlace,
+        );
+        if (inPlace) _snackUnlessOpened(opening, navigatorKey);
       } else if (broadcastId != null && broadcastId.isNotEmpty) {
         // `?tab=standings` opens the event on its Standings tab (the same link
         // that renders standings on the web). Absent/other values open Games.
         final eventTab = uri.queryParameters[kEventTabQueryParam];
         _addBreadcrumb(
           'routing to broadcast event',
-          data: {'broadcastId': _maskedValue(broadcastId), 'tab': eventTab},
+          data: {
+            'broadcastId': _maskedValue(broadcastId),
+            'tab': eventTab,
+            'hasRoundId': roundId != null,
+          },
         );
-        _navigateToEvent(broadcastId, navigatorKey, ref, tab: eventTab);
+        // A link is a free entry to an event, in place or not: the
+        // past-event gate stays with My Space shortcuts and in-app
+        // references (open item O8).
+        final opening = _navigateToEvent(
+          broadcastId,
+          navigatorKey,
+          ref,
+          roundId: roundId,
+          tab: eventTab,
+          preserveCurrentRoute: inPlace,
+          gatePastEvent: false,
+        );
+        if (inPlace) _snackUnlessOpened(opening, navigatorKey);
+      } else if (roundId != null) {
+        _addBreadcrumb('routing to broadcast round');
+        final opening = _navigateToEvent(
+          null,
+          navigatorKey,
+          ref,
+          roundId: roundId,
+          preserveCurrentRoute: inPlace,
+          gatePastEvent: false,
+        );
+        if (inPlace) _snackUnlessOpened(opening, navigatorKey);
       } else if (profileRouteId != null) {
         _addBreadcrumb(
           'routing to player profile',
-          data: {'routeId': profileRouteId},
+          data: {'routeId': profileRouteId, 'tab': profileTab?.name},
         );
-        _navigateToPlayerProfile(profileRouteId, navigatorKey, ref);
+        _navigateToPlayerProfile(
+          profileRouteId,
+          navigatorKey,
+          ref,
+          tab: profileTab,
+        );
+      } else if (isOwnWebHost(uri)) {
+        // A chessever.com page the app has no screen for: open it on the
+        // web, over the app, rather than ignore the tap.
+        _openUnroutedWebPage(uri, reason: 'unsupported path');
       } else {
         _addBreadcrumb(
           'deep link ignored',
@@ -832,14 +1112,53 @@ class DeepLinkService {
     }
   }
 
+  /// Opens a chessever.com page the app has no route for in a browser over
+  /// the app. In-app (Custom Tabs, SFSafariViewController), never the system
+  /// browser: the OS would hand the page straight back to the app.
+  void _openUnroutedWebPage(Uri uri, {required String reason}) {
+    _addBreadcrumb(
+      'deep link opened on the web',
+      data: {'reason': reason, ..._sanitizedUriData(uri)},
+    );
+    unawaited(() async {
+      await _appReadyCompleter.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {},
+      );
+      await openOwnWebPage(uri, mode: LaunchMode.inAppBrowserView);
+    }());
+  }
+
+  /// An in-place link ([openLinkInPlace]) whose destination could not open:
+  /// the reader stays on the page that asked and is told. A tap a newer one
+  /// took over counts as opened (the router returns true for it).
+  void _snackUnlessOpened(
+    Future<bool> opening,
+    GlobalKey<NavigatorState> navigatorKey,
+  ) {
+    unawaited(
+      opening.then((opened) {
+        if (!opened) _snackLinkFailed(navigatorKey);
+      }),
+    );
+  }
+
+  /// The one message a link or push that could not open leaves.
+  void _snackLinkFailed(
+    GlobalKey<NavigatorState> navigatorKey, {
+    String message = kLinkFailedMessage,
+  }) {
+    _snackAfterNavigation(navigatorKey, message, tone: AppSnackTone.danger);
+  }
+
   /// Navigate to the book preview screen for a shared book deep link.
   Future<void> _navigateToBookPreview(
     String shareToken,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) async {
-    if (_isNavigating) return;
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
       try {
@@ -849,34 +1168,14 @@ class DeepLinkService {
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
       }
+      if (superseded()) return;
 
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-
-      final isAuthenticated = _isFullyAuthenticated(resolvedState);
-      if (!isAuthenticated) {
-        debugPrint(
-          'DeepLinkService: User not authenticated, routing to auth screen',
-        );
-        _captureDeepLinkException(
-          Exception('Deep link ignored because user is not authenticated'),
-          StackTrace.current,
-          stage: 'book_preview_requires_auth',
-          extras: {'shareToken': _maskedValue(shareToken)},
-          captureAsException: false,
-        );
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
-        );
-        return;
-      }
+      final ready = await _readyToOpen(
+        ref,
+        navigatorKey,
+        stage: 'book_preview_requires_auth',
+      );
+      if (superseded() || !ready) return;
 
       debugPrint('DeepLinkService: Opening book preview: $shareToken');
 
@@ -884,7 +1183,7 @@ class DeepLinkService {
       if (navigator != null) {
         navigator.push(
           MaterialPageRoute(
-            builder: (_) => BookPreviewScreen(shareToken: shareToken),
+            builder: (_) => _page(BookPreviewScreen(shareToken: shareToken)),
           ),
         );
       }
@@ -896,20 +1195,19 @@ class DeepLinkService {
         stage: 'navigate_to_book_preview',
         extras: {'shareToken': _maskedValue(shareToken)},
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
-    } finally {
-      _isNavigating = false;
+      if (!superseded()) {
+        _linkFailed(navigatorKey, reason: 'book_preview_failed', report: false);
+      }
     }
   }
 
   /// Opens the collection a "new games" push was sent for, or a shared
-  /// `chessever.com/collections/<slug>` link points at. A push names its
-  /// count again once the collection is open ([added], [title]). A
-  /// collection that is no longer published (or cannot be read right now)
-  /// lands on Home and, from a push, says so with a way to try again.
+  /// `chessever.com/collections/<slug>` link points at, over Home (over the
+  /// current page with [preserveCurrentRoute]). A push names its count again
+  /// once the collection is open ([added], [title]). A collection that is no
+  /// longer published (or cannot be read right now): a push lands on Home
+  /// and says so with a way to try again; a link leaves the reader where
+  /// they are and says why ([_linkFailed]), Home only on a cold start.
   Future<void> _navigateToCollection(
     String slug,
     GlobalKey<NavigatorState> navigatorKey,
@@ -917,71 +1215,96 @@ class DeepLinkService {
     int? added,
     String? title,
     bool fromPush = false,
+    bool preserveCurrentRoute = false,
   }) async {
-    if (_isNavigating) return;
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
-      try {
-        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
-      } catch (_) {
-        debugPrint(
-          'DeepLinkService: Timed out waiting for app ready, proceeding',
-        );
-      }
+      await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+    } catch (_) {
+      debugPrint(
+        'DeepLinkService: Timed out waiting for app ready, proceeding',
+      );
+    }
+    if (superseded()) return;
+    // A collection opens for any session, a guest's too. With none (a
+    // cold start signed out, onboarding on screen) it waits for Home
+    // instead of putting a session-less Home over sign-in.
+    if (!await _readyToOpen(
+          ref,
+          navigatorKey,
+          stage: 'collection_requires_auth',
+        ) ||
+        superseded()) {
+      return;
+    }
 
-      Collection? collection;
-      try {
-        collection = await ref
-            .read(collectionsRepositoryProvider)
-            .fetchCollection(slug);
-      } catch (e, stackTrace) {
-        _captureDeepLinkException(
-          e,
-          stackTrace,
-          stage: 'navigate_to_collection',
-          extras: {'slug': slug},
-        );
-      }
+    Collection? collection;
+    Object? failure;
+    try {
+      collection = await ref
+          .read(collectionsRepositoryProvider)
+          .fetchCollection(slug);
+    } catch (e, stackTrace) {
+      failure = e;
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'navigate_to_collection',
+        extras: {'slug': slug},
+      );
+    }
 
-      final navigator = navigatorKey.currentState;
-      if (navigator == null) return;
-      // Over Home, so Back lands on the app rather than leaving it.
-      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
-      final opened = collection;
-      if (opened == null) {
-        if (fromPush) {
-          _snackAfterNavigation(
-            navigatorKey,
-            collectionPushFailedMessage(title),
-            tone: AppSnackTone.danger,
-            actionLabel: 'Try again',
-            onAction: () => _navigateToCollection(
-              slug,
-              navigatorKey,
-              ref,
-              added: added,
-              title: title,
-              fromPush: true,
-            ),
-          );
-        }
-        return;
-      }
-      navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => CollectionScreen(collection: opened),
+    final navigator = navigatorKey.currentState;
+    if (navigator == null || superseded()) return;
+    final opened = collection;
+    if (opened == null && !fromPush) {
+      // A link closes nothing it could not replace: the reader stays on the
+      // page they were reading and hears why (offline, gone, unreadable).
+      _linkFailed(
+        navigatorKey,
+        reason: 'collection_unavailable',
+        extras: {'slug': slug},
+        report: false, // captured above
+        message: userFacingError(
+          failure,
+          fallback: "Couldn't open that collection.",
         ),
       );
-      final arrived = collectionPushArrivalMessage(
-        added: added,
-        title: title ?? opened.title,
+      return;
+    }
+    // Over Home, so Back lands on the app rather than leaving it.
+    if (!preserveCurrentRoute) _ensureHomeRoot(navigator);
+    if (opened == null) {
+      // A push: Home, saying so, with a way to try again.
+      _snackAfterNavigation(
+        navigatorKey,
+        collectionPushFailedMessage(title),
+        tone: AppSnackTone.danger,
+        actionLabel: 'Try again',
+        onAction: () => _navigateToCollection(
+          slug,
+          navigatorKey,
+          ref,
+          added: added,
+          title: title,
+          fromPush: true,
+        ),
       );
-      if (fromPush && arrived != null) {
-        _snackAfterNavigation(navigatorKey, arrived);
-      }
-    } finally {
-      _isNavigating = false;
+      return;
+    }
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => _page(CollectionScreen(collection: opened)),
+      ),
+    );
+    final arrived = collectionPushArrivalMessage(
+      added: added,
+      title: title ?? opened.title,
+    );
+    if (fromPush && arrived != null) {
+      _snackAfterNavigation(navigatorKey, arrived);
     }
   }
 
@@ -1004,6 +1327,9 @@ class DeepLinkService {
         onAction: onAction,
       );
     });
+    // Nothing else may be drawing (a page standing still): the snack must
+    // not wait for the next unrelated frame.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   /// Opens the smart event an evening "new games" push was sent for, on its
@@ -1014,53 +1340,57 @@ class DeepLinkService {
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) async {
-    if (_isNavigating) return;
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
-      try {
-        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
-      } catch (_) {
-        debugPrint(
-          'DeepLinkService: Timed out waiting for app ready, proceeding',
-        );
-      }
-
-      final loaded = Completer<List<FavoriteEvent>?>();
-      final subscription = ref.listenManual(favoriteEventsProvider, (_, value) {
-        if (!value.isLoading && !loaded.isCompleted) {
-          loaded.complete(value.valueOrNull);
-        }
-      }, fireImmediately: true);
-      List<FavoriteEvent>? favorites;
-      try {
-        favorites = await loaded.future.timeout(const Duration(seconds: 10));
-      } catch (_) {
-        favorites = null;
-      } finally {
-        subscription.close();
-      }
-      final request = smartEventRequestFromPushData(
-        data,
-        favorites: favorites ?? const [],
+      await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+    } catch (_) {
+      debugPrint(
+        'DeepLinkService: Timed out waiting for app ready, proceeding',
       );
-
-      final navigator = navigatorKey.currentState;
-      if (navigator == null) return;
-      // Over Home, so Back lands on the app rather than leaving it.
-      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
-      if (request == null) return;
-      navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => SmartEventScreen(
-            request: request,
-            initialTab: smartEventGamesTab,
-          ),
-        ),
-      );
-    } finally {
-      _isNavigating = false;
     }
+    if (superseded()) return;
+    if (!await _readyToOpen(
+          ref,
+          navigatorKey,
+          stage: 'smart_event_requires_auth',
+        ) ||
+        superseded()) {
+      return;
+    }
+
+    final loaded = Completer<List<FavoriteEvent>?>();
+    final subscription = ref.listenManual(favoriteEventsProvider, (_, value) {
+      if (!value.isLoading && !loaded.isCompleted) {
+        loaded.complete(value.valueOrNull);
+      }
+    }, fireImmediately: true);
+    List<FavoriteEvent>? favorites;
+    try {
+      favorites = await loaded.future.timeout(const Duration(seconds: 10));
+    } catch (_) {
+      favorites = null;
+    } finally {
+      subscription.close();
+    }
+    final request = smartEventRequestFromPushData(
+      data,
+      favorites: favorites ?? const [],
+    );
+
+    final navigator = navigatorKey.currentState;
+    if (navigator == null || superseded()) return;
+    // Over Home, so Back lands on the app rather than leaving it.
+    _ensureHomeRoot(navigator);
+    if (request == null) return;
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => _page(
+          SmartEventScreen(request: request, initialTab: smartEventGamesTab),
+        ),
+      ),
+    );
   }
 
   /// Opens the My Prep profile a "new games" push was sent for, on its Games
@@ -1076,57 +1406,62 @@ class DeepLinkService {
     int? newGames,
     String? profileName,
   }) async {
-    if (_isNavigating) return;
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
-      try {
-        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
-      } catch (_) {
-        debugPrint(
-          'DeepLinkService: Timed out waiting for app ready, proceeding',
-        );
-      }
-
-      final loaded = Completer<List<PrepProfile>?>();
-      final subscription = ref.listenManual(prepProfilesProvider, (_, value) {
-        if (!value.isLoading && !loaded.isCompleted) {
-          loaded.complete(value.valueOrNull);
-        }
-      }, fireImmediately: true);
-      List<PrepProfile>? profiles;
-      try {
-        profiles = await loaded.future.timeout(const Duration(seconds: 10));
-      } catch (_) {
-        profiles = null;
-      } finally {
-        subscription.close();
-      }
-      final profile = profiles?.where((p) => p.id == profileId).firstOrNull;
-      if (profiles != null) {
-        ref.read(prepProfilesProvider.notifier).settleWatch(profileId);
-      }
-
-      final navigator = navigatorKey.currentState;
-      if (navigator == null) return;
-      // Over Home, so Back lands on the app rather than leaving it.
-      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
-      navigator.push(
-        MaterialPageRoute<void>(
-          builder: (_) => prepPushDestination(profile, newGames: newGames),
-        ),
+      await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+    } catch (_) {
+      debugPrint(
+        'DeepLinkService: Timed out waiting for app ready, proceeding',
       );
-      if (profiles != null && profile == null) {
-        final notifier = ref.read(prepProfilesProvider.notifier);
-        _snackAfterNavigation(
+    }
+    if (superseded()) return;
+    if (!await _readyToOpen(
+          ref,
           navigatorKey,
-          prepPushElsewhereMessage(profileName),
-          actionLabel: 'Stop alerts',
-          onAction: () => notifier.stopWatch(profileId),
-        );
+          stage: 'prep_profile_requires_auth',
+        ) ||
+        superseded()) {
+      return;
+    }
+
+    final loaded = Completer<List<PrepProfile>?>();
+    final subscription = ref.listenManual(prepProfilesProvider, (_, value) {
+      if (!value.isLoading && !loaded.isCompleted) {
+        loaded.complete(value.valueOrNull);
       }
+    }, fireImmediately: true);
+    List<PrepProfile>? profiles;
+    try {
+      profiles = await loaded.future.timeout(const Duration(seconds: 10));
+    } catch (_) {
+      profiles = null;
     } finally {
-      _isNavigating = false;
+      subscription.close();
+    }
+    final profile = profiles?.where((p) => p.id == profileId).firstOrNull;
+    if (profiles != null) {
+      ref.read(prepProfilesProvider.notifier).settleWatch(profileId);
+    }
+
+    final navigator = navigatorKey.currentState;
+    if (navigator == null || superseded()) return;
+    // Over Home, so Back lands on the app rather than leaving it.
+    _ensureHomeRoot(navigator);
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => _page(prepPushDestination(profile, newGames: newGames)),
+      ),
+    );
+    if (profiles != null && profile == null) {
+      final notifier = ref.read(prepProfilesProvider.notifier);
+      _snackAfterNavigation(
+        navigatorKey,
+        prepPushElsewhereMessage(profileName),
+        actionLabel: 'Stop alerts',
+        onAction: () => notifier.stopWatch(profileId),
+      );
     }
   }
 
@@ -1136,8 +1471,8 @@ class DeepLinkService {
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) async {
-    if (_isNavigating) return;
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
       try {
@@ -1147,36 +1482,14 @@ class DeepLinkService {
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
       }
+      if (superseded()) return;
 
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-
-      final isAuthenticated = _isFullyAuthenticated(resolvedState);
-      if (!isAuthenticated) {
-        debugPrint(
-          'DeepLinkService: User not authenticated, routing to auth screen',
-        );
-        _captureDeepLinkException(
-          Exception(
-            'Folder deep link ignored because user is not authenticated',
-          ),
-          StackTrace.current,
-          stage: 'folder_requires_auth',
-          extras: {'folderId': _maskedValue(folderId)},
-          captureAsException: false,
-        );
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
-        );
-        return;
-      }
+      final ready = await _readyToOpen(
+        ref,
+        navigatorKey,
+        stage: 'folder_requires_auth',
+      );
+      if (superseded() || !ready) return;
 
       debugPrint('DeepLinkService: Opening library folder: $folderId');
 
@@ -1193,26 +1506,29 @@ class DeepLinkService {
       if (targetFolder == null) {
         try {
           final subscribedBooks = await repo.getSubscribedBooks();
-          targetFolder =
-              subscribedBooks.where((f) => f.id == folderId).firstOrNull;
+          targetFolder = subscribedBooks
+              .where((f) => f.id == folderId)
+              .firstOrNull;
         } catch (_) {
           // Ignore
         }
       }
 
+      if (superseded()) return;
       final navigator = navigatorKey.currentState;
       if (navigator != null) {
         if (targetFolder != null) {
           navigator.push(
             MaterialPageRoute(
-              builder: (_) => FolderContentsScreen(folder: targetFolder!),
+              builder: (_) =>
+                  _page(FolderContentsScreen(folder: targetFolder!)),
             ),
           );
         } else {
           debugPrint(
             'DeepLinkService: Folder not found or access denied: $folderId',
           );
-          navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+          _linkFailed(navigatorKey, reason: 'folder_not_found', report: false);
         }
       }
     } catch (e, stackTrace) {
@@ -1223,12 +1539,9 @@ class DeepLinkService {
         stage: 'navigate_to_folder',
         extras: {'folderId': _maskedValue(folderId)},
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
-    } finally {
-      _isNavigating = false;
+      if (!superseded()) {
+        _linkFailed(navigatorKey, reason: 'folder_failed', report: false);
+      }
     }
   }
 
@@ -1240,7 +1553,8 @@ class DeepLinkService {
   /// the gamebase API instead.
   ///
   /// Returns false when the game could not be opened. A call swallowed by the
-  /// in-flight or debounce guard returns true: the earlier call owns it.
+  /// debounce guard, or superseded by a newer tap, returns true: the other
+  /// call owns it.
   Future<bool> _navigateToGame(
     String gameId,
     GlobalKey<NavigatorState> navigatorKey,
@@ -1249,13 +1563,8 @@ class DeepLinkService {
     bool preferGamebase = false,
     bool preserveCurrentRoute = false,
   }) async {
-    // Guard: Prevent concurrent navigation
-    if (_isNavigating) {
-      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return true;
-    }
-
-    // Guard: Debounce duplicate links (same game within short time)
+    // Guard: Debounce duplicate links (same game within short time). Before
+    // taking a generation: the duplicate must not supersede the original.
     final now = DateTime.now();
     if (_lastHandledGameId == gameId && _lastHandledTime != null) {
       final timeSinceLastHandle = now.difference(_lastHandledTime!);
@@ -1268,7 +1577,8 @@ class DeepLinkService {
     // Update tracking
     _lastHandledGameId = gameId;
     _lastHandledTime = now;
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
       // Keep only auth restore and splash completion on the critical path.
@@ -1289,25 +1599,27 @@ class DeepLinkService {
 
       // Auth is required before we can proceed.
       final isAuthenticated = await authFuture;
-      if (!isAuthenticated) {
+      if (superseded()) return true;
+      // A guest's session outlives the Google or Apple sign-in it starts:
+      // a board opened now would close the Sign up page mid sign-in.
+      final underWay = _authUnderWay(ref);
+      if (!isAuthenticated || _signInOnScreen || underWay) {
         debugPrint(
-          'DeepLinkService: No authenticated session, routing to auth screen',
-        );
-        _captureDeepLinkException(
-          Exception(
-            'Deep link ignored because no authenticated session was available',
-          ),
-          StackTrace.current,
-          stage: 'game_link_requires_auth',
-          extras: {'gameId': gameId},
-          captureAsException: false,
+          'DeepLinkService: No session or sign-in on screen; holding the link',
         );
         await appReadyFuture;
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
+        if (superseded()) return true;
+        // Held for Home: the board opens once the reader is signed in.
+        final ready = await _readyToOpen(
+          ref,
+          navigatorKey,
+          stage: 'game_link_requires_auth',
+          signedIn: underWay ? null : isAuthenticated,
         );
-        return false;
+        if (superseded()) return true;
+        // Onboarding or sign-in left the screen while the splash finished:
+        // nothing was held, so the board opens now.
+        if (!ready) return false;
       }
 
       if (preferGamebase) {
@@ -1318,6 +1630,7 @@ class DeepLinkService {
           initialFen: initialFen,
           appReadyFuture: appReadyFuture,
           preserveCurrentRoute: preserveCurrentRoute,
+          superseded: superseded,
         );
         return true;
       }
@@ -1338,9 +1651,11 @@ class DeepLinkService {
           initialFen: initialFen,
           appReadyFuture: appReadyFuture,
           preserveCurrentRoute: preserveCurrentRoute,
+          superseded: superseded,
         );
         return true;
       }
+      if (superseded()) return true;
       final resolvedGameId = game.id;
       final gameTourModel = GamesTourModel.fromGame(game);
       // Warm video alongside the remaining route/context hydration, including
@@ -1353,6 +1668,7 @@ class DeepLinkService {
       ], priority: true);
 
       await appReadyFuture;
+      if (superseded()) return true;
 
       // Resolve tournament context so swiping and tournament button works.
       final roundRepo = ref.read(roundRepositoryProvider);
@@ -1427,13 +1743,16 @@ class DeepLinkService {
           },
         ),
       );
+      if (superseded()) return true;
       ref.read(shouldStreamProvider.notifier).state = false;
 
       final navigator = navigatorKey.currentState;
+      final boardPage = debugBoardPageBuilder;
       if (navigator != null) {
         final route = MaterialPageRoute(
-          builder:
-              (_) => _DeepLinkedChessBoardRoute(
+          builder: (_) =>
+              boardPage?.call(gameTourModel) ??
+              _DeepLinkedChessBoardRoute(
                 initialGame: gameTourModel,
                 initialGameId: resolvedGameId,
                 viewSource: ref.read(chessboardViewFromProviderNew),
@@ -1478,21 +1797,22 @@ class DeepLinkService {
         extras: {'gameId': gameId},
         captureAsException: !expected,
       );
+      if (superseded()) return true;
       _addBreadcrumb(
         preserveCurrentRoute
             ? 'in-app game reference failed'
-            : 'game deep link failed; routing home',
+            : 'game deep link failed',
         data: {'gameId': gameId},
       );
       if (!preserveCurrentRoute) {
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
-          (route) => false,
+        _linkFailed(
+          navigatorKey,
+          reason: 'game_link_failed',
+          extras: {'gameId': gameId},
+          report: false,
         );
       }
       return false;
-    } finally {
-      _isNavigating = false;
     }
   }
 
@@ -1506,8 +1826,11 @@ class DeepLinkService {
     String? initialFen,
     required Future<void> appReadyFuture,
     bool preserveCurrentRoute = false,
+    bool Function()? superseded,
   }) async {
+    bool stale() => superseded?.call() ?? false;
     await appReadyFuture;
+    if (stale()) return;
     final context = navigatorKey.currentState?.overlay?.context;
     if (context == null || !context.mounted) return;
     if (!await ensurePremiumGameAccess(
@@ -1530,7 +1853,7 @@ class DeepLinkService {
 
     final gameTourModel = mapGamebaseGameToGamesTourModel(gamebaseGame);
 
-    if (!context.mounted) return;
+    if (!context.mounted || stale()) return;
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.forYou;
@@ -1546,17 +1869,16 @@ class DeepLinkService {
     );
 
     final route = MaterialPageRoute<void>(
-      builder:
-          (_) => ChessBoardScreenNew(
-            key: ValueKey('deep-link-gamebase-$gameId'),
-            games: [gameTourModel],
-            currentIndex: 0,
-            viewSource: ChessboardView.forYou,
-            playerProfileDataSource: PlayerProfileDataSource.twic,
-            initialFen: initialFen,
-            showGamebaseButton: false,
-            showClock: false,
-          ),
+      builder: (_) => ChessBoardScreenNew(
+        key: ValueKey('deep-link-gamebase-$gameId'),
+        games: [gameTourModel],
+        currentIndex: 0,
+        viewSource: ChessboardView.forYou,
+        playerProfileDataSource: PlayerProfileDataSource.twic,
+        initialFen: initialFen,
+        showGamebaseButton: false,
+        showClock: false,
+      ),
     );
     // In-app references open above the screen that asked, like the
     // Supabase-game path does; shared links still reset to the root.
@@ -1607,15 +1929,24 @@ class DeepLinkService {
   /// Route based on notification data payload.
   /// Called from the direct-push click listener.
   void handleNotificationData(
-    Map<String, dynamic> data,
+    Map<String, dynamic> raw,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) {
+    final data = unwrapOneSignalPush(raw);
     final generation = ++_destinationGeneration;
+    _inbound = _InboundDestination.push(Map<String, dynamic>.of(data));
     if (data['type'] == 'favorite_player_news') {
       final article = favoritePlayerNewsDestination(data);
       if (article == null) return;
-      unawaited(_navigateToAppDestination(article, navigatorKey, ref, generation: generation));
+      unawaited(
+        _navigateToAppDestination(
+          article,
+          navigatorKey,
+          ref,
+          generation: generation,
+        ),
+      );
       return;
     }
     final configuredRoute = _asNonEmptyString(data['route']);
@@ -1919,19 +2250,45 @@ class DeepLinkService {
     }
   }
 
+  /// Opens [url] in the app's WebView over the app. A link or push waits,
+  /// like every other destination, while a sign-in, sign-out or deletion is
+  /// under way and while sign-in or onboarding is alone on screen (O22): the
+  /// Home the reader lands on routes it ([drainPendingDestination]), or, for
+  /// a sign-in that ends without one, [_resumeAfterAbandonedSignIn]. Opened
+  /// then, the page sat over the Sign up page and the Home the finished
+  /// sign-in builds removed it. A web page needs no account, so a reader
+  /// with no session and no sign-in page in front still gets it at once.
+  /// [inPlace] links (tapped on a page in the app) are never held.
   Future<void> _navigateToWebView(
     Uri url,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref, {
     required int generation,
+    bool inPlace = false,
   }) async {
     await _appReadyCompleter.future;
     final navigator = navigatorKey.currentState;
-    if (navigator == null ||
-        !navigator.mounted ||
-        generation != _destinationGeneration) {
-      return;
+    bool isCurrent() =>
+        navigator != null &&
+        navigator.mounted &&
+        generation == _destinationGeneration;
+    if (!isCurrent()) return;
+    if (!inPlace) {
+      // A session still being restored decides whether sign-in comes up.
+      if (ref.read(authStateProvider).isLoading) {
+        try {
+          await ref.read(authStateProvider.future).timeout(kAuthRestoreTimeout);
+        } catch (_) {
+          // Restore failed or timed out: the screen in front decides.
+        }
+        if (!isCurrent()) return;
+      }
+      if (_authUnderWay(ref) || _signInOnScreen) {
+        _holdInbound('webview_waits_for_sign_in');
+        return;
+      }
     }
+    if (!navigator!.mounted) return;
     ref.read(appDestinationPageNavigationProvider)(
       navigator.context,
       AppWebViewScreen(url: url),
@@ -1955,7 +2312,12 @@ class DeepLinkService {
         navigator.mounted;
     if (!isCurrent()) return;
     try {
-      if (!await _awaitDestinationSession(ref, isCurrent: isCurrent)) return;
+      if (!await _awaitDestinationSession(ref, isCurrent: isCurrent)) {
+        // No session (sign-in or onboarding on screen): Home routes it once
+        // the reader is signed in, instead of the tap being lost.
+        if (isCurrent()) _holdInbound('app_destination_requires_auth');
+        return;
+      }
       if (!navigator!.mounted) return;
       if (destination.kind == AppDestinationKind.inbox) {
         await _navigateToInbox(
@@ -1968,9 +2330,7 @@ class DeepLinkService {
       }
       // Every configured destination starts above a usable app root on a cold
       // launch too. Existing content resolvers keep their auth/access guards.
-      if (!preserveCurrentRoute) {
-        navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
-      }
+      if (!preserveCurrentRoute) _ensureHomeRoot(navigator);
       final opened = await openAppDestination(
         navigator.context,
         ref,
@@ -1978,7 +2338,15 @@ class DeepLinkService {
         isCurrent: isCurrent,
         openLegacyLink: (link) async {
           if (!isCurrent()) return true;
-          handleDeepLink(Uri.parse(link), navigatorKey, ref);
+          // `/app/games/<id>` and its kin from a page in the app open over
+          // that page too, never by replacing the pages over Home.
+          _handleDeepLink(
+            Uri.parse(link),
+            navigatorKey,
+            ref,
+            trusted: true,
+            inPlace: preserveCurrentRoute,
+          );
           return true;
         },
         openInboxMessage: (messageId) => _navigateToInbox(
@@ -2004,8 +2372,11 @@ class DeepLinkService {
         messageId: fallbackInboxMessageId,
         generation: generation,
       );
+    } else if (preserveCurrentRoute) {
+      // Opened from a page in the app: the reader stays on it.
+      _snackLinkFailed(navigatorKey);
     } else {
-      _navigateToHome(navigatorKey, reason: 'app_destination_unavailable');
+      _linkFailed(navigatorKey, reason: 'app_destination_unavailable');
     }
   }
 
@@ -2025,7 +2396,11 @@ class DeepLinkService {
         return false;
       }
     }
-    return isCurrent() && ref.read(currentUserProvider) != null;
+    return isCurrent() &&
+        (ref.read(currentUserProvider) != null ||
+            _guestSessionOutlivesAuthState(
+              ref.read(authStateProvider).valueOrNull,
+            ));
   }
 
   /// Restores the Inbox stack after startup, then opens this exact publication.
@@ -2049,10 +2424,13 @@ class DeepLinkService {
       isCurrent: () =>
           navigator.mounted && generation == _destinationGeneration,
     )) {
+      if (navigator.mounted && generation == _destinationGeneration) {
+        _holdInbound('inbox_requires_auth');
+      }
       return false;
     }
     final messageOwner = ref.read(inboxProvider).ownerId;
-    navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+    _ensureHomeRoot(navigator);
     navigator.push(
       MaterialPageRoute<void>(
         settings: const RouteSettings(name: '/app/inbox'),
@@ -2098,15 +2476,309 @@ class DeepLinkService {
         ),
       );
     }
-    navigatorKey.currentState?.pushNamedAndRemoveUntil(
-      '/home_screen',
-      (route) => false,
+    final navigator = navigatorKey.currentState;
+    if (navigator != null) _ensureHomeRoot(navigator);
+  }
+
+  /// Lands on Home. A home shell already standing on [navigator] is kept
+  /// (pages over it close; its section, tabs and scroll stay) instead of
+  /// being built anew, which re-ran its session count, ATT, Shorebird and
+  /// review prompt on every tap. Only with no shell is Home made the one
+  /// route. Home shows its dock either way.
+  void _ensureHomeRoot(NavigatorState navigator) {
+    if (!popToHomeShell(navigator)) {
+      navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+    }
+    final ref = _routerRef;
+    if (ref != null) {
+      try {
+        ref.read(homeChromeRevealRequestProvider.notifier).state++;
+      } catch (_) {
+        // A ref whose scope is gone: nothing to reveal.
+      }
+    }
+  }
+
+  /// A link or push that could not be opened. With the app already up on
+  /// Home (a warm start, a board being read), the reader stays where they
+  /// are and is told ([message], a [userFacingError] where there is an
+  /// error to explain); only a cold start falls back to Home.
+  void _linkFailed(
+    GlobalKey<NavigatorState> navigatorKey, {
+    required String reason,
+    Map<String, dynamic>? extras,
+    bool report = true,
+    String message = kLinkFailedMessage,
+  }) {
+    final navigator = navigatorKey.currentState;
+    if (navigator != null && hasHomeShellOn(navigator)) {
+      _addBreadcrumb(
+        'link failed; staying in place',
+        data: {'reason': reason, ...?extras},
+      );
+      _snackLinkFailed(navigatorKey, message: message);
+      return;
+    }
+    _navigateToHome(
+      navigatorKey,
+      reason: reason,
+      extras: extras,
+      report: report,
     );
   }
 
+  /// Onboarding or sign-in owns the screen with no Home under it (a cold
+  /// start signed out, a new reader onboarding). A guest's Sign up opened
+  /// over the app has Home under it: links open there as before, since Home
+  /// will not mount again to route a held one.
+  bool get _signInOnScreen {
+    if (!_signInRoutes.contains(
+      GuestGateRouteObserver.instance.topRouteName.value,
+    )) {
+      return false;
+    }
+    final navigator = _routerNavigatorKey?.currentState;
+    return navigator == null || !hasHomeShellOn(navigator);
+  }
+
+  /// Whether a sign-in (Google or Apple being asked), a sign-out or an
+  /// account deletion is under way. The auth controller says so as data
+  /// ([AppAuthStatus.loading]) until it lands, so the reader is neither
+  /// signed in nor signed out yet.
+  bool _authUnderWay(WidgetRef ref) {
+    try {
+      return ref.read(authStateProvider).valueOrNull?.status ==
+          AppAuthStatus.loading;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// A Google or Apple sign-in that was cancelled or failed leaves the auth
+  /// state at `error` (a guest's upgrade) or `unauthenticated` while the
+  /// guest's anonymous session lives on, until a token refresh reports it
+  /// again (O20). That reader is still the guest, and a guest is a session:
+  /// links open for them as for any session, never with sign-in pushed over
+  /// their Home.
+  bool _guestSessionOutlivesAuthState(AppAuthState? state) {
+    final status = state?.status;
+    if (status != AppAuthStatus.error &&
+        status != AppAuthStatus.unauthenticated) {
+      return false;
+    }
+    try {
+      final auth = Supabase.instance.client.auth;
+      final session = auth.currentSession;
+      return session != null && auth.currentUser != null && !session.isExpired;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Watches the sign-in a held link waits on ([_holdInbound] while
+  /// [_authUnderWay]). Null when nothing waits on one.
+  ProviderSubscription<AsyncValue<AppAuthState>>? _signInAttempt;
+
+  void _watchSignInAttempt() {
+    final ref = _routerRef;
+    if (ref == null || _signInAttempt != null) return;
+    try {
+      _signInAttempt = ref.listenManual<AsyncValue<AppAuthState>>(
+        authStateProvider,
+        (_, next) {
+          if (next.isLoading ||
+              next.valueOrNull?.status == AppAuthStatus.loading) {
+            return;
+          }
+          final attempt = _signInAttempt;
+          _signInAttempt = null;
+          // Closed outside the notification that is delivering this call.
+          scheduleMicrotask(() => attempt?.close());
+          // Signed in: the Home the finished sign-in builds anew routes it
+          // (AuthScreen, AuthStateListener), as before.
+          if (next.valueOrNull?.status == AppAuthStatus.authenticated) return;
+          // Cancelled or failed: let the sign-in page settle first.
+          WidgetsBinding.instance
+            ..addPostFrameCallback((_) => _resumeAfterAbandonedSignIn())
+            ..ensureVisualUpdate();
+        },
+      );
+    } catch (_) {
+      // A ref whose scope is gone: the next Home routes the held link.
+      _signInAttempt = null;
+    }
+  }
+
+  void _stopWatchingSignInAttempt() {
+    final attempt = _signInAttempt;
+    _signInAttempt = null;
+    attempt?.close();
+    _abandonedSignInCheck?.cancel();
+    _abandonedSignInCheck = null;
+  }
+
+  /// How long a held link waits, after an attempt ends with no session, for
+  /// the sign-in page the app puts up then (a sign-out lands there after
+  /// clearing the reader's caches) before it is let go.
+  static const _abandonedSignInGrace = Duration(seconds: 3);
+  Timer? _abandonedSignInCheck;
+
+  /// The sign-in, sign-out or deletion a held link or push waited on ended
+  /// without signing in (Google's or Apple's sheet dismissed, a failure), so
+  /// no new Home will mount to route it (O20). With the guest's session
+  /// still alive it opens now, as the guest
+  /// ([_guestSessionOutlivesAuthState]). With sign-in or onboarding alone on
+  /// screen it keeps waiting for the Home that sign-in builds; that screen
+  /// may take a moment to come up (a sign-out), so with neither it is
+  /// looked at again after [_abandonedSignInGrace]. Still neither: nothing
+  /// can open it, and it is let go with a quiet word instead of waiting
+  /// unseen or putting sign-in over Home.
+  void _resumeAfterAbandonedSignIn({bool afterGrace = false}) {
+    if (!afterGrace) _abandonedSignInCheck?.cancel();
+    final pending = _pending;
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    if (pending == null || navigatorKey == null || ref == null) return;
+    final AppAuthState? state;
+    try {
+      state = ref.read(authStateProvider).valueOrNull;
+    } catch (_) {
+      return;
+    }
+    switch (state?.status) {
+      case AppAuthStatus.loading:
+        // Tried again straight away: wait for that attempt.
+        _watchSignInAttempt();
+        return;
+      case AppAuthStatus.authenticated:
+        return;
+      default:
+        break;
+    }
+    if (_guestSessionOutlivesAuthState(state)) {
+      _addBreadcrumb('sign-in abandoned; routing held link as the guest');
+      drainPendingDestination();
+      return;
+    }
+    if (_signInOnScreen) return;
+    if (!afterGrace) {
+      _abandonedSignInCheck = Timer(_abandonedSignInGrace, () {
+        _abandonedSignInCheck = null;
+        if (identical(_pending, pending)) {
+          _resumeAfterAbandonedSignIn(afterGrace: true);
+        }
+      });
+      return;
+    }
+    _pending = null;
+    _addBreadcrumb('sign-in abandoned with no session; held link dropped');
+    _snackAfterNavigation(navigatorKey, kHeldLinkNeedsSignInMessage);
+  }
+
+  /// Whether a link may open now: a session exists and the reader is not
+  /// signing in or onboarding. Otherwise the link is held for Home
+  /// ([drainPendingDestination]) and, with no session and no sign-in page
+  /// on screen, sign-in opens.
+  ///
+  /// A sign-in, sign-out or deletion under way holds the link without
+  /// opening anything: sign-in over a guest's Sign up would remove the Home
+  /// under it, and a page opened now would be removed by the Home that a
+  /// finished sign-in builds anew (AuthScreen, AuthStateListener). That
+  /// Home routes it. [signedIn] is a caller's own finished check.
+  Future<bool> _readyToOpen(
+    WidgetRef ref,
+    GlobalKey<NavigatorState> navigatorKey, {
+    required String stage,
+    bool? signedIn,
+  }) async {
+    var isSignedIn = signedIn;
+    if (isSignedIn == null) {
+      // A state still loading (a restore, a sign-in just made) is not read
+      // from its previous value: that is the signed-out state it replaces.
+      final auth = ref.read(authStateProvider);
+      AppAuthState? resolvedState = auth.isLoading ? null : auth.value;
+      if (resolvedState == null) {
+        try {
+          resolvedState = await ref
+              .read(authStateProvider.future)
+              .timeout(kAuthRestoreTimeout);
+        } catch (_) {
+          resolvedState = null;
+        }
+      }
+      if (resolvedState?.status == AppAuthStatus.loading) {
+        _holdInbound(stage, authUnderWay: true);
+        return false;
+      }
+      isSignedIn =
+          _isFullyAuthenticated(resolvedState) ||
+          _guestSessionOutlivesAuthState(resolvedState);
+    }
+    if (isSignedIn && !_signInOnScreen) return true;
+    _holdInbound(stage, signedIn: isSignedIn);
+    if (!isSignedIn && !_signInOnScreen) {
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/auth_screen',
+        (route) => false,
+      );
+    }
+    return false;
+  }
+
+  /// Keeps the link or push being routed for Home ([drainPendingDestination]).
+  void _holdInbound(
+    String stage, {
+    bool signedIn = false,
+    bool authUnderWay = false,
+  }) {
+    final inbound = _inbound;
+    if (inbound != null) _pending = inbound;
+    final ref = _routerRef;
+    final underWay = authUnderWay || (ref != null && _authUnderWay(ref));
+    // A sign-in that ends without signing in builds no new Home to route
+    // it: watch it, so the link opens or is let go then (O20).
+    if (inbound != null && underWay) _watchSignInAttempt();
+    _addBreadcrumb(
+      'deep link held until Home',
+      data: {
+        'stage': stage,
+        'signedIn': signedIn,
+        if (underWay) 'authUnderWay': true,
+      },
+    );
+  }
+
+  /// Routes the link or push held while the reader signed in or onboarded.
+  /// Home calls this once it is up; a no-op when nothing is held.
+  void drainPendingDestination() {
+    final pending = _pending;
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    if (pending == null || navigatorKey == null || ref == null) return;
+    _pending = null;
+    _stopWatchingSignInAttempt();
+    if (DateTime.now().difference(pending.at) > _pendingLifetime) return;
+    _addBreadcrumb('routing held deep link');
+    // A deliberate second routing of the same link, never a duplicate
+    // delivery: the same-game debounce must not swallow it.
+    _lastHandledGameId = null;
+    final link = pending.link;
+    final push = pending.push;
+    if (link != null) {
+      // As trusted as it arrived: an outside link's WebView stays limited.
+      _handleDeepLink(link, navigatorKey, ref, trusted: pending.trusted);
+    } else if (push != null) {
+      handleNotificationData(push, navigatorKey, ref);
+    }
+  }
+
+  @visibleForTesting
+  bool get hasPendingDestination => _pending != null;
+
   /// Fetch event by group_broadcast_id and navigate to tournament detail screen
-  /// Returns false when the event could not be opened. A call swallowed by the
-  /// in-flight guard returns true: the earlier call owns it.
+  /// Returns false when the event could not be opened (or was held for
+  /// sign-in). A call a newer tap superseded returns true: that tap owns the
+  /// screen. [gatePastEvent] defaults to [preserveCurrentRoute].
   Future<bool> _navigateToEvent(
     String? groupBroadcastId,
     GlobalKey<NavigatorState> navigatorKey,
@@ -2115,12 +2787,13 @@ class DeepLinkService {
     String? tourId,
     String? tab,
     bool preserveCurrentRoute = false,
+    bool? gatePastEvent,
   }) async {
-    if (_isNavigating) {
-      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return true;
-    }
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
+    // In-app entries (My Space shortcuts, Botvinnik references) ask the
+    // past-event gate; links do not, in place or not.
+    final askPastEventAccess = gatePastEvent ?? preserveCurrentRoute;
 
     try {
       try {
@@ -2130,40 +2803,15 @@ class DeepLinkService {
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
       }
+      if (superseded()) return true;
 
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-
-      final isAuthenticated = _isFullyAuthenticated(resolvedState);
-      if (!isAuthenticated) {
-        debugPrint(
-          'DeepLinkService: User not authenticated, routing to auth screen',
-        );
-        _captureDeepLinkException(
-          Exception(
-            'Event deep link ignored because user is not authenticated',
-          ),
-          StackTrace.current,
-          stage: 'event_link_requires_auth',
-          extras: {
-            'groupBroadcastId': groupBroadcastId,
-            'roundId': roundId,
-            'tourId': tourId,
-          },
-          captureAsException: false,
-        );
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
-        );
-        return false;
-      }
+      final ready = await _readyToOpen(
+        ref,
+        navigatorKey,
+        stage: 'event_link_requires_auth',
+      );
+      if (superseded()) return true;
+      if (!ready) return false;
 
       final routeContext = await _resolveEventRouteContext(
         ref,
@@ -2171,6 +2819,7 @@ class DeepLinkService {
         roundId: roundId,
         tourId: tourId,
       );
+      if (superseded()) return true;
       if (routeContext == null) {
         debugPrint(
           'DeepLinkService: Could not resolve event route context from '
@@ -2187,7 +2836,7 @@ class DeepLinkService {
           },
         );
         if (!preserveCurrentRoute) {
-          _navigateToHome(
+          _linkFailed(
             navigatorKey,
             reason: 'event_route_context_unresolved',
             extras: {
@@ -2209,8 +2858,9 @@ class DeepLinkService {
       final broadcast = await broadcastRepo
           .getGroupBroadcastById(routeContext.groupBroadcastId)
           .timeout(_fetchTimeout);
+      if (superseded()) return true;
 
-      if (preserveCurrentRoute) {
+      if (askPastEventAccess) {
         final context = navigatorKey.currentState?.context;
         if (context == null ||
             !context.mounted ||
@@ -2227,6 +2877,7 @@ class DeepLinkService {
         tourId: routeContext.tourId,
         roundId: routeContext.roundId,
       );
+      if (superseded()) return true;
 
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       ref.read(selectedTourModeProvider.notifier).state =
@@ -2268,15 +2919,11 @@ class DeepLinkService {
         },
         captureAsException: !expected,
       );
+      if (superseded()) return true;
       if (!preserveCurrentRoute) {
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
-          (route) => false,
-        );
+        _linkFailed(navigatorKey, reason: 'event_link_failed', report: false);
       }
       return false;
-    } finally {
-      _isNavigating = false;
     }
   }
 
@@ -2294,10 +2941,16 @@ class DeepLinkService {
         text.contains('authretryablefetchexception');
   }
 
+  /// The FCM transport turns a payload's JSON null into the string "null"
+  /// (every data value is a string there), so "null" and "undefined" are
+  /// absent ids, never a tour or group id to look up.
   String? _asNonEmptyString(dynamic value) {
     if (value == null) return null;
     final text = value.toString().trim();
-    return text.isEmpty ? null : text;
+    if (text.isEmpty) return null;
+    final lower = text.toLowerCase();
+    if (lower == 'null' || lower == 'undefined') return null;
+    return text;
   }
 
   String? _firstNonEmptyString(List<dynamic> values) {
@@ -2326,11 +2979,8 @@ class DeepLinkService {
     WidgetRef ref, {
     bool preserveCurrentRoute = false,
   }) async {
-    if (_isNavigating) {
-      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return true;
-    }
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
     var landedOnEvent = false;
 
     try {
@@ -2341,30 +2991,21 @@ class DeepLinkService {
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
       }
+      if (superseded()) return true;
 
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-      if (!_isFullyAuthenticated(resolvedState)) {
-        debugPrint(
-          'DeepLinkService: User not authenticated, routing to auth screen',
-        );
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
-        );
-        return false;
-      }
+      final ready = await _readyToOpen(
+        ref,
+        navigatorKey,
+        stage: 'player_scorecard_requires_auth',
+      );
+      if (superseded()) return true;
+      if (!ready) return false;
 
       final routeContext = await _resolveEventRouteContext(
         ref,
         groupBroadcastId: groupBroadcastId,
       );
+      if (superseded()) return true;
       if (routeContext == null) {
         debugPrint(
           'DeepLinkService: Could not resolve event for player scorecard '
@@ -2376,7 +3017,7 @@ class DeepLinkService {
             data: {'groupBroadcastId': _maskedValue(groupBroadcastId)},
           );
         } else {
-          _navigateToHome(
+          _linkFailed(
             navigatorKey,
             reason: 'player_scorecard_event_unresolved',
             extras: {'groupBroadcastId': groupBroadcastId, 'fideId': fideId},
@@ -2389,6 +3030,7 @@ class DeepLinkService {
       final broadcast = await broadcastRepo
           .getGroupBroadcastById(routeContext.groupBroadcastId)
           .timeout(_fetchTimeout);
+      if (superseded()) return true;
 
       await _preselectTourAndRound(
         ref,
@@ -2396,6 +3038,7 @@ class DeepLinkService {
         tourId: routeContext.tourId,
         roundId: routeContext.roundId,
       );
+      if (superseded()) return true;
 
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       ref.read(selectedTourModeProvider.notifier).state =
@@ -2427,9 +3070,9 @@ class DeepLinkService {
         );
         return true;
       }
-      // Backed out of the event while standings loaded: the scorecard would
-      // land on whatever screen is left.
-      if (eventClosed) return true;
+      // Backed out of the event while standings loaded, or a newer tap took
+      // over: the scorecard would land on whatever screen is left.
+      if (eventClosed || superseded()) return true;
 
       ref.read(selectedPlayerProvider.notifier).state = matched;
       ref.read(scoreCardGamesContextProvider.notifier).state = null;
@@ -2452,16 +3095,16 @@ class DeepLinkService {
           'fideId': fideId.toString(),
         },
       );
-      if (!preserveCurrentRoute) {
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
-          (route) => false,
+      if (superseded()) return true;
+      if (!preserveCurrentRoute && !landedOnEvent) {
+        _linkFailed(
+          navigatorKey,
+          reason: 'player_scorecard_failed',
+          report: false,
         );
       }
       // In-app: an event that already opened is not a dead shortcut.
       return preserveCurrentRoute && landedOnEvent;
-    } finally {
-      _isNavigating = false;
     }
   }
 
@@ -2479,11 +3122,8 @@ class DeepLinkService {
     WidgetRef ref, {
     bool preserveCurrentRoute = false,
   }) async {
-    if (_isNavigating) {
-      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return true;
-    }
-    _isNavigating = true;
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
     var landedOnEvent = false;
 
     try {
@@ -2494,30 +3134,21 @@ class DeepLinkService {
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
       }
+      if (superseded()) return true;
 
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-      if (!_isFullyAuthenticated(resolvedState)) {
-        debugPrint(
-          'DeepLinkService: User not authenticated, routing to auth screen',
-        );
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
-        );
-        return false;
-      }
+      final ready = await _readyToOpen(
+        ref,
+        navigatorKey,
+        stage: 'team_scorecard_requires_auth',
+      );
+      if (superseded()) return true;
+      if (!ready) return false;
 
       final routeContext = await _resolveEventRouteContext(
         ref,
         groupBroadcastId: groupBroadcastId,
       );
+      if (superseded()) return true;
       if (routeContext == null) {
         debugPrint(
           'DeepLinkService: Could not resolve event for team scorecard '
@@ -2529,7 +3160,7 @@ class DeepLinkService {
             data: {'groupBroadcastId': _maskedValue(groupBroadcastId)},
           );
         } else {
-          _navigateToHome(
+          _linkFailed(
             navigatorKey,
             reason: 'team_scorecard_event_unresolved',
             extras: {
@@ -2545,6 +3176,7 @@ class DeepLinkService {
       final broadcast = await broadcastRepo
           .getGroupBroadcastById(routeContext.groupBroadcastId)
           .timeout(_fetchTimeout);
+      if (superseded()) return true;
 
       await _preselectTourAndRound(
         ref,
@@ -2552,6 +3184,7 @@ class DeepLinkService {
         tourId: routeContext.tourId,
         roundId: routeContext.roundId,
       );
+      if (superseded()) return true;
 
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       ref.read(selectedTourModeProvider.notifier).state =
@@ -2589,9 +3222,9 @@ class DeepLinkService {
         );
       }
 
-      // Backed out of the event while standings loaded: the scorecard would
-      // land on whatever screen is left.
-      if (eventClosed) return true;
+      // Backed out of the event while standings loaded, or a newer tap took
+      // over: the scorecard would land on whatever screen is left.
+      if (eventClosed || superseded()) return true;
 
       ref.read(selectedTeamProvider.notifier).state = team;
       navigatorKey.currentState?.pushNamed('/team_scorecard_screen');
@@ -2604,16 +3237,16 @@ class DeepLinkService {
         stage: 'navigate_to_team_scorecard',
         extras: {'groupBroadcastId': groupBroadcastId, 'teamName': teamName},
       );
-      if (!preserveCurrentRoute) {
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
-          (route) => false,
+      if (superseded()) return true;
+      if (!preserveCurrentRoute && !landedOnEvent) {
+        _linkFailed(
+          navigatorKey,
+          reason: 'team_scorecard_failed',
+          report: false,
         );
       }
       // In-app: an event that already opened is not a dead shortcut.
       return preserveCurrentRoute && landedOnEvent;
-    } finally {
-      _isNavigating = false;
     }
   }
 
@@ -2637,19 +3270,18 @@ class DeepLinkService {
 
   /// Opens a player's overall profile from a shared link
   /// `chessever.com/player/<identity>` (or the canonical
-  /// `/player/<name-slug>/<identity>` SEO form). Numeric identities resolve a
-  /// current FIDE player. Reviewed Memorial route ids resolve locally so a
-  /// share link cannot drift to a namesake or a recycled identity.
+  /// `/player/<name-slug>/<identity>` SEO form), on [tab] when the link names
+  /// a view (`/games`, `/events`; none keeps the reader's last tab). Numeric identities resolve a current FIDE
+  /// player. Reviewed Memorial route ids resolve locally so a share link
+  /// cannot drift to a namesake or a recycled identity.
   Future<void> _navigateToPlayerProfile(
     String routeId,
     GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) async {
-    if (_isNavigating) {
-      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return;
-    }
-    _isNavigating = true;
+    WidgetRef ref, {
+    PlayerProfileTab? tab,
+  }) async {
+    final generation = ++_destinationGeneration;
+    bool superseded() => generation != _destinationGeneration;
 
     try {
       try {
@@ -2659,44 +3291,35 @@ class DeepLinkService {
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
       }
+      if (superseded()) return;
 
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-      if (!_isFullyAuthenticated(resolvedState)) {
-        debugPrint(
-          'DeepLinkService: User not authenticated, routing to auth screen',
-        );
-        navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/auth_screen',
-          (route) => false,
-        );
-        return;
-      }
+      final ready = await _readyToOpen(
+        ref,
+        navigatorKey,
+        stage: 'player_profile_requires_auth',
+      );
+      if (superseded() || !ready) return;
 
       final memorial = await findBundledMemorialPlayerByRouteId(routeId);
+      if (superseded()) return;
       if (memorial != null) {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
-            builder:
-                (_) => PlayerProfileScreen(
-                  fideId: int.tryParse(memorial.fideId ?? ''),
-                  playerName: memorial.name,
-                  title: memorial.title,
-                  federation: memorial.fed,
-                  rating:
-                      memorial.ratingClassical > 0
-                          ? memorial.ratingClassical
-                          : null,
-                  gamebasePlayerId: memorial.gamebasePlayerId,
-                  memorialSourceIdentity: memorial.sourceIdentity,
-                  memorialRouteId: memorial.routeId,
-                ),
+            builder: (_) => _page(
+              PlayerProfileScreen(
+                fideId: int.tryParse(memorial.fideId ?? ''),
+                playerName: memorial.name,
+                title: memorial.title,
+                federation: memorial.fed,
+                rating: memorial.ratingClassical > 0
+                    ? memorial.ratingClassical
+                    : null,
+                gamebasePlayerId: memorial.gamebasePlayerId,
+                memorialSourceIdentity: memorial.sourceIdentity,
+                memorialRouteId: memorial.routeId,
+                initialTab: tab,
+              ),
+            ),
           ),
         );
         return;
@@ -2704,7 +3327,7 @@ class DeepLinkService {
 
       final fideId = int.tryParse(routeId);
       if (fideId == null || fideId <= 0) {
-        _navigateToHome(
+        _linkFailed(
           navigatorKey,
           reason: 'player_profile_not_found',
           extras: {'routeId': routeId},
@@ -2716,11 +3339,10 @@ class DeepLinkService {
           .read(chessPlayerRepositoryProvider)
           .getPlayerByFideId(fideId)
           .timeout(_fetchTimeout);
+      if (superseded()) return;
       if (player == null || player.name.trim().isEmpty) {
-        debugPrint(
-          'DeepLinkService: Player $fideId not found, routing to home',
-        );
-        _navigateToHome(
+        debugPrint('DeepLinkService: Player $fideId not found');
+        _linkFailed(
           navigatorKey,
           reason: 'player_profile_not_found',
           extras: {'fideId': fideId},
@@ -2730,14 +3352,16 @@ class DeepLinkService {
 
       navigatorKey.currentState?.push(
         MaterialPageRoute(
-          builder:
-              (_) => PlayerProfileScreen(
-                fideId: player.fideid,
-                playerName: player.name,
-                title: player.title,
-                federation: player.country,
-                rating: player.rating,
-              ),
+          builder: (_) => _page(
+            PlayerProfileScreen(
+              fideId: player.fideid,
+              playerName: player.name,
+              title: player.title,
+              federation: player.country,
+              rating: player.rating,
+              initialTab: tab,
+            ),
+          ),
         ),
       );
     } catch (e, stackTrace) {
@@ -2748,12 +3372,13 @@ class DeepLinkService {
         stage: 'navigate_to_player_profile',
         extras: {'routeId': routeId},
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
-    } finally {
-      _isNavigating = false;
+      if (!superseded()) {
+        _linkFailed(
+          navigatorKey,
+          reason: 'player_profile_failed',
+          report: false,
+        );
+      }
     }
   }
 
@@ -2927,10 +3552,9 @@ class DeepLinkService {
     // category is preselected — matching Lichess's behavior for the same URL
     // shape. If `<id>` is actually a group_broadcasts.id (legacy shares) the
     // lookup misses and we fall through with the original value.
-    final probeId =
-        resolvedTourId == null && resolvedGroupBroadcastId != null
-            ? resolvedGroupBroadcastId
-            : null;
+    final probeId = resolvedTourId == null && resolvedGroupBroadcastId != null
+        ? resolvedGroupBroadcastId
+        : null;
 
     // Resolve/validate group_broadcast_id from tour. Combines the tour-by-id
     // lookup for both an explicit `tourId` and the Lichess-style probe above
@@ -2956,6 +3580,33 @@ class DeepLinkService {
       }
     }
 
+    // `/broadcast/<slug>/<id>` from a PGN's BroadcastURL (rebranded from
+    // lichess.org/broadcast/<tour>/<round>/<roundId>) carries a ROUND id, so
+    // a probe that is no tour is tried as a round: the event then opens on
+    // that round instead of failing as an unknown group broadcast.
+    if (probeId != null && resolvedTourId == null && resolvedRoundId == null) {
+      try {
+        final round = await ref
+            .read(roundRepositoryProvider)
+            .getRoundById(probeId)
+            .timeout(_fetchTimeout);
+        final tours = await ref
+            .read(tourRepositoryProvider)
+            .getToursByIds([round.tourId])
+            .timeout(_fetchTimeout);
+        final tourGroupId = tours.isEmpty
+            ? null
+            : _asNonEmptyString(tours.first.groupBroadcastId);
+        if (tourGroupId != null) {
+          resolvedRoundId = round.id;
+          resolvedTourId = round.tourId;
+          resolvedGroupBroadcastId = tourGroupId;
+        }
+      } catch (e) {
+        debugPrint('DeepLinkService: Probe id is not a round either: $e');
+      }
+    }
+
     if (resolvedGroupBroadcastId == null) {
       return null;
     }
@@ -2973,7 +3624,11 @@ class DeepLinkService {
     _subscription?.cancel();
     _subscription = null;
     _isInitialized = false;
-    _isNavigating = false;
+    _inbound = null;
+    _pending = null;
+    _stopWatchingSignInAttempt();
+    debugBoardPageBuilder = null;
+    debugPageOverride = null;
     _lastHandledGameId = null;
     _lastHandledTime = null;
     _appReadyCompleter = Completer<void>();
@@ -3173,6 +3828,24 @@ class _DeepLinkedChessBoardRouteState
       initialFen: widget.initialFen,
     );
   }
+}
+
+class _InboundDestination {
+  _InboundDestination.link(Uri this.link, {required this.trusted})
+    : push = null,
+      at = DateTime.now();
+  _InboundDestination.push(Map<String, dynamic> this.push)
+    : link = null,
+      trusted = true,
+      at = DateTime.now();
+
+  final Uri? link;
+  final Map<String, dynamic>? push;
+
+  /// Whether the link was ChessEver's own (a push route, an in-app link):
+  /// replayed with the same trust ([DeepLinkService._handleDeepLink]).
+  final bool trusted;
+  final DateTime at;
 }
 
 class _EventRouteContext {

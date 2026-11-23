@@ -6,22 +6,20 @@ void main() {
   test(
     'TWIC Player Profile data source reaches board and grid player rows',
     () {
-      final playerGamesSource =
-          File(
-            'lib/screens/player_profile/tabs/player_games_tab.dart',
-          ).readAsStringSync();
+      final playerGamesSource = File(
+        'lib/screens/player_profile/tabs/player_games_tab.dart',
+      ).readAsStringSync();
 
       for (final wrapperName in [
         'BoardGameCardWrapperWidget',
         'GridGameCardWrapperWidget',
       ]) {
-        final playerProfileCalls = _constructorArguments(
-          playerGamesSource,
-          wrapperName,
-        ).where(
-          (arguments) =>
-              arguments.contains('viewSource: ChessboardView.playerProfile'),
-        );
+        final playerProfileCalls =
+            _constructorArguments(playerGamesSource, wrapperName).where(
+              (arguments) => arguments.contains(
+                'viewSource: ChessboardView.playerProfile',
+              ),
+            );
 
         expect(
           playerProfileCalls,
@@ -71,10 +69,9 @@ void main() {
         );
       }
 
-      final previewSource =
-          File(
-            'lib/screens/chessboard/widgets/chess_board_from_fen_new.dart',
-          ).readAsStringSync();
+      final previewSource = File(
+        'lib/screens/chessboard/widgets/chess_board_from_fen_new.dart',
+      ).readAsStringSync();
       final rowCalls = _constructorArguments(
         previewSource,
         '_PlayerRow',
@@ -106,10 +103,9 @@ void main() {
   );
 
   test('Chessboard dropdown player rows keep the route data source', () {
-    final source =
-        File(
-          'lib/screens/chessboard/chess_board_screen_new.dart',
-        ).readAsStringSync();
+    final source = File(
+      'lib/screens/chessboard/chess_board_screen_new.dart',
+    ).readAsStringSync();
 
     final overlayCalls = _constructorArguments(
       source,
@@ -166,10 +162,9 @@ void main() {
   test(
     'Chessboard main PageView player rows keep the route-owned scorecard context',
     () {
-      final source =
-          File(
-            'lib/screens/chessboard/chess_board_screen_new.dart',
-          ).readAsStringSync();
+      final source = File(
+        'lib/screens/chessboard/chess_board_screen_new.dart',
+      ).readAsStringSync();
 
       final pageCalls = _constructorArguments(
         source,
@@ -215,12 +210,11 @@ void main() {
         'scoreCardGamesContext',
       );
 
-      final mainPlayerRows = _constructorArguments(
-        source,
-        'PlayerFirstRowDetailWidget',
-      ).where(
-        (arguments) => arguments.contains('playerView: PlayerView.boardView'),
-      );
+      final mainPlayerRows =
+          _constructorArguments(source, 'PlayerFirstRowDetailWidget').where(
+            (arguments) =>
+                arguments.contains('playerView: PlayerView.boardView'),
+          );
       expect(mainPlayerRows, hasLength(2));
       for (final arguments in mainPlayerRows) {
         expect(
@@ -242,19 +236,16 @@ void main() {
   );
 
   test('Every tablet board player row keeps the route profile backend', () {
-    final source =
-        File(
-          'lib/screens/chessboard/chess_board_screen_new.dart',
-        ).readAsStringSync();
+    final source = File(
+      'lib/screens/chessboard/chess_board_screen_new.dart',
+    ).readAsStringSync();
 
-    final tabletPlayerRows = _constructorArguments(
-      source,
-      '_TabletPlayerCard',
-    ).where(
-      (arguments) =>
-          arguments.contains('game: game') &&
-          arguments.contains('state: state'),
-    );
+    final tabletPlayerRows = _constructorArguments(source, '_TabletPlayerCard')
+        .where(
+          (arguments) =>
+              arguments.contains('game: game') &&
+              arguments.contains('state: state'),
+        );
     expect(
       tabletPlayerRows,
       hasLength(4),
@@ -274,19 +265,16 @@ void main() {
 
   group('Gamebase archive player rows use the TWIC profile backend', () {
     test('GamebaseSearchGameCard defaults archive callers to TWIC', () {
-      final source =
-          File(
-            'lib/screens/library/widgets/gamebase_search_game_card.dart',
-          ).readAsStringSync();
+      final source = File(
+        'lib/screens/library/widgets/gamebase_search_game_card.dart',
+      ).readAsStringSync();
 
-      final constructors = _constructorArguments(
-        source,
-        'GamebaseSearchGameCard',
-      ).where(
-        (arguments) =>
-            arguments.contains('required this.game,') &&
-            arguments.contains('required this.allGames,'),
-      );
+      final constructors =
+          _constructorArguments(source, 'GamebaseSearchGameCard').where(
+            (arguments) =>
+                arguments.contains('required this.game,') &&
+                arguments.contains('required this.allGames,'),
+          );
       expect(constructors, hasLength(1));
       expect(
         _topLevelDefaultValue(
@@ -301,10 +289,9 @@ void main() {
     });
 
     test('Library board and grid previews and launches keep TWIC', () {
-      final source =
-          File(
-            'lib/screens/library/widgets/library_search_results_view.dart',
-          ).readAsStringSync();
+      final source = File(
+        'lib/screens/library/widgets/library_search_results_view.dart',
+      ).readAsStringSync();
 
       const previewKeys = {
         'GridChessBoardFromFENNew': 'lib_grid_game_',
@@ -334,14 +321,12 @@ void main() {
         );
       }
 
-      final launchCalls = _constructorArguments(
-        source,
-        'navigateToChessBoard',
-      ).where(
-        (arguments) =>
-            arguments.contains('orderedGames: allGames') &&
-            arguments.contains('gameIndex: gameIndex'),
-      );
+      final launchCalls = _constructorArguments(source, 'navigateToChessBoard')
+          .where(
+            (arguments) =>
+                arguments.contains('orderedGames: allGames') &&
+                arguments.contains('gameIndex: gameIndex'),
+          );
       expect(
         launchCalls,
         hasLength(2),
@@ -357,17 +342,15 @@ void main() {
     });
 
     test('Miniatures card, board, grid, and direct launcher keep TWIC', () {
-      final tabSource =
-          File(
-            'lib/screens/library/miniatures/miniatures_games_tab.dart',
-          ).readAsStringSync();
+      final tabSource = File(
+        'lib/screens/library/miniatures/miniatures_games_tab.dart',
+      ).readAsStringSync();
 
-      final cardAndBoardCalls = _constructorArguments(
-        tabSource,
-        'GameCardWrapperWidget',
-      ).where(
-        (arguments) => arguments.contains('isChessBoardVisible: entry.isBoard'),
-      );
+      final cardAndBoardCalls =
+          _constructorArguments(tabSource, 'GameCardWrapperWidget').where(
+            (arguments) =>
+                arguments.contains('isChessBoardVisible: entry.isBoard'),
+          );
       expect(
         cardAndBoardCalls,
         hasLength(1),
@@ -394,18 +377,15 @@ void main() {
         reason: 'Miniatures grid player rows must query the archive backend',
       );
 
-      final launcherSource =
-          File(
-            'lib/screens/library/miniatures/miniature_game_launcher.dart',
-          ).readAsStringSync();
-      final boardCalls = _constructorArguments(
-        launcherSource,
-        'ChessBoardScreenNew',
-      ).where(
-        (arguments) =>
-            arguments.contains('games: boardGames') &&
-            arguments.contains('showGamebaseButton: false'),
-      );
+      final launcherSource = File(
+        'lib/screens/library/miniatures/miniature_game_launcher.dart',
+      ).readAsStringSync();
+      final boardCalls =
+          _constructorArguments(launcherSource, 'ChessBoardScreenNew').where(
+            (arguments) =>
+                arguments.contains('games: boardGames') &&
+                arguments.contains('showGamebaseButton: false'),
+          );
       expect(boardCalls, hasLength(1));
       expect(
         _topLevelNamedArgument(boardCalls.single, 'playerProfileDataSource'),
@@ -415,18 +395,18 @@ void main() {
     });
 
     test('position sheet and in-board FEN results keep TWIC', () {
-      final sheetSource =
-          File(
-            'lib/screens/gamebase/widgets/position_games_sheet.dart',
-          ).readAsStringSync();
-      final sheetBoardCalls = _constructorArguments(
-        sheetSource,
-        'ChessBoardScreenNew',
-      ).where(
-        (arguments) =>
-            arguments.contains('games: boardGames') &&
-            arguments.contains('initialFen: initialFen'),
-      );
+      final sheetSource = File(
+        'lib/screens/gamebase/widgets/position_games_sheet.dart',
+      ).readAsStringSync();
+      // openGamebaseGame hands the board the free-navigation scope
+      // (gameNavigationForAccess, 140923f7, 36.8.12) instead of the raw
+      // boardGames list.
+      final sheetBoardCalls =
+          _constructorArguments(sheetSource, 'ChessBoardScreenNew').where(
+            (arguments) =>
+                arguments.contains('games: navigation.games') &&
+                arguments.contains('initialFen: initialFen'),
+          );
       expect(sheetBoardCalls, hasLength(1));
       expect(
         _topLevelNamedArgument(
@@ -436,41 +416,76 @@ void main() {
         'PlayerProfileDataSource.twic',
         reason: 'a Gamebase position-result board must use Gamebase player IDs',
       );
-
-      final boardSource =
-          File(
-            'lib/screens/chessboard/chess_board_screen_new.dart',
-          ).readAsStringSync();
-      final fenTableBoardCalls = _constructorArguments(
-        boardSource,
-        'ChessBoardScreenNew',
-      ).where(
-        (arguments) =>
-            arguments.contains('games: boardGames') &&
-            arguments.contains('initialFen: widget.fen'),
-      );
-      expect(fenTableBoardCalls, hasLength(1));
       expect(
-        _topLevelNamedArgument(
-          fenTableBoardCalls.single,
-          'playerProfileDataSource',
-        ),
-        'PlayerProfileDataSource.twic',
+        sheetSource,
+        contains('this.openGame = openGamebaseGame'),
+        reason: 'the position sheet must open results through the TWIC opener',
+      );
+
+      // The in-board FEN results table (`_FenPositionGamesTable`, which had
+      // its own launch with `initialFen: widget.fen`) was removed in
+      // e6dadedb (34.8.27). A position-search board now shows the shared
+      // BoardOpeningExplorerPanel, whose results open through the position
+      // sheet or an explorer card, both via openGamebaseGame: the TWIC
+      // board asserted above.
+      final boardSource = File(
+        'lib/screens/chessboard/chess_board_screen_new.dart',
+      ).readAsStringSync();
+      expect(
+        _constructorArguments(
+          boardSource,
+          'ChessBoardScreenNew',
+        ).where((arguments) => arguments.contains('initialFen:')),
+        isEmpty,
         reason:
-            'the board FEN table must not open an archive result as Supabase',
+            'the board must not open FEN results through a launch of its own '
+            'that could open an archive result as Supabase',
+      );
+      expect(
+        boardSource,
+        contains('BoardOpeningExplorerPanel('),
+        reason: 'in-board position search must use the shared explorer panel',
+      );
+
+      for (final path in [
+        'lib/screens/gamebase/widgets/board_opening_explorer_panel.dart',
+        'lib/screens/gamebase/widgets/move_statistics_panel.dart',
+        'lib/screens/gamebase/widgets/explorer_game_card.dart',
+      ]) {
+        expect(
+          _constructorArguments(
+            File(path).readAsStringSync(),
+            'ChessBoardScreenNew',
+          ),
+          isEmpty,
+          reason: '$path must open boards only through openGamebaseGame',
+        );
+      }
+      expect(
+        File(
+          'lib/screens/gamebase/widgets/move_statistics_panel.dart',
+        ).readAsStringSync(),
+        contains('showPositionGamesSheet('),
+        reason: 'in-board explorer results must open in the position sheet',
+      );
+      expect(
+        File(
+          'lib/screens/gamebase/widgets/explorer_game_card.dart',
+        ).readAsStringSync(),
+        contains('await openGamebaseGame('),
+        reason: 'an explorer card must open its game through the TWIC opener',
       );
     });
 
     test('Gamebase deep links keep TWIC on the destination board', () {
-      final source =
-          File('lib/services/deep_link_service.dart').readAsStringSync();
-      final boardCalls = _constructorArguments(
-        source,
-        'ChessBoardScreenNew',
-      ).where(
-        (arguments) =>
-            arguments.contains("ValueKey('deep-link-gamebase-\$gameId')"),
-      );
+      final source = File(
+        'lib/services/deep_link_service.dart',
+      ).readAsStringSync();
+      final boardCalls = _constructorArguments(source, 'ChessBoardScreenNew')
+          .where(
+            (arguments) =>
+                arguments.contains("ValueKey('deep-link-gamebase-\$gameId')"),
+          );
       expect(boardCalls, hasLength(1));
       expect(
         _topLevelNamedArgument(boardCalls.single, 'playerProfileDataSource'),

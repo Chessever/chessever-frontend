@@ -11,6 +11,7 @@ import 'package:chessever2/widgets/smooth_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 
 /// Bottom sheet that lets an active subscriber manage or cancel their plan.
 ///
@@ -173,7 +174,7 @@ class _StripeBody extends StatelessWidget {
           label: 'Manage on chessever.com',
           onTap: () async {
             HapticFeedbackService.buttonPress();
-            await launchUrl(_kAccountUrl, mode: LaunchMode.externalApplication);
+            await openOwnWebPage(_kAccountUrl);
             if (context.mounted) Navigator.of(context).pop();
           },
         ),

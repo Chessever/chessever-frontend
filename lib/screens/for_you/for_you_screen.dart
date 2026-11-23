@@ -10,9 +10,12 @@ import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/my_space_view.dart';
 import 'package:chessever2/screens/search/search_tab_screen.dart';
+import 'package:chessever2/services/discovery_dots/discovery_dot.dart'
+    show discoveryDotId;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/discovery_dot.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
@@ -410,6 +413,9 @@ class _ForYouHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ForYouPageTabs(
+      // The ids Home's tabs wore before 38.18 (`home.tab.my_space`, ...):
+      // Nudges published for them, and trails through them, light here.
+      dotScope: 'home.tab',
       pageController: pageController,
       selectedIndex: selectedIndex,
       labels: [for (final tab in ForYouTab.values) tab.label],
@@ -424,6 +430,11 @@ class _ForYouHeader extends StatelessWidget {
 /// sits on the centre line every root's title sits on, and the indicator
 /// rests on the row's foot. A root whose pages are its header wears them:
 /// Home, and Collections on its tab.
+///
+/// With a [dotScope] each tab is a Nudge surface (a [DiscoveryDotAnchor])
+/// named `<dotScope>.<label>`, as the segmented tabs these replaced were:
+/// the dot sits off the word's top-right shoulder, and the tab is reached
+/// by a tap or by being the page on screen.
 class ForYouPageTabs extends StatelessWidget {
   const ForYouPageTabs({
     super.key,
@@ -433,6 +444,7 @@ class ForYouPageTabs extends StatelessWidget {
     required this.onSelected,
     required this.onHold,
     this.holdHint,
+    this.dotScope,
   });
 
   final PageController pageController;
@@ -445,7 +457,19 @@ class ForYouPageTabs extends StatelessWidget {
   /// Home's ("Make Home → Today the start screen").
   final String Function(int index)? holdHint;
 
+  /// The Nudge surfaces' scope (`home.tab`, `collections.tab`); null for
+  /// tabs that carry none.
+  final String? dotScope;
+
   static const double _barHeight = 3;
+
+  /// Where a tab's dot sits from its slot's centre: just right of the word
+  /// as it is drawn ([word], after the label's scale-down), level with the
+  /// top of its letters.
+  static Offset _dotShoulder(Size word) => Offset(
+    word.width / 2 + 2 + DiscoveryDotMark.size / 2,
+    -word.height / 2 + 5,
+  );
 
   /// Where the pages are, as a tab index: fractional mid-swipe.
   double _position() {
@@ -461,6 +485,38 @@ class ForYouPageTabs extends StatelessWidget {
       }
     }
     return selectedIndex.toDouble();
+  }
+
+  /// [label] in [style] as the tab draws it: one line, scaled down to
+  /// [room] when wider.
+  static Size _drawnWord(
+    BuildContext context,
+    String label,
+    TextStyle style,
+    double room,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final size = painter.size;
+    painter.dispose();
+    final scale = room > 0 && size.width > room ? room / size.width : 1.0;
+    return size * scale;
+  }
+
+  /// Tab [index]'s slot, as a Nudge surface when the tabs have a [scope].
+  Widget _dot(String? scope, int index, List<Size> words, Widget slot) {
+    if (scope == null) return slot;
+    return DiscoveryDotAnchor(
+      id: discoveryDotId(scope, labels[index]),
+      selected: index == selectedIndex,
+      alignment: Alignment.center,
+      offset: _dotShoulder(words[index]),
+      child: slot,
+    );
   }
 
   @override
@@ -498,6 +554,24 @@ class ForYouPageTabs extends StatelessWidget {
             for (final painter in painters) {
               painter.dispose();
             }
+            // Each word as drawn (its own weight, scaled down to its slot),
+            // for the dot on its shoulder.
+            final scope = dotScope;
+            final words = scope == null
+                ? const <Size>[]
+                : [
+                    for (var i = 0; i < labels.length; i++)
+                      _drawnWord(
+                        context,
+                        labels[i],
+                        style.copyWith(
+                          fontWeight: i == selectedIndex
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                        slot - 8,
+                      ),
+                  ];
             return Stack(
               children: [
                 Row(
@@ -522,27 +596,32 @@ class ForYouPageTabs extends StatelessWidget {
                               onSelected(i);
                             },
                             onLongPress: () => onHold(i),
-                            child: PressSpring(
-                              pressedScale: 0.92,
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      labels[i],
-                                      maxLines: 1,
-                                      softWrap: false,
-                                      style: style.copyWith(
-                                        // Every title stays bright: the
-                                        // underline alone says which page
-                                        // shows (PM, 2026-11-20).
-                                        color: colors.textPrimary,
-                                        fontWeight: i == selectedIndex
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
+                            child: _dot(
+                              scope,
+                              i,
+                              words,
+                              PressSpring(
+                                pressedScale: 0.92,
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        labels[i],
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        style: style.copyWith(
+                                          // Every title stays bright: the
+                                          // underline alone says which page
+                                          // shows (PM, 2026-11-20).
+                                          color: colors.textPrimary,
+                                          fontWeight: i == selectedIndex
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                        ),
                                       ),
                                     ),
                                   ),

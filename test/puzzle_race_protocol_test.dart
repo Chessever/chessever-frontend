@@ -456,7 +456,12 @@ void main() {
       expect(text, contains('24 puzzles in 03:12.4'));
       expect(text, contains('Finished 2 of 5.'));
       expect(text, isNot(contains('—')));
-      expect(raceInviteText('7KQ2MX'), 'Join my ChessEver Puzzle Race: 7KQ2MX');
+      expect(
+        raceInviteText('7KQ2MX'),
+        'Join my ChessEver Puzzle Race: 7KQ2MX\nhttps://chessever.com/download',
+      );
+      // A recipient without the app has somewhere to tap.
+      expect(text, endsWith('\nhttps://chessever.com/download'));
     });
   });
 

@@ -7,8 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Settings › Customization: whether the collection stories row sits at
-/// the top of Today, On (the default) or Off. The choice follows the
-/// reader's account; Today springs the row in or out the moment it changes.
+/// the top of Today, On (the default) or Off. One state with the row's own
+/// pull past its end, which turns it Off: this row watches it, so it shows
+/// the latest choice whichever way it was made, and Today springs the row
+/// in or out the moment it changes here. Signed in, the choice is kept on
+/// the server with the reader's other settings, so every device follows it.
 class StoryRowSettingsBody extends ConsumerWidget {
   const StoryRowSettingsBody({super.key});
 

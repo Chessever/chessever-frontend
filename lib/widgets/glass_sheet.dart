@@ -54,6 +54,7 @@ class GlassSheet extends StatelessWidget {
     this.inkSurface = false,
     this.cover,
     this.solid = false,
+    this.lip = true,
   });
 
   final Widget child;
@@ -76,6 +77,10 @@ class GlassSheet extends StatelessWidget {
   /// without it.
   final bool solid;
 
+  /// Whether the top lip is lit. False where the sheet cannot be dragged:
+  /// a lit lip reads as a grab handle.
+  final bool lip;
+
   /// How far the glass reaches past the sheet's sides and bottom.
   static const double bleed = 2;
 
@@ -95,6 +100,7 @@ class GlassSheet extends StatelessWidget {
         tone: tone,
         cover: cover ?? (context.isLightTheme ? lightCover : null),
         solid: solid,
+        lip: lip,
         padding: extra == null ? inset : inset.add(extra),
         child: inkSurface
             ? Material(type: MaterialType.transparency, child: child)

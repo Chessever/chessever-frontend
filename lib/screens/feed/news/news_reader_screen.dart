@@ -201,8 +201,12 @@ class _NewsReaderScreenState extends ConsumerState<NewsReaderScreen> {
       unawaited(NewsReaderScreen.open(context, article));
       return;
     }
+    // A game, event, scorecard, profile or app page opens over the article,
+    // so Back returns to it, by the rules of an Inbox link
+    // ([DeepLinkService.openLinkInPlace]); another article still opens in
+    // Discovery's reader.
     final route = newsInAppRoute(uri);
-    if (route != null && DeepLinkService.instance.openLinkFromApp(route)) {
+    if (route != null && DeepLinkService.instance.openLinkInPlace(route)) {
       return;
     }
     await _openExternal(uri);

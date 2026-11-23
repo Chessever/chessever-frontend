@@ -48,6 +48,11 @@ const String kEventTabQueryParam = 'tab';
 const String kEventStandingsTab = 'standings';
 const String kEventBracketTab = 'bracket';
 
+/// A team event's individual table (its Players tab). The app has opened
+/// `?tab=players` there since the tab existed; the web shows the event page
+/// until it gains the tab (never a 404).
+const String kEventPlayersTab = 'players';
+
 /// Builds the canonical shareable URL for an event, mirroring
 /// `lichess.org/broadcast/<tour.slug>/<tour.id>` on chessever.com.
 ///

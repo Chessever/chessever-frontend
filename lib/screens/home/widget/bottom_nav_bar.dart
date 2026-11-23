@@ -367,6 +367,29 @@ void unregisterHomeShellRoute(ModalRoute<Object?>? route) {
   if (identical(_homeShellRoute, route)) _homeShellRoute = null;
 }
 
+/// Whether a home shell is mounted, active, on [navigator].
+bool hasHomeShellOn(NavigatorState navigator) {
+  final shell = _homeShellRoute;
+  return shell != null &&
+      shell.isActive &&
+      identical(shell.navigator, navigator);
+}
+
+/// Closes every page over the home shell standing on [navigator], keeping
+/// the shell itself (its section, tabs and scroll). False, changing nothing,
+/// when no shell stands on [navigator]: the caller then builds Home anew.
+bool popToHomeShell(NavigatorState navigator) {
+  final shell = _homeShellRoute;
+  if (shell == null || !hasHomeShellOn(navigator)) return false;
+  if (!shell.isCurrent) navigator.popUntil((route) => route == shell);
+  return true;
+}
+
+/// Asked whenever an inbound link or push lands on Home: the shell shows
+/// its bars again even when the section it selects is the one already open
+/// (a section change shows them by itself). The value only counts up.
+final homeChromeRevealRequestProvider = StateProvider<int>((ref) => 0);
+
 /// Opens the dock's [item] as a tap on its slot would, from a page pushed
 /// over the home shell (Search's Collections section) or from inside it
 /// (Discovery's Collections tile), instead of pushing a second copy of a

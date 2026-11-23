@@ -38,6 +38,11 @@ typedef CombinedScorecardGames = ({
   bool loading,
 });
 
+extension CombinedScorecardPresentation on CombinedScorecardGames {
+  List<GamesTourModel> gamesForDisplay({required bool fromHome}) =>
+      fromHome && loading ? const [] : games;
+}
+
 /// Uses complete, unfiltered catalogs, not search results or preview boards.
 final combinedScorecardGamesProvider = Provider.autoDispose
     .family<CombinedScorecardGames, CombinedCategories>((ref, categories) {
@@ -80,10 +85,42 @@ CombinedScorecardGames assembleCombinedScorecardGames({
     gamesByTourId: gamesByTour,
     roundsByTourId: roundsByTour,
   );
-  final labels = {
+  final stages = [
     for (final item in categories.items)
-      if (!mirrors.contains(item.tourId)) item.tourId: item.label,
-  };
+      if (!mirrors.contains(item.tourId)) item,
+  ];
+  final latestPlayedByStage = <String, DateTime>{};
+  final originalOrder = <String, int>{};
+  for (final (index, stage) in stages.indexed) {
+    final id = stage.tourId;
+    originalOrder[id] = index;
+    final startsByRound = {
+      for (final round in roundsByTour[id] ?? const <Round>[])
+        round.id: round.startsAt,
+    };
+    for (final game in gamesByTour[id] ?? const <GamesTourModel>[]) {
+      if (!game.hasStarted && !game.gameStatus.isFinished) continue;
+      final date = startsByRound[game.roundId] ?? game.bucketDate;
+      final latest = latestPlayedByStage[id];
+      if (date != null && (latest == null || date.isAfter(latest))) {
+        latestPlayedByStage[id] = date;
+      }
+    }
+  }
+  // Picker order is not chronological. Upcoming pairings must not move an
+  // older stage ahead of a more recently played one.
+  stages.sort((a, b) {
+    final left = latestPlayedByStage[a.tourId];
+    final right = latestPlayedByStage[b.tourId];
+    if (left == null && right != null) return 1;
+    if (left != null && right == null) return -1;
+    if (left != null && right != null) {
+      final byDate = right.compareTo(left);
+      if (byDate != 0) return byDate;
+    }
+    return originalOrder[a.tourId]!.compareTo(originalOrder[b.tourId]!);
+  });
+  final labels = {for (final stage in stages) stage.tourId: stage.label};
   return (
     games: [for (final id in labels.keys) ...?gamesByTour[id]],
     stageLabels: labels,

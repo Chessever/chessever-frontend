@@ -12,6 +12,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:chessever2/utils/own_web_page.dart';
 
 /// SharedPreferences key for the "Remind me later" snooze timestamp.
 const _kBillingIssueSnoozeKey = 'billing_issue_sheet_snoozed_until_ms';
@@ -211,7 +212,7 @@ class _BillingIssueSheet extends ConsumerWidget {
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop(true);
       }
-      unawaited(launchUrl(_kAccountUrl, mode: LaunchMode.externalApplication));
+      unawaited(openOwnWebPage(_kAccountUrl));
       return;
     }
 

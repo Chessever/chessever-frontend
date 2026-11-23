@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final stringUtilsProvider = AutoDisposeProvider(
@@ -9,38 +10,17 @@ class _StringUtilsController {
 
   final Ref ref;
 
+  /// A game card's player name: "Surname, Given" past 18 characters becomes
+  /// "Surname, G.". Never cut with an ellipsis: a name still too wide for its
+  /// card fades out at its end (the caller's [TextOverflow.fade]).
   String getTrimmedString(String name) {
-    if (name.length > 18) {
-      final firstAndLastName = name.split(',');
-      if (firstAndLastName.length == 2) {
-        final lastName = firstAndLastName[0].trim();
-        final firstName = firstAndLastName[1].trim();
-
-        if (firstName.isNotEmpty) {
-          final firstInitial = firstName[0].toUpperCase();
-          final targetFormat = '$lastName, $firstInitial.';
-
-          if (targetFormat.length <= 18) {
-            return targetFormat;
-          } else {
-            final maxLastNameLength = 18 - 4; // 18 - ", I.".length
-            final truncatedLastName =
-                '${lastName.substring(0, maxLastNameLength)}…';
-            return '$truncatedLastName, $firstInitial.';
-          }
-        } else {
-          // No first name, just return truncated last name
-          return lastName.length > 18
-              ? '${lastName.substring(0, 15)}…'
-              : lastName;
-        }
-      } else {
-        // Not in "LastName, FirstName" format, just truncate
-        return '${name.substring(0, 15)}…';
-      }
-    } else {
-      return name;
-    }
+    if (name.length <= 18) return name;
+    final parts = name.split(',');
+    if (parts.length != 2) return name;
+    final lastName = parts[0].trim();
+    final firstName = parts[1].trim();
+    if (lastName.isEmpty || firstName.isEmpty) return name;
+    return '$lastName, ${firstName.characters.first.toUpperCase()}.';
   }
 
   String getTrimmedStringWithScore(String name, double score) {
@@ -54,10 +34,9 @@ class _StringUtilsController {
     String formattedName;
 
     // Parse name like "LastName, FirstName"
-    formattedName =
-        name.length > nameMaxLength
-            ? '${name.substring(0, nameMaxLength - 1)}…'
-            : name;
+    formattedName = name.length > nameMaxLength
+        ? '${name.substring(0, nameMaxLength - 1)}…'
+        : name;
 
     // Pad to align score to fixed position
     if (formattedName.length < nameMaxLength) {

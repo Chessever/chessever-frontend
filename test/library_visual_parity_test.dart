@@ -21,6 +21,7 @@ import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.da
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/discovery_likes_teaching.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
@@ -820,9 +821,12 @@ void main() {
       }
       final route = observer.lastPage as MaterialPageRoute<int>;
       // Inspect only the real navigation payload: do not start native engines.
-      final dynamic board = route.builder(
-        tester.element(find.byType(LikesScreen)),
-      );
+      // Since 37.1.4 (1d81d3a7) a Likes board opens inside the double-tap
+      // lesson's route-local scope, installed only after the access gate.
+      final scope =
+          route.builder(tester.element(find.byType(LikesScreen)))
+              as DiscoveryLikesTeachingScope;
+      final dynamic board = scope.child;
       expect((board.initialGames as List).map((dynamic g) => g.gameId), [
         'fixture-game-1',
         'fixture-game-2',

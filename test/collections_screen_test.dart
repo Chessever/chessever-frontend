@@ -56,6 +56,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'fixtures/duo_window_matrix.dart';
+import 'support/signed_in_auth.dart';
 
 /// Books use a flat Games list; event collections retain section headers.
 
@@ -2954,6 +2955,8 @@ void main() {
         navigatorKey: navigatorKey,
         onGenerateRoute: (settings) =>
             MaterialPageRoute<void>(settings: settings, builder: (_) => host),
+        // A push opens for a reader with a session (a guest's too).
+        overrides: [signedInAuthOverride()],
       );
       DeepLinkService.instance.attachNotificationRouter(navigatorKey, captured);
       DeepLinkService.notifyAppReady();
