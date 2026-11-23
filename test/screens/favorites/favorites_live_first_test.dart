@@ -138,6 +138,12 @@ void main() {
       await tester.pump();
 
       expect(tester.getSize(find.byType(CollapsingChrome)).height, 0);
+      expect(find.byKey(const ValueKey('page_back_float')), findsNothing);
+      chrome.show(animate: false);
+      await tester.pump();
+      expect(_back.hitTestable(), findsOneWidget);
+      chrome.hide(animate: false);
+      await tester.pump();
       // The status-bar inset is not part of the fold: the list now starts
       // right under it.
       expect(tester.getTopLeft(find.byType(PageView)).dy, greaterThan(0));

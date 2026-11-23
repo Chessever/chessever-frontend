@@ -37,6 +37,7 @@ import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/search_no_matches.dart';
+import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -201,6 +202,25 @@ void main() {
   final searchHeader = find.byType(SearchModeHeader);
   Finder field() =>
       find.descendant(of: searchHeader, matching: find.byType(EditableText));
+
+  testWidgets('Games keeps Back in the header, never over the games', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
+    final chrome = tester
+        .widget<CollapsingChrome>(find.byType(CollapsingChrome).first)
+        .controller;
+    final back = find.byTooltip('Back');
+    expect(back.hitTestable(), findsOneWidget);
+    chrome.hide(animate: false);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('page_back_float')), findsNothing);
+    expect(back.hitTestable(), findsNothing);
+    chrome.show(animate: false);
+    await tester.pump();
+    expect(back.hitTestable(), findsOneWidget);
+    await _unmount(tester);
+  });
 
   testWidgets('Games: no search row on top; the search floats in reach', (
     tester,

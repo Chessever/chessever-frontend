@@ -27,9 +27,8 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
-import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
-    show PageBackButton, SearchHeaderMetrics;
+    show PageBackButton;
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/stable_height_slot.dart';
@@ -924,17 +923,6 @@ class GroupEventScreen extends HookConsumerWidget {
                       ),
                     ),
                   ],
-                ),
-                // The way back while the bar is folded away, centred where the
-                // bar's chevron was (on the bar's row, under its top gap).
-                PageBackFloat(
-                  controller: chrome,
-                  top:
-                      MediaQuery.viewPaddingOf(context).top +
-                      HomeTopBarMetrics.topGap +
-                      (HomeTopBarMetrics.rowExtent(context) -
-                              SearchHeaderMetrics.backTarget) /
-                          2,
                 ),
               ],
             ),

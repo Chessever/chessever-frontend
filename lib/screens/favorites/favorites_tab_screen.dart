@@ -13,7 +13,6 @@ import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack, SearchInkFab;
 import 'package:chessever2/widgets/page_back_row.dart';
 import 'package:chessever2/widgets/page_spring.dart';
-import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
@@ -273,8 +272,6 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen>
                     ),
                   ],
                 ),
-                // The way back while the header is folded away.
-                PageBackFloat(controller: _chrome),
               ],
             ),
           ),

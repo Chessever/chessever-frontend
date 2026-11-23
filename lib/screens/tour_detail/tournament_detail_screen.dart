@@ -60,7 +60,6 @@ import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -631,8 +630,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                             ),
                           ],
                         ),
-                        // The way back while the header is folded away.
-                        PageBackFloat(controller: _chrome),
                       ],
                     ),
                   ),
