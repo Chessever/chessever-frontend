@@ -26,6 +26,9 @@ class CountryDropdown extends ConsumerStatefulWidget {
   /// as before.
   final bool hugContent;
 
+  /// Fills the allocated slot without changing the compact styling or menu.
+  final bool fillAvailableWidth;
+
   /// When set, the open menu leads with "Pin `country` as default": a tap
   /// closes the menu and calls this. For rows with no room for a Pin of
   /// their own. Null (the default) leaves the menu as it was.
@@ -40,6 +43,7 @@ class CountryDropdown extends ConsumerStatefulWidget {
     this.requireAuthToChange = true,
     this.compact = false,
     this.hugContent = false,
+    this.fillAvailableWidth = false,
     this.onPinAsDefault,
   });
 
@@ -116,6 +120,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
   Widget build(BuildContext context) {
     final isCompact = widget.compact;
     final hug = widget.hugContent;
+    final wrapButton = hug && !widget.fillAvailableWidth;
     final buttonHeight = isCompact ? 36.h : 40.h;
     final horizontalPadding = hug ? 6.sp : (isCompact ? 12.sp : 20.sp);
     final verticalPadding = isCompact ? 0.sp : 7.sp;
@@ -169,7 +174,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               height: buttonHeight,
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Row(
-                mainAxisSize: hug ? MainAxisSize.min : MainAxisSize.max,
+                mainAxisSize: wrapButton ? MainAxisSize.min : MainAxisSize.max,
                 children: [
                   if (!widget.isLoading && selectedCountryCode.isNotEmpty)
                     CountryFlag.fromCountryCode(
@@ -179,7 +184,7 @@ selectedCountryCode,
 ),
                   SizedBox(width: nameGap),
                   Flexible(
-                    fit: hug ? FlexFit.loose : FlexFit.tight,
+                    fit: wrapButton ? FlexFit.loose : FlexFit.tight,
                     child:
                         widget.isLoading
                             ? Text(
