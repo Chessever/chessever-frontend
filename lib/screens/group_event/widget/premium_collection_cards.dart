@@ -613,33 +613,9 @@ class _FloatingHeartsPainter extends CustomPainter {
       oldDelegate.accentColor != accentColor;
 }
 
-/// How much of the flag shows through on the light tile's teal.
-const double _lightFlagOpacity = 0.5;
-
-/// The flag drawn in the palette's teal on the light tile: each colour's
-/// lightness mapped from the deep accent teal (its darkest) to the surface
-/// (its lightest), so the flag keeps its shapes (crescent, cross, sun) and
-/// sits in the tile's own hue instead of washing out to pink.
-ColorFilter _tealFlag(BuildContext context) {
-  final dark = context.colors.accentText;
-  final light = context.colors.surface;
-  // Rec. 709 lightness, then one ramp per channel from dark to light.
-  List<double> channel(double from, double to) {
-    final k = to - from;
-    return [k * 0.2126, k * 0.7152, k * 0.0722, 0, from * 255];
-  }
-
-  return ColorFilter.matrix([
-    ...channel(dark.r, light.r),
-    ...channel(dark.g, light.g),
-    ...channel(dark.b, light.b),
-    0,
-    0,
-    0,
-    1,
-    0,
-  ]);
-}
+/// How much of the flag shows on the light tile: in its own colours, a red
+/// field stays red (a teal-mapped flag read as another country's).
+const double _lightFlagOpacity = 0.8;
 
 /// Full background country flag for Countrymen card
 class _FlagFullBackground extends StatelessWidget {
@@ -660,18 +636,12 @@ class _FlagFullBackground extends StatelessWidget {
             theme: ImageTheme(width: 200, height: 150),
           ),
         );
-        if (context.isLightTheme) {
-          return SizedBox.expand(
-            child: Opacity(
-              opacity: _lightFlagOpacity,
-              child: ColorFiltered(
-                colorFilter: _tealFlag(context),
-                child: flag,
-              ),
-            ),
-          );
-        }
-        return SizedBox.expand(child: Opacity(opacity: 0.25, child: flag));
+        return SizedBox.expand(
+          child: Opacity(
+            opacity: context.isLightTheme ? _lightFlagOpacity : 0.25,
+            child: flag,
+          ),
+        );
       },
       loading: () => _FlagPlaceholder(),
       error: (_, __) => _FlagPlaceholder(),

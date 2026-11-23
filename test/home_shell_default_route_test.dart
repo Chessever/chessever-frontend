@@ -243,7 +243,7 @@ void main() {
             expect(icon.colorFilter, ColorFilter.mode(ink, BlendMode.srcIn));
             expect(icon.width, icon.height, reason: 'square icon box');
             if (item == BottomNavBarItem.tournaments) {
-              // The hung demonstration board, in the dock's line weight.
+              // The trophy, in the dock's line weight.
               expect(icon.path, SvgAsset.eventsNavIcon);
             }
           }

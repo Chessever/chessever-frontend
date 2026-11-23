@@ -38,11 +38,10 @@ class SvgAsset {
   static const forYouNavIcon = 'assets/svgs/for_you_nav.svg';
   static const botvinnikNavIcon = 'assets/svgs/botvinnik_nav.svg';
 
-  /// The dock's Events mark: a demonstration board hung on its nail, the
-  /// playing hall's own broadcast, light square on the right. Drawn in the
-  /// dock's weight (1.8 on 24, a container under one element and one solid
-  /// fill, as Feed's and Botvinnik's), its checker corners following the
-  /// frame's curve.
+  /// The dock's Events mark: the trophy Events wore on the bar before 38.18,
+  /// redrawn in the dock's weight (1.8 on 24, round caps and joins, one solid
+  /// fill as Feed's play triangle and Botvinnik's eyes): a cup with handles,
+  /// a stem that flares into its base, a star in the cup.
   static const eventsNavIcon = 'assets/svgs/events_nav.svg';
   static const searchNavIcon = 'assets/svgs/search_nav.svg';
 
