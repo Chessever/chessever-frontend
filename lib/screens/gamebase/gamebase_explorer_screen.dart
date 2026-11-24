@@ -46,6 +46,7 @@ import 'package:chessever2/screens/chessboard/utils/board_workspace_layout.dart'
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show PageBackButton, SearchHeaderMetrics;
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
@@ -1785,6 +1786,25 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
           size: 18.sp,
           color: context.colors.textSecondary,
         ),
+        // X's clear: a bare circled x, there only while the field holds text
+        // (a reader without Premium cannot type, so never sees it), its glyph
+        // as far in from the end as the magnifier's is from the start. Its
+        // tap box is 44pt tall and only as wide as the x, so an empty field's
+        // end still takes the cursor; pressing it keeps the keyboard up.
+        suffixIcon: Align(
+          alignment: AlignmentDirectional.centerEnd,
+          widthFactor: 1,
+          heightFactor: 1,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.only(end: 14),
+            child: SearchClearButton(
+   controller: _playerSearchController,
+   focusNode: _playerSearchFocusNode,
+   tapHeight: 44,
+   onTap: _clearPlayerSearch,
+ ),
+          ),
+        ),
         filled: true,
         fillColor: context.colors.surface,
         border: OutlineInputBorder(
@@ -1824,6 +1844,16 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
       },
       child: AbsorbPointer(child: ExcludeSemantics(child: field)),
     );
+  }
+
+  /// The field's clear, as X's: the words go and the cursor stays, or comes
+  /// back if the keyboard was down. The sheet's own controls close it.
+  void _clearPlayerSearch() {
+    _playerSearchController.clear();
+    setState(() => _playerSearchQuery = '');
+    if (!_playerSearchFocusNode.hasFocus) {
+      _playerSearchFocusNode.requestFocus();
+    }
   }
 
   void _setPlayer(GamebasePlayer player) {

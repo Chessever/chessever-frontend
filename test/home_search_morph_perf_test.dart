@@ -230,10 +230,25 @@ void main() {
           greaterThanOrEqualTo(-0.01),
           reason: 'the field reversed direction at frame $i',
         );
+
+        // Cancel's room opens after the field on the same spring: the
+        // field's end narrows as smoothly as its start, and never back.
+        final narrowed = current[0].right - previous[0].right;
+        expect(
+          expanding ? -narrowed : narrowed,
+          greaterThanOrEqualTo(-0.01),
+          reason: 'the field\'s end reversed direction at frame $i',
+        );
+        expect(
+          narrowed.abs(),
+          lessThan(12),
+          reason: 'the field\'s end jumped ${narrowed.abs()}dp in one frame',
+        );
       }
     }
 
     final field = find.byType(TextField);
+    final resting = tester.getRect(surface);
     await tester.tap(field);
     final opening = <List<Rect>>[];
     for (var i = 0; i < 50; i++) {
@@ -241,6 +256,15 @@ void main() {
       opening.add(sample());
     }
     check(opening, expanding: true);
+    // Open, the field ends where Cancel starts.
+    expect(
+      opening.last[0].right,
+      closeTo(
+        tester.getRect(find.byKey(const ValueKey('search_field_cancel'))).left,
+        0.01,
+      ),
+    );
+    expect(opening.last[0].right, lessThan(resting.right - 40));
 
     await tester.tapAt(const Offset(380, 800));
     final closing = <List<Rect>>[];
@@ -249,6 +273,7 @@ void main() {
       closing.add(sample());
     }
     check(closing, expanding: false);
+    expect(closing.last[0].right, closeTo(resting.right, 0.01));
   });
 
   testWidgets('the panel holds one height while the keyboard slides in', (

@@ -17,6 +17,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -256,6 +257,7 @@ class _SourcePicker extends ConsumerStatefulWidget {
 class _SourcePickerState extends ConsumerState<_SourcePicker> {
   late PrepSource _source = widget.only ?? PrepSource.chessever;
   final _query = TextEditingController();
+  final _queryFocus = FocusNode();
   late final _pending = [...widget.initial];
   Timer? _debounce;
   int _generation = 0;
@@ -268,7 +270,16 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
   void dispose() {
     _debounce?.cancel();
     _query.dispose();
+    _queryFocus.dispose();
     super.dispose();
+  }
+
+  /// The field's clear, as X's: the words go, the cursor stays, and comes
+  /// back if the keyboard was down. Cancel below is what leaves the sheet.
+  void _clearQuery() {
+    _query.clear();
+    _changed('');
+    if (!_queryFocus.hasFocus) _queryFocus.requestFocus();
   }
 
   void _changeSource(int index) {
@@ -520,6 +531,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
             // it, dropping focus and bouncing the keyboard on tab switch.
             key: const ValueKey('prep_source_query'),
             controller: _query,
+            focusNode: _queryFocus,
             // Accounts already chosen are reviewed first; the keyboard
             // would cover them.
             autofocus: widget.initial.isEmpty,
@@ -551,15 +563,24 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : _query.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear search',
-                      onPressed: () {
-                        _query.clear();
-                        _changed('');
-                      },
-                      icon: const Icon(Icons.close_rounded),
+                  // X's clear: a bare circled x, there only while the field
+                  // holds text, its glyph centred where the spinner's is, its
+                  // tap box 44pt tall; pressing it keeps the keyboard up.
+                  // Loose, so the box is only as wide as the x (none while
+                  // the field is empty) and never the icon slot's minimum.
+                  : Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 13),
+                        child: SearchClearButton(
+   controller: _query,
+   focusNode: _queryFocus,
+   tapHeight: 44,
+   onTap: _clearQuery,
+ ),
+                      ),
                     ),
             ),
           ),

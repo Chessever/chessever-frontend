@@ -103,37 +103,54 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('one search field: as tall as the home field, filter glyph '
-      'or not, lifting with a self-coloured edge', (tester) async {
+  testWidgets('one search field: as tall as the home field, clear button '
+      'or not, no filter inside it, lifting with a self-coloured edge', (
+    tester,
+  ) async {
     final text = TextEditingController();
     final focus = FocusNode();
     addTearDown(text.dispose);
     addTearDown(focus.dispose);
-    Widget surfaceOf(double lift, {bool filter = false}) => SizedBox(
+    Widget surfaceOf(double lift) => SizedBox(
       width: 353,
       child: HomeSearchFieldSurface(
         lift: lift,
         child: SimpleSearchBar(
           controller: text,
           focusNode: focus,
-          onCloseTap: () {},
-          onOpenFilter: filter ? () {} : null,
+          onCloseTap: text.clear,
         ),
       ),
     );
     // In a bar: as tall as it needs, never stretched by the screen.
-    Widget field(double lift, {bool filter = false}) => Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [surfaceOf(lift, filter: filter)],
-    );
+    Widget field(double lift) =>
+        Column(mainAxisSize: MainAxisSize.min, children: [surfaceOf(lift)]);
     final surface = find.byKey(const ValueKey('simple-search-field-surface'));
+    final clear = find.byKey(const ValueKey('search_field_clear'));
 
     await _pump(tester, field(0));
     final context = tester.element(surface);
     final plain = tester.getSize(surface);
     expect(plain.height, HomeSearchFieldSurface.heightOf(context));
     expect(plain.height, HomeTopBarMetrics.fieldExtent(context));
-    await _pump(tester, field(0, filter: true));
+    // Filters sit outside the field (X's order): none drawn in it.
+    expect(find.byIcon(Icons.tune_rounded), findsNothing);
+    // Empty: no clear button to tap.
+    expect(clear.hitTestable(), findsNothing);
+    // With words the circled x stands at its end, and the field keeps its
+    // size; its tap empties it.
+    text.text = 'carl';
+    await tester.pumpAndSettle();
+    expect(clear.hitTestable(), findsOneWidget);
+    expect(tester.getSize(surface), plain);
+    expect(
+      tester.getRect(clear).right,
+      lessThanOrEqualTo(tester.getRect(surface).right),
+    );
+    await tester.tap(clear);
+    await tester.pumpAndSettle();
+    expect(text.text, isEmpty);
+    expect(clear.hitTestable(), findsNothing);
     expect(tester.getSize(surface), plain);
 
     BoxDecoration decoration() =>

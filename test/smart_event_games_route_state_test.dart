@@ -123,6 +123,34 @@ Future<void> _settleMorph(WidgetTester tester) async {
 const _fab = ValueKey('smart_event_search_fab');
 const _close = ValueKey('smart_event_search_close');
 
+/// Cancel's room at the end of the search row as it stands this frame: the
+/// clip it opens in, shut at the tap and whole once the search is open.
+Rect _cancelRoom(WidgetTester tester) => tester.getRect(
+  find.ancestor(of: find.byKey(_close), matching: find.byType(ClipRect)).first,
+);
+
+/// The open search row, measured: its field, Cancel's tap and word, and
+/// the page's edge (the row's gutter is measured in from it).
+({Rect field, Rect cancel, Rect word, double edge}) _searchRow(
+  WidgetTester tester,
+) {
+  final header = find.byType(SearchModeHeader);
+  return (
+    field: tester.getRect(
+      find.descendant(of: header, matching: find.byType(SearchFieldFill)),
+    ),
+    cancel: tester.getRect(find.byKey(_close)),
+    word: tester.getRect(
+      find.descendant(of: find.byKey(_close), matching: find.text('Cancel')),
+    ),
+    edge: tester
+        .getRect(
+          find.ancestor(of: header, matching: find.byType(Scaffold)).first,
+        )
+        .right,
+  );
+}
+
 Finder _gamesList(SmartEventRequest request) => find.byKey(
   PageStorageKey<String>('smart_event_games_${request.scopeId}'),
   skipOffstage: false,
@@ -824,7 +852,8 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('the back chevron holds its place as the search opens', (
+  testWidgets('the search row is X\'s: the page\'s chevron goes with its '
+      'header, the field starts on the gutter, Cancel ends on it', (
     tester,
   ) async {
     await _pumpSmartEvent(tester, _request());
@@ -834,37 +863,87 @@ void main() {
 
     await tester.tap(find.byKey(_fab));
     await _settleMorph(tester);
-    final search = tester.getRect(
-      find.descendant(of: find.byKey(_close), matching: chevron),
+    // No way back in the search header; the page's chevron went with its
+    // header and takes no taps while the search is open.
+    final header = find.byType(SearchModeHeader);
+    expect(find.descendant(of: header, matching: chevron), findsNothing);
+    expect(chevron.hitTestable(), findsNothing);
+    // Cancel is the way out, the row's last control: the field from the
+    // gutter, Cancel's word ending on it, on the field's centre line.
+    final row = _searchRow(tester);
+    expect(row.field.left, closeTo(SearchHeaderMetrics.gutter, 0.01));
+    expect(
+      row.word.right,
+      closeTo(row.edge - SearchHeaderMetrics.gutter, 0.01),
     );
-    expect(search.size, page.size);
-    expect(search.center.dx, moreOrLessEquals(page.center.dx, epsilon: 0.5));
-    expect(search.center.dy, moreOrLessEquals(page.center.dy, epsilon: 0.5));
+    expect(row.word.center.dy, closeTo(row.field.center.dy, 0.01));
+    expect(row.cancel.height, greaterThanOrEqualTo(44));
+    expect(find.byKey(_close).hitTestable(), findsOneWidget);
 
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-  });
-
-  testWidgets('Filters hold their place on the gutter as the search opens', (
-    tester,
-  ) async {
-    await _pumpSmartEvent(tester, _request(tierLabel: 'GM', minElo: 2500));
-    final page = tester.getRect(
-      find.byKey(const ValueKey('smart_event_filters')),
-    );
-
-    await tester.tap(find.byKey(_fab));
+    // Cancel closes it: the chevron is back where it was, in reach.
+    await tester.tap(find.byKey(_close));
     await _settleMorph(tester);
-    final search = tester.getRect(
-      find.byKey(const ValueKey('smart_event_search_filters')),
-    );
-    expect(search.center.dx, moreOrLessEquals(page.center.dx, epsilon: 0.5));
-    expect(search.center.dy, moreOrLessEquals(page.center.dy, epsilon: 0.5));
-    expect(search.size, page.size);
+    expect(header, findsNothing);
+    expect(tester.getRect(chevron.hitTestable()), page);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
+
+  // The default surface (800pt) is a tablet to the app; 393pt is the
+  // phone the app is drawn for.
+  for (final (label, size) in [
+    ('phone', const Size(393, 852)),
+    ('tablet', const Size(800, 600)),
+  ]) {
+    testWidgets('$label: Filters start where the header has them, whole and '
+        'on its line, and end the search row\'s controls, right before '
+        'Cancel', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pumpSmartEvent(tester, _request(tierLabel: 'GM', minElo: 2500));
+      final page = tester.getRect(
+        find.byKey(const ValueKey('smart_event_filters')),
+      );
+      final searchFilters = find.byKey(
+        const ValueKey('smart_event_search_filters'),
+      );
+
+      // The tap frame: the search header's Filters (the copy drawn from the
+      // tap) are exactly where the page's header draws them, Cancel's room
+      // still shut after them.
+      await tester.tap(find.byKey(_fab));
+      await tester.pump();
+      expect(_cancelRoom(tester).width, closeTo(0, 0.01));
+      final atTap = tester.getRect(searchFilters);
+      expect(atTap.left, closeTo(page.left, 0.01));
+      expect(atTap.size, page.size);
+      expect(
+        atTap.center.dy,
+        moreOrLessEquals(page.center.dy, epsilon: 0.5),
+        reason: 'the shared Filters drop off the header\'s line at the tap',
+      );
+
+      // Open: they glided in by exactly Cancel's room, on the same line,
+      // and stand last before Cancel, whose word ends on the gutter.
+      await _settleMorph(tester);
+      final open = tester.getRect(searchFilters);
+      final row = _searchRow(tester);
+      expect(open.size, page.size);
+      expect(open.right, closeTo(row.cancel.left, 0.01));
+      expect(open.left, closeTo(page.left - _cancelRoom(tester).width, 0.01));
+      expect(row.field.right, lessThanOrEqualTo(open.left + 0.01));
+      expect(
+        row.word.right,
+        closeTo(row.edge - SearchHeaderMetrics.gutter, 0.01),
+      );
+      expect(open.center.dy, moreOrLessEquals(page.center.dy, epsilon: 0.5));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  }
 
   testWidgets(
     'back while searching closes the search before it asks about changed '

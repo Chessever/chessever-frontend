@@ -93,9 +93,8 @@ Widget _app(RecentSearchStorage storage, {bool emulateHomeProfile = false}) {
 }
 
 void main() {
-  testWidgets('first focus expands the search field in one smooth motion', (
-    tester,
-  ) async {
+  testWidgets('first focus expands the search field in one smooth motion, '
+      'its end giving Cancel room on the same spring', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -105,7 +104,9 @@ void main() {
     await tester.pump();
     final field = find.byType(TextField);
     final surface = find.byKey(const ValueKey('simple-search-field-surface'));
+    final cancel = find.byKey(const ValueKey('search_field_cancel'));
     final initialRect = tester.getRect(surface);
+    expect(cancel, findsNothing);
 
     await tester.tap(field);
     await tester.pump();
@@ -119,14 +120,29 @@ void main() {
       rightEdges.add(rect.right);
     }
 
+    // The avatar squeezes out at the start and Cancel's room opens at the
+    // end: each edge only ever travels one way, never back.
     for (var index = 1; index < leftEdges.length; index++) {
       expect(leftEdges[index], lessThanOrEqualTo(leftEdges[index - 1]));
-      expect(rightEdges[index], closeTo(rightEdges.first, 0.5));
+      expect(
+        rightEdges[index],
+        lessThanOrEqualTo(rightEdges[index - 1] + 0.01),
+      );
     }
     expect(leftEdges.last, lessThan(initialRect.left - 40));
+    // On its way, not there in one frame.
+    expect(rightEdges[1], lessThan(initialRect.right - 1));
+    expect(rightEdges[1], greaterThan(rightEdges.last + 1));
 
     await tester.pump(const Duration(milliseconds: 100));
-    expect(tester.getRect(surface).left, closeTo(leftEdges.last, 0.5));
+    final settled = tester.getRect(surface);
+    expect(settled.left, closeTo(leftEdges.last, 0.5));
+    // At rest the field ends where Cancel starts: it gave up exactly the
+    // word's room, and the word stands outside it.
+    final word = tester.getRect(cancel);
+    expect(settled.right, closeTo(word.left, 0.01));
+    expect(initialRect.right - settled.right, closeTo(word.width, 0.01));
+    expect(word.right, closeTo(initialRect.right, 0.01));
   });
 
   testWidgets('results expand smoothly between search and homepage content', (
@@ -280,7 +296,69 @@ void main() {
     expect(field.focusNode?.hasFocus, isFalse);
   });
 
-  testWidgets('clear suffix explicitly hides a stubborn iOS keyboard', (
+  testWidgets('the circled x is in the field only while it holds text, and '
+      'empties it without letting the keyboard go', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_app(_MemoryStorage(null)));
+    await tester.pump();
+    final surface = find.byKey(const ValueKey('simple-search-field-surface'));
+    final clear = find.descendant(
+      of: surface,
+      matching: find.byKey(const ValueKey('search_field_clear')),
+    );
+    final cancel = find.byKey(const ValueKey('search_field_cancel'));
+
+    await tester.tap(find.byType(TextField));
+    await _frames(tester);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
+    // The cursor in an empty field: nothing to clear.
+    expect(clear.hitTestable(), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'carlsen');
+    await _frames(tester);
+    expect(clear.hitTestable(), findsOneWidget);
+    final frame = tester.getRect(surface);
+    final x = tester.getRect(clear);
+    expect(x.right, lessThanOrEqualTo(frame.right + 0.01));
+    expect(x.center.dy, closeTo(frame.center.dy, 0.5));
+    expect(x.right, lessThanOrEqualTo(tester.getRect(cancel).left + 0.01));
+
+    final platformCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.textInput,
+      (call) async {
+        platformCalls.add(call.method);
+        return null;
+      },
+    );
+    addTearDown(tester.testTextInput.register);
+
+    // Through the app's tap-outside dismisser, as every tap in the app is.
+    final gesture = await tester.startGesture(tester.getCenter(clear));
+    await tester.pump();
+    expect(
+      field.focusNode?.hasFocus,
+      isTrue,
+      reason: 'pressing the x must not drop the keyboard before it clears',
+    );
+    await gesture.up();
+    await tester.pump();
+
+    expect(field.controller?.text, isEmpty);
+    expect(field.focusNode?.hasFocus, isTrue);
+    expect(platformCalls, isNot(contains('TextInput.hide')));
+    expect(platformCalls, isNot(contains('TextInput.clearClient')));
+    await _frames(tester);
+    // Cancel stays while the field has the cursor; the x is gone with the
+    // words.
+    expect(cancel, findsOneWidget);
+    expect(clear.hitTestable(), findsNothing);
+  });
+
+  testWidgets('Cancel explicitly hides a stubborn iOS keyboard', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -289,7 +367,7 @@ void main() {
     await tester.pumpWidget(_app(_MemoryStorage(null)));
     await tester.pump();
     await tester.tap(find.byType(TextField));
-    await tester.pump(const Duration(milliseconds: 350));
+    await _frames(tester);
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.focusNode?.hasFocus, isTrue);
@@ -316,18 +394,23 @@ void main() {
     );
     addTearDown(tester.testTextInput.register);
 
-    final clearButton = find.descendant(
-      of: find.byKey(const ValueKey('simple-search-field-surface')),
-      matching: find.byIcon(Icons.close),
+    // Cancel stands outside the field, the plain word, its lead-in part of
+    // its tap: pressed at its leading edge.
+    final cancel = find.byKey(const ValueKey('search_field_cancel'));
+    expect(cancel, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('simple-search-field-surface')),
+        matching: cancel,
+      ),
+      findsNothing,
     );
-    expect(clearButton, findsOneWidget);
-    final clearGesture = find.ancestor(
-      of: clearButton,
-      matching: find.byType(GestureDetector),
+    expect(
+      find.descendant(of: cancel, matching: find.text('Cancel')),
+      findsOneWidget,
     );
-    expect(clearGesture, findsOneWidget);
-    final clearRect = tester.getRect(clearGesture);
-    await tester.tapAt(Offset(clearRect.left + 2, clearRect.center.dy));
+    final cancelRect = tester.getRect(cancel);
+    await tester.tapAt(Offset(cancelRect.left + 2, cancelRect.center.dy));
     await tester.pump();
 
     expect(field.focusNode?.hasFocus, isFalse);
@@ -345,4 +428,12 @@ void main() {
           'text input view first responder.',
     );
   });
+}
+
+/// Pumps the springs home frame by frame: a spring that starts on a frame
+/// only moves on the frames after it.
+Future<void> _frames(WidgetTester tester) async {
+  for (var i = 0; i < 30; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
 }

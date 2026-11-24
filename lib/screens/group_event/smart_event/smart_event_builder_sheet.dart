@@ -24,6 +24,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1502,6 +1503,13 @@ class _OpeningBrowserState extends State<_OpeningBrowser> {
     });
   }
 
+  /// The field's own clear, as X's: the words go, the cursor stays, and
+  /// comes back if the keyboard was down. Back is what leaves the browser.
+  void _clearFromField() {
+    _clearQuery();
+    if (!_focus.hasFocus) _focus.requestFocus();
+  }
+
   bool _isPicked(OpeningSearchSuggestion s) {
     if (s.filter != widget.selected) return false;
     final picked = widget.selection;
@@ -1569,7 +1577,7 @@ class _OpeningBrowserState extends State<_OpeningBrowser> {
                 controller: _controller,
                 focusNode: _focus,
                 onChanged: _onChanged,
-                onClear: _clearQuery,
+                onClear: _clearFromField,
               ),
             ),
             Expanded(child: _list(context)),
@@ -1858,6 +1866,10 @@ class _SearchField extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
+  /// Where the clear's glyph centre sits in from its box's end.
+  static const double _clearGlyphCentre =
+      SearchClearButton.endInset + SearchClearButton.glyph / 2;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -1893,18 +1905,19 @@ class _SearchField extends StatelessWidget {
                 ),
               ),
             ),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: controller,
-              builder: (context, value, _) {
-                if (value.text.isEmpty) return SizedBox(width: 12.w);
-                return _IconTap(
-                  icon: Icons.close_rounded,
-                  label: 'Clear search',
-                  onTap: onClear,
-                  size: 18,
-                );
-              },
+            // X's clear: a bare circled x, there only while the field holds
+            // text. Its tap box stands the field's full height (a 44pt
+            // target); pressing it keeps the keyboard up. Closed, it takes no
+            // room and no taps.
+            SearchClearButton(
+              controller: controller,
+              focusNode: focusNode,
+              tapHeight: SmartBuilderMetrics.target,
+              onTap: onClear,
             ),
+            // The x's centre as far in from the end as the magnifier's
+            // (12.w, then half its 20.w) is from the start.
+            SizedBox(width: 22.w - _clearGlyphCentre),
           ],
         ),
       ),

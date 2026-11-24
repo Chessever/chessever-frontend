@@ -16,14 +16,15 @@ import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// The standalone Likes archive searches the way every Games tab does: the
-/// same cards stay while a search is read, the chevron holds still as the
-/// title row turns into the search, the dates open for the hits and the
-/// reader's folds come back after.
+/// same cards stay while a search is read, the search row is X's (the field
+/// from the gutter, the Filters, Cancel last), the dates open for the hits
+/// and the reader's folds come back after.
 
 SavedAnalysis _like(String id, String white, DateTime liked) => SavedAnalysis(
   id: id,
@@ -93,6 +94,39 @@ Future<void> _frames(WidgetTester tester) async {
 }
 
 Finder get _cards => find.byType(MyLikesGameCard);
+
+Finder get _cancel => find.byKey(const ValueKey('my_likes_search_close'));
+
+Finder _inSearch(Finder finder) =>
+    find.descendant(of: find.byType(SearchModeHeader), matching: finder);
+
+/// The open search row, as X sets it: no chevron, the field from the
+/// gutter, the archive's Filters after it, and Cancel last, its word ending
+/// on the gutter, all on the field's line.
+void _expectSearchRow(WidgetTester tester) {
+  final gutter = SearchHeaderMetrics.gutter;
+  expect(_inSearch(find.byType(PageBackButton)), findsNothing);
+  expect(
+    _inSearch(find.byIcon(Icons.arrow_back_ios_new_outlined)),
+    findsNothing,
+  );
+  expect(_inSearch(_cancel), findsOneWidget);
+  final field = tester.getRect(_inSearch(find.byType(SearchFieldFill)));
+  final filters = tester.getRect(
+    _inSearch(find.byKey(const ValueKey('my_likes_filters'))),
+  );
+  final cancel = tester.getRect(_cancel);
+  final word = tester.getRect(
+    find.descendant(of: _cancel, matching: find.text('Cancel')),
+  );
+  expect(field.left, closeTo(gutter, 0.01));
+  expect(field.right, lessThanOrEqualTo(filters.left));
+  expect(filters.right, closeTo(cancel.left, 0.01));
+  final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+  expect(word.right, closeTo(width - gutter, 0.01));
+  expect(filters.center.dy, closeTo(field.center.dy, 0.01));
+  expect(word.center.dy, closeTo(field.center.dy, 0.01));
+}
 
 /// A search's read, held until the test lets it land.
 class _Reads {
@@ -165,8 +199,10 @@ Future<ProviderContainer> _pumpArchive(
 }
 
 void main() {
-  testWidgets('the archive searches its own list in place, from the title '
-      "row's chevron and back", (tester) async {
+  testWidgets('the archive searches its own list in place, and Cancel '
+      'gives it back with the title row\'s chevron where it was', (
+    tester,
+  ) async {
     final reads = _Reads();
     final container = await _pumpArchive(tester, reads);
     await _frames(tester);
@@ -198,7 +234,10 @@ void main() {
     await _frames(tester);
     final field = find.byKey(const ValueKey('my_likes_search'));
     expect(field, findsOneWidget);
-    expect(tester.getCenter(find.byTooltip('Close search')), back);
+    // No chevron in the search row: Cancel, its last control, is the way
+    // out, and the title row's chevron takes no taps while it is open.
+    _expectSearchRow(tester);
+    expect(find.byTooltip('Back').hitTestable(), findsNothing);
     expect(
       find.byKey(const ValueKey('my_likes_filters')).hitTestable(),
       findsOneWidget,
@@ -220,7 +259,7 @@ void main() {
     expect(find.byType(LinearProgressIndicator), findsNothing);
     expect(listState(), same(list));
 
-    await tester.tap(find.byKey(const ValueKey('my_likes_search_close')));
+    await tester.tap(_cancel);
     await _frames(tester);
     expect(field, findsNothing);
     expect(container.read(myLikesFilterProvider).searchQuery, '');
@@ -229,6 +268,7 @@ void main() {
     expect(listState(), same(list));
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(tester.getCenter(find.byTooltip('Back')), back);
+    expect(find.byTooltip('Back').hitTestable(), findsOneWidget);
     expect(fab.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
 

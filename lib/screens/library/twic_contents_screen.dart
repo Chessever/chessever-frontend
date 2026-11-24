@@ -402,11 +402,15 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen>
     );
     final filterCount = ref.watch(activeGamebaseFilterCountProvider);
 
+    // The field starts on the list's edge; the row ends where the search
+    // header ends its own ([LibrarySearchBar.endPadding]), so Filters, and
+    // Cancel once it opens, end on the gutter (on a phone, the line the
+    // header's Board glyph ends on).
     return Padding(
-      padding: EdgeInsets.fromLTRB(
+      padding: EdgeInsetsDirectional.fromSTEB(
         horizontalPadding,
         0,
-        horizontalPadding,
+        LibrarySearchBar.endPadding,
         8.h,
       ),
       child: LibrarySearchBar(

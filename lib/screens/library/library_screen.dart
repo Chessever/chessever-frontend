@@ -34,6 +34,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show PageBackButton;
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -311,8 +312,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   /// the search field in the same place at the same size as on Events, with
   /// Library's own Board and Add tiles after the field. Focusing the field
   /// hands it the whole row; the avatar and the tiles squeeze out on the
-  /// field's spring. The bar listens to the focus node itself, so the
-  /// keyboard coming up never rebuilds this screen.
+  /// field's spring and Cancel opens after the field in their place. The
+  /// bar listens to the focus node itself, so the keyboard coming up never
+  /// rebuilds this screen.
   Widget _buildTopBar() {
     // The sidebar (and the calendar inside it) must be reachable from every
     // main section. Library is mounted under the home Scaffold, so the avatar
@@ -351,33 +353,55 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   /// The same field as the Events bar: its surface, its height, its type.
   /// Only the behaviour is Library's, filtering folders by name as you type.
+  ///
+  /// In X's order: the field (magnifier, words, the clear button while it
+  /// holds any), then Cancel. Cancel shows only while the field has the
+  /// cursor: once it lets go, Board and Add come back after the field, and
+  /// a Cancel left standing would sit between the field and them.
   Widget _buildSearchField() {
     return TextFieldTapRegion(
       onTapOutside: (_) => _searchFocusNode.unfocus(),
-      child: ListenableBuilder(
-        listenable: _searchFocusNode,
-        // Built once; focus only repaints the surface around it.
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: HomeTopBarMetrics.fieldHeight),
-          child: SimpleSearchBar(
-            textFieldKey: e2eKey(E2eIds.librarySearchField),
-            hintText: 'Search',
+      child: Row(
+        children: [
+          Expanded(
+            child: ListenableBuilder(
+              listenable: _searchFocusNode,
+              // Built once; focus only repaints the surface around it.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: HomeTopBarMetrics.fieldHeight,
+                ),
+                child: SimpleSearchBar(
+                  textFieldKey: e2eKey(E2eIds.librarySearchField),
+                  hintText: 'Search',
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: _onSearchChanged,
+                  onCloseTap: _clearField,
+                ),
+              ),
+              builder: (context, child) => ParkedMotionBuilder(
+                value: _searchFocusNode.hasFocus ? 1.0 : 0.0,
+                motion: SearchMotion.morph,
+                child: child,
+                builder: (context, lift, child) => HomeSearchFieldSurface(
+                  lift: lift,
+                  child: RepaintBoundary(child: child),
+                ),
+              ),
+            ),
+          ),
+          SearchCancelButton(
             controller: _searchController,
             focusNode: _searchFocusNode,
-            onOpenFilter: null,
-            onChanged: _onSearchChanged,
-            onCloseTap: _clearSearch,
+            onCancel: _cancelSearch,
+            cancelKey: const ValueKey('library_search_cancel'),
+            whileHoldingText: false,
+            // The bar's frame carries its 44pt reach: the row, shorter than
+            // that on a small phone, never grows while it is open.
+            minHeight: 0,
           ),
-        ),
-        builder: (context, child) => ParkedMotionBuilder(
-          value: _searchFocusNode.hasFocus ? 1.0 : 0.0,
-          motion: SearchMotion.morph,
-          child: child,
-          builder: (context, lift, child) => HomeSearchFieldSurface(
-            lift: lift,
-            child: RepaintBoundary(child: child),
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -388,10 +412,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     setState(() => _searchQuery = next);
   }
 
-  /// The field's clear button: empties the query and lets go of the field.
-  /// `TextField.onChanged` does not fire for a programmatic clear, so the
-  /// filter is reset here.
-  void _clearSearch() {
+  /// The field's clear button: the words go, the cursor stays (as X's
+  /// does), and a field at rest takes the cursor. `TextField.onChanged` does
+  /// not fire for a programmatic clear, so the filter is reset here.
+  void _clearField() {
+    _searchController.clear();
+    _onSearchChanged('');
+    if (!_searchFocusNode.hasFocus && _searchFocusNode.context != null) {
+      _searchFocusNode.requestFocus();
+    }
+  }
+
+  /// Cancel: the words go and the field lets go of the cursor, so the
+  /// avatar (or the way back), Board and Add come back.
+  void _cancelSearch() {
     _searchController.clear();
     _searchFocusNode.unfocus();
     _onSearchChanged('');

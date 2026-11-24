@@ -25,11 +25,11 @@ abstract final class SearchModeMotion {
   static const double headerOutEnd = 0.4;
   static const double headerSlide = 6;
 
-  /// The search header's controls the page's header does not draw too (the
-  /// chevron on a page with no way back, a control only the search has)
-  /// arrive over [searchInStart, 1 - arrival]: whole the frame the glass
-  /// lands. The ones both headers draw (each a [SearchModeShared]: the way
-  /// back, a shared Filters) hold still through the morph.
+  /// The search header's controls the page's header does not draw too
+  /// (Cancel, a control only the search has) arrive over
+  /// [searchInStart, 1 - arrival]: whole the frame the glass lands. The ones
+  /// both headers draw (each a [SearchModeShared]: a shared Filters) are
+  /// whole from the tap and glide in as Cancel's room opens.
   static const double searchInStart = 0.6;
 
   /// The field's text, hint and clear button arrive over [fieldInStart,

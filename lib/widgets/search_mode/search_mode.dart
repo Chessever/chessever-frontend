@@ -26,6 +26,8 @@ import 'package:chessever2/widgets/glass_surface.dart';
 import 'package:chessever2/widgets/home_top_bar.dart'
     show HomeSearchFieldSurface;
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart'
+    show SearchCancelWord;
 import 'package:chessever2/widgets/search/search_motion.dart' show SearchMotion;
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/svg_widget.dart';

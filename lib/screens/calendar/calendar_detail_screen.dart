@@ -10,6 +10,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -38,6 +39,24 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
     searchController.dispose();
     focusNode.dispose();
     super.dispose();
+  }
+
+  /// The field's clear button: the words go, the cursor stays (as X's
+  /// does), and a field at rest takes the cursor. A programmatic clear does
+  /// not fire `onChanged`, so the query is reset here.
+  void _clearSearchField() {
+    searchController.clear();
+    ref.read(calendarSearchQueryProvider.notifier).state = '';
+    if (!focusNode.hasFocus && focusNode.context != null) {
+      focusNode.requestFocus();
+    }
+  }
+
+  /// Cancel: the words go and the field lets go of the cursor.
+  void _cancelSearch() {
+    searchController.clear();
+    focusNode.unfocus();
+    ref.read(calendarSearchQueryProvider.notifier).state = '';
   }
 
   @override
@@ -77,9 +96,15 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                       AnimatedBuilder(
                         animation: focusNode,
                         builder: (cxt, _) {
+                          // The field, then Cancel while the field has the
+                          // cursor or holds text.
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
+                              // No width: holds the row at least as tall as
+                              // Cancel, so the word opening never moves the
+                              // page under it.
+                              SizedBox(height: SearchCancelWord.extent),
                               SizedBox(
                                 width: 24.ic,
                                 height: 24.ic,
@@ -114,60 +139,52 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                           // Light matches the sibling search
                                           // fields: an accentText ring, no
                                           // raw-cyan glow.
-                                          color:
-                                              focusNode.hasFocus
-                                                  ? (context.isLightTheme
-                                                      ? context
-                                                          .colors
-                                                          .accentText
-                                                      : kPrimaryColor
-                                                          .withValues(
-                                                            alpha: 0.5,
-                                                          ))
-                                                  : Colors.transparent,
+                                          color: focusNode.hasFocus
+                                              ? (context.isLightTheme
+                                                    ? context.colors.accentText
+                                                    : kPrimaryColor.withValues(
+                                                        alpha: 0.5,
+                                                      ))
+                                              : Colors.transparent,
                                           width: 2.0,
                                         ),
                                         boxShadow:
                                             focusNode.hasFocus &&
-                                                    !context.isLightTheme
-                                                ? [
-                                                  BoxShadow(
-                                                    color: kPrimaryColor
-                                                        .withValues(
-                                                          alpha: 0.15,
-                                                        ),
-                                                    blurRadius: 12,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ]
-                                                : [],
+                                                !context.isLightTheme
+                                            ? [
+                                                BoxShadow(
+                                                  color: kPrimaryColor
+                                                      .withValues(alpha: 0.15),
+                                                  blurRadius: 12,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ]
+                                            : [],
                                       ),
                                       child: SimpleSearchBar(
                                         controller: searchController,
                                         hintText: 'Search',
                                         focusNode: focusNode,
-                                        onCloseTap: () {
-                                          searchController.clear();
-                                          focusNode.unfocus();
-                                          ref
-                                              .read(
-                                                calendarSearchQueryProvider
-                                                    .notifier,
-                                              )
-                                              .state = '';
-                                        },
-                                        onChanged:
-                                            (query) =>
-                                                ref
+                                        onCloseTap: _clearSearchField,
+                                        onChanged: (query) =>
+                                            ref
                                                     .read(
                                                       calendarSearchQueryProvider
                                                           .notifier,
                                                     )
-                                                    .state = query,
-                                        onOpenFilter: null,
+                                                    .state =
+                                                query,
                                       ),
                                     ),
                                   ),
+                                ),
+                              ),
+                              SearchCancelButton(
+                                controller: searchController,
+                                focusNode: focusNode,
+                                onCancel: _cancelSearch,
+                                cancelKey: const ValueKey(
+                                  'calendar_detail_search_cancel',
                                 ),
                               ),
                               const SizedBox(width: 8),

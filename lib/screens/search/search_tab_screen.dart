@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show lerpDouble;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
@@ -16,7 +17,6 @@ import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/my_space/actions/space_star_pin.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
-import 'package:chessever2/screens/search/search_cancel_button.dart';
 import 'package:chessever2/screens/search/search_feeds.dart';
 import 'package:chessever2/screens/search/search_landing.dart';
 import 'package:chessever2/screens/search/search_page_landing.dart';
@@ -31,6 +31,8 @@ import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/page_back_float.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
@@ -97,10 +99,13 @@ void keepSearchLandingWarm(WidgetRef ref) {
 /// the card the app already draws it in, with that card's own tap and
 /// long-press.
 ///
-/// While the field has the cursor or holds text, Cancel stands at the end
-/// of the row, outside the field ([SearchCancelButton]): it clears the
-/// query, drops the keyboard and brings the landing back. The field narrows
-/// to make room on the morph's spring.
+/// The search row is X's: while the field has the cursor the way back
+/// squeezes out and the field starts on the gutter; while it has the cursor
+/// or holds text, Cancel stands at the end of the row, outside the field
+/// ([SearchCancelButton]): it clears the query, drops the keyboard and
+/// brings the landing back. The field narrows to make room on the morph's
+/// spring. The circled x inside the field, there while it holds words, only
+/// empties it.
 class SearchTabScreen extends HookConsumerWidget {
   const SearchTabScreen({super.key});
 
@@ -387,14 +392,17 @@ class SearchTabScreen extends HookConsumerWidget {
       dismissSoftwareKeyboard(focusNode: focusNode);
     }
 
-    // The pushed pages' search row ([SearchModeHeader]'s geometry): the
-    // way back at [SearchHeaderMetrics.leadingInset], where every pushed
-    // page's chevron is, the field after it, and Cancel ending on the
-    // gutter. It sits right under the status bar's inset, as every pushed
-    // page's back row does.
+    // The search row, in X's order: the field (the clear button in it while
+    // it holds words), then Cancel ending on the gutter while the field has
+    // the cursor or holds text. At rest the page's way back stands before
+    // the field at [SearchHeaderMetrics.leadingInset], where every pushed
+    // page's chevron is; with the cursor in the field it squeezes out and
+    // the field starts on the gutter, as the full-page search headers'
+    // field does. It sits right under the status bar's inset, as every
+    // pushed page's back row does.
     final header = Padding(
       padding: EdgeInsetsDirectional.fromSTEB(
-        SearchHeaderMetrics.leadingInset,
+        0,
         0,
         SearchHeaderMetrics.gutter,
         HomeTopBarMetrics.bottomGap,
@@ -405,7 +413,7 @@ class SearchTabScreen extends HookConsumerWidget {
         ),
         child: Row(
           children: [
-            const PageBackButton(key: ValueKey('search_back')),
+            _SearchBackSlot(focusNode: focusNode),
             Expanded(
               child: EnhancedRoundedSearchBar(
                 controller: controller,
@@ -415,8 +423,8 @@ class SearchTabScreen extends HookConsumerWidget {
                 // it, and no filter: the event filter belongs to Events.
                 dropdown: false,
                 showFilter: false,
-                // Cancel, beside the field, clears it.
-                showClear: false,
+                // The page's own Cancel follows: it brings the landing back.
+                showCancel: false,
                 textInputAction: TextInputAction.search,
                 onSubmitted: submitted,
                 textFieldKey: const ValueKey('search_tab_field'),
@@ -581,4 +589,57 @@ class _Uncovered extends RouteAware {
 
   @override
   void didPopNext() => onUncovered();
+}
+
+/// The page's way back before the field, at
+/// [SearchHeaderMetrics.leadingInset]. While the field has the cursor it
+/// squeezes out on the field morph's spring ([SearchMotion.morph]) and the
+/// row's start moves to the gutter with it, so the field ends up exactly
+/// where the full-page search headers start theirs.
+class _SearchBackSlot extends StatelessWidget {
+  const _SearchBackSlot({required this.focusNode});
+
+  final FocusNode focusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: focusNode,
+      child: const PageBackButton(key: ValueKey('search_back')),
+      builder: (context, back) => ParkedMotionBuilder(
+        value: focusNode.hasFocus ? 1.0 : 0.0,
+        motion: SearchMotion.morph,
+        // Under reduced motion it goes, and comes back, at once, with
+        // Cancel.
+        active: !MediaQuery.disableAnimationsOf(context),
+        child: back,
+        builder: (context, value, back) {
+          final away = value.clamp(0.0, 1.0);
+          final shown = 1 - away;
+          return Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: lerpDouble(
+                SearchHeaderMetrics.leadingInset,
+                SearchHeaderMetrics.gutter,
+                away,
+              )!,
+            ),
+            child: IgnorePointer(
+              ignoring: focusNode.hasFocus,
+              child: ExcludeSemantics(
+                excluding: shown <= 0,
+                child: Align(
+                  widthFactor: shown,
+                  child: Transform.scale(
+                    scale: shown,
+                    child: TickerMode(enabled: shown > 0, child: back!),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

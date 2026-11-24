@@ -26,6 +26,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show PageBackButton, SearchHeaderMetrics;
@@ -165,6 +166,24 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     setState(() => _focusDay = null);
   }
 
+  /// The field's clear button: the words go, the cursor stays (as X's
+  /// does), and a field at rest takes the cursor. A programmatic clear does
+  /// not fire `onChanged`, so the query is reset here.
+  void _clearSearchField() {
+    searchController.clear();
+    ref.read(calendarSearchQueryProvider.notifier).state = '';
+    if (!focusNode.hasFocus && focusNode.context != null) {
+      focusNode.requestFocus();
+    }
+  }
+
+  /// Cancel: the words go and the field lets go of the cursor.
+  void _cancelSearch() {
+    searchController.clear();
+    focusNode.unfocus();
+    ref.read(calendarSearchQueryProvider.notifier).state = '';
+  }
+
   @override
   Widget build(BuildContext context) {
     // Searching, switching to a quick filter or picking another year asks a
@@ -199,9 +218,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             padding: EdgeInsets.symmetric(horizontal: 16.sp),
             child: Column(
               children: [
+                // In X's order: the field, the year (this page's filter),
+                // then Cancel while the field has the cursor or holds text.
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // No width: holds the row at least as tall as Cancel,
+                    // so the word opening never moves the page under it.
+                    SizedBox(height: SearchCancelWord.extent),
                     if (canPop) ...[
                       // The app's one way back, its target starting at the
                       // search header's inset like on every pushed page
@@ -265,16 +289,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               controller: searchController,
                               focusNode: focusNode,
                               hintText: 'Search',
-                              onCloseTap: () {
-                                searchController.clear();
-                                focusNode.unfocus();
-                                ref
-                                        .read(
-                                          calendarSearchQueryProvider.notifier,
-                                        )
-                                        .state =
-                                    '';
-                              },
+                              onCloseTap: _clearSearchField,
                               onChanged: (val) {
                                 ref
                                         .read(
@@ -299,7 +314,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                   },
                                 );
                               },
-                              onOpenFilter: null,
                             ),
                           ),
                         ),
@@ -350,6 +364,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           }).toList(),
                         ),
                       ),
+                    ),
+                    SearchCancelButton(
+                      controller: searchController,
+                      focusNode: focusNode,
+                      onCancel: _cancelSearch,
+                      cancelKey: const ValueKey('calendar_search_cancel'),
                     ),
                   ],
                 ),

@@ -273,12 +273,24 @@ void main() {
         .text;
 
     testWidgets('Cancel stands outside the field while it has the cursor or '
-        'text, the field narrowing for it on a spring; no clear button in '
-        'the field', (tester) async {
+        'text, the field narrowing for it on a spring; the way back steps '
+        'aside and the field starts on the gutter; the circled x is in the '
+        'field only while it holds text', (tester) async {
       final app = await _pump(tester);
       final bar = find.byType(EnhancedRoundedSearchBar);
+      final surface = find.descendant(
+        of: bar,
+        matching: find.byKey(const ValueKey('simple-search-field-surface')),
+      );
+      final clear = find.descendant(
+        of: bar,
+        matching: find.byKey(const ValueKey('search_field_clear')),
+      );
+      final back = find.byKey(const ValueKey('search_back'));
       final rest = tester.getSize(bar).width;
       expect(cancel(), findsNothing);
+      // At rest the field holds nothing to clear.
+      expect(clear.hitTestable(), findsNothing);
 
       await tester.tap(field());
       await tester.pump();
@@ -306,10 +318,48 @@ void main() {
       );
       expect(button.height, greaterThanOrEqualTo(44));
       expect(button.width, greaterThanOrEqualTo(44));
-      // The magnifier stays in the field; no clear button beside it.
+      // With the cursor the way back has stepped aside, and the field
+      // starts on the gutter, where the full-page search headers start it.
+      expect(back.hitTestable(), findsNothing);
       expect(
-        find.descendant(of: bar, matching: find.byIcon(Icons.close)),
-        findsNothing,
+        tester.getRect(bar).left,
+        closeTo(SearchHeaderMetrics.gutter, 0.5),
+      );
+      // The cursor in an empty field: still nothing to clear.
+      expect(clear.hitTestable(), findsNothing);
+      expect(find.bySemanticsLabel('Clear search'), findsNothing);
+
+      // Words in the field: the circled x, inside the field's frame, its
+      // whole tap short of Cancel.
+      await tester.enterText(field(), 'carlsen');
+      await _frames(tester);
+      expect(clear.hitTestable(), findsOneWidget);
+      expect(find.bySemanticsLabel('Clear search'), findsOneWidget);
+      final frame = tester.getRect(surface);
+      final x = tester.getRect(clear);
+      expect(x.left, greaterThanOrEqualTo(frame.left - 0.01));
+      expect(x.right, lessThanOrEqualTo(frame.right + 0.01));
+      expect(x.center.dy, closeTo(frame.center.dy, 0.5));
+      expect(x.right, lessThanOrEqualTo(tester.getRect(cancel()).left + 0.01));
+
+      expect(find.byKey(const ValueKey('search_results')), findsOneWidget);
+
+      // It empties the field and nothing more: the cursor and the keyboard
+      // stay, and so does Cancel; the results go.
+      await tester.tap(clear);
+      await tester.pump();
+      expect(fieldText(tester), isEmpty);
+      expect(_fieldHasFocus(tester), isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
+      expect(app.read(searchQueryProvider), isEmpty);
+      expect(app.read(debouncedSearchQueryProvider), isEmpty);
+      await _frames(tester);
+      expect(cancel(), findsOneWidget);
+      expect(clear.hitTestable(), findsNothing);
+      expect(find.byKey(const ValueKey('search_results')), findsNothing);
+      expect(
+        tester.getRect(bar).left,
+        closeTo(SearchHeaderMetrics.gutter, 0.5),
       );
 
       // With text and no cursor, Cancel stays.
@@ -341,6 +391,11 @@ void main() {
       await _frames(tester);
       expect(cancel(), findsNothing);
       expect(tester.getSize(bar).width, closeTo(rest, 0.01));
+      // The way back is home again, where every pushed page's is.
+      expect(
+        tester.getRect(find.byKey(const ValueKey('search_back'))).left,
+        closeTo(SearchHeaderMetrics.leadingInset, 0.01),
+      );
       // Typed and cancelled is not a search the reader made.
       expect(app.read(searchRecentsProvider).queries, isEmpty);
       await app.dispose();
@@ -354,6 +409,16 @@ void main() {
       await tester.tap(field());
       await tester.pump();
       expect(cancel(), findsOneWidget);
+      // The way back is gone in the same frame: the field already starts on
+      // the gutter and Cancel already ends on it.
+      expect(
+        tester.getRect(bar).left,
+        closeTo(SearchHeaderMetrics.gutter, 0.5),
+      );
+      expect(
+        tester.getRect(cancel()).right,
+        closeTo(393 - HomeTopBarMetrics.horizontalPadding, 0.5),
+      );
       final open = tester.getSize(bar).width;
       await tester.pump(const Duration(milliseconds: 16));
       expect(tester.getSize(bar).width, open);

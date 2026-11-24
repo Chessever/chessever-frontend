@@ -803,7 +803,11 @@ void main() {
       await _settle(tester);
       expect(shown(), isEmpty);
 
-      // The chevron leaves the search and clears what was searched.
+      // Cancel leaves the search and clears what was searched.
+      expect(
+        find.descendant(of: close, matching: find.text('Cancel')),
+        findsOneWidget,
+      );
       await tester.tap(close);
       await _settle(tester);
       await _settle(tester);

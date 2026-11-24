@@ -182,9 +182,18 @@ void main() {
       await tester.tap(find.byKey(_fabKey));
       await tester.pumpAndSettle();
 
-      // The search header took the profile header's place, chevron on its
-      // spot, over the very same list.
+      // The search header took the name row's place over the very same
+      // list. The chevron went with the name row: the search's way out is
+      // Cancel.
       expect(find.byKey(_fieldKey), findsOneWidget);
+      expect(find.byTooltip('Back').hitTestable(), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(SearchModeHeader),
+          matching: find.byIcon(Icons.arrow_back_ios_new_outlined),
+        ),
+        findsNothing,
+      );
       // Filters and the board view stand at the search header's end while
       // it is open, as on every searched list; the list's toolbar keeps
       // only its count, and the hidden button no count of its own.
@@ -201,8 +210,30 @@ void main() {
             .hitTestable(),
         findsNothing,
       );
-      expect(tester.getCenter(find.byKey(_closeKey)).dx, closeTo(back.dx, 1));
-      expect(tester.getCenter(find.byKey(_closeKey)).dy, closeTo(back.dy, 1));
+      // X's row: the field from the gutter, the list's controls outside
+      // it with Filters last, then Cancel, its word ending on the gutter.
+      final gutter = SearchHeaderMetrics.gutter;
+      final field = tester.getRect(
+        find.descendant(
+          of: find.byType(SearchModeHeader),
+          matching: find.byType(SearchFieldFill),
+        ),
+      );
+      final filters = tester.getRect(
+        find.byKey(const ValueKey('player_games_search_filters')),
+      );
+      final cancel = tester.getRect(find.byKey(_closeKey));
+      final word = tester.getRect(
+        find.descendant(
+          of: find.byKey(_closeKey),
+          matching: find.text('Cancel'),
+        ),
+      );
+      expect(field.left, closeTo(gutter, 0.01));
+      expect(field.right, lessThanOrEqualTo(filters.left + 0.01));
+      expect(filters.right, closeTo(cancel.left, 0.01));
+      expect(word.right, closeTo(393 - gutter, 0.01));
+      expect(word.center.dy, closeTo(field.center.dy, 0.01));
       expect(tester.state(_gamesList), same(listState));
       expect(_toolbarSays('3 games'), findsOneWidget);
       final searchToolbarTop = tester.getTopLeft(
@@ -249,6 +280,8 @@ void main() {
         tester.getTopLeft(find.byType(PlayerGamesListToolbar)),
         toolbarTop,
       );
+      // The page's chevron is back where it was, in reach.
+      expect(tester.getCenter(find.byTooltip('Back').hitTestable()), back);
     });
 
     testWidgets('sections folded on the Games tab open for the hits and '

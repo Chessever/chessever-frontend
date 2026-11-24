@@ -9,9 +9,9 @@ part of 'search_mode.dart';
 /// - system back (it closes the search before the page);
 /// - focus: requested at the tap, so the keyboard rises with the morph;
 ///   dropped as the search closes, so it falls with it;
-/// - the keyboard put away with nothing typed (Done, a drag, a tap on the
-///   empty field's clear button, Android back that only hides it): the
-///   search closes with it, the same morph as the chevron's. With words in
+/// - the keyboard put away with nothing typed (Done, a drag, Android back
+///   that only hides it): the search closes with it, the same morph as
+///   Cancel's. With words in
 ///   the field only the keyboard goes; the results stay. A route, sheet or
 ///   dialog taking the focus, the app leaving the screen, a finger still on
 ///   the page or the glass still flying in never close it;
@@ -714,7 +714,7 @@ class _SearchModeHostState extends State<SearchModeHost>
 
   /// The keyboard went away with nothing typed while this page is in front,
   /// the reader's own doing: the search closes, the glass flying back into
-  /// the search button as the chevron sends it.
+  /// the search button as Cancel sends it.
   void _settleDismissal() {
     final kind = _dismissal;
     if (kind == null || !mounted || _pointers.isNotEmpty) return;
@@ -835,16 +835,15 @@ class _SearchModeHostState extends State<SearchModeHost>
     _lastText = '';
   }
 
-  /// The field's clear button: empties the field, or with nothing in it,
-  /// puts the keyboard away and the search with it (as Done would).
+  /// The field's clear button (shown only while the field holds text):
+  /// empties the field and gives it the cursor to type again, as X's does.
+  /// It never closes the search; Cancel, at the row's end, does.
   void _clearField() {
     final controller = widget.controller;
-    if (controller.text.text.isNotEmpty) {
-      controller.text.clear();
-    } else if (controller.isSearching) {
-      _close();
-    } else {
-      controller.focusNode.unfocus();
+    if (controller.text.text.isNotEmpty) controller.text.clear();
+    final node = controller.focusNode;
+    if (controller.isSearching && !node.hasFocus && node.context != null) {
+      node.requestFocus();
     }
   }
 
@@ -1012,7 +1011,7 @@ class SearchModeScope extends InheritedWidget {
   void openFromSearchButton({GlobalKey? disc}) =>
       _host._open(fromButton: true, tapped: disc);
 
-  /// Closes the search (the chevron).
+  /// Closes the search (Cancel).
   void close() => _host._close();
 
   /// A search button's drawn disc (inside its press) and its glyph, so the

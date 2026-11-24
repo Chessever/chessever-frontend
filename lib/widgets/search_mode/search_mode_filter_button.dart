@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show HomeTopBarTapTarget;
 import 'package:chessever2/widgets/search_mode/search_count_badge.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +20,23 @@ class SearchModeFilterButton extends StatelessWidget {
     required this.onTap,
     this.label = 'Filters',
     this.icon = Icons.tune_rounded,
-  });
+  }) : bare = false;
+
+  /// The same glyph in a home top bar's search row (Events, the Search
+  /// page): drawn in its own 20pt box after a [bareGap], the glyph's edge on
+  /// the bar's gutter, its 44pt reach carried by the bar's frame
+  /// ([HomeTopBarTapTarget]) instead of a wider box, so the row never grows
+  /// and the glyph still lines up with the list under it.
+  const SearchModeFilterButton.bare({
+    super.key,
+    required this.count,
+    required this.onTap,
+    this.label = 'Filters',
+    this.icon = Icons.tune_rounded,
+  }) : bare = true;
+
+  /// Drawn in its own glyph box ([SearchModeFilterButton.bare]).
+  final bool bare;
 
   /// Filters applied; the count is shown above 0, and the glyph takes the
   /// accent.
@@ -42,11 +59,26 @@ class SearchModeFilterButton extends StatelessWidget {
   static const double badgeTop = 6;
   static const double badgeRight = 4;
 
+  /// The glyph.
+  static const double glyph = 20;
+
+  /// Before a bare glyph: between the field and it, all of it the tap. The
+  /// search header's field sits as far from its boxed glyph (4 + 12).
+  static const double bareGap = 16;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final enabled = onTap != null;
     final active = count > 0;
+    final glyph = Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: Icon(
+        icon,
+        size: 20.ic,
+        color: active ? colors.accentText : colors.iconPrimary,
+      ),
+    );
     return Semantics(
       button: true,
       enabled: enabled,
@@ -59,32 +91,53 @@ class SearchModeFilterButton extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
-          child: SizedBox.square(
-            dimension: target,
-            child: Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                Opacity(
-                  opacity: enabled ? 1 : 0.4,
-                  child: Icon(
-                    icon,
-                    size: 20.ic,
-                    color: active ? colors.accentText : colors.iconPrimary,
-                  ),
-                ),
-                if (active)
-                  Positioned(
-                    top: badgeTop,
-                    right: badgeRight,
-                    child: SearchCountBadge(
-                      count: count,
-                      diameter: badgeDiameter,
-                    ),
-                  ),
-              ],
+          child: bare ? _bare(glyph) : _boxed(glyph),
+        ),
+      ),
+    );
+  }
+
+  /// The toolbar's 44pt box, the glyph centred, the count on its shoulder.
+  Widget _boxed(Widget glyph) {
+    return SizedBox.square(
+      dimension: target,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          glyph,
+          if (count > 0)
+            Positioned(
+              top: badgeTop,
+              right: badgeRight,
+              child: SearchCountBadge(count: count, diameter: badgeDiameter),
             ),
-          ),
+        ],
+      ),
+    );
+  }
+
+  /// The glyph at the end of a [bareGap]-wide lead-in, the count on its
+  /// shoulder where the toolbar's box puts it (it overhangs the glyph as it
+  /// does there).
+  Widget _bare(Widget glyph) {
+    final inset = (target - SearchModeFilterButton.glyph) / 2;
+    return HomeTopBarTapTarget(
+      child: SizedBox(
+        width: bareGap + SearchModeFilterButton.glyph,
+        height: SearchModeFilterButton.glyph,
+        child: Stack(
+          alignment: AlignmentDirectional.centerEnd,
+          clipBehavior: Clip.none,
+          children: [
+            glyph,
+            if (count > 0)
+              Positioned(
+                top: badgeTop - inset,
+                right: badgeRight - inset,
+                child: SearchCountBadge(count: count, diameter: badgeDiameter),
+              ),
+          ],
         ),
       ),
     );

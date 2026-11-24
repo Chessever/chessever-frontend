@@ -16,6 +16,8 @@ import 'package:chessever2/services/discovery_dots/discovery_dots_provider.dart'
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show SearchFieldFill, SearchHeaderMetrics, SearchModeHeader;
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -271,9 +273,34 @@ void main() {
       await tester.tap(find.byKey(_fabKey));
       await tester.pumpAndSettle();
 
-      // The chevron holds its spot, the name row gives way to the field.
-      expect(tester.getCenter(find.byKey(_closeKey)), back);
+      // The name row gives way to the field, its chevron with it: the
+      // search's way out is Cancel, the row's last control, its word on the
+      // gutter, and the field starts on the gutter.
       expect(find.byKey(_fieldKey).hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Back').hitTestable(), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(SearchModeHeader),
+          matching: find.byIcon(Icons.arrow_back_ios_new_outlined),
+        ),
+        findsNothing,
+      );
+      final gutter = SearchHeaderMetrics.gutter;
+      final word = tester.getRect(
+        find.descendant(
+          of: find.byKey(_closeKey),
+          matching: find.text('Cancel'),
+        ),
+      );
+      final field = tester.getRect(
+        find.descendant(
+          of: find.byType(SearchModeHeader),
+          matching: find.byType(SearchFieldFill),
+        ),
+      );
+      expect(field.left, closeTo(gutter, 0.01));
+      expect(word.right, closeTo(393 - gutter, 0.01));
+      expect(word.center.dy, closeTo(field.center.dy, 0.01));
       expect(tester.getTopLeft(find.text('About')), tabsTop);
       expect(tester.getTopLeft(find.text('Save to Library')), saveTop);
       expect(find.text('Build Tree'), findsNothing);
@@ -284,6 +311,8 @@ void main() {
       expect(find.byKey(_fieldKey), findsNothing);
       expect(find.byKey(_fabKey).hitTestable(), findsOneWidget);
       expect(tester.getTopLeft(find.text('About')), tabsTop);
+      // The chevron is back on its spot with the name row, in reach.
+      expect(tester.getCenter(find.byTooltip('Back').hitTestable()), back);
     });
 
     testWidgets('the words stay with the list across tabs: About keeps them, '

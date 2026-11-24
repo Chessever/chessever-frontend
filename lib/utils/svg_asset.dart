@@ -9,6 +9,7 @@ class SvgAsset {
   static const starFilledIcon = 'assets/svgs/filled_star.svg';
   static const listFilterIcon = 'assets/svgs/list-filter.svg';
   static const searchIcon = 'assets/svgs/search.svg';
+  static const searchClearIcon = 'assets/svgs/search-clear.svg';
   static const headsetIcon = 'assets/svgs/headset.svg';
   static const appleIcon = 'assets/svgs/apple_logo.svg';
   static const googleIcon = 'assets/svgs/google_logo.svg';
@@ -95,6 +96,7 @@ class SvgAsset {
       starFilledIcon,
       listFilterIcon,
       searchIcon,
+      searchClearIcon,
       headsetIcon,
       appleIcon,
       googleIcon,

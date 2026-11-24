@@ -10,6 +10,8 @@ import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/live_glyph.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -44,12 +46,12 @@ class _Page extends StatefulWidget {
 
   final SearchModeController search;
 
-  /// The page's header has its way back (a [PageBackButton]) where the
-  /// search header's chevron is.
+  /// The page's header has its way back (a [PageBackButton]). The search
+  /// header has none: Cancel, at its row's end, puts the search away.
   final bool headerBack;
 
-  /// Filters in both headers at the same spot (shared), and a toggle only
-  /// the search header draws.
+  /// Filters in both headers at the same spot at the tap (shared), and a
+  /// toggle only the search header draws.
   final bool filters;
   final ValueChanged<String>? onQuery;
   final ValueChanged<ScrollChromeController>? onChrome;
@@ -201,8 +203,9 @@ class _Header extends StatelessWidget {
                 const SizedBox(width: SearchHeaderMetrics.backTarget),
               const Expanded(child: Center(child: Text('Event title'))),
               if (filters) ...[
-                // The toolbar's Filters at the search header's own spot: the
-                // last control, its glyph on the gutter.
+                // The toolbar's Filters, its glyph on the gutter: where the
+                // search header's copy starts at the tap, before Cancel's
+                // room opens after it.
                 SearchModeShared(
                   id: 'filters',
                   child: SearchModeFilterButton(
@@ -386,6 +389,47 @@ void _expectOneStill(
     rectMoreOrLessEquals(rest, epsilon: 0.01),
     reason: '$reason: moved',
   );
+}
+
+/// Cancel's room at the end of the search row as it stands this frame: the
+/// clip it opens in (nothing while the search header is gone).
+Rect? _cancelRoom(WidgetTester tester) {
+  final room = find.ancestor(
+    of: find.byKey(_closeKey),
+    matching: find.byType(ClipRect),
+  );
+  return room.evaluate().isEmpty ? null : tester.getRect(room.first);
+}
+
+/// Of every copy [all] finds, the one painted: whole (no half-faded copy),
+/// exactly one, on [rest]'s line and at its size, and moved in from [rest]
+/// by exactly the room Cancel has opened after it this frame. Returns where
+/// it is drawn.
+Rect _expectOneGliding(
+  WidgetTester tester,
+  Finder all,
+  Rect rest,
+  String reason,
+) {
+  final drawn = <Rect>[];
+  for (var i = 0; i < all.evaluate().length; i++) {
+    final copy = all.at(i);
+    final opacity = _paintedOpacity(tester, copy);
+    if (opacity == 0) continue;
+    expect(opacity, 1, reason: '$reason: a copy half there');
+    drawn.add(tester.getRect(copy));
+  }
+  expect(drawn, hasLength(1), reason: '$reason: copies drawn');
+  final at = drawn.single;
+  expect(at.top, closeTo(rest.top, 0.01), reason: '$reason: off its line');
+  expect(at.size, rest.size, reason: '$reason: resized');
+  final room = _cancelRoom(tester)?.width ?? 0;
+  expect(
+    at.left,
+    closeTo(rest.left - room, 0.01),
+    reason: '$reason: not moved by Cancel\'s room ($room)',
+  );
+  return at;
 }
 
 /// The field's text and hint, arriving over the last part of the morph: the
@@ -630,24 +674,56 @@ void main() {
     await _done(tester, search);
   });
 
-  testWidgets('the chevron sits where the page puts its back button', (
+  testWidgets('the search row is X\'s: the field from the gutter, no '
+      'chevron, Cancel last with its word ending on the gutter', (
     tester,
   ) async {
     final search = await _pump(tester);
+    // The page's own way back stays where every page puts it.
     final back = tester.getCenter(find.byKey(_backKey));
     expect(back.dx, SearchHeaderMetrics.backGlyphCenter);
 
     await tester.tap(find.byKey(_fabKey));
     await _frames(tester);
+    final gutter = SearchHeaderMetrics.gutter;
+    final header = find.byType(SearchModeHeader);
+    // No way back in the search header: Cancel is the way out.
     expect(
-      tester.getCenter(find.byKey(_closeKey)),
-      offsetMoreOrLessEquals(back, epsilon: 0.01),
+      find.descendant(
+        of: header,
+        matching: find.byIcon(Icons.arrow_back_ios_new_outlined),
+      ),
+      findsNothing,
     );
-    // The field ends on the gutter.
     expect(
-      tester.getRect(find.byType(SearchFieldFill)).right,
-      closeTo(393 - SearchHeaderMetrics.gutter, 0.01),
+      find.descendant(of: header, matching: find.byType(PageBackButton)),
+      findsNothing,
     );
+    expect(
+      find.descendant(of: header, matching: find.text('Cancel')),
+      findsOneWidget,
+    );
+
+    final field = tester.getRect(find.byType(SearchFieldFill));
+    final cancel = tester.getRect(find.byKey(_closeKey));
+    final word = tester.getRect(
+      find.descendant(of: find.byKey(_closeKey), matching: find.text('Cancel')),
+    );
+    // The field starts on the gutter and runs up to Cancel's tap.
+    expect(field.left, closeTo(gutter, 0.01));
+    expect(field.right, closeTo(cancel.left, 0.01));
+    // Cancel is the row's last control: its word a gap after the field and
+    // ending on the gutter, its 44pt reach running a glyph's reach past it.
+    expect(word.left, closeTo(field.right + SearchCancelWord.gap, 0.01));
+    expect(word.right, closeTo(393 - gutter, 0.01));
+    expect(
+      cancel.right,
+      closeTo(393 - gutter + SearchHeaderMetrics.trailingReach, 0.01),
+    );
+    expect(cancel.height, greaterThanOrEqualTo(44));
+    // On the field's centre line.
+    expect(word.center.dy, closeTo(field.center.dy, 0.01));
+    expect(cancel.center.dy, closeTo(field.center.dy, 0.01));
     await _done(tester, search);
   });
 
@@ -862,9 +938,8 @@ void main() {
     await _done(tester, search);
   });
 
-  testWidgets('one filter count: the accent coin, on the button and field', (
-    tester,
-  ) async {
+  testWidgets('one filter count: the accent coin, on the button and the '
+      'Filters glyphs outside the field, never inside it', (tester) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -887,12 +962,23 @@ void main() {
                 body: Column(
                   children: [
                     const SearchInkFab(badgeCount: 3),
-                    SimpleSearchBar(
-                      controller: text,
-                      focusNode: focus,
-                      onCloseTap: () {},
-                      onOpenFilter: () {},
-                      filterBadgeCount: 2,
+                    // A home bar's row: the field, then its Filters outside
+                    // it (X's order), the bare glyph.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SimpleSearchBar(
+                            controller: text,
+                            focusNode: focus,
+                            onCloseTap: () {},
+                          ),
+                        ),
+                        SearchModeFilterButton.bare(
+                          key: const ValueKey('bar_filters'),
+                          count: 2,
+                          onTap: () {},
+                        ),
+                      ],
                     ),
                     SearchModeFilterButton(count: 4, onTap: () {}),
                   ],
@@ -940,10 +1026,34 @@ void main() {
     }
     expect(find.bySemanticsLabel('Filters, 2 active'), findsOneWidget);
     expect(find.bySemanticsLabel('Filters, 4 active'), findsOneWidget);
+    // The field draws no filter of its own: no glyph, no count inside it.
+    final field = find.byType(SimpleSearchBar);
+    expect(
+      find.descendant(of: field, matching: find.byIcon(Icons.tune_rounded)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: field, matching: find.byType(SearchCountBadge)),
+      findsNothing,
+    );
+    // The bar's glyph sits after the field, clear of it.
+    expect(
+      tester.getRect(field).right,
+      lessThanOrEqualTo(
+        tester
+            .getRect(
+              find.descendant(
+                of: find.byKey(const ValueKey('bar_filters')),
+                matching: find.byIcon(Icons.tune_rounded),
+              ),
+            )
+            .left,
+      ),
+    );
   });
 
   testWidgets('Filters in the search header: the toolbar\'s glyph and spot, '
-      'the one count, on the gutter', (tester) async {
+      'the one count, last before Cancel', (tester) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1000,11 +1110,33 @@ void main() {
       tester.getCenter(toolbarGlyph) - tester.getTopLeft(toolbar),
     );
     expect(tester.widget<Icon>(glyph).color, colors.accentText);
-    // The last trailing glyph ends on the gutter, as the field does without.
-    expect(
-      tester.getRect(glyph).right,
-      closeTo(393 - SearchHeaderMetrics.gutter, 0.01),
+    // Filters are outside the field, the last control before Cancel (X's
+    // order), whose word ends on the gutter. The word stands as far from
+    // the glyph as the glyph from the field (4 + the glyph's 12pt inset).
+    final field = find.descendant(
+      of: find.byType(SearchModeHeader),
+      matching: find.byType(HomeSearchFieldSurface),
     );
+    const cancelKey = ValueKey('search_mode_close');
+    final cancel = tester.getRect(find.byKey(cancelKey));
+    final word = tester.getRect(
+      find.descendant(of: find.byKey(cancelKey), matching: find.text('Cancel')),
+    );
+    expect(
+      tester.getRect(field).left,
+      closeTo(SearchHeaderMetrics.gutter, 0.01),
+    );
+    expect(
+      tester.getRect(field).right,
+      lessThanOrEqualTo(tester.getRect(button).left),
+    );
+    expect(tester.getRect(button).right, closeTo(cancel.left, 0.01));
+    expect(
+      word.left - tester.getRect(glyph).right,
+      closeTo(SearchCancelWord.afterGlyph, 0.01),
+    );
+    expect(word.right, closeTo(393 - SearchHeaderMetrics.gutter, 0.01));
+    expect(word.center.dy, closeTo(tester.getCenter(glyph).dy, 0.01));
     // The one count, anchored where the toolbar anchors its own.
     final coin = find.descendant(
       of: button,
@@ -1118,46 +1250,119 @@ void main() {
     await _done(tester, search);
   });
 
-  testWidgets('the chevron both headers draw holds still: whole and in '
-      'place every frame, both ways', (tester) async {
+  testWidgets('the search header draws no chevron: the page\'s goes and '
+      'comes back with its header, every frame, both ways', (tester) async {
     final search = await _pump(tester);
     final chevrons = find.byIcon(
       Icons.arrow_back_ios_new_outlined,
       skipOffstage: false,
     );
-    final rest = tester.getRect(chevrons);
-    _expectOneStill(tester, chevrons, rest, 'at rest');
+    final back = find.byKey(_backKey, skipOffstage: false);
+    final title = find.text('Event title', skipOffstage: false);
+    final rest = tester.getRect(back);
+    final titleRest = tester.getRect(title);
+    expect(chevrons, findsOneWidget);
+    expect(back.hitTestable(), findsOneWidget);
+
+    /// The one chevron is the page's, moved exactly as its header is (it
+    /// slides up a few points as it fades), never left behind or held.
+    void withItsHeader(String reason) {
+      expect(chevrons, findsOneWidget, reason: '$reason: chevrons');
+      expect(
+        find.descendant(
+          of: find.byType(SearchModeHeader),
+          matching: find.byIcon(Icons.arrow_back_ios_new_outlined),
+        ),
+        findsNothing,
+        reason: '$reason: a chevron in the search header',
+      );
+      final moved = tester.getRect(back).topLeft - rest.topLeft;
+      expect(
+        moved,
+        offsetMoreOrLessEquals(
+          tester.getRect(title).topLeft - titleRest.topLeft,
+          epsilon: 0.01,
+        ),
+        reason: '$reason: not with its header',
+      );
+      expect(moved.dx, 0, reason: '$reason: moved across');
+      expect(
+        moved.dy,
+        inInclusiveRange(-SearchModeMotion.headerSlide - 0.01, 0.01),
+        reason: '$reason: moved past the header\'s slide',
+      );
+    }
 
     await tester.tap(find.byKey(_fabKey));
+    var slid = false;
     for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
-      _expectOneStill(tester, chevrons, rest, 'opening, frame $frame');
+      withItsHeader('opening, frame $frame');
+      if (tester.getRect(back).top < rest.top - 1) slid = true;
+      // Searching, the page's header (its chevron with it) takes no taps.
+      expect(back.hitTestable(), findsNothing, reason: 'opening, frame $frame');
     }
-    // Visible from the tap, so it answers from the tap: it turns the
-    // search round.
+    expect(slid, isTrue, reason: 'the chevron never went with its header');
+    // Cancel is the way out.
     expect(find.byKey(_closeKey).hitTestable(), findsOneWidget);
 
     await tester.tap(find.byKey(_closeKey));
     for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
-      _expectOneStill(tester, chevrons, rest, 'closing, frame $frame');
+      withItsHeader('closing, frame $frame');
     }
     expect(search.isSearching, isFalse);
+    // Back where it was, and the page's way back again.
+    expect(tester.getRect(back), rectMoreOrLessEquals(rest, epsilon: 0.01));
+    expect(back.hitTestable(), findsOneWidget);
     await _done(tester, search);
   });
 
-  testWidgets('a trailing control both headers draw holds still; one only '
-      'the search draws arrives with it', (tester) async {
+  testWidgets('a trailing control both headers draw starts where the page '
+      'has it, whole, and glides in by Cancel\'s room; one only the search '
+      'draws arrives with it', (tester) async {
     final search = await _pump(tester, filters: true);
     final filters = find.byType(SearchModeFilterButton, skipOffstage: false);
     final rest = tester.getRect(find.byKey(_headerFiltersKey));
+    // The page's Filters glyph is on the gutter.
+    expect(
+      tester
+          .getRect(
+            find.descendant(
+              of: find.byKey(_headerFiltersKey),
+              matching: find.byIcon(Icons.tune_rounded),
+            ),
+          )
+          .right,
+      closeTo(393 - SearchHeaderMetrics.gutter, 0.01),
+    );
     _expectOneStill(tester, filters, rest, 'at rest');
 
     await tester.tap(find.byKey(_fabKey));
+    await tester.pump();
+    // The tap frame: the search header's copy is the one drawn, exactly
+    // where the page's was, Cancel's room still shut.
+    expect(find.byType(SearchModeHeader), findsOneWidget);
+    expect(_cancelRoom(tester)!.width, closeTo(0, 0.01));
+    _expectOneStill(tester, filters, rest, 'the tap frame');
+
     final arriving = <double>[];
+    var previous = rest.left;
     for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
-      _expectOneStill(tester, filters, rest, 'opening, frame $frame');
+      final at = _expectOneGliding(
+        tester,
+        filters,
+        rest,
+        'opening, frame $frame',
+      );
+      // In along the row only, never back out.
+      expect(
+        at.left,
+        lessThanOrEqualTo(previous + 1e-6),
+        reason: 'opening, frame $frame',
+      );
+      previous = at.left;
       arriving.add(_paintedOpacity(tester, find.byKey(_searchOnlyKey)));
       if (frame == 1) {
         // Not there to see yet: no tap.
@@ -1168,39 +1373,85 @@ void main() {
     expect(arriving.first, 0);
     expect(arriving.any((o) => o > 0 && o < 1), isTrue, reason: '$arriving');
     expect(arriving.last, 1);
+    // Open: Filters end where Cancel's tap starts, in by Cancel's width,
+    // and the word ends on the gutter.
+    final open = tester.getRect(find.byKey(_searchFiltersKey));
+    final cancel = tester.getRect(find.byKey(_closeKey));
+    expect(search.timeline.value, 1);
+    expect(open.right, closeTo(cancel.left, 0.01));
+    expect(open.left, closeTo(rest.left - cancel.width, 0.01));
+    expect(open.top, closeTo(rest.top, 0.01));
     expect(
-      tester.getRect(find.byKey(_searchFiltersKey)),
-      rectMoreOrLessEquals(rest, epsilon: 0.01),
+      tester
+          .getRect(
+            find.descendant(
+              of: find.byKey(_closeKey),
+              matching: find.text('Cancel'),
+            ),
+          )
+          .right,
+      closeTo(393 - SearchHeaderMetrics.gutter, 0.01),
     );
 
     await tester.tap(find.byKey(_closeKey));
+    previous = open.left;
     for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
-      _expectOneStill(tester, filters, rest, 'closing, frame $frame');
+      final at = _expectOneGliding(
+        tester,
+        filters,
+        rest,
+        'closing, frame $frame',
+      );
+      // Back out along the row as Cancel's room shuts, never in again.
+      expect(
+        at.left,
+        greaterThanOrEqualTo(previous - 1e-6),
+        reason: 'closing, frame $frame',
+      );
+      previous = at.left;
     }
+    // Landed: the page's own copy, exactly where it was.
+    expect(find.byType(SearchModeHeader), findsNothing);
+    _expectOneStill(tester, filters, rest, 'closed');
     await _done(tester, search);
   });
 
-  testWidgets('with no way back in the page header, the chevron arrives '
-      'with the search and takes no tap before it can be seen', (tester) async {
-    final search = await _pump(tester, headerBack: false);
-    await tester.tap(find.byKey(_fabKey));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 16));
-    // Built and in place, but not yet there to see.
-    expect(find.byKey(_closeKey), findsOneWidget);
-    expect(_paintedOpacity(tester, find.byKey(_closeKey)), lessThan(0.5));
-    expect(find.byKey(_closeKey).hitTestable(), findsNothing);
-    await tester.tapAt(tester.getCenter(find.byKey(_closeKey)));
-    await tester.pump();
-    expect(search.isSearching, isTrue);
+  for (final headerBack in [true, false]) {
+    testWidgets('Cancel arrives with the search and takes no tap before it '
+        'can be seen (a page header ${headerBack ? 'with' : 'without'} a '
+        'way back)', (tester) async {
+      final search = await _pump(tester, headerBack: headerBack);
+      await tester.tap(find.byKey(_fabKey));
+      await tester.pump();
+      // Its room opens with the morph from the tap.
+      expect(find.byKey(_closeKey), findsOneWidget);
+      expect(_cancelRoom(tester)!.width, closeTo(0, 0.01));
+      // On until its room is well open, the word not yet half there.
+      for (var i = 0; i < 90 && search.timeline.value < 0.3; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final room = _cancelRoom(tester)!;
+      expect(room.width, greaterThan(8));
+      expect(_paintedOpacity(tester, find.byKey(_closeKey)), lessThan(0.5));
+      expect(find.byKey(_closeKey).hitTestable(), findsNothing);
+      // A tap on the part of it already in its room does nothing.
+      await tester.tapAt(room.center);
+      await tester.pump();
+      expect(search.isSearching, isTrue);
 
-    await _frames(tester);
-    expect(_paintedOpacity(tester, find.byKey(_closeKey)), 1);
-    expect(find.byKey(_closeKey).hitTestable(), findsOneWidget);
-    expect(find.byType(EditableText).hitTestable(), findsOneWidget);
-    await _done(tester, search);
-  });
+      await _frames(tester);
+      expect(_paintedOpacity(tester, find.byKey(_closeKey)), 1);
+      expect(find.byKey(_closeKey).hitTestable(), findsOneWidget);
+      expect(find.byType(EditableText).hitTestable(), findsOneWidget);
+      // Whole, it puts the search away.
+      await tester.tap(find.byKey(_closeKey));
+      expect(search.isSearching, isFalse);
+      await _frames(tester);
+      expect(find.byType(SearchModeHeader), findsNothing);
+      await _done(tester, search);
+    });
+  }
 
   testWidgets('iOS: the back swipe closes the search, then the next one '
       'pops the page', (tester) async {
@@ -1484,7 +1735,7 @@ void main() {
         expect(search.isSearching, isFalse, reason: how);
         final drawn = await _flightBack(tester, search);
         expect(drawn.first, rectMoreOrLessEquals(field, epsilon: 0.5));
-        // A real flight, the chevron's own (about 20 frames), never a snap.
+        // A real flight, Cancel's own (about 20 frames), never a snap.
         expect(drawn.length, greaterThan(15), reason: how);
         // It lands on the button, drawn the frame after.
         expect(
@@ -1506,22 +1757,99 @@ void main() {
       await _done(tester, search);
     });
 
-    testWidgets('the empty field\'s clear button closes it too', (
-      tester,
-    ) async {
+    testWidgets('Cancel closes it from the empty field, as Done would: the '
+        'glass flies back from the field into the button', (tester) async {
       final search = await _pump(tester);
       await _openFully(tester, search);
-      await tester.tap(
-        find.descendant(
-          of: find.byType(SimpleSearchBar),
-          matching: find.byIcon(Icons.close),
-        ),
-      );
-      await tester.pump();
+      final field = tester.getRect(find.byType(SearchFieldFill));
+      await tester.tap(find.byKey(_closeKey));
       expect(search.isSearching, isFalse);
+      expect(search.focusNode.hasFocus, isFalse);
+      await tester.pump();
+      // It sets off from the field as drawn.
+      expect(search.debugFlightActive, isTrue);
+      expect(search.debugGlassRect, rectMoreOrLessEquals(field, epsilon: 0.5));
       final drawn = await _flightBack(tester, search);
       expect(drawn.length, greaterThan(15));
+      expect(
+        drawn.last,
+        rectMoreOrLessEquals(tester.getRect(_fabGlass), epsilon: 0.01),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_discOpacity(tester), 1);
       expect(find.byType(SearchModeHeader), findsNothing);
+      await _done(tester, search);
+    });
+
+    testWidgets('the clear button is there only with words, and empties the '
+        'field without closing it or dropping the keyboard', (tester) async {
+      final queries = <String>[];
+      final search = await _pump(tester, onQuery: queries.add);
+      await _openFully(tester, search);
+      final clear = find.byKey(const ValueKey('search_field_clear'));
+      final slot = find.byType(SearchClearButton);
+      // Empty, with the cursor in: no clear button, no room, no tap.
+      expect(slot, findsOneWidget);
+      expect(tester.getSize(slot).width, 0);
+      expect(clear.hitTestable(), findsNothing);
+
+      await tester.enterText(find.byType(EditableText), 'carl');
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(queries, ['carl']);
+      await _frames(tester, 30);
+      // With words: the bare circled x at the field's end, whole.
+      expect(tester.getSize(slot).width, SearchClearButton.box.width);
+      expect(clear.hitTestable(), findsOneWidget);
+      expect(find.bySemanticsLabel('Clear search'), findsOneWidget);
+      final field = tester.getRect(find.byType(SearchFieldFill));
+      final x = tester.getRect(clear);
+      expect(x.right, lessThanOrEqualTo(field.right));
+      expect(x.center.dy, closeTo(field.center.dy, 0.01));
+      final painted = search.debugGlassPaintCount;
+
+      await tester.tap(clear);
+      // The words go and the page hears of it at once; the search, the
+      // cursor and the keyboard stay.
+      expect(search.text.text, isEmpty);
+      expect(search.query, isEmpty);
+      expect(queries, ['carl', '']);
+      await tester.pump();
+      expect(search.isSearching, isTrue);
+      expect(search.focusNode.hasFocus, isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
+      await _frames(tester);
+      expect(search.isSearching, isTrue);
+      expect(search.focusNode.hasFocus, isTrue);
+      // Nothing flew, nothing moved.
+      expect(search.debugFlightActive, isFalse);
+      expect(search.debugGlassPaintCount, painted);
+      expect(search.timeline.value, 1);
+      expect(find.byType(SearchModeHeader), findsOneWidget);
+      // Empty again, it goes.
+      expect(tester.getSize(slot).width, 0);
+      expect(clear.hitTestable(), findsNothing);
+      await _done(tester, search);
+    });
+
+    testWidgets('the clear button gives an unfocused field its cursor back, '
+        'emptied, the search still open', (tester) async {
+      final search = await _pump(tester);
+      await _openFully(tester, search);
+      await tester.enterText(find.byType(EditableText), 'carl');
+      // The keyboard put away over a query: the results stay.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await _frames(tester);
+      expect(search.focusNode.hasFocus, isFalse);
+      expect(search.isSearching, isTrue);
+
+      await tester.tap(find.byKey(const ValueKey('search_field_clear')));
+      await tester.pump();
+      expect(search.text.text, isEmpty);
+      expect(search.isSearching, isTrue);
+      expect(search.focusNode.hasFocus, isTrue);
+      await _frames(tester);
+      expect(search.isSearching, isTrue);
+      expect(find.byType(SearchModeHeader), findsOneWidget);
       await _done(tester, search);
     });
 

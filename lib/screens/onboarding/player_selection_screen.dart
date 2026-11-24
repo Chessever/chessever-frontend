@@ -20,7 +20,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -87,6 +90,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
+    final searchFocus = useFocusNode();
     final listController = useScrollController();
     final searchQuery = useState('');
     final selectedIds = ref.watch(onboardingSelectedFideIdsProvider);
@@ -183,6 +187,19 @@ class PlayerSelectionContent extends HookConsumerWidget {
       players,
       countryCode: countryCode,
     );
+    // The clear button: the words go, the cursor stays.
+    void clearSearch() {
+      searchController.clear();
+      HapticFeedback.lightImpact();
+      if (!searchFocus.hasFocus) searchFocus.requestFocus();
+    }
+
+    // Cancel: the words go and the keyboard with them.
+    void cancelSearch() {
+      searchController.clear();
+      dismissSoftwareKeyboard(focusNode: searchFocus);
+    }
+
     final isSearching = searchQuery.value.isNotEmpty;
     final isLoading = playerState.isLoading && players.isEmpty;
     final selectedCount = selectedIds.length;
@@ -225,61 +242,89 @@ class PlayerSelectionContent extends HookConsumerWidget {
                           ),
                         ).animate(),
                         SizedBox(height: 16.h),
-                        // Search bar - simplified
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12.br),
-                            color: context.colors.surface,
-                          ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 14.sp,
-                            vertical: 12.sp,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.search,
-                                color: context.textInk(0.5),
-                                size: 20.ic,
-                              ),
-                              SizedBox(width: 10.w),
-                              Expanded(
-                                child: TextField(
-                                  key: e2eKey(
-                                    E2eIds.playerSelectionSearchField,
-                                  ),
-                                  controller: searchController,
-                                  style: AppTypography.textSmRegular.copyWith(
-                                    color: context.colors.textPrimary,
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: 'Find any player...',
-                                    hintStyle: AppTypography.textSmRegular
-                                        .copyWith(color: context.textInk(0.4)),
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
+                        // Search, in X's order: the field (the clear button
+                        // in it while it holds words), then Cancel while the
+                        // field has the cursor or holds words.
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12.br),
+                                  color: context.colors.surface,
                                 ),
-                              ),
-                              if (searchQuery.value.isNotEmpty)
-                                GestureDetector(
-                                  onTap: () {
-                                    searchController.clear();
-                                    HapticFeedback.lightImpact();
-                                  },
-                                  child: Padding(
-                                    padding: EdgeInsets.only(left: 8.w),
-                                    child: Icon(
-                                      Icons.close_rounded,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 14.sp,
+                                  vertical: 12.sp,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.search,
                                       color: context.textInk(0.5),
                                       size: 20.ic,
                                     ),
-                                  ),
+                                    SizedBox(width: 10.w),
+                                    Expanded(
+                                      child: TextField(
+                                        key: e2eKey(
+                                          E2eIds.playerSelectionSearchField,
+                                        ),
+                                        controller: searchController,
+                                        focusNode: searchFocus,
+                                        style: AppTypography.textSmRegular
+                                            .copyWith(
+                                              color: context.colors.textPrimary,
+                                            ),
+                                        decoration: InputDecoration(
+                                          hintText: 'Find any player...',
+                                          hintStyle: AppTypography.textSmRegular
+                                              .copyWith(
+                                                color: context.textInk(0.4),
+                                              ),
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                    ),
+                                    // No taller than the magnifier, so the
+                                    // field keeps its height; part of the
+                                    // field, so pressing it keeps the
+                                    // keyboard up.
+                                    SizedBox(
+                                      height: 20.ic,
+                                      child: SearchClearButton(
+                                        controller: searchController,
+                                        focusNode: searchFocus,
+                                        // The magnifier's tint.
+                                        color: context.textInk(0.5),
+                                        onTap: clearSearch,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                            ],
-                          ),
-                        ).animate(),
+                              ).animate(),
+                            ),
+                            // The field's least height (its padding around
+                            // the magnifier): Cancel's taller tap never moves
+                            // the list.
+                            SizedBox(
+                              height: 24.sp + 20.ic,
+                              child: SearchCancelButton(
+                                controller: searchController,
+                                focusNode: searchFocus,
+                                onCancel: cancelSearch,
+                                cancelKey: const ValueKey(
+                                  'player_selection_search_cancel',
+                                ),
+                                // The word at the field's own size, as X
+                                // sets it.
+                                textStyle: AppTypography.textSmRegular,
+                              ),
+                            ),
+                          ],
+                        ),
                         SizedBox(height: 12.h),
                         // Subtitle tip
                         Text(

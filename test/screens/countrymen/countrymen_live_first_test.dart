@@ -341,8 +341,44 @@ Finder get _filters => find.byType(SearchModeFilterButton);
 Finder get _boardView => _control('Change board view');
 Finder get _searchFab => find.byType(SearchInkFab);
 Finder get _searchField => _inSearch(find.byType(TextField));
-Finder get _closeSearch => find.byTooltip('Close search');
 Finder get _back => find.byType(PageBackButton);
+
+/// The search header's Cancel on the Games page, and on the Events and
+/// Rankings pages: the row's last control, which puts the search away.
+Finder get _gamesCancel => find.byKey(const ValueKey('games_search_close'));
+Finder get _listCancel => find.byKey(const ValueKey('countrymen_search_close'));
+
+/// The open search row, as X sets it: no chevron, the field from the
+/// gutter, then [trailing] (the Games page's Filters) when the page has
+/// any, and [cancel] last, its word ending on the gutter, all on the
+/// field's line.
+void _expectSearchRow(WidgetTester tester, Finder cancel, {Finder? trailing}) {
+  final gutter = SearchHeaderMetrics.gutter;
+  final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+  final cancelTap = _inSearch(cancel);
+  expect(_inSearch(_back), findsNothing);
+  expect(
+    _inSearch(find.byIcon(Icons.arrow_back_ios_new_outlined)),
+    findsNothing,
+  );
+  expect(cancelTap, findsOneWidget);
+  final field = tester.getRect(_inSearch(find.byType(SearchFieldFill)));
+  final tap = tester.getRect(cancelTap);
+  final word = tester.getRect(
+    find.descendant(of: cancelTap, matching: find.text('Cancel')),
+  );
+  expect(field.left, closeTo(gutter, 0.01));
+  if (trailing == null) {
+    expect(field.right, closeTo(tap.left, 0.01));
+  } else {
+    final controls = tester.getRect(trailing);
+    expect(field.right, lessThanOrEqualTo(controls.left));
+    expect(controls.right, closeTo(tap.left, 0.01));
+    expect(controls.center.dy, closeTo(field.center.dy, 0.01));
+  }
+  expect(word.right, closeTo(width - gutter, 0.01));
+  expect(word.center.dy, closeTo(field.center.dy, 0.01));
+}
 
 /// What Live first reads with [count] games in play, off.
 String _liveLabel(int count) =>
@@ -440,7 +476,7 @@ GamesTourModel _game(
 void main() {
   group('Countrymen Games header and floating buttons (Trello #1420)', () {
     testWidgets('the app bar ends with the toolbar beside the picker; back '
-        'sits where the search header puts its chevron', (tester) async {
+        'sits at the page\'s leading inset', (tester) async {
       await _pumpScreen(tester);
 
       final back = tester.getRect(_back);
@@ -501,15 +537,26 @@ void main() {
       expect(find.byType(SegmentedSwitcher), findsOneWidget);
     });
 
-    testWidgets('the search opens in place: the chevron and Filters stay '
-        'put, the field takes the country\'s place over the same '
-        'Games list, and back closes it', (tester) async {
+    testWidgets('the search opens in place: Filters start where they are '
+        'and make room for Cancel, the field takes the app bar from the '
+        'gutter over the same Games list, and Cancel closes it', (
+      tester,
+    ) async {
       await _pumpScreen(tester);
       final back = tester.getRect(_back);
       final filters = tester.getRect(_filters);
       final list = tester.element(find.byType(CountrymenGamesTab));
 
-      await _openSearch(tester);
+      await tester.tap(_searchFab);
+      await tester.pump();
+      // The tap frame: the search header's Filters start exactly where the
+      // app bar has them, Cancel's room still shut after them.
+      expect(_inSearch(_filters), findsOneWidget);
+      expect(
+        tester.getRect(_inSearch(_filters)),
+        rectMoreOrLessEquals(filters, epsilon: 0.5),
+      );
+      await _settle(tester);
 
       final field = _searchField;
       expect(field, findsOneWidget);
@@ -520,25 +567,26 @@ void main() {
       expect(_searchFab.hitTestable(), findsNothing);
       // The same Games list, never rebuilt from scratch.
       expect(tester.element(find.byType(CountrymenGamesTab)), same(list));
-      // The chevron and Filters did not move; the board view gave way to
-      // the field.
-      final close = tester.getRect(_closeSearch);
-      expect(close, rectMoreOrLessEquals(back, epsilon: 0.5));
-      expect(
-        tester.getRect(_inSearch(_filters)),
-        rectMoreOrLessEquals(filters, epsilon: 0.5),
-      );
+      // X's row: no chevron, the field from the gutter, Filters after it,
+      // Cancel last; the board view gave way to the field. The page's own
+      // chevron takes no taps meanwhile.
+      _expectSearchRow(tester, _gamesCancel, trailing: _inSearch(_filters));
       expect(_inSearch(_boardView), findsNothing);
+      expect(_back.hitTestable(), findsNothing);
+      // Filters moved in along the row only, by Cancel's room.
+      final searchFilters = tester.getRect(_inSearch(_filters));
+      expect(searchFilters.top, closeTo(filters.top, 0.5));
+      expect(searchFilters.size, filters.size);
+      expect(searchFilters.left, lessThan(filters.left));
       final fieldRect = tester.getRect(field);
-      expect(fieldRect.center.dy, closeTo(close.center.dy, 1));
-      expect(close.right, lessThanOrEqualTo(fieldRect.left));
-      expect(fieldRect.right, lessThanOrEqualTo(filters.left));
+      expect(fieldRect.center.dy, closeTo(searchFilters.center.dy, 1));
+      expect(fieldRect.right, lessThanOrEqualTo(searchFilters.left));
 
       await tester.enterText(field, 'Carlsen');
       await tester.pump(const Duration(milliseconds: 450));
       expect(_games.searches, ['Carlsen']);
 
-      await tester.tap(_closeSearch);
+      await tester.tap(_gamesCancel);
       // The query goes with the tap, not after the morph.
       expect(_games.clears, 1);
       await _settle(tester);
@@ -548,6 +596,9 @@ void main() {
       expect(find.byType(SegmentedSwitcher).hitTestable(), findsOneWidget);
       expect(_searchFab.hitTestable(), findsOneWidget);
       expect(_games.clears, 1);
+      // The page's way back is where it was, and answers again.
+      expect(tester.getRect(_back), rectMoreOrLessEquals(back, epsilon: 0.5));
+      expect(_back.hitTestable(), findsOneWidget);
     });
 
     testWidgets('system back closes the search, not Countrymen', (
@@ -749,24 +800,6 @@ void main() {
         expect(pin.bottom, lessThanOrEqualTo(size.height));
       });
     }
-
-    testWidgets('the search row fits a 320pt phone at the largest text size', (
-      tester,
-    ) async {
-      await _pumpScreen(tester, size: const Size(320, 568), textScale: 1.5);
-      await _openSearch(tester);
-
-      expect(tester.takeException(), isNull);
-      for (final target in [
-        _closeSearch,
-        _inSearch(_filters),
-      ]) {
-        final rect = tester.getRect(target);
-        expect(rect.left, greaterThanOrEqualTo(0));
-        expect(rect.right, lessThanOrEqualTo(320));
-      }
-      expect(tester.getSize(_searchField).width, greaterThanOrEqualTo(80));
-    });
   });
 
   group('Countrymen search keeps the Games list (continuity)', () {
@@ -820,7 +853,7 @@ void main() {
       expect(scrollable(tester), same(list));
       expect(find.byKey(refetchLine), findsNothing);
 
-      await tester.tap(_closeSearch);
+      await tester.tap(_gamesCancel);
       await tester.pump();
       // The query goes with the tap, once, and the list it replaced is back
       // in the same frame, as it was.
@@ -871,7 +904,7 @@ void main() {
       expect(cards(), findsOneWidget);
       expect(position.pixels, 0);
 
-      await tester.tap(_closeSearch);
+      await tester.tap(_gamesCancel);
       await tester.pump();
       // One frame: the whole list, laid out at the reader's place (not at
       // the hits' top first, then moved).
@@ -926,7 +959,7 @@ void main() {
       expect(_searchField, findsOneWidget);
       // Open, the room is gone: the last card sits that much lower.
       expect(tester.getTopLeft(last).dy, closeTo(placed + room, 0.5));
-      await expectWithMorph(() => tester.tap(_closeSearch));
+      await expectWithMorph(() => tester.tap(_gamesCancel));
       await _settle(tester);
       expect(position.pixels, closeTo(end, 0.01));
       expect(tester.getTopLeft(last).dy, closeTo(placed, 0.01));
@@ -941,7 +974,7 @@ void main() {
       await _settle(tester);
       expect(cards(), findsOneWidget);
       expect(position.pixels, 0);
-      await expectWithMorph(() => tester.tap(_closeSearch));
+      await expectWithMorph(() => tester.tap(_gamesCancel));
       await _settle(tester);
       expect(position.pixels, closeTo(end, 0.01));
       expect(scrollable(tester).position, same(position));
@@ -1004,7 +1037,7 @@ void main() {
       // The hit is not hidden behind the plain list's fold.
       expect(cards(), findsOneWidget);
 
-      await tester.tap(_closeSearch);
+      await tester.tap(_gamesCancel);
       await _settle(tester);
       expect(cards(), findsNothing);
     });
@@ -1046,11 +1079,9 @@ void main() {
 
       await _openSearch(tester);
       expect(_searchField, findsOneWidget);
-      expect(
-        tester.getRect(_closeSearch),
-        rectMoreOrLessEquals(back, epsilon: 0.5),
-      );
-      // Nothing of the Games toolbar beside the field.
+      // The same header with nothing of the Games toolbar: the field runs
+      // from the gutter up to Cancel.
+      _expectSearchRow(tester, _listCancel);
       expect(_inSearch(_filters), findsNothing);
 
       await tester.enterText(_searchField, 'Norway Chess');
@@ -1064,10 +1095,11 @@ void main() {
         SearchNoMatches.titleFor(query: 'Norway Chess', subject: 'events'),
       );
 
-      await tester.tap(_closeSearch);
+      await tester.tap(_listCancel);
       await _settle(tester);
       expect(_events.searches.last, '');
       expect(_searchField, findsNothing);
+      expect(tester.getRect(_back), rectMoreOrLessEquals(back, epsilon: 0.5));
       // The Games list was never searched.
       expect(_games.searches, isEmpty);
       expect(_games.clears, 0);
@@ -1088,7 +1120,7 @@ void main() {
       await _settle(tester);
       expect(_rankingQueries.last, 'Carlsen');
 
-      await tester.tap(_closeSearch);
+      await tester.tap(_listCancel);
       await _settle(tester);
       expect(_rankingQueries.last, '');
       expect(_games.searches, isEmpty);
@@ -1143,15 +1175,12 @@ void main() {
       ]);
 
       await _openSearch(tester);
-      expectTappable(['Filters'], within: _searchHeader);
-      // An IconButton's tooltip is its accessible name.
-      expect(
-        tester
-            .getSemantics(_closeSearch)
-            .getSemanticsData()
-            .hasAction(SemanticsAction.tap),
-        isTrue,
-      );
+      // Cancel is a button named by its word, saying what it does here.
+      expectTappable(['Filters', 'Cancel'], within: _searchHeader);
+      final cancel = tester.getSemantics(_gamesCancel).getSemanticsData();
+      expect(cancel.label, 'Cancel');
+      expect(cancel.hint, 'Closes the search');
+      expect(cancel.flagsCollection.isButton, isTrue);
       semantics.dispose();
     });
   });
@@ -1240,6 +1269,31 @@ void main() {
         );
       });
     }
+  });
+
+  // In the app's type, not the stock test font: that draws every glyph a
+  // full em wide, so Cancel's word would take half again the room a phone
+  // gives it and the field's share would be measured short.
+  group('Countrymen search row in the app\'s type', () {
+    setUpAll(_loadInter);
+
+    testWidgets('the search row fits a 320pt phone at the largest text size', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, size: const Size(320, 568), textScale: 1.5);
+      await _openSearch(tester);
+
+      expect(tester.takeException(), isNull);
+      // X's row holds on the narrowest phone too: Cancel last, its word on
+      // the gutter.
+      _expectSearchRow(tester, _gamesCancel, trailing: _inSearch(_filters));
+      for (final target in [_gamesCancel, _inSearch(_filters)]) {
+        final rect = tester.getRect(target);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+      }
+      expect(tester.getSize(_searchField).width, greaterThanOrEqualTo(80));
+    });
   });
 
   group('groupCountrymenGamesByDay', () {

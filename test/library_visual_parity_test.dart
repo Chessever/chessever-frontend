@@ -923,7 +923,7 @@ void main() {
         expect(find.textContaining('Filter'), findsWidgets);
         Navigator.of(tester.element(find.textContaining('Filter').first)).pop();
         await _settle(tester);
-        // Back closes the search; the tabs return.
+        // Cancel closes the search; the tabs return.
         await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
         await _settle(tester);
         await tester.tap(find.text('Players'));

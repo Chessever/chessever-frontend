@@ -2,11 +2,10 @@ part of 'search_mode.dart';
 
 /// The one geometry every page header and its search header share.
 ///
-/// A page's normal header starts its back row where the search header does
-/// (right under the page's own top inset, `viewPadding.top + 4.h`), with its
-/// back button a [PageBackButton] at [leadingInset]: the chevron is then the
-/// same glyph, size, x and y in both, and only the content around it
-/// changes as the search opens.
+/// A page's normal header starts its back row where the search header's row
+/// is (right under the page's own top inset, `viewPadding.top + 4.h`), with
+/// its back button a [PageBackButton] at [leadingInset]. The search row
+/// starts its field on the [gutter] and ends on Cancel.
 ///
 /// Measured from the pages: the event screen, Favorites, collections
 /// (`EventViewShell`), the player profile and Prep all draw their back as a
@@ -48,11 +47,13 @@ abstract final class SearchHeaderMetrics {
 }
 
 /// The page's way back: a 24.ic `arrow_back_ios_new_outlined` in a 48pt
-/// target, with the navigation haptic. Placed at
-/// [SearchHeaderMetrics.leadingInset] in a page's normal header it sits
-/// exactly where the search header's chevron does, and is shared with it
-/// ([SearchModeShared]): the chevron holds still while the search opens and
-/// closes, one glyph that only changes what it does.
+/// target, with the navigation haptic, placed at
+/// [SearchHeaderMetrics.leadingInset] in a page's normal header.
+///
+/// The search header has none: as X sets its search row, the field starts
+/// on the gutter and Cancel, at the row's end, puts the search away. The
+/// page's chevron goes with the rest of its header as the search opens and
+/// comes back with it.
 class PageBackButton extends StatelessWidget {
   const PageBackButton({
     super.key,
@@ -70,10 +71,6 @@ class PageBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SearchModeShared(id: PageBackButton, child: _button(context));
-  }
-
-  Widget _button(BuildContext context) {
     return SizedBox.square(
       dimension: SearchHeaderMetrics.backTarget,
       child: IconButton(
@@ -98,15 +95,20 @@ class PageBackButton extends StatelessWidget {
   }
 }
 
-/// The header of every page's full-page search: the way back, the field,
-/// and the page's trailing controls (filters, a view toggle), nothing else.
+/// The header of every page's full-page search, in X's order: the field
+/// from the gutter (magnifier, words, and the circled x that empties it
+/// while it holds any), the page's trailing controls (a view toggle,
+/// Filters last), then Cancel, which puts the search away.
 ///
 /// Inside a [SearchModeHost] it is the field: the host's query and focus,
-/// its frame and magnifier the glass lands on, its chevron closing the
-/// search. What the page's header draws at the same spot (the way back, a
-/// shared trailing control, each a [SearchModeShared]) holds still through
-/// the morph; its other controls arrive over the last part of it, and the
-/// field's text as the glass lands under it.
+/// its frame and magnifier the glass lands on, its Cancel closing the
+/// search. Cancel's room opens on the morph's own timeline, so the field
+/// narrows to make it and a trailing control the page's header draws at the
+/// same spot (a [SearchModeShared]) starts exactly there, whole from the
+/// tap, and glides in by Cancel's width as the word arrives. The other
+/// controls, and the word itself, arrive over the last part of the morph,
+/// and the field's text as the glass lands under it. Closing runs it all
+/// back.
 class SearchModeHeader extends StatefulWidget {
   const SearchModeHeader({
     super.key,
@@ -123,18 +125,19 @@ class SearchModeHeader extends StatefulWidget {
   final List<String>? rotatingHints;
   final Key? textFieldKey;
 
-  /// The page's own toolbar glyphs after the field, as it already draws them
-  /// beside its list: Filters as a [SearchModeFilterButton] (the one count
-  /// style, [SearchCountBadge]), count-less toggles as the toolbar's own
-  /// buttons (`ClassicalToggleButton`, `BoardViewToggleButton`). 44pt
-  /// targets with 20pt glyphs: the last one's glyph lands on the gutter.
+  /// The page's own toolbar glyphs between the field and Cancel, as it
+  /// already draws them beside its list: Filters as a
+  /// [SearchModeFilterButton] (the one count style, [SearchCountBadge]),
+  /// count-less toggles as the toolbar's own buttons
+  /// (`ClassicalToggleButton`, `BoardViewToggleButton`). 44pt targets with
+  /// 20pt glyphs.
   ///
   /// A control the page's header draws at the same spot is wrapped in a
-  /// [SearchModeShared] in both: it holds still through the morph. The
-  /// others arrive with the chevron.
+  /// [SearchModeShared] in both: it starts there, whole, and glides in as
+  /// Cancel's room opens. The others arrive with Cancel.
   final List<Widget> trailing;
 
-  /// On the chevron.
+  /// On Cancel's tap target.
   final Key closeKey;
 
   @override
@@ -238,7 +241,6 @@ class _SearchModeHeaderState extends State<SearchModeHeader> {
           hintText: widget.hintText,
           rotatingHints: widget.rotatingHints,
           onCloseTap: scope != null ? scope._host._clearField : text.clear,
-          onOpenFilter: null,
         ),
       ),
     );
@@ -255,14 +257,32 @@ class _SearchModeHeaderState extends State<SearchModeHeader> {
 
     final trailing = widget.trailing;
     final gutter = SearchHeaderMetrics.gutter;
+    // The row ends a glyph button's reach short of the gutter: with Cancel's
+    // room shut (the instant of the tap), the last trailing glyph lands on
+    // the gutter, where the page's header draws it; Cancel gives the reach
+    // back after its word, so open, the word ends on the gutter.
+    // Never negative: a folded Duo pane is narrower than the gutter.
+    final reach = math.min(SearchHeaderMetrics.trailingReach, gutter);
+    final cancel = arriving(
+      SearchCancelWord(
+        tapKey: widget.closeKey,
+        focusNode: focus,
+        onTap: close,
+        hint: 'Closes the search',
+        endInset: reach,
+        // After a 44pt glyph button, whose box already holds the glyph
+        // 12pt in: the word sits as far from that glyph as the glyph from
+        // the field (4 + 12).
+        startGap: trailing.isEmpty
+            ? null
+            : SearchCancelWord.afterGlyph - SearchHeaderMetrics.trailingReach,
+      ),
+    );
     return Padding(
-      // Never negative: a folded Duo pane is narrower than the gutter.
       padding: EdgeInsetsDirectional.fromSTEB(
-        SearchHeaderMetrics.leadingInset,
+        gutter,
         0,
-        trailing.isEmpty
-            ? gutter
-            : math.max(0.0, gutter - SearchHeaderMetrics.trailingReach),
+        gutter - reach,
         SearchHeaderMetrics.bottomGap,
       ),
       child: ConstrainedBox(
@@ -271,14 +291,6 @@ class _SearchModeHeaderState extends State<SearchModeHeader> {
         ),
         child: Row(
           children: [
-            // Shared with the page header's back (a PageBackButton is):
-            // whole from the tap where the page has one, arriving where it
-            // has none.
-            PageBackButton(
-              key: widget.closeKey,
-              tooltip: 'Close search',
-              onPressed: close,
-            ),
             Expanded(child: field),
             if (trailing.isNotEmpty) ...[
               const SizedBox(width: 4),
@@ -290,9 +302,42 @@ class _SearchModeHeaderState extends State<SearchModeHeader> {
                 ],
               ),
             ],
+            _CancelRoom(timeline: scope?.timeline, child: cancel),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Cancel's room at the end of the search row, opening on the morph's
+/// [timeline]: shut at the tap, so everything before it starts where the
+/// page's header has it, and whole once the search is open. With no host it
+/// is whole.
+class _CancelRoom extends StatelessWidget {
+  const _CancelRoom({required this.timeline, required this.child});
+
+  final Animation<double>? timeline;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final timeline = this.timeline;
+    if (timeline == null) return child;
+    return AnimatedBuilder(
+      animation: timeline,
+      child: child,
+      builder: (context, child) {
+        final f = timeline.value.clamp(0.0, 1.0);
+        return ClipRect(
+          clipBehavior: f < 1 ? Clip.hardEdge : Clip.none,
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            widthFactor: f,
+            child: child,
+          ),
+        );
+      },
     );
   }
 }

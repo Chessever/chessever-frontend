@@ -71,11 +71,15 @@ class ParkedMotionBuilder extends StatefulWidget {
     required this.motion,
     required this.builder,
     this.child,
+    this.active = true,
   });
 
   final double value;
   final Motion motion;
   final ValueWidgetBuilder<double> builder;
+
+  /// Off (reduced motion), a new [value] lands at once.
+  final bool active;
 
   /// Subtree that does not depend on the animated value. Built once and handed
   /// to [builder] on every frame.
@@ -103,7 +107,15 @@ class _ParkedMotionBuilderState extends State<ParkedMotionBuilder>
   @override
   void didUpdateWidget(covariant ParkedMotionBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) _controller.animateTo(widget.value);
+    if (oldWidget.value == widget.value) return;
+    if (widget.active) {
+      _controller.animateTo(widget.value);
+    } else {
+      // Stopped first: assigning alone leaves a bounded controller ticking.
+      _controller
+        ..stop(canceled: true)
+        ..value = widget.value;
+    }
   }
 
   @override
@@ -133,8 +145,8 @@ class _ParkedMotionBuilderState extends State<ParkedMotionBuilder>
     return AnimatedBuilder(
       animation: _controller,
       child: widget.child,
-      builder:
-          (context, child) => widget.builder(context, _controller.value, child),
+      builder: (context, child) =>
+          widget.builder(context, _controller.value, child),
     );
   }
 }

@@ -632,7 +632,6 @@ void main() {
                             controller: referenceText,
                             focusNode: referenceFocus,
                             onCloseTap: () {},
-                            onOpenFilter: null,
                           ),
                         ),
                       ],
@@ -704,7 +703,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
       expect(find.byType(GameCard), findsNWidgets(2));
-      // Back closes the search and clears it: the tabs return, and the
+      // Cancel closes the search and clears it: the tabs return, and the
       // games with them.
       await tester.enterText(input, 'missing');
       await tester.pump(const Duration(milliseconds: 300));
@@ -1111,8 +1110,10 @@ void main() {
     await _teardown(tester);
   });
 
-  testWidgets('the chevron and the Filters glyph hold their places as the '
-      'search opens and closes', (tester) async {
+  testWidgets('the chevron goes with the header and the Filters glyph glides '
+      'in before Cancel as the search opens, both back in place on close', (
+    tester,
+  ) async {
     final repo = _FakeCollections(
       detail: const Collection(
         id: 'book',
@@ -1125,32 +1126,65 @@ void main() {
     );
     await _pump(tester, repo, size: const Size(390, 844));
     await tester.pumpAndSettle();
-    Rect glyph(Finder button) => tester.getRect(
-      find.descendant(
-        of: button,
-        matching: find.byIcon(Icons.arrow_back_ios_new_outlined),
-      ),
-    );
+    const closeKey = ValueKey('event_view_search_close');
+    final chevron = find.byIcon(Icons.arrow_back_ios_new_outlined);
+    Rect glyph(Finder button) =>
+        tester.getRect(find.descendant(of: button, matching: chevron));
     Rect tune(Finder button) => tester.getRect(
       find.descendant(of: button, matching: find.byIcon(Icons.tune_rounded)),
     );
     final back = glyph(find.byTooltip('Back'));
     final filters = tune(find.byKey(const ValueKey('event_view_filters')));
-    await _openSearch(tester);
-    final close = glyph(find.byKey(const ValueKey('event_view_search_close')));
-    expect(close.center.dx, closeTo(back.center.dx, 0.01));
-    expect(close.center.dy, closeTo(back.center.dy, 0.01));
-    expect(close.size, back.size);
-    // Filters come last in both headers, their glyph on the gutter.
-    final besideField = tune(
-      find.byKey(const ValueKey('collection_games_filters')),
+    final besideField = find.byKey(const ValueKey('collection_games_filters'));
+    final gutter = SearchHeaderMetrics.gutter;
+    // The page's Filters glyph is on the gutter.
+    expect(390 - filters.right, closeTo(gutter, 0.5));
+
+    // The tap frame: the search header's Filters (the copy drawn from the
+    // tap) are exactly where the page's header has them, Cancel's room
+    // still shut after them.
+    await tester.tap(find.byKey(const ValueKey('event_view_search_fab')));
+    await tester.pump();
+    Rect room() => tester.getRect(
+      find
+          .ancestor(of: find.byKey(closeKey), matching: find.byType(ClipRect))
+          .first,
     );
-    expect(besideField.center.dx, closeTo(filters.center.dx, 0.01));
-    expect(besideField.center.dy, closeTo(filters.center.dy, 0.01));
-    expect(390 - besideField.right, closeTo(SearchHeaderMetrics.gutter, 0.5));
-    await tester.tap(find.byKey(const ValueKey('event_view_search_close')));
+    expect(room().width, closeTo(0, 0.01));
+    expect(tune(besideField), rectMoreOrLessEquals(filters, epsilon: 0.01));
+    await tester.pumpAndSettle();
+
+    // Open, as X sets its row: no chevron in the search header (the page's
+    // went with its header, out of reach), the field from the gutter, the
+    // Filters glyph outside it, moved in by exactly Cancel's room on the
+    // same line, then Cancel, its word ending on the gutter.
+    final header = find.byType(SearchModeHeader);
+    expect(find.descendant(of: header, matching: chevron), findsNothing);
+    expect(find.byTooltip('Back').hitTestable(), findsNothing);
+    final field = tester.getRect(
+      find.descendant(of: header, matching: find.byType(SearchFieldFill)),
+    );
+    final cancel = tester.getRect(find.byKey(closeKey));
+    final word = tester.getRect(
+      find.descendant(of: find.byKey(closeKey), matching: find.text('Cancel')),
+    );
+    final open = tune(besideField);
+    expect(field.left, closeTo(gutter, 0.01));
+    expect(field.right, lessThanOrEqualTo(open.left));
+    expect(open.width, closeTo(filters.width, 0.01));
+    expect(open.height, closeTo(filters.height, 0.01));
+    expect(open.center.dy, closeTo(filters.center.dy, 0.01));
+    expect(open.left, closeTo(filters.left - room().width, 0.01));
+    expect(tester.getRect(besideField).right, closeTo(cancel.left, 0.01));
+    expect(word.right, closeTo(390 - gutter, 0.01));
+    expect(word.center.dy, closeTo(open.center.dy, 0.01));
+
+    // Cancel closes it: the chevron and the Filters glyph are back where
+    // they were.
+    await tester.tap(find.byKey(closeKey));
     await tester.pumpAndSettle();
     expect(glyph(find.byTooltip('Back')), back);
+    expect(find.byTooltip('Back').hitTestable(), findsOneWidget);
     expect(tune(find.byKey(const ValueKey('event_view_filters'))), filters);
     expect(tester.takeException(), isNull);
     await _teardown(tester);

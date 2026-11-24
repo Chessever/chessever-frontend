@@ -59,7 +59,11 @@ import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart' show SlidingFabs;
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
-    show SearchCountBadge;
+    show
+        SearchCountBadge,
+        SearchFieldFill,
+        SearchHeaderMetrics,
+        SearchModeHeader;
 import 'package:chessever2/widgets/quick_list_toggles.dart'
     show BoardViewToggleButton;
 import 'package:flutter_test/flutter_test.dart';
@@ -202,6 +206,46 @@ Future<void> _loaded(ProviderContainer container) async {
   }, fireImmediately: true);
   await ready.future;
   sub.close();
+}
+
+/// The open search header as X sets its row: the field from the gutter, no
+/// chevron of its own (the page's went with its header and takes no taps),
+/// the list's [filters] the last control before Cancel ([closeKey]), and
+/// Cancel's word ending on the gutter.
+void _expectSearchRow(
+  WidgetTester tester, {
+  required Key closeKey,
+  required Finder filters,
+}) {
+  final header = find.byType(SearchModeHeader);
+  expect(header, findsOneWidget);
+  expect(
+    find.descendant(
+      of: header,
+      matching: find.byIcon(Icons.arrow_back_ios_new_outlined),
+    ),
+    findsNothing,
+  );
+  expect(find.byTooltip('Back').hitTestable(), findsNothing);
+  final close = find.byKey(closeKey);
+  expect(close.hitTestable(), findsOneWidget);
+  // The page's own edge (the test's surface, not the view's).
+  final edge = tester
+      .getRect(find.ancestor(of: header, matching: find.byType(Scaffold)).first)
+      .right;
+  final gutter = SearchHeaderMetrics.gutter;
+  final field = tester.getRect(
+    find.descendant(of: header, matching: find.byType(SearchFieldFill)),
+  );
+  final cancel = tester.getRect(close);
+  final word = tester.getRect(
+    find.descendant(of: close, matching: find.text('Cancel')),
+  );
+  expect(field.left, closeTo(gutter, 0.01));
+  expect(field.right, lessThanOrEqualTo(tester.getRect(filters).left + 0.01));
+  expect(tester.getRect(filters).right, closeTo(cancel.left, 0.01));
+  expect(word.right, closeTo(edge - gutter, 0.01));
+  expect(word.center.dy, closeTo(field.center.dy, 0.01));
 }
 
 void main() {
@@ -2351,9 +2395,11 @@ void main() {
     expect(find.byType(CardMoreButton), findsOneWidget);
     expect(tester.getCenter(find.text('Combined')), title);
 
-    // The chevron the search header shows is the page's own, in place.
+    // The page's own way back, where it comes back to once the search
+    // closes.
     final back = tester.getCenter(find.byTooltip('Back'));
     final list = tester.state(find.byType(PrepGamesTab));
+    final searchFilters = find.byKey(const ValueKey('prep_search_filters'));
 
     // The search opens in the header's place, the cursor in its field, and
     // the same list narrows under it as the reader types.
@@ -2365,7 +2411,14 @@ void main() {
     expect(find.text('Combined').hitTestable(), findsNothing);
     // The button stays for the glass to fly back into, out of reach.
     expect(fab.hitTestable(), findsNothing);
-    expect(tester.getCenter(find.byTooltip('Close search')), back);
+    // X's row: the field from the gutter, the list's Filters outside it,
+    // then Cancel, its word on the gutter. The chevron went with the
+    // page's header.
+    _expectSearchRow(
+      tester,
+      closeKey: const ValueKey('prep_library_search_close'),
+      filters: searchFilters,
+    );
     final line = tester.getRect(find.byType(PlayerGamesListToolbar));
     await tester.enterText(field, 'najdorf');
     await tester.pump();
@@ -2381,9 +2434,8 @@ void main() {
     expect(tester.getRect(find.byType(PlayerGamesListToolbar)), line);
     expect(tester.state(find.byType(PrepGamesTab)), same(list));
 
-    // While searching the Filters stand at the search header's end, as on
-    // every searched list; the list's line keeps its count.
-    final searchFilters = find.byKey(const ValueKey('prep_search_filters'));
+    // While searching the Filters stand at the search header's end, before
+    // Cancel, as on every searched list; the list's line keeps its count.
     expect(filters.hitTestable(), findsNothing);
     expect(searchFilters.hitTestable(), findsOneWidget);
     await tester.tap(searchFilters);
@@ -2424,7 +2476,7 @@ void main() {
       findsOneWidget,
     );
 
-    // So does the chevron.
+    // So does Cancel.
     await tester.tap(fab);
     await tester.pumpAndSettle();
     await tester.enterText(field, 'fan');
@@ -2700,9 +2752,15 @@ void main() {
           ),
           findsOneWidget,
         );
-        // The chevron is the page's own, where it was, over the Games tab's
-        // own list, narrowed as the reader types and given back whole.
-        expect(tester.getCenter(find.byTooltip('Close search')), back);
+        // X's row over the Games tab's own list, narrowed as the reader
+        // types and given back whole: the field from the gutter, Filters
+        // outside it, then Cancel on the gutter. The page's chevron went
+        // with its header and comes back where it was.
+        _expectSearchRow(
+          tester,
+          closeKey: const ValueKey('prep_search_close'),
+          filters: searchFilters,
+        );
         final field = find.byKey(const ValueKey('prep_games_search'));
         await tester.enterText(field, 'nobody plays this');
         await tester.pump();
@@ -2752,7 +2810,7 @@ void main() {
           tester.widget<PrepGamesTab>(find.byType(PrepGamesTab)).games,
           hasLength(3),
         );
-        // Back closes the search, back on Games with its tabs; the
+        // Cancel closes the search, back on Games with its tabs; the
         // filters stay where they were, on the list's own line.
         await tester.tap(find.byKey(const ValueKey('prep_search_close')));
         await tester.pumpAndSettle();

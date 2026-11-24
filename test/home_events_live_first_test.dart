@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
@@ -19,10 +20,13 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/ink_fab.dart';
 import 'package:chessever2/widgets/live_first_capsule.dart';
+import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search_mode/search_mode_filter_button.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -618,41 +622,39 @@ void main() {
     });
   });
 
-  group('Search field filter glyph', () {
-    const filterKey = ValueKey('filter');
+  // As X sets its search row: the field (magnifier, words, the circled x
+  // while it holds any), then Filters outside it, then Cancel while the
+  // field has the cursor or holds text.
+  group('the Events filter glyph, outside the field', () {
+    final filter = find.byKey(e2eKey(E2eIds.eventsFilterButton));
+    final frame = find.byKey(const ValueKey('simple-search-field-surface'));
+    final cancel = find.byKey(const ValueKey('search_field_cancel'));
+    Finder glyph() =>
+        find.descendant(of: filter, matching: find.byIcon(Icons.tune_rounded));
 
-    Future<int Function()> pumpBar(WidgetTester tester, {int badge = 0}) async {
-      var opened = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: Builder(
-            builder: (context) {
-              ResponsiveHelper.init(context);
-              return Scaffold(
-                body: Center(
-                  child: SimpleSearchBar(
-                    controller: TextEditingController(),
-                    focusNode: FocusNode(),
-                    onCloseTap: () {},
-                    onOpenFilter: () => opened++,
-                    filterBadgeCount: badge,
-                    filterButtonKey: filterKey,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+    testWidgets('stands after the field, never in it, as a bare glyph: no '
+        'tile behind it, the bar still gutter to gutter', (tester) async {
+      await _pumpEvents(tester, liveIds: const [], root: true);
+      final gutter = HomeTopBarMetrics.horizontalPadding;
+
+      expect(filter, findsOneWidget);
+      expect(find.descendant(of: frame, matching: filter), findsNothing);
+      final field = tester.getRect(frame);
+      final box = tester.getRect(filter);
+      final mark = tester.getRect(glyph());
+      // The field from the gutter, the glyph's edge on the far gutter, and
+      // the whole of the glyph's lead-in between them.
+      expect(field.left, closeTo(gutter, 0.5));
+      expect(field.right, lessThanOrEqualTo(box.left + 0.01));
+      expect(mark.right, closeTo(393 - gutter, 0.5));
+      expect(
+        mark.left - field.right,
+        closeTo(SearchModeFilterButton.bareGap, 0.5),
       );
-      return () => opened;
-    }
-
-    testWidgets('is a bare glyph: no tile behind it', (tester) async {
-      await pumpBar(tester);
+      expect(mark.center.dy, closeTo(field.center.dy, 0.5));
 
       final filled = find.descendant(
-        of: find.byKey(filterKey),
+        of: filter,
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is DecoratedBox &&
@@ -662,25 +664,139 @@ void main() {
       );
       expect(filled, findsNothing);
       expect(find.bySemanticsLabel('Filters'), findsOneWidget);
+      await _unmount(tester);
     });
 
-    testWidgets('its whole box still takes the tap', (tester) async {
+    testWidgets('with the cursor in the field it stays, and Cancel follows '
+        'it, ending on the gutter; Cancel puts it all back', (tester) async {
+      await _pumpEvents(tester, liveIds: const [], root: true);
+      final gutter = HomeTopBarMetrics.horizontalPadding;
+      final rest = tester.getRect(glyph());
+      expect(cancel, findsNothing);
+
+      await tester.tap(find.byKey(e2eKey(E2eIds.eventsSearchField)));
+      await _frames(tester);
+      expect(filter.hitTestable(), findsOneWidget);
+      expect(cancel, findsOneWidget);
+      final field = tester.getRect(frame);
+      final mark = tester.getRect(glyph());
+      final word = tester.getRect(cancel);
+      // Field, Filters, Cancel: left to right, none inside another.
+      expect(
+        field.right,
+        lessThanOrEqualTo(tester.getRect(filter).left + 0.01),
+      );
+      expect(mark.right, lessThanOrEqualTo(word.left + 0.01));
+      expect(word.right, closeTo(393 - gutter, 0.5));
+      // The word sits as far from the glyph as the glyph from the field.
+      final text = tester.getRect(
+        find.descendant(of: cancel, matching: find.text('Cancel')),
+      );
+      expect(text.left - mark.right, closeTo(SearchCancelWord.afterGlyph, 0.5));
+      expect(text.center.dy, closeTo(mark.center.dy, 0.5));
+
+      await tester.tap(cancel);
+      await _frames(tester);
+      expect(cancel, findsNothing);
+      expect(tester.getRect(glyph()), rest);
+      await _unmount(tester);
+    });
+
+    testWidgets('keeps its count on its shoulder, and reads it out', (
+      tester,
+    ) async {
+      final filters = defaultFilterPopupState.copyWith(
+        formatsAndStates: {'Blitz'},
+        eloRange: const RangeValues(2600, kFilterMaxElo),
+      );
+      await _pumpEvents(
+        tester,
+        liveIds: const [],
+        root: true,
+        filters: filters,
+      );
+
+      expect(
+        find.descendant(of: filter, matching: find.text('2')),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('Filters, 2 active'), findsOneWidget);
+      // Still outside the field.
+      expect(
+        tester.getRect(frame).right,
+        lessThanOrEqualTo(tester.getRect(filter).left + 0.01),
+      );
+      await _unmount(tester);
+    });
+  });
+
+  group('the filter glyph in a search bar', () {
+    const filterKey = ValueKey('filter');
+
+    Future<int Function()> pumpBar(WidgetTester tester) async {
+      tester.view.devicePixelRatio = 2;
+      tester.view.physicalSize = const Size(393, 852) * 2;
+      addTearDown(tester.view.reset);
+      var opened = 0;
+      final controller = TextEditingController();
+      final focusNode = FocusNode();
+      addTearDown(controller.dispose);
+      addTearDown(focusNode.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recentSearchStorageProvider.overrideWithValue(
+              _MemoryRecentSearches(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: HomeTopBarFrame(
+                    statusBar: false,
+                    child: EnhancedRoundedSearchBar(
+                      controller: controller,
+                      focusNode: focusNode,
+                      showProfile: false,
+                      dropdown: false,
+                      filterButtonKey: filterKey,
+                      onFilterTap: () => opened++,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return () => opened;
+    }
+
+    testWidgets('its whole box takes the tap, its lead-in too', (tester) async {
       final opened = await pumpBar(tester);
 
       // Just inside the box's corner, off the glyph itself.
       final box = tester.getRect(find.byKey(filterKey));
       await tester.tapAt(box.topLeft + const Offset(1, 1));
       expect(opened(), 1);
+      // And the glyph itself.
+      await tester.tap(find.byIcon(Icons.tune_rounded));
+      expect(opened(), 2);
     });
 
-    testWidgets('keeps its count badge, and reads it out', (tester) async {
-      await pumpBar(tester, badge: 2);
+    testWidgets('a 20pt glyph with a 44pt reach: a tap just above it opens '
+        'it too', (tester) async {
+      final opened = await pumpBar(tester);
 
-      expect(
-        find.descendant(of: find.byKey(filterKey), matching: find.text('2')),
-        findsOneWidget,
-      );
-      expect(find.bySemanticsLabel('Filters, 2 active'), findsOneWidget);
+      final mark = tester.getRect(find.byIcon(Icons.tune_rounded));
+      expect(mark.height, closeTo(SearchModeFilterButton.glyph, 0.5));
+      // Above the drawn glyph, inside the 44pt square centred on it.
+      await tester.tapAt(Offset(mark.center.dx, mark.center.dy - 20));
+      expect(opened(), 1);
     });
   });
 }
@@ -919,4 +1035,12 @@ class _FakeFavoriteEventsNotifier extends FavoriteEventsNotifier {
 
   @override
   Future<List<FavoriteEvent>> build() async => _favorites;
+}
+
+/// Pumps the springs home frame by frame: a spring that starts on a frame
+/// only moves on the frames after it.
+Future<void> _frames(WidgetTester tester) async {
+  for (var i = 0; i < 40; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
 }

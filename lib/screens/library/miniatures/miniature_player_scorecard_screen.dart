@@ -22,15 +22,18 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
+import 'package:chessever2/widgets/search_mode/search_mode_filter_button.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// A player's own miniature games, in the same spirit as the tournament
 /// Standings → player card → score card flow: a compact player header with
@@ -143,9 +146,27 @@ class _MiniaturePlayerScorecardScreenState
     });
   }
 
-  void _clearSearch() {
+  /// Empties the field and gives every game back at once, rather than after
+  /// the typing debounce.
+  void _emptySearch() {
+    _debounceTimer?.cancel();
     _searchController.clear();
-    _onSearchChanged('');
+    final filter = miniaturePlayerGamesFilterProvider(_playerId);
+    final current = ref.read(filter);
+    final next = current.copyWith(clearSearch: true);
+    if (next != current) ref.read(filter.notifier).state = next;
+  }
+
+  /// The clear button: the words go, the cursor stays.
+  void _clearSearch() {
+    _emptySearch();
+    if (!_searchFocusNode.hasFocus) _searchFocusNode.requestFocus();
+  }
+
+  /// Cancel: the words go and the keyboard with them.
+  void _cancelSearch() {
+    _emptySearch();
+    dismissSoftwareKeyboard(focusNode: _searchFocusNode);
   }
 
   Future<void> _openFilters() async {
@@ -414,10 +435,13 @@ class _MiniaturePlayerScorecardScreenState
     );
   }
 
+  /// The search row, in X's order: the field (magnifier, words, and the
+  /// clear button while it holds any), then Filters outside it, then Cancel
+  /// while the field has the cursor or holds words.
   Widget _buildSearchBar(MiniatureGamesFilter filter) {
-    final hasActiveFilters = filter.dialogActiveCount > 0;
-    final activeFilterCount = filter.dialogActiveCount;
     final searchBarHeight = 48.h;
+    final inset = 12.w;
+    final magnifier = 20.sp;
 
     Widget searchField = Container(
       decoration: BoxDecoration(
@@ -427,8 +451,12 @@ class _MiniaturePlayerScorecardScreenState
       ),
       child: Row(
         children: [
-          SizedBox(width: 12.w),
-          Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
+          SizedBox(width: inset),
+          Icon(
+            Icons.search,
+            size: magnifier,
+            color: context.colors.textSecondary,
+          ),
           SizedBox(width: 8.w),
           Expanded(
             child: TextField(
@@ -449,18 +477,22 @@ class _MiniaturePlayerScorecardScreenState
               ),
             ),
           ),
-          if (_searchController.text.isNotEmpty) ...[
-            GestureDetector(
-              onTap: _clearSearch,
-              child: Icon(
-                Icons.close,
-                size: 20.sp,
-                color: context.colors.textSecondary,
-              ),
-            ),
-            SizedBox(width: 8.w),
-          ],
-          SizedBox(width: 8.w),
+          // Listens to the field itself, so it is there from the first
+          // letter; part of the field, so pressing it keeps the keyboard up.
+          SearchClearButton(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            onTap: _clearSearch,
+          ),
+          // The clear glyph's centre as far in from the end as the
+          // magnifier's is from the start, so the two frame the words.
+          SizedBox(
+            width:
+                inset +
+                magnifier / 2 -
+                SearchClearButton.endInset -
+                SearchClearButton.glyph / 2,
+          ),
         ],
       ),
     );
@@ -470,75 +502,19 @@ class _MiniaturePlayerScorecardScreenState
       child: Row(
         children: [
           Expanded(child: searchField),
-          SizedBox(width: 8.w),
-          GestureDetector(
+          // The bare glyph in its own 44pt reach: the reach's inset is the
+          // gap after the field.
+          SearchModeFilterButton(
+            count: filter.dialogActiveCount,
             onTap: _openFilters,
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
-                ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? (context.isLightTheme
-                                ? context.colors.danger
-                                : const Color(0xFFEF4444))
-                            : context.colors.textSecondary,
-                  ),
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: BoxDecoration(
-                          color:
-                              context.isLightTheme
-                                  ? context.colors.danger
-                                  : const Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: CappedTextScale(
-                            child: Text(
-                              '$activeFilterCount',
-                              style: AppTypography.textXsBold.copyWith(
-                                color:
-                                    context.isLightTheme
-                                        ? labelOnFill(
-                                          context,
-                                          context.colors.danger,
-                                        )
-                                        : context.colors.textPrimary,
-                                fontSize: 9.sp,
-                                height: 1,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          ),
+          SearchCancelButton(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            onCancel: _cancelSearch,
+            cancelKey: const ValueKey('miniature_scorecard_search_cancel'),
+            // The word at the field's own size, as X sets it.
+            textStyle: AppTypography.textSmRegular,
           ),
         ],
       ),

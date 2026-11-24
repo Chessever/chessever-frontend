@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -9,15 +10,30 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/text_scale.dart';
-import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
+import 'package:chessever2/widgets/home_top_bar.dart' show HomeTopBarMetrics;
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
+import 'package:chessever2/widgets/search/search_motion.dart' show SearchMotion;
+import 'package:chessever2/widgets/search_mode/search_mode.dart'
+    show SearchHeaderMetrics;
+import 'package:chessever2/widgets/search_mode/search_mode_filter_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
 
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
+/// The ChessEver Database's search row (TWIC contents), in X's order: the
+/// field (magnifier, words, and the circled x that empties it while it holds
+/// any), then Filters outside it, then Cancel while the field has the cursor
+/// or holds text. The x only empties the field and keeps the cursor; Cancel
+/// clears the search and puts the keyboard away.
+///
+/// The page pads the row's end by [endPadding], as the search header ends
+/// its own: the Filters glyph at rest, and Cancel's word once it opens, both
+/// end on the gutter.
 class LibrarySearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
   final Function(String) onChanged;
@@ -39,8 +55,24 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
   final List<String>? rotatingHints;
   final Duration rotationInterval;
   final Key? textFieldKey;
+
+  /// On the Filters button's tap target.
   final Key? filterButtonKey;
   final int filterBadgeCount;
+
+  /// On Cancel's tap target.
+  final Key cancelKey;
+
+  /// How far a 44pt glyph button reaches past its glyph
+  /// ([SearchHeaderMetrics.trailingReach]), never more than the gutter (a
+  /// folded Duo pane is narrower than it).
+  static double get reach =>
+      math.min(SearchHeaderMetrics.trailingReach, SearchHeaderMetrics.gutter);
+
+  /// The page's padding after the bar: a glyph button's [reach] short of the
+  /// gutter. With Cancel shut the Filters glyph ends on the gutter; Cancel
+  /// gives the reach back after its word, so open, the word ends there.
+  static double get endPadding => SearchHeaderMetrics.gutter - reach;
 
   const LibrarySearchBar({
     super.key,
@@ -62,6 +94,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     this.textFieldKey,
     this.filterButtonKey,
     this.filterBadgeCount = 0,
+    this.cancelKey = const ValueKey('search_field_cancel'),
   });
 
   @override
@@ -203,10 +236,24 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
     _effectiveFocusNode.unfocus();
   }
 
-  void _clearSearch() {
-    widget.controller.clear();
+  /// The circled x: the words go and the cursor stays (as X's does), and
+  /// the page is told at once rather than after the bar's typing debounce.
+  void _clearField() {
+    if (widget.controller.text.isNotEmpty) widget.controller.clear();
+    EasyDebounce.cancel('lib_search_debounce');
     widget.onChanged('');
-    _hideOverlay();
+    if (!_effectiveFocusNode.hasFocus && _effectiveFocusNode.context != null) {
+      _effectiveFocusNode.requestFocus();
+    }
+  }
+
+  /// Cancel: the words go, the keyboard with them, and the field rests.
+  void _cancel() {
+    if (widget.controller.text.isNotEmpty) widget.controller.clear();
+    EasyDebounce.cancel('lib_search_debounce');
+    widget.onChanged('');
+    if (_showOverlay) setState(() => _showOverlay = false);
+    dismissSoftwareKeyboard(focusNode: _effectiveFocusNode);
   }
 
   @override
@@ -224,25 +271,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           ),
         Column(
           children: [
-            // CSS: bg #1A1A1C, radius 12px, height 40px, no border
-            SingleMotionBuilder(
-              motion: CupertinoMotion.snappy(),
-              value: _effectiveFocusNode.hasFocus ? 1.0 : 0.0,
-              builder: (context, value, child) {
-                final clamped = value.clamp(0.0, 1.0);
-                return Transform.scale(
-                  scale: 0.98 + (clamped * 0.02),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                    child: child,
-                  ),
-                );
-              },
-              child: _buildInputRow(),
-            ),
+            _buildSearchRow(),
             if (widget.enableOverlay)
               SingleMotionBuilder(
                 motion: CupertinoMotion.bouncy(),
@@ -296,8 +325,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
     final hints = widget.rotatingHints!;
     // Empty word during fade-out lets SpringHintWord animate the last entry
     // away before the hint reverts to static text.
-    final word =
-        _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
+    final word = _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
     final style = AppTypography.textXsRegular.copyWith(
       color: context.colors.textPrimary.withValues(alpha: 0.7),
@@ -306,24 +334,135 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (prefix.isNotEmpty) Text(prefix, style: style),
-        Flexible(child: SpringHintWord(word: word, style: style)),
+        Flexible(
+          child: SpringHintWord(word: word, style: style),
+        ),
       ],
     );
   }
 
+  /// The row: the field, then Filters outside it (the boxed 44pt glyph, so
+  /// the row's end padding plus its reach puts the glyph on the gutter),
+  /// then Cancel, whose room opens on the field morph's spring while the
+  /// field has the cursor or holds text. The field narrows to make room.
+  ///
+  /// The row is always a Cancel target tall, so the word opening never
+  /// changes its height and nothing below it moves.
+  Widget _buildSearchRow() {
+    final reach = LibrarySearchBar.reach;
+    final filter = widget.showFilterIcon;
+    final rowHeight = math.max(
+      SearchModeFilterButton.target,
+      math.max(HomeTopBarMetrics.minTapTarget, 44.w),
+    );
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: rowHeight),
+      child: Row(
+        children: [
+          Expanded(child: _buildField()),
+          if (filter) ...[
+            const SizedBox(width: 4),
+            SearchModeFilterButton(
+              key: widget.filterButtonKey,
+              count: widget.filterBadgeCount,
+              onTap: widget.onFilterTap,
+            ),
+          ],
+          SearchCancelButton(
+            controller: widget.controller,
+            focusNode: _effectiveFocusNode,
+            onCancel: _cancel,
+            cancelKey: widget.cancelKey,
+            // The word at the field's own size, as X sets it.
+            textStyle: AppTypography.textXsRegular,
+            // After the boxed Filters, whose box holds the glyph 12pt in.
+            startGap: filter
+                ? SearchCancelWord.afterGlyph - SearchHeaderMetrics.trailingReach
+                : null,
+            // With Filters last, the row ends their reach short of the
+            // gutter and Cancel gives it back after its word. Without them
+            // the field ends on the gutter at rest and so does the word.
+            endInset: filter ? reach : 0,
+          ),
+          if (!filter) SizedBox(width: reach),
+        ],
+      ),
+    );
+  }
+
+  /// The field's frame: the page's surface, lifting a hair on focus.
+  // CSS: bg #1A1A1C, radius 12px, height 40px, no border
+  Widget _buildField() {
+    return SingleMotionBuilder(
+      motion: CupertinoMotion.snappy(),
+      value: _effectiveFocusNode.hasFocus ? 1.0 : 0.0,
+      builder: (context, value, child) {
+        final clamped = value.clamp(0.0, 1.0);
+        return Transform.scale(
+          scale: 0.98 + (clamped * 0.02),
+          child: Container(
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.circular(12.br),
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: _buildInputRow(),
+    );
+  }
+
+  /// The hint under an empty field without the cursor. It listens to the
+  /// controller and the focus node itself, so it goes the moment words
+  /// arrive, however they arrive, without rebuilding the [TextField].
+  Widget _buildHint() {
+    return ListenableBuilder(
+      listenable: Listenable.merge([widget.controller, _effectiveFocusNode]),
+      builder: (context, _) {
+        if (widget.controller.text.isNotEmpty || _effectiveFocusNode.hasFocus) {
+          return const SizedBox.shrink();
+        }
+        if (_showRotatingOverlay) return _buildRotatingHint();
+        if (widget.hintPhrases != null && widget.hintPhrases!.length > 1) {
+          return AnimatedSearchHint(
+            textColor: context.colors.textPrimary.withValues(alpha: 0.7),
+            textStyle: AppTypography.textXsRegular,
+            phrases: widget.hintPhrases!,
+          );
+        }
+        return Text(
+          widget.hintText,
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textPrimary.withValues(alpha: 0.7),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildInputRow() {
-    final isEmpty = widget.controller.text.isEmpty;
+    const searchGlyphStart = 12.0;
+    final searchGlyph = 16.sp;
+    // The circled x's centre sits as far in from the field's end as the
+    // magnifier's sits from its start, so the two marks frame the words.
+    final clearEnd = math.max(
+      0.0,
+      searchGlyphStart.w +
+          searchGlyph / 2 -
+          (SearchClearButton.endInset + SearchClearButton.glyph / 2),
+    );
 
     // CSS: height 40px, padding 4px 12px
     return SizedBox(
       height: 40.h * context.textGrowth,
       child: Row(
         children: [
-          SizedBox(width: 12.w),
+          SizedBox(width: searchGlyphStart.w),
           // CSS: search icon 16x16, rgba(255,255,255,0.7)
           Icon(
             Icons.search,
-            size: 16.sp,
+            size: searchGlyph,
             color: context.colors.textPrimary.withValues(alpha: 0.7),
           ),
           SizedBox(width: 4.w),
@@ -331,24 +470,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
             child: Stack(
               alignment: Alignment.centerLeft,
               children: [
-                // Animated hint text (shown when empty and not focused)
-                if (isEmpty && !_effectiveFocusNode.hasFocus)
-                  if (_showRotatingOverlay)
-                    _buildRotatingHint()
-                  else if (widget.hintPhrases != null &&
-                      widget.hintPhrases!.length > 1)
-                    AnimatedSearchHint(
-                      textColor: context.colors.textPrimary.withValues(alpha: 0.7),
-                      textStyle: AppTypography.textXsRegular,
-                      phrases: widget.hintPhrases!,
-                    )
-                  else
-                    Text(
-                      widget.hintText,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.7),
-                      ),
-                    ),
+                _buildHint(),
                 // CSS: 12px, Inter, rgba(255,255,255,0.7)
                 TextField(
                   key: widget.textFieldKey,
@@ -360,8 +482,9 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   ),
                   decoration: InputDecoration(
                     isDense: true,
-                    hintText:
-                        _effectiveFocusNode.hasFocus ? widget.hintText : null,
+                    hintText: _effectiveFocusNode.hasFocus
+                        ? widget.hintText
+                        : null,
                     hintStyle: AppTypography.textXsRegular.copyWith(
                       color: context.colors.textPrimary.withValues(alpha: 0.7),
                     ),
@@ -372,83 +495,17 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               ],
             ),
           ),
-          if (widget.controller.text.isNotEmpty)
-            GestureDetector(
-              onTap: _clearSearch,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                child: Icon(
-                  Icons.close,
-                  size: 16.sp,
-                  color: context.colors.textPrimary.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
-          if (widget.showFilterIcon) ...[
-            if (widget.controller.text.isNotEmpty) SizedBox(width: 4.w),
-            // CSS: list-filter icon 24x24 in 32x32 container, radius 4px
-            GestureDetector(
-              key: widget.filterButtonKey,
-              onTap: widget.onFilterTap,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 32.h,
-                    height: 32.h,
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Center(
-                      child: SvgWidget(
-                        SvgAsset.listFilterIcon,
-                        width: 24.sp,
-                        height: 24.sp,
-                        colorFilter: ColorFilter.mode(
-                          widget.filterBadgeCount > 0
-                              ? context.colors.textPrimary
-                              : _effectiveFocusNode.hasFocus
-                              ? context.colors.accentText
-                              : context.isLightTheme
-                              ? context.colors.iconSecondary
-                              : Colors.grey[400]!,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (widget.filterBadgeCount > 0)
-                    Positioned(
-                      right: -4.w,
-                      top: -4.h,
-                      child: Container(
-                        padding: EdgeInsets.all(4.w),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: BoxConstraints(
-                          minWidth: 16.w,
-                          minHeight: 16.h,
-                        ),
-                        child: Text(
-                          '${widget.filterBadgeCount}',
-                          style: AppTypography.textXsBold.copyWith(
-                            color: context.colors.textPrimary,
-                            fontSize: 10.sp,
-                            height: 1,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-          SizedBox(width: widget.showFilterIcon ? 4.w : 12.w),
+          // X's clear: there only while the field holds text, it empties the
+          // field and keeps the cursor. It listens to the controller itself,
+          // so it comes and goes with the words rather than with the page's
+          // next rebuild. It belongs to the field: pressing it is not a tap
+          // outside it, so the keyboard stays up through the tap.
+          SearchClearButton(
+            controller: widget.controller,
+            focusNode: _effectiveFocusNode,
+            onTap: _clearField,
+          ),
+          SizedBox(width: clearEnd),
         ],
       ),
     );

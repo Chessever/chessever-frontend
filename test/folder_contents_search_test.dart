@@ -97,10 +97,41 @@ final _database = LibraryFolder(
 
 Finder get _fab => find.byKey(const ValueKey('folder_search_fab'));
 Finder get _field => find.byKey(const ValueKey('folder_search_field'));
-Finder get _close => find.byTooltip('Close search');
+
+/// The search header's Cancel: the row's last control, which puts the
+/// search away.
+Finder get _cancel => find.byKey(const ValueKey('folder_search_close'));
 Finder get _searchHeader => find.byType(SearchModeHeader);
 Finder _inSearch(Finder finder) =>
     find.descendant(of: _searchHeader, matching: finder);
+
+/// The open search row, as X sets it: no chevron, the field from the
+/// gutter, the database's Filters after it, and Cancel last, its word
+/// ending on the gutter, all on the field's line.
+void _expectSearchRow(WidgetTester tester) {
+  final gutter = SearchHeaderMetrics.gutter;
+  expect(_inSearch(find.byType(PageBackButton)), findsNothing);
+  expect(
+    _inSearch(find.byIcon(Icons.arrow_back_ios_new_outlined)),
+    findsNothing,
+  );
+  expect(_inSearch(_cancel), findsOneWidget);
+  final field = tester.getRect(_inSearch(find.byType(SearchFieldFill)));
+  final filters = tester.getRect(
+    _inSearch(find.byType(SearchModeFilterButton)),
+  );
+  final cancel = tester.getRect(_cancel);
+  final word = tester.getRect(
+    find.descendant(of: _cancel, matching: find.text('Cancel')),
+  );
+  expect(field.left, closeTo(gutter, 0.01));
+  expect(field.right, lessThanOrEqualTo(filters.left));
+  expect(filters.right, closeTo(cancel.left, 0.01));
+  final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+  expect(word.right, closeTo(width - gutter, 0.01));
+  expect(filters.center.dy, closeTo(field.center.dy, 0.01));
+  expect(word.center.dy, closeTo(field.center.dy, 0.01));
+}
 
 /// Lets springs finish without waiting on a caret's blink.
 Future<void> _settle(WidgetTester tester) async {
@@ -173,23 +204,33 @@ void main() {
       expect(find.text('12 games'), findsOneWidget);
     });
 
-    testWidgets('the field opens in the header, Filters held where they '
-        'were, the query runs over the whole database, and closing drops it', (
-      tester,
-    ) async {
+    testWidgets('the field opens in the header from the gutter, Filters '
+        'start where they were and make room for Cancel, the query runs over '
+        'the whole database, and Cancel drops it', (tester) async {
       await _pump(tester);
       final back = tester.getRect(find.byType(PageBackButton));
       final filters = tester.getRect(find.byType(SearchModeFilterButton));
 
       await tester.tap(_fab);
-      await _settle(tester);
-
-      expect(_field, findsOneWidget);
-      expect(tester.getRect(_close), rectMoreOrLessEquals(back, epsilon: 0.5));
+      await tester.pump();
+      // The tap frame: the search header's Filters start exactly where the
+      // page's are, Cancel's room still shut after them.
+      expect(_searchHeader, findsOneWidget);
       expect(
         tester.getRect(_inSearch(find.byType(SearchModeFilterButton))),
         rectMoreOrLessEquals(filters, epsilon: 0.5),
       );
+      await _settle(tester);
+
+      expect(_field, findsOneWidget);
+      _expectSearchRow(tester);
+      // Open, they have moved in along the row only, by Cancel's room.
+      final open = tester.getRect(
+        _inSearch(find.byType(SearchModeFilterButton)),
+      );
+      expect(open.top, closeTo(filters.top, 0.5));
+      expect(open.size, filters.size);
+      expect(open.left, lessThan(filters.left));
 
       await tester.enterText(_field, 'najdorf');
       await tester.pump(const Duration(milliseconds: 300));
@@ -210,11 +251,15 @@ void main() {
 
       await tester.enterText(_field, 'scheveningen');
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(_close);
+      await tester.tap(_cancel);
       await _settle(tester);
       expect(_field, findsNothing);
       expect(_asked.last.search, isEmpty);
       expect(find.text('12 games'), findsOneWidget);
+      // The page's own way back is where it was, and answers again.
+      final chevron = find.byType(PageBackButton);
+      expect(tester.getRect(chevron), rectMoreOrLessEquals(back, epsilon: 0.5));
+      expect(chevron.hitTestable(), findsOneWidget);
     });
 
     testWidgets('an empty database floats no search over its empty state', (

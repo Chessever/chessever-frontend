@@ -4,6 +4,7 @@ import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -586,6 +587,19 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     );
   }
 
+  /// The field's clear, as X's: the words go, the list returns to its top,
+  /// and the cursor stays, or comes back if the keyboard was down.
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _searchQuery = '');
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    if (!_searchFocusNode.hasFocus && _searchFocusNode.canRequestFocus) {
+      _searchFocusNode.requestFocus();
+    }
+  }
+
   Widget _buildSearchField() {
     return Container(
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
@@ -616,24 +630,31 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             color: context.colors.textSecondary,
           ),
           prefixIconConstraints: BoxConstraints(minWidth: 36.w),
-          suffixIcon:
-              _searchQuery.isNotEmpty
-                  ? IconButton(
-                    tooltip: 'Clear opening search',
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                      if (_scrollController.hasClients) {
-                        _scrollController.jumpTo(0);
-                      }
-                    },
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 18.ic,
-                      color: context.colors.textSecondary,
-                    ),
-                  )
-                  : null,
+          // X's clear: a bare circled x, there only while the field holds
+          // text, its glyph as far in from the end as the magnifier's is
+          // from the start. Its slot mirrors the magnifier's, so the field
+          // keeps its height and its text room as the x comes and goes.
+          suffixIcon: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            widthFactor: 1,
+            heightFactor: 1,
+            child: Padding(
+              // The magnifier's centre (half its 36.w slot), less where the
+              // x's centre sits in its own box.
+              padding: EdgeInsetsDirectional.only(
+                end:
+                    18.w -
+                    (SearchClearButton.endInset + SearchClearButton.glyph / 2),
+              ),
+              child: SearchClearButton(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                tooltip: 'Clear opening search',
+                onTap: _clearSearch,
+              ),
+            ),
+          ),
+          suffixIconConstraints: BoxConstraints(minWidth: 36.w),
           border: InputBorder.none,
           isDense: true,
           contentPadding: EdgeInsets.symmetric(vertical: 8.h),

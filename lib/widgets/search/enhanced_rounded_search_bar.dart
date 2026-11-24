@@ -8,8 +8,10 @@ import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
+import 'package:chessever2/widgets/search_mode/search_mode_filter_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
@@ -40,12 +42,23 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.leading,
     this.dropdown = true,
     this.showClear = true,
+    this.showCancel = true,
+    this.cancelKey = const ValueKey('search_field_cancel'),
     this.onSubmitted,
     this.textInputAction,
   });
 
-  /// The clear button inside the field ([SimpleSearchBar.showClear]).
+  /// The clear button inside the field ([SimpleSearchBar.showClear]): there
+  /// while the field holds text, it empties it and keeps the cursor.
   final bool showClear;
+
+  /// Cancel after the field (and its Filters), there while the field has
+  /// the cursor or holds text ([SearchCancelButton]): the query cleared, the
+  /// keyboard down, the page back.
+  final bool showCancel;
+
+  /// On Cancel's tap target.
+  final Key cancelKey;
 
   /// The keyboard's action key and what it does ([SimpleSearchBar]).
   final ValueChanged<String>? onSubmitted;
@@ -222,6 +235,20 @@ class _EnhancedRoundedSearchBarState
     }
   }
 
+  /// The clear button: the words go, the cursor stays (as X's does), and
+  /// the page hears of it at once rather than after the typing debounce.
+  void _clearField() {
+    if (widget.controller.text.isNotEmpty) widget.controller.clear();
+    ref.read(searchQueryProvider.notifier).state = '';
+    ref.read(debouncedSearchQueryProvider.notifier).state = '';
+    cancelSearchDebounce();
+    if (!_effectiveNode.hasFocus && _effectiveNode.context != null) {
+      _effectiveNode.requestFocus();
+    }
+    widget.onClearSearchField?.call();
+  }
+
+  /// Cancel: the words go, the keyboard with them, and the field rests.
   void _clearSearchAndHide() {
     widget.controller.clear();
     ref.read(isSearchingProvider.notifier).state = false;
@@ -323,36 +350,64 @@ class _EnhancedRoundedSearchBarState
 
   /// The home bar's shared row (see [HomeTopBarRow]): the avatar squeezes
   /// out as the field takes focus, on the same spring as the field's morph.
+  ///
+  /// In X's order: the field (magnifier, words, the clear button while it
+  /// holds any), then Filters outside it, then Cancel while the field has
+  /// the cursor or holds text. Filters stay through the focus; Cancel's room
+  /// opens on the field morph's spring and the field narrows to make it.
   Widget _buildSearchBar() {
+    final field = AnimatedBuilder(
+      animation: _morph,
+      // Built once. Everything the morph touches on this side is paint, so
+      // the field never rebuilds mid-animation.
+      child: SimpleSearchBar(
+        textFieldKey: widget.textFieldKey,
+        hintText: widget.hintText,
+        rotatingHints: widget.rotatingHints,
+        controller: widget.controller,
+        focusNode: _effectiveNode,
+        onCloseTap: _clearField,
+        actions: widget.fieldActions,
+        showClear: widget.showClear,
+        onSubmitted: widget.onSubmitted,
+        textInputAction: widget.textInputAction,
+      ),
+      builder: (context, child) => HomeSearchFieldSurface(
+        lift: _morph.value,
+        child: RepaintBoundary(child: child),
+      ),
+    );
+    final onFilterTap = widget.onFilterTap;
     return HomeTopBarRow(
       showAvatar: widget.showProfile,
       leading: widget.leading,
       onAvatarTap: widget.onProfileTap,
       focusNode: _effectiveNode,
-      content: AnimatedBuilder(
-        animation: _morph,
-        // Built once. Everything the morph touches on this side is paint, so
-        // the field never rebuilds mid-animation.
-        child: SimpleSearchBar(
-          textFieldKey: widget.textFieldKey,
-          filterButtonKey: widget.filterButtonKey,
-          hintText: widget.hintText,
-          rotatingHints: widget.rotatingHints,
-          controller: widget.controller,
-          focusNode: _effectiveNode,
-          onCloseTap: _clearSearchAndHide,
-          onOpenFilter: widget.onFilterTap,
-          filterBadgeCount: widget.filterBadgeCount,
-          actions: widget.fieldActions,
-          showClear: widget.showClear,
-          onSubmitted: widget.onSubmitted,
-          textInputAction: widget.textInputAction,
-        ),
-        builder:
-            (context, child) => HomeSearchFieldSurface(
-              lift: _morph.value,
-              child: RepaintBoundary(child: child),
+      content: Row(
+        children: [
+          Expanded(child: field),
+          // Inside the bar's tap region (see [build]): tapping it is not a
+          // tap outside the field.
+          if (onFilterTap != null)
+            SearchModeFilterButton.bare(
+              key: widget.filterButtonKey,
+              count: widget.filterBadgeCount,
+              onTap: onFilterTap,
             ),
+          if (widget.showCancel)
+            SearchCancelButton(
+              controller: widget.controller,
+              focusNode: _effectiveNode,
+              onCancel: _clearSearchAndHide,
+              cancelKey: widget.cancelKey,
+              // The bar's frame carries its 44pt reach: the row, shorter
+              // than that on a small phone, never grows while it is open.
+              minHeight: 0,
+              startGap: onFilterTap != null
+                  ? SearchCancelWord.afterGlyph
+                  : null,
+            ),
+        ],
       ),
     );
   }

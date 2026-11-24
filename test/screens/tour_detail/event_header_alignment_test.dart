@@ -318,7 +318,7 @@ void main() {
         size.width - header.menuGlyph.center.dx,
         closeTo(EventHeaderMetrics.menuGlyph, 0.5),
       );
-      // The back is the search header's, at its inset.
+      // The back is every page header's, at its inset.
       expect(
         header.chevron.center.dx,
         closeTo(SearchHeaderMetrics.backGlyphCenter, 0.5),

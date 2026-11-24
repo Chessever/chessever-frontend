@@ -21,12 +21,15 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart'
     show CardActionButton;
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/ink_fab.dart' show InkFabStack;
 import 'package:chessever2/widgets/page_spring.dart';
 import 'package:chessever2/widgets/popover_add_fab.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/screens/my_prep/services/prep_watch.dart';
@@ -491,6 +494,10 @@ class _FavoritesTab extends ConsumerStatefulWidget {
 class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
   final _search = TextEditingController();
 
+  /// The search field's. Held here rather than by the field, which is the
+  /// list's first row and is let go when it scrolls far out of view.
+  final _searchFocus = FocusNode();
+
   /// The player whose ChessEver source is being resolved, and what their
   /// row reads meanwhile.
   ({int fide, String status})? _busy;
@@ -498,6 +505,7 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
   @override
   void dispose() {
     _search.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -609,6 +617,7 @@ class _FavoritesTabState extends ConsumerState<_FavoritesTab> {
               padding: EdgeInsets.fromLTRB(_gutter, 16.h, _gutter, 12.h),
               child: _SearchField(
                 controller: _search,
+                focusNode: _searchFocus,
                 onChanged: () {
                   setState(() {});
                   ranking.search(_search.text);
@@ -851,29 +860,62 @@ class _RankingFooter extends StatelessWidget {
   }
 }
 
+/// The Players search row, in X's order: the field (magnifier, words, and
+/// the clear button while it holds any), then Cancel while the field has
+/// the cursor or holds words. The clear button only empties the field and
+/// keeps the cursor; Cancel empties it and puts the keyboard away.
 class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller, required this.onChanged});
+  const _SearchField({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+  });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final VoidCallback onChanged;
+
+  void _empty() {
+    if (controller.text.isEmpty) return;
+    controller.clear();
+    onChanged();
+  }
+
+  void _clear() {
+    _empty();
+    if (!focusNode.hasFocus) focusNode.requestFocus();
+  }
+
+  void _cancel() {
+    _empty();
+    dismissSoftwareKeyboard(focusNode: focusNode);
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Container(
-      height: 40.h,
+    final height = 40.h;
+    final inset = 12.w;
+    final magnifier = 18.sp;
+    final field = Container(
+      height: height,
       decoration: BoxDecoration(
         color: colors.textPrimary.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10.br),
       ),
       child: Row(
         children: [
-          SizedBox(width: 12.w),
-          Icon(Icons.search_rounded, size: 18.sp, color: colors.iconSecondary),
+          SizedBox(width: inset),
+          Icon(
+            Icons.search_rounded,
+            size: magnifier,
+            color: colors.iconSecondary,
+          ),
           SizedBox(width: 8.w),
           Expanded(
             child: TextField(
               controller: controller,
+              focusNode: focusNode,
               onChanged: (_) => onChanged(),
               style: AppTypography.textSmRegular.copyWith(
                 color: colors.textPrimary,
@@ -890,17 +932,38 @@ class _SearchField extends StatelessWidget {
               ),
             ),
           ),
-          if (controller.text.isNotEmpty)
-            IconButton(
-              tooltip: 'Clear search',
-              onPressed: () {
-                controller.clear();
-                onChanged();
-              },
-              icon: Icon(Icons.close, size: 18.sp, color: colors.iconSecondary),
-            )
-          else
-            SizedBox(width: 12.w),
+          // Part of the field: pressing it keeps the keyboard up.
+          SearchClearButton(
+            controller: controller,
+            focusNode: focusNode,
+            onTap: _clear,
+          ),
+          // The clear glyph's centre as far in from the end as the
+          // magnifier's is from the start, so the two frame the words.
+          SizedBox(
+            width:
+                inset +
+                magnifier / 2 -
+                SearchClearButton.endInset -
+                SearchClearButton.glyph / 2,
+          ),
+        ],
+      ),
+    );
+    // As tall as the field: Cancel's taller tap never moves the list.
+    return SizedBox(
+      height: height,
+      child: Row(
+        children: [
+          Expanded(child: field),
+          SearchCancelButton(
+            controller: controller,
+            focusNode: focusNode,
+            onCancel: _cancel,
+            cancelKey: const ValueKey('prep_players_search_cancel'),
+            // The word at the field's own size, as X sets it.
+            textStyle: AppTypography.textSmRegular,
+          ),
         ],
       ),
     );

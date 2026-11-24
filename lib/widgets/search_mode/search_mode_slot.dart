@@ -114,14 +114,15 @@ class _SearchModeHeaderSlotState extends State<SearchModeHeaderSlot> {
 }
 
 /// A control the page's header and its search header both draw, at the same
-/// spot: the back chevron ([PageBackButton] is one on its own), Filters, a
-/// toggle. Wrap it, with the same [id], in both headers.
+/// spot: Filters, a toolbar row, a toggle. Wrap it, with the same [id], in
+/// both headers.
 ///
-/// It holds still through the morph: while the search header is on screen
-/// its copy is the one drawn, whole from the tap (the page header's copy
-/// steps aside rather than fading and sliding with the rest of the header),
-/// so the glyph never blinks or slides away and back. A piece the page's
-/// header does not draw arrives with the search header's other parts.
+/// It never blinks: while the search header is on screen its copy is the
+/// one drawn, whole from the tap (the page header's copy steps aside rather
+/// than fading and sliding with the rest of the header). It starts exactly
+/// where the page's header has it and glides in by Cancel's width as
+/// Cancel's room opens at the row's end. A piece the page's header does not
+/// draw arrives with the search header's other parts.
 ///
 /// Anywhere else (no [SearchModeHeaderSlot] above it) it is just [child].
 class SearchModeShared extends StatefulWidget {

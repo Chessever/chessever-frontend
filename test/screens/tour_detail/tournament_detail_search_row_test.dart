@@ -258,7 +258,7 @@ void main() {
     expect(searchFab, findsOneWidget);
     expect(searchFab.hitTestable(), findsNothing);
 
-    // The chevron closes it: the header and the tabs are back.
+    // Cancel closes it: the header and the tabs are back.
     await tester.tap(find.byKey(const ValueKey('event_search_close')));
     await tester.pump();
     await _frames(tester);
@@ -268,25 +268,46 @@ void main() {
     await _unmount(tester);
   });
 
-  testWidgets('the chevron holds its place as the search opens', (
+  testWidgets('the search row is X\'s: the page\'s chevron goes with its '
+      'header, the field starts on the gutter, Cancel ends on it', (
     tester,
   ) async {
     await _pumpScreen(tester, mode: TournamentDetailScreenMode.games);
-    Rect chevron() => tester.getRect(
-      find.byIcon(Icons.arrow_back_ios_new_outlined).hitTestable(),
-    );
-    final before = chevron();
+    final chevron = find.byIcon(Icons.arrow_back_ios_new_outlined);
+    final before = tester.getRect(chevron.hitTestable());
 
     await tester.tap(searchFab);
     await tester.pump();
     await _frames(tester);
 
-    // Same glyph, size, x and y in the page's header and in its search.
-    expect(chevron(), before);
-    expect(
-      tester.getCenter(find.byKey(const ValueKey('event_search_close'))),
-      before.center,
+    // No way back in the search header; the page's chevron went with the
+    // page's header and takes no taps while the search is open.
+    expect(find.descendant(of: searchHeader, matching: chevron), findsNothing);
+    expect(chevron.hitTestable(), findsNothing);
+    // Cancel is the way out, the row's last control: the field runs from
+    // the gutter up to its tap, and its word ends on the gutter.
+    const closeKey = ValueKey('event_search_close');
+    final gutter = SearchHeaderMetrics.gutter;
+    final cancel = tester.getRect(find.byKey(closeKey));
+    final word = tester.getRect(
+      find.descendant(of: find.byKey(closeKey), matching: find.text('Cancel')),
     );
+    final field = tester.getRect(
+      find.descendant(of: searchHeader, matching: find.byType(SearchFieldFill)),
+    );
+    expect(field.left, closeTo(gutter, 0.01));
+    expect(field.right, closeTo(cancel.left, 0.01));
+    expect(word.right, closeTo(393 - gutter, 0.01));
+    expect(cancel.height, greaterThanOrEqualTo(44));
+    expect(word.center.dy, closeTo(field.center.dy, 0.01));
+    expect(find.byKey(closeKey).hitTestable(), findsOneWidget);
+
+    // Cancel closes it: the chevron is back where it was, in reach.
+    await tester.tap(find.byKey(closeKey));
+    await tester.pump();
+    await _frames(tester);
+    expect(searchHeader, findsNothing);
+    expect(tester.getRect(chevron.hitTestable()), before);
     await _unmount(tester);
   });
 

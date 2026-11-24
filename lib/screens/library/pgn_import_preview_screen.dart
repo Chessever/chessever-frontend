@@ -10,7 +10,10 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/search/search_cancel_button.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -74,6 +77,7 @@ buildPgnImportBoardNavigation({
 class _PgnImportPreviewScreenState
     extends ConsumerState<PgnImportPreviewScreen> {
   late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -87,12 +91,21 @@ class _PgnImportPreviewScreenState
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
+  /// The clear button: the words go, the cursor stays.
   void _clearSearch() {
     HapticFeedbackService.light();
     _searchController.clear();
+    if (!_searchFocusNode.hasFocus) _searchFocusNode.requestFocus();
+  }
+
+  /// Cancel: the words go and the keyboard with them.
+  void _cancelSearch() {
+    _searchController.clear();
+    dismissSoftwareKeyboard(focusNode: _searchFocusNode);
   }
 
   Future<void> _handleSave() async {
@@ -254,63 +267,89 @@ class _PgnImportPreviewScreenState
     );
   }
 
+  /// The search row, in X's order: the field (the clear button in it while
+  /// it holds words), then Cancel while the field has the cursor or holds
+  /// words.
   Widget _buildSearchBar() {
+    final height = 38.h;
+    final inset = 12.w;
+    final magnifier = 18.sp;
+    final field = Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: context.colors.textPrimary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10.br),
+      ),
+      child: Row(
+        children: [
+          SizedBox(width: inset),
+          Icon(
+            Icons.search_rounded,
+            size: magnifier,
+            color: context.isLightTheme
+                ? context.colors.iconSecondary
+                : const Color(0xFFA1A1AA),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search games...',
+                // The field is ink-tinted; tertiary drops under AA there.
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.isLightTheme
+                      ? context.colors.textSecondary
+                      : const Color(0xFFA1A1AA),
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
+              ),
+            ),
+          ),
+          // Part of the field: pressing it keeps the keyboard up. Tinted as
+          // the magnifier is, so the two marks frame the words alike.
+          SearchClearButton(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            color: context.isLightTheme
+                ? context.colors.iconSecondary
+                : const Color(0xFFA1A1AA),
+            onTap: _clearSearch,
+          ),
+          // The clear glyph's centre as far in from the end as the
+          // magnifier's is from the start, so the two frame the words.
+          SizedBox(
+            width:
+                inset +
+                magnifier / 2 -
+                SearchClearButton.endInset -
+                SearchClearButton.glyph / 2,
+          ),
+        ],
+      ),
+    );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Container(
-        height: 38.h,
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10.br),
-        ),
+      // As tall as the field: Cancel's taller tap never moves the list.
+      child: SizedBox(
+        height: height,
         child: Row(
           children: [
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.search_rounded,
-              size: 18.sp,
-              color:
-                  context.isLightTheme
-                      ? context.colors.iconSecondary
-                      : const Color(0xFFA1A1AA),
+            Expanded(child: field),
+            SearchCancelButton(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              onCancel: _cancelSearch,
+              cancelKey: const ValueKey('pgn_import_search_cancel'),
+              // The word at the field's own size, as X sets it.
+              textStyle: AppTypography.textSmRegular,
             ),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Search games...',
-                  // The field is ink-tinted; tertiary drops under AA there.
-                  hintStyle: AppTypography.textSmRegular.copyWith(
-                    color:
-                        context.isLightTheme
-                            ? context.colors.textSecondary
-                            : const Color(0xFFA1A1AA),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
-              ),
-            ),
-            if (_searchController.text.isNotEmpty) ...[
-              GestureDetector(
-                onTap: _clearSearch,
-                child: Icon(
-                  Icons.close,
-                  size: 20.sp,
-                  color:
-                      context.isLightTheme
-                          ? context.colors.iconSecondary
-                          : const Color(0xFFA1A1AA),
-                ),
-              ),
-              SizedBox(width: 8.w),
-            ],
-            SizedBox(width: 8.w),
           ],
         ),
       ),

@@ -8,6 +8,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:motor/motor.dart';
 
@@ -17,14 +18,10 @@ class SimpleSearchBar extends StatefulWidget {
     required this.controller,
     required this.focusNode,
     required this.onCloseTap,
-    required this.onOpenFilter,
     this.hintText = '',
     this.autofocus = false,
     this.onChanged,
-    this.filterBadgeCount = 0,
     this.textFieldKey,
-    this.filterButtonKey,
-    this.compactFilter = false,
     this.rotatingHints,
     this.rotationInterval = const Duration(seconds: 2),
     this.actions,
@@ -35,17 +32,14 @@ class SimpleSearchBar extends StatefulWidget {
 
   final TextEditingController controller;
   final FocusNode focusNode;
+
+  /// The clear button's tap ([SearchClearButton]): empty the field, nothing
+  /// more. Putting the search away is the row's Cancel, outside the field.
   final VoidCallback onCloseTap;
-  final VoidCallback? onOpenFilter;
   final String hintText;
   final bool autofocus;
   final ValueChanged<String>? onChanged;
-  final int filterBadgeCount;
   final Key? textFieldKey;
-  final Key? filterButtonKey;
-
-  /// Detail search bars keep the filter icon within their existing row height.
-  final bool compactFilter;
 
   /// Optional list of words cycled after the static [hintText]. When provided
   /// the hint reads as "`hintText` word" and the trailing word animates in
@@ -54,17 +48,18 @@ class SimpleSearchBar extends StatefulWidget {
   final List<String>? rotatingHints;
   final Duration rotationInterval;
 
-  /// Bare glyph controls drawn inside the field, just before the filter glyph
-  /// (the home Events bar's Live first, passed through
-  /// `EnhancedRoundedSearchBar.fieldActions`).
+  /// Bare glyph controls drawn inside the field, after the clear button
+  /// (passed through `EnhancedRoundedSearchBar.fieldActions`).
   ///
-  /// Each one is drawn in the filter glyph's box, so the field never changes
+  /// Each one is drawn in a 20pt glyph's box, so the field never changes
   /// height, and takes a 44pt tap in a home top bar. They give way to the
   /// text while the field has focus, the way the bar's avatar does.
+  ///
+  /// Filters are never one of them: as X sets its search row, Filters sit
+  /// outside the field, between it and Cancel.
   final List<Widget>? actions;
 
-  /// The clear button inside the field. Off where the host clears the
-  /// field itself (the Search tab's Cancel, beside the field).
+  /// The clear button inside the field, shown while it holds text.
   final bool showClear;
 
   /// The keyboard's action key, and what it does with the text.
@@ -203,17 +198,11 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     );
   }
 
-  /// The filter glyph's box: its 20pt glyph and this padding, all of it the
-  /// tap. [_buildActions] draws each action in the same box.
-  EdgeInsets get _filterPadding => widget.compactFilter
-      ? EdgeInsets.symmetric(horizontal: 8.sp)
-      : EdgeInsets.all(8.sp);
-
-  /// [actions] in the filter glyph's box each, squeezed out while the field
-  /// has focus. Listening to the focus node here keeps the squeeze off this
+  /// [actions] in a 20pt glyph's box each, squeezed out while the field has
+  /// focus. Listening to the focus node here keeps the squeeze off this
   /// widget's build, so it never rebuilds the [TextField].
   Widget _buildActions(List<Widget> actions) {
-    final box = _filterPadding;
+    final box = EdgeInsets.all(8.sp);
     final slot = Size(box.horizontal + 20.w, box.vertical + 20.h);
     return ListenableBuilder(
       listenable: widget.focusNode,
@@ -289,121 +278,18 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
               ),
             ),
           ),
-          // Clear/reset suffix icon — visible while the field has focus OR
-          // contains text. Scoped to a ListenableBuilder so toggling it
-          // doesn't rebuild the TextField and cause IME / focus churn.
+          // X's clear: a bare circled x, there only while the field holds
+          // text, emptying it and nothing else; pressing it keeps the
+          // keyboard up. It listens to the controller itself, so toggling it
+          // never rebuilds the TextField (no IME or focus churn).
           if (widget.showClear)
-            ListenableBuilder(
-              listenable: Listenable.merge([
-                widget.controller,
-                widget.focusNode,
-              ]),
-              builder: (context, _) {
-                final visible =
-                    widget.focusNode.hasFocus ||
-                    widget.controller.text.isNotEmpty;
-                // Grows out of the field edge on the same spring as the morph
-                // instead of appearing in a single frame. Width and scale come
-                // off one value so the button fills its slot exactly and is
-                // never clipped mid-travel.
-                return SqueezeSlot(
-                  open: visible,
-                  motion: SearchMotion.accent,
-                  // A 44pt reach in the home top bar without growing the row.
-                  child: HomeTopBarTapTarget(
-                    child: GestureDetector(
-                      onTap: widget.onCloseTap,
-                      child: Container(
-                        padding: EdgeInsets.all(4.sp),
-                        decoration: BoxDecoration(
-                          color: context.colors.surfaceRecessed,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.close,
-                          size: 16.ic,
-                          color: context.colors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
+            SearchClearButton(
+              controller: widget.controller,
+              focusNode: widget.focusNode,
+              onTap: widget.onCloseTap,
             ),
 
           if (actions.isNotEmpty) _buildActions(actions),
-
-          if (widget.onOpenFilter != null) ...[
-            SizedBox(width: 8.w),
-            // A 44pt reach in the home top bar without growing the row.
-            HomeTopBarTapTarget(
-              child: Semantics(
-                container: true,
-                button: true,
-                label: widget.filterBadgeCount > 0
-                    ? 'Filters, ${widget.filterBadgeCount} active'
-                    : 'Filters',
-                onTap: widget.onOpenFilter,
-                excludeSemantics: true,
-                child: GestureDetector(
-                  key: widget.filterButtonKey,
-                  // The bare glyph sits in its old tile's box, and the whole
-                  // box still takes the tap: without a fill nothing else in it
-                  // would answer the pointer.
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.onOpenFilter,
-                  child: Padding(
-                    padding: _filterPadding,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        if (widget.filterBadgeCount > 0)
-                          SvgWidget(
-                            SvgAsset.listFilterIcon,
-                            height: 20.h,
-                            width: 20.w,
-                            colorFilter: ColorFilter.mode(
-                              context.colors.textPrimary,
-                              BlendMode.srcIn,
-                            ),
-                          )
-                        else
-                          _FocusTint(
-                            focusNode: widget.focusNode,
-                            builder: (context, color) => SvgWidget(
-                              SvgAsset.listFilterIcon,
-                              height: 20.h,
-                              width: 20.w,
-                              colorFilter: ColorFilter.mode(
-                                color,
-                                BlendMode.srcIn,
-                              ),
-                            ),
-                          ),
-                        // The app's one filter count (the search
-                        // button's and the search header's), ringed by the
-                        // field it sits in: the one search field's fill
-                        // (HomeSearchFieldSurface) at rest.
-                        if (widget.filterBadgeCount > 0)
-                          Positioned(
-                            right: -7,
-                            top: -7,
-                            child: SearchCountBadge(
-                              count: widget.filterBadgeCount,
-                              diameter: 16,
-                              ringColor: HomeSearchFieldSurface.fillOf(
-                                context,
-                                0,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

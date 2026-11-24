@@ -32,6 +32,7 @@ import 'package:chessever2/widgets/home_top_bar.dart' show PageTitle;
 import 'package:chessever2/widgets/live_first_capsule.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:chessever2/widgets/search/search_clear_button.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -47,7 +48,11 @@ const _boardView = 'Change board view';
 const _search = 'Search games';
 const _searchFavorites = 'Search favorites';
 const _searchPlayers = 'Search players';
-const _closeSearch = 'Close search';
+
+/// The search header's Cancel on the Games page, and on the Favorites and
+/// Rankings pages: the row's last control, which puts the search away.
+const _gamesCancelKey = ValueKey<String>('games_search_close');
+const _listCancelKey = ValueKey<String>('favorites_search_close');
 const _liveFirstKey = ValueKey<String>('favorites_live_first_fab');
 const _filterKey = ValueKey<String>(E2eIds.favoritesGamesFilterButton);
 const _searchKey = ValueKey<String>(E2eIds.favoritesGamesSearchField);
@@ -59,8 +64,41 @@ Finder get _searchHeader => find.byType(SearchModeHeader);
 Finder _inSearch(Finder finder) =>
     find.descendant(of: _searchHeader, matching: finder);
 
-/// The title row's back button (the search header's is "Close search").
+/// The title row's back button. The search header has none: Cancel, at
+/// its row's end, puts the search away.
 Finder get _back => find.byTooltip('Back');
+
+/// The open search row, as X sets it: no chevron, the field from the
+/// gutter, then [trailing] (the Games page's Filters) when the page has
+/// any, and Cancel ([cancelKey]) last, its word ending on the gutter, all on
+/// the field's line.
+void _expectSearchRow(WidgetTester tester, Key cancelKey, {Finder? trailing}) {
+  final gutter = SearchHeaderMetrics.gutter;
+  final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+  final cancelTap = _inSearch(find.byKey(cancelKey));
+  expect(_inSearch(find.byType(PageBackButton)), findsNothing);
+  expect(
+    _inSearch(find.byIcon(Icons.arrow_back_ios_new_outlined)),
+    findsNothing,
+  );
+  expect(cancelTap, findsOneWidget);
+  final field = tester.getRect(_inSearch(find.byType(SearchFieldFill)));
+  final cancel = tester.getRect(cancelTap);
+  final word = tester.getRect(
+    find.descendant(of: cancelTap, matching: find.text('Cancel')),
+  );
+  expect(field.left, closeTo(gutter, 0.01));
+  if (trailing == null) {
+    expect(field.right, closeTo(cancel.left, 0.01));
+  } else {
+    final controls = tester.getRect(trailing);
+    expect(field.right, lessThanOrEqualTo(controls.left));
+    expect(controls.right, closeTo(cancel.left, 0.01));
+    expect(controls.center.dy, closeTo(field.center.dy, 0.01));
+  }
+  expect(word.right, closeTo(width - gutter, 0.01));
+  expect(word.center.dy, closeTo(field.center.dy, 0.01));
+}
 
 /// What Live first reads with [count] games in play, off.
 String _liveLabel(int count) =>
@@ -68,8 +106,8 @@ String _liveLabel(int count) =>
 
 void main() {
   group('Favorites header and floating buttons (Trello #1420)', () {
-    testWidgets('Games ends the title row with its toolbar; back sits where '
-        'the search header puts its chevron', (tester) async {
+    testWidgets('Games ends the title row with its toolbar; back sits at '
+        'the page\'s leading inset', (tester) async {
       final harness = await _pumpScreen(tester);
 
       final back = tester.getRect(_back);
@@ -202,15 +240,26 @@ void main() {
       expect(title(), rectMoreOrLessEquals(titleOnGames, epsilon: 0.01));
     });
 
-    testWidgets('the search opens in place: the chevron and Filters stay '
-        'put, the field takes the title\'s place over the same '
-        'Games list, and back closes it', (tester) async {
+    testWidgets('the search opens in place: Filters start where they are '
+        'and make room for Cancel, the field takes the title row from the '
+        'gutter over the same Games list, and Cancel closes it', (
+      tester,
+    ) async {
       final harness = await _pumpScreen(tester);
       final back = tester.getRect(_back);
-      final toolbar = [tester.getRect(find.byKey(_filterKey))];
+      final filters = tester.getRect(find.byKey(_filterKey));
       final list = tester.element(find.byType(FavoritesGamesTab));
 
-      await _openSearch(tester);
+      await tester.tap(find.byTooltip(_search));
+      await tester.pump();
+      // The tap frame: the search header's Filters start exactly where the
+      // title row has them, Cancel's room still shut after them.
+      expect(_inSearch(find.byKey(_filterKey)), findsOneWidget);
+      expect(
+        tester.getRect(_inSearch(find.byKey(_filterKey))),
+        rectMoreOrLessEquals(filters, epsilon: 0.5),
+      );
+      await _settle(tester);
 
       final field = find.byKey(_searchKey);
       expect(field, findsOneWidget);
@@ -221,28 +270,30 @@ void main() {
       expect(find.byTooltip(_search).hitTestable(), findsNothing);
       // The same Games list, never rebuilt from scratch.
       expect(tester.element(find.byType(FavoritesGamesTab)), same(list));
-      // The chevron and the toolbar did not move.
-      final close = tester.getRect(find.byTooltip(_closeSearch));
-      expect(close, rectMoreOrLessEquals(back, epsilon: 0.5));
-      final searchToolbar = [tester.getRect(_inSearch(find.byKey(_filterKey)))];
+      // X's row: no chevron, the field from the gutter, Filters after it,
+      // Cancel last. The page's own chevron takes no taps meanwhile.
+      _expectSearchRow(
+        tester,
+        _gamesCancelKey,
+        trailing: _inSearch(find.byKey(_filterKey)),
+      );
+      expect(_back.hitTestable(), findsNothing);
       // The board view gives way to the field with the title.
       expect(_inSearch(find.byTooltip(_boardView)), findsNothing);
-      for (var i = 0; i < toolbar.length; i++) {
-        expect(
-          searchToolbar[i],
-          rectMoreOrLessEquals(toolbar[i], epsilon: 0.5),
-        );
-      }
+      // Filters moved in along the row only, by Cancel's room.
+      final searchFilters = tester.getRect(_inSearch(find.byKey(_filterKey)));
+      expect(searchFilters.top, closeTo(filters.top, 0.5));
+      expect(searchFilters.size, filters.size);
+      expect(searchFilters.left, lessThan(filters.left));
       final fieldRect = tester.getRect(field);
-      expect(fieldRect.center.dy, closeTo(close.center.dy, 1));
-      expect(close.right, lessThanOrEqualTo(fieldRect.left));
-      expect(fieldRect.right, lessThanOrEqualTo(searchToolbar.first.left));
+      expect(fieldRect.center.dy, closeTo(searchFilters.center.dy, 1));
+      expect(fieldRect.right, lessThanOrEqualTo(searchFilters.left));
 
       await tester.enterText(field, 'Carlsen');
       await tester.pump(const Duration(milliseconds: 450));
       expect(harness.notifier.searches, ['Carlsen']);
 
-      await tester.tap(find.byTooltip(_closeSearch));
+      await tester.tap(find.byKey(_gamesCancelKey));
       // The query goes with the tap, not after the morph.
       expect(harness.notifier.clears, 1);
       await _settle(tester);
@@ -253,6 +304,9 @@ void main() {
       expect(find.byTooltip(_search).hitTestable(), findsOneWidget);
       expect(harness.notifier.clears, 1);
       expect(harness.created, hasLength(1));
+      // The page's way back is where it was, and answers again.
+      expect(tester.getRect(_back), rectMoreOrLessEquals(back, epsilon: 0.5));
+      expect(_back.hitTestable(), findsOneWidget);
     });
 
     testWidgets('system back closes the search, not Favorites', (tester) async {
@@ -344,31 +398,6 @@ void main() {
       // Off with nothing live: nothing left for it to do.
       expect(find.byKey(_liveFirstKey), findsNothing);
     });
-
-    testWidgets('fits a 320pt phone at the largest text size', (tester) async {
-      await _pumpScreen(tester, size: const Size(320, 640), textScale: 1.5);
-
-      expect(tester.takeException(), isNull);
-      final filters = tester.getRect(find.byKey(_filterKey));
-      expect(filters.right, lessThanOrEqualTo(320));
-      final board = tester.getRect(find.byTooltip(_boardView));
-      expect(tester.getRect(_titleText()).right, lessThanOrEqualTo(board.left));
-
-      await _openSearch(tester);
-      expect(tester.takeException(), isNull);
-      for (final target in [
-        find.byTooltip(_closeSearch),
-        _inSearch(find.byKey(_filterKey)),
-      ]) {
-        final rect = tester.getRect(target);
-        expect(rect.left, greaterThanOrEqualTo(0));
-        expect(rect.right, lessThanOrEqualTo(320));
-      }
-      expect(
-        tester.getSize(find.byKey(_searchKey)).width,
-        greaterThanOrEqualTo(80),
-      );
-    });
   });
 
   group('Favorites search on every tab (Trello #1420)', () {
@@ -398,13 +427,18 @@ void main() {
 
       final field = find.byKey(const ValueKey('favorites_list_search_field'));
       expect(field, findsOneWidget);
-      // The same header: the chevron where back was, nothing of the Games
-      // toolbar beside the field.
-      expect(
-        tester.getRect(find.byTooltip(_closeSearch)),
-        rectMoreOrLessEquals(back, epsilon: 0.5),
-      );
+      // The same header with nothing of the Games toolbar: the field runs
+      // from the gutter up to Cancel.
+      _expectSearchRow(tester, _listCancelKey);
       expect(_inSearch(find.byType(SearchModeFilterButton)), findsNothing);
+      expect(_back.hitTestable(), findsNothing);
+      // Empty, the field draws no clear.
+      final clear = _inSearch(find.byKey(const ValueKey('search_field_clear')));
+      expect(
+        tester.getSize(_inSearch(find.byType(SearchClearButton))).width,
+        0,
+      );
+      expect(clear.hitTestable(), findsNothing);
 
       await tester.enterText(field, 'naka');
       await tester.pump();
@@ -415,13 +449,39 @@ void main() {
       // The Games list was never read: no games fetch started.
       expect(harness.created, isEmpty);
 
-      await tester.tap(find.byTooltip(_closeSearch));
+      // With words, the circled x is in the field, and only empties it: the
+      // search stays open, the cursor in the field, every player back.
+      await _settle(tester);
+      expect(
+        tester.getSize(_inSearch(find.byType(SearchClearButton))),
+        SearchClearButton.box,
+      );
+      expect(
+        tester.getRect(clear).right,
+        lessThanOrEqualTo(
+          tester.getRect(_inSearch(find.byType(SearchFieldFill))).right,
+        ),
+      );
+      await tester.tap(clear);
+      await _settle(tester);
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      expect(harness.container.read(favoritesListSearchQueryProvider), isEmpty);
+      expect(find.text('Carlsen, Magnus'), findsOneWidget);
+      expect(find.text('Nakamura, Hikaru'), findsOneWidget);
+      expect(clear.hitTestable(), findsNothing);
+
+      await tester.enterText(field, 'naka');
+      await tester.pump();
+      expect(find.text('Carlsen, Magnus'), findsNothing);
+      await tester.tap(find.byKey(_listCancelKey));
       await _settle(tester);
       expect(find.byType(TextField), findsNothing);
       expect(harness.container.read(favoritesListSearchQueryProvider), isEmpty);
       expect(find.text('Carlsen, Magnus'), findsOneWidget);
       expect(find.text('Nakamura, Hikaru'), findsOneWidget);
       expect(harness.created, isEmpty);
+      expect(tester.getRect(_back), rectMoreOrLessEquals(back, epsilon: 0.5));
     });
 
     testWidgets('Rankings sends the settled query to the world ranking, says '
@@ -474,7 +534,7 @@ void main() {
 
       await tester.enterText(field, 'carl');
       await tester.pump(const Duration(milliseconds: 450));
-      await tester.tap(find.byTooltip(_closeSearch));
+      await tester.tap(find.byKey(_listCancelKey));
       await _settle(tester);
       expect(world.searches.last, '');
       expect(find.byType(TextField), findsNothing);
@@ -563,7 +623,7 @@ void main() {
       );
       expect(tester.getBottomLeft(cards().last).dy, lessThan(listBottom + 1));
 
-      await tester.tap(find.byTooltip(_closeSearch));
+      await tester.tap(find.byKey(_gamesCancelKey));
       await tester.pump();
       // The list it replaced is back in the same frame, as it was.
       expect(cards(), findsNWidgets(2));
@@ -629,7 +689,7 @@ void main() {
       expect(find.byKey(_searchKey), findsOneWidget);
       // Open, the room is gone: the last card sits that much lower.
       expect(tester.getTopLeft(last).dy, closeTo(placed + room, 0.5));
-      await expectWithMorph(() => tester.tap(find.byTooltip(_closeSearch)));
+      await expectWithMorph(() => tester.tap(find.byKey(_gamesCancelKey)));
       await _settle(tester);
       expect(position.pixels, closeTo(end, 0.01));
       expect(tester.getTopLeft(last).dy, closeTo(placed, 0.01));
@@ -644,7 +704,7 @@ void main() {
       await _settle(tester);
       expect(find.byType(GridGameCardWrapperWidget), findsOneWidget);
       expect(position.pixels, 0);
-      await expectWithMorph(() => tester.tap(find.byTooltip(_closeSearch)));
+      await expectWithMorph(() => tester.tap(find.byKey(_gamesCancelKey)));
       await _settle(tester);
       expect(position.pixels, closeTo(end, 0.01));
       expect(scrollable().position, same(position));
@@ -683,7 +743,7 @@ void main() {
       expect(find.byKey(_filterKey), findsOneWidget);
       expect(_inSearch(find.byKey(_filterKey)), findsOneWidget);
 
-      await tester.tap(find.byTooltip(_closeSearch));
+      await tester.tap(find.byKey(_gamesCancelKey));
       await _settle(tester);
       expect(find.byKey(_filterKey), findsOneWidget);
       expect(_inSearch(find.byKey(_filterKey)), findsNothing);
@@ -713,7 +773,7 @@ void main() {
       // The hit is not hidden behind the plain list's fold.
       expect(cards(), findsOneWidget);
 
-      await tester.tap(find.byTooltip(_closeSearch));
+      await tester.tap(find.byKey(_gamesCancelKey));
       await _settle(tester);
       expect(cards(), findsNothing);
     });
@@ -1145,7 +1205,7 @@ void main() {
   });
 
   // Last: the app's own type stays loaded for the rest of the file.
-  group('Favorites title in the app\'s type', () {
+  group('Favorites title and search row in the app\'s type', () {
     setUpAll(() async {
       final inter = FontLoader('InterDisplay');
       for (final weight in const ['Regular', 'Medium', 'Bold']) {
@@ -1169,6 +1229,42 @@ void main() {
         await tester.pump();
         expect(title().center.dx, closeTo(393 / 2, 1), reason: '$mode');
       }
+    });
+
+    // In the app's type, not the stock test font: that draws every glyph a
+    // full em wide, so Cancel's word would take half again the room a phone
+    // gives it and the field's share would be measured short.
+    testWidgets('the header and its search row fit a 320pt phone at the '
+        'largest text size', (tester) async {
+      await _pumpScreen(tester, size: const Size(320, 640), textScale: 1.5);
+
+      expect(tester.takeException(), isNull);
+      final filters = tester.getRect(find.byKey(_filterKey));
+      expect(filters.right, lessThanOrEqualTo(320));
+      final board = tester.getRect(find.byTooltip(_boardView));
+      expect(tester.getRect(_titleText()).right, lessThanOrEqualTo(board.left));
+
+      await _openSearch(tester);
+      expect(tester.takeException(), isNull);
+      // X's row holds on the narrowest phone too: Cancel last, its word on
+      // the gutter.
+      _expectSearchRow(
+        tester,
+        _gamesCancelKey,
+        trailing: _inSearch(find.byKey(_filterKey)),
+      );
+      for (final target in [
+        find.byKey(_gamesCancelKey),
+        _inSearch(find.byKey(_filterKey)),
+      ]) {
+        final rect = tester.getRect(target);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+      }
+      expect(
+        tester.getSize(find.byKey(_searchKey)).width,
+        greaterThanOrEqualTo(80),
+      );
     });
   });
 }

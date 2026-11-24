@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/search_mode/search_mode.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -23,8 +24,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Miniatures' search is the Games tab, narrowed: the same rows stay on
-/// screen while a search is read, nothing is remounted, and the chevron
-/// does not move as the header turns into the search.
+/// screen while a search is read, nothing is remounted, and the search row
+/// is X's (the field from the gutter, the tab's Filters, Cancel last), with
+/// the page's chevron back where it was once Cancel closes it.
 
 GamebaseMiniature _miniature(String id, String white, {int day = 28}) =>
     GamebaseMiniature(
@@ -115,6 +117,39 @@ Future<void> _frames(WidgetTester tester) async {
 
 Finder get _cards => find.byType(GameCardWrapperWidget);
 
+Finder get _cancel => find.byKey(const ValueKey('miniatures_search_close'));
+
+Finder _inSearch(Finder finder) =>
+    find.descendant(of: find.byType(SearchModeHeader), matching: finder);
+
+/// The open search row, as X sets it: no chevron, the field from the
+/// gutter, the tab's Filters after it, and Cancel last, its word ending on
+/// the gutter, all on the field's line.
+void _expectSearchRow(WidgetTester tester) {
+  final gutter = SearchHeaderMetrics.gutter;
+  expect(_inSearch(find.byType(PageBackButton)), findsNothing);
+  expect(
+    _inSearch(find.byIcon(Icons.arrow_back_ios_new_outlined)),
+    findsNothing,
+  );
+  expect(_inSearch(_cancel), findsOneWidget);
+  final field = tester.getRect(_inSearch(find.byType(SearchFieldFill)));
+  final filters = tester.getRect(
+    _inSearch(find.byKey(const ValueKey('miniatures_games_filters'))),
+  );
+  final cancel = tester.getRect(_cancel);
+  final word = tester.getRect(
+    find.descendant(of: _cancel, matching: find.text('Cancel')),
+  );
+  expect(field.left, closeTo(gutter, 0.01));
+  expect(field.right, lessThanOrEqualTo(filters.left));
+  expect(filters.right, closeTo(cancel.left, 0.01));
+  final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+  expect(word.right, closeTo(width - gutter, 0.01));
+  expect(filters.center.dy, closeTo(field.center.dy, 0.01));
+  expect(word.center.dy, closeTo(field.center.dy, 0.01));
+}
+
 /// The Miniatures screen over [repo], on the Games tab.
 Future<ProviderContainer> _pump(WidgetTester tester, _Repo repo) async {
   tester.view.physicalSize = const Size(393, 852);
@@ -168,8 +203,10 @@ void main() {
     await _frames(tester);
     final field = find.byKey(const ValueKey('miniatures_games_search'));
     expect(field, findsOneWidget);
-    // The chevron is the page's own, where it was.
-    expect(tester.getCenter(find.byTooltip('Close search')), back);
+    // No chevron in the search row: Cancel, its last control, is the way
+    // out, and the page's chevron takes no taps while it is open.
+    _expectSearchRow(tester);
+    expect(find.byTooltip('Back').hitTestable(), findsNothing);
     // Opening changed nothing under the header.
     expect(_cards, findsNWidgets(3));
 
@@ -190,7 +227,7 @@ void main() {
     expect(tester.state(find.byType(MiniaturesGamesTab)), same(list));
 
     // Closing gives the full list back, the same list, with no skeleton.
-    await tester.tap(find.byKey(const ValueKey('miniatures_search_close')));
+    await tester.tap(_cancel);
     await tester.pump();
     expect(find.byType(SkeletonWidget), findsNothing);
     await _frames(tester);
@@ -198,6 +235,7 @@ void main() {
     expect(_cards, findsNWidgets(3));
     expect(tester.state(find.byType(MiniaturesGamesTab)), same(list));
     expect(tester.getCenter(find.byTooltip('Back')), back);
+    expect(find.byTooltip('Back').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
