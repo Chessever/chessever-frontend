@@ -35,36 +35,42 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 void main() {
   const slot = ValueKey('for_you_load_more_slot');
 
-  testWidgets('a pinned broadcast draws on phone Today before games arrive', (
-    tester,
-  ) async {
-    const title = 'FIDE World Chess Championship 2026';
-    final broadcasts = _Pages(
-      pageCount: 1,
-      lastPageSize: 2,
-      firstBroadcast: GroupBroadcast(
-        id: 'fide_world_chess_championship_2026',
-        name: title,
-        createdAt: DateTime.utc(2026, 11, 21),
-        dateStart: DateTime.utc(2026, 11, 24, 14),
-        dateEnd: DateTime.utc(2026, 12, 11, 14),
-        pinnedAt: DateTime.utc(2026, 11, 21),
-        search: const [],
-      ),
-    );
-    final container = _container(
-      broadcasts,
-      _Boards(empty: true),
-      overrides: [storyCollectionsProvider.overrideWith((ref) async => [])],
-    );
-    await _pumpToday(tester, container);
+  for (final (device, size) in [
+    ('phone', const Size(393, 852)),
+    ('tablet', const Size(834, 1194)),
+  ]) {
+    testWidgets(
+      'a pinned broadcast draws on $device Today before games arrive',
+      (tester) async {
+        const title = 'FIDE World Chess Championship 2026';
+        final broadcasts = _Pages(
+          pageCount: 1,
+          lastPageSize: 2,
+          firstBroadcast: GroupBroadcast(
+            id: 'fide_world_chess_championship_2026',
+            name: title,
+            createdAt: DateTime.utc(2026, 11, 21),
+            dateStart: DateTime.utc(2026, 11, 24, 14),
+            dateEnd: DateTime.utc(2026, 12, 11, 14),
+            pinnedAt: DateTime.utc(2026, 11, 21),
+            search: const [],
+          ),
+        );
+        final container = _container(
+          broadcasts,
+          _Boards(empty: true),
+          overrides: [storyCollectionsProvider.overrideWith((ref) async => [])],
+        );
+        await _pumpToday(tester, container, size: size);
 
-    expect(container.read(forYouEventsProvider).events.first.title, title);
-    expect(find.text(title), findsOneWidget);
-    expect(find.text('e1'), findsNothing);
-    expect(find.text('No events available'), findsNothing);
-    await _unmount(tester);
-  });
+        expect(container.read(forYouEventsProvider).events.first.title, title);
+        expect(find.text(title), findsOneWidget);
+        expect(find.text('e1'), findsNothing);
+        expect(find.text('No events available'), findsNothing);
+        await _unmount(tester);
+      },
+    );
+  }
 
   testWidgets('a first page that ends short of the screen pages on by '
       'itself', (tester) async {
@@ -427,10 +433,11 @@ ProviderContainer _container(
 
 Future<void> _pumpToday(
   WidgetTester tester,
-  ProviderContainer container,
-) async {
+  ProviderContainer container, {
+  Size size = const Size(393, 852),
+}) async {
   tester.view
-    ..physicalSize = const Size(393 * 3, 852 * 3)
+    ..physicalSize = size * 3
     ..devicePixelRatio = 3;
   addTearDown(tester.view.reset);
   final scrollController = ScrollController();

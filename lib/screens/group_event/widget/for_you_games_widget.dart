@@ -97,12 +97,11 @@ Future<void> _openForYouGame(
       );
 }
 
-/// Whether Today's section for [event] has hidden itself: its boards were
-/// read ([snapshots]) and there are none. One still loading is drawn.
+/// Uses the same visibility rule as the section before pairing tablet columns.
 bool _forYouEventHidden(
   GroupEventCardModel event,
   Map<String, ForYouEventGamesSnapshot> snapshots,
-) => snapshots[event.id]?.hasGames == false;
+) => !_showEventCard(event, snapshots[event.id]);
 
 /// Today's [events] whose sections draw, in order: what the tablet pairs two
 /// to a row. Sections that hid themselves are left out.
