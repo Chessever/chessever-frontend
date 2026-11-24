@@ -23,6 +23,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/board_arrow_key_shortcuts.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -35,6 +36,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -54,6 +56,76 @@ void main() {
   });
 
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
+
+  testWidgets('a live game card opens the board without a shared flight', (
+    tester,
+  ) async {
+    final raw = _rawGame(
+      id: 'live-board',
+      tourId: 'live-tour',
+      round: 'round-1',
+      board: 1,
+    ).copyWith(
+      status: '*',
+      fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+      pgn: '[Result "*"]\n\n1. e4 e5 *',
+    );
+    final game = GamesTourModel.fromGame(raw);
+    final container = _boardTestContainer(
+      gamesByTour: {raw.tourId: [raw]},
+      gameRepository: _ImmediateGameRepository({raw.id: raw}),
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          navigatorObservers: [routeObserver, HeroineController()],
+          theme: ThemeData.dark().copyWith(
+            extensions: const [AppColors.dark],
+            pageTransitionsTheme: kAppPageTransitionsTheme,
+          ),
+          home: Consumer(
+            builder: (context, ref, _) {
+              ResponsiveHelper.init(context);
+              final navigation = ref.watch(gameCardWrapperProvider);
+              return Scaffold(
+                body: SizedBox(
+                  width: 180,
+                  child: GridChessBoardFromFENNew(
+                    gamesTourModel: game,
+                    pinnedIds: const [],
+                    onPinToggle: (_) {},
+                    allowStockfishFallback: false,
+                    onChanged: () => navigation.navigateToChessBoard(
+                      context: context,
+                      orderedGames: [game],
+                      gameIndex: 0,
+                      onReturnFromChessboard: null,
+                      viewSource: ChessboardView.tour,
+                      listPolicy: BoardNavigationListPolicy.preserve,
+                      disableGamebaseOverlayByDefault: true,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byType(GameCardChessboard));
+    for (var frame = 0; frame < 40; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.byType(Heroine, skipOffstage: false), findsNothing);
+    }
+    expect(find.byType(ChessBoardScreenNew), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
 
   testWidgets(
     'contextual coaching opens only on third distinct card, dismisses without pinch, manual swipe learns',
