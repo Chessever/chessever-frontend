@@ -9,6 +9,7 @@ import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/stories/story_moments.dart';
+import 'package:chessever2/screens/stories/story_notation.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart'
     show storyClockProvider, storyDayKey;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -43,7 +44,12 @@ const Duration kStoryEmptyDuration = Duration(seconds: 3);
 /// One game story: up to [kStoryMaxSegments] key positions of one game.
 @immutable
 class StoryGame {
-  const StoryGame({required this.game, required this.segments, this.caption});
+  const StoryGame({
+    required this.game,
+    required this.segments,
+    this.caption,
+    this.notation,
+  });
 
   /// Players and result as the collection's cards (or the report list)
   /// hold them.
@@ -54,6 +60,8 @@ class StoryGame {
 
   /// One line over the moment: the event, the opening.
   final String? caption;
+
+  final StoryNotation? notation;
 
   String get id => game.gameId;
 }
@@ -403,7 +411,7 @@ String? storyCaption(CollectionGame game) {
 /// [game]'s final position as one page: for a game with nothing else to
 /// show, or whose moves could not be read just now. No words under it: the
 /// player rows carry the result on it.
-StoryGame stillStoryGame(CollectionGame game) {
+StoryGame stillStoryGame(CollectionGame game, {StoryNotation? notation}) {
   final preview = game.game;
   return StoryGame(
     game: preview,
@@ -414,6 +422,7 @@ StoryGame stillStoryGame(CollectionGame game) {
       ),
     ],
     caption: storyCaption(game),
+    notation: notation,
   );
 }
 
@@ -423,20 +432,18 @@ StoryGame buildStoryGame(
   CollectionGame game, {
   String? pgn,
   List<StorySegment>? segments,
+  StoryNotation? notation,
 }) {
+  final story = parseStoryPgn(pgn);
+  final moves = notation ?? story?.notation;
   final picked =
-      segments ??
-      (() {
-        final story = parseStoryPgn(pgn);
-        return story == null
-            ? const <StorySegment>[]
-            : pickStorySegments(story);
-      })();
-  if (picked.isEmpty) return stillStoryGame(game);
+      segments ?? (story == null ? const [] : pickStorySegments(story));
+  if (picked.isEmpty) return stillStoryGame(game, notation: moves);
   return StoryGame(
     game: game.game,
     segments: List.unmodifiable(picked),
     caption: storyCaption(game),
+    notation: moves,
   );
 }
 
@@ -513,6 +520,7 @@ List<StoryGame> chooseCollectionStories({
   required CollectionGame? latest,
   required List<CollectionGame> candidates,
   required Map<String, List<StorySegment>> segments,
+  Map<String, StoryNotation> notations = const {},
 }) {
   final games = [?latest, ...candidates];
   final stories = <StoryGame>[];
@@ -520,14 +528,18 @@ List<StoryGame> chooseCollectionStories({
     if (stories.length >= kStoriesPerCollection) break;
     final found = segments[g.id] ?? const [];
     if (found.length < kStoryMinSegments) continue;
-    stories.add(buildStoryGame(g, segments: found));
+    stories.add(buildStoryGame(g, segments: found, notation: notations[g.id]));
   }
   if (stories.isNotEmpty) return stories;
   for (final g in games) {
     final found = segments[g.id] ?? const [];
-    if (found.isNotEmpty) return [buildStoryGame(g, segments: found)];
+    if (found.isNotEmpty) {
+      return [buildStoryGame(g, segments: found, notation: notations[g.id])];
+    }
   }
-  return latest == null ? const [] : [stillStoryGame(latest)];
+  return latest == null
+      ? const []
+      : [stillStoryGame(latest, notation: notations[latest.id])];
 }
 
 // ----------------------------------------------------------- analysis
@@ -555,10 +567,11 @@ class StoryAnalysisJob {
 /// What a game read gave: its positions and the event its PGN names.
 @immutable
 class StoryAnalysis {
-  const StoryAnalysis({required this.segments, this.event});
+  const StoryAnalysis({required this.segments, this.event, this.notation});
 
   final List<StorySegment> segments;
   final String? event;
+  final StoryNotation? notation;
 }
 
 /// Reads every job's game. Pure: runs on a background isolate in the app.
@@ -575,6 +588,7 @@ StoryAnalysis _analyze(StoryAnalysisJob job) {
           ? pickMissedChanceSegments(story, hint: job.hint)
           : pickStorySegments(story),
       event: eventTitleFromPgnHeaders(story.game.headers),
+      notation: story.notation,
     );
   } catch (e) {
     debugPrint('[Stories] ${job.id} unreadable: $e');
@@ -620,7 +634,7 @@ final storyBatchProvider = FutureProvider.autoDispose
         final day = storyDayKey(ref.read(storyClockProvider)());
         var latest = latestStoryGame(contents.games);
         var candidates = const <CollectionGame>[];
-        var segments = const <String, List<StorySegment>>{};
+        var analysis = const <String, StoryAnalysis>{};
         if (latest != null) {
           try {
             final read = await readStoryGames(
@@ -632,15 +646,11 @@ final storyBatchProvider = FutureProvider.autoDispose
             ).timeout(kStoryReplayWait);
             latest = read.latest ?? latest;
             candidates = read.candidates;
-            final analysis = await ref.read(storyAnalyzerProvider)([
+            analysis = await ref.read(storyAnalyzerProvider)([
               for (final g in [?read.latest, ...read.candidates])
                 if (read.pgns[g.id] case final pgn?)
                   StoryAnalysisJob(id: g.id, pgn: pgn),
             ]);
-            segments = {
-              for (final MapEntry(:key, :value) in analysis.entries)
-                key: value.segments,
-            };
           } catch (e) {
             debugPrint('[Stories] $slug positions unavailable: $e');
           }
@@ -649,7 +659,11 @@ final storyBatchProvider = FutureProvider.autoDispose
           games: chooseCollectionStories(
             latest: latest,
             candidates: candidates,
-            segments: segments,
+            segments: analysis.map((id, value) => MapEntry(id, value.segments)),
+            notations: {
+              for (final MapEntry(:key, :value) in analysis.entries)
+                if (value.notation case final notation?) key: notation,
+            },
           ),
           ordered: List.unmodifiable([for (final g in ordered) g.game]),
           total: ordered.length,
@@ -757,6 +771,7 @@ List<StoryGame> chooseMissedChanceStories(
         game: g,
         segments: List.unmodifiable(analysis[g.gameId]!.segments),
         caption: analysis[g.gameId]!.event,
+        notation: analysis[g.gameId]!.notation,
       ),
   ];
 }

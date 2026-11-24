@@ -11,6 +11,7 @@ import 'package:chessever2/screens/feed/logic/feed_moments.dart'
 import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart'
     show FeedMoment, FeedMomentType;
+import 'package:chessever2/screens/stories/story_notation.dart';
 import 'package:chessground/chessground.dart' show Shape;
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -293,12 +294,20 @@ class StoryAlternative {
 /// needs, and the variation beside each move.
 @immutable
 class StoryPgn {
-  const StoryPgn({required this.game, required this.alternatives});
+  const StoryPgn({
+    required this.game,
+    required this.alternatives,
+    this.notationRoot,
+  });
 
   final FeedPgnGame game;
 
   /// One per mainline move, null where the PGN gives no variation.
   final List<StoryAlternative?> alternatives;
+
+  final PgnNode<PgnNodeData>? notationRoot;
+
+  StoryNotation get notation => StoryNotation(game, notationRoot);
 }
 
 /// Reads [pgn] for its stories; null when it holds no playable move.
@@ -307,9 +316,11 @@ StoryPgn? parseStoryPgn(String? pgn) {
   final game = parseFlowPgn(pgn);
   if (game == null) return null;
   final alternatives = List<StoryAlternative?>.filled(game.moves.length, null);
+  PgnNode<PgnNodeData>? root;
   try {
     final parsed = PgnGame.parsePgn(pgn.trim());
-    PgnNode<PgnNodeData> node = parsed.moves;
+    root = parsed.moves;
+    var node = root;
     var i = 0;
     while (node.children.isNotEmpty && i < game.moves.length) {
       if (node.children.length > 1) {
@@ -321,7 +332,11 @@ StoryPgn? parseStoryPgn(String? pgn) {
   } catch (_) {
     // A damaged variation never costs the mainline.
   }
-  return StoryPgn(game: game, alternatives: List.unmodifiable(alternatives));
+  return StoryPgn(
+    game: game,
+    alternatives: List.unmodifiable(alternatives),
+    notationRoot: root,
+  );
 }
 
 StoryAlternative? _alternative(PgnChildNode<PgnNodeData> start, Position at) {
@@ -472,6 +487,32 @@ List<int> _printedNags(FeedPgnMove move) {
       if (getNagDisplay(nag)!.category == NagCategory.quality) nag,
   ];
   return List.unmodifiable({...quality, ...glyphs});
+}
+
+/// The board and annotation for a move the reader chose in the notation.
+StorySegment storyInspectedSegment(
+  StoryNotationMove notation, {
+  required bool finalPly,
+}) {
+  final move = notation.ply;
+  final verdict = _verdictOf(move, report: move.classification != null);
+  return StorySegment(
+    ply: move.ply,
+    fenBefore: move.before.fen,
+    fenAfter: move.after.fen,
+    move: move.move,
+    san: move.san,
+    moveNumber: move.before.fullmoves,
+    white: move.mover == Side.white,
+    nags: _printedNags(move),
+    label: verdict?.label,
+    tone: verdict?.tone ?? StoryTone.neutral,
+    moveClass: verdict?.moveClass ?? move.moveClass,
+    comment: pgnCommentProse(move.comments),
+    shapes: pgnCommentShapes(move.comments).toSet(),
+    finalPly: finalPly,
+    evalAfter: move.hasEval ? (cp: move.cp, mate: move.mate) : null,
+  );
 }
 
 // ----------------------------------------------------------------- picking

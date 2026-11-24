@@ -586,6 +586,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       !_closing &&
       !_pressing &&
       !_holding &&
+      !_reading &&
+      _wordsPointers.isEmpty &&
       !_dragging &&
       !_paging &&
       !_away &&
@@ -753,6 +755,11 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   bool _prompting = false;
   String? _promptFor;
 
+  bool _reading = false;
+  int? _readingMoveIndex;
+  final _wordsPointers = <int>{};
+  bool _downOnWords = false;
+
   @override
   final ValueNotifier<Rect?> zone = ValueNotifier<Rect?>(null);
 
@@ -796,6 +803,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   void _releasePrompt() {
     _prompting = false;
     _promptFor = null;
+    _reading = false;
+    _readingMoveIndex = null;
     zone.value = null;
   }
 
@@ -814,6 +823,19 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   @override
   void boardTouch(String frameId, {required bool takes}) {
     _boardTook = frameId == _activeFrameId && takes;
+  }
+
+  @override
+  void wordsTouch(String frameId, int pointer) {
+    if (frameId == _activeFrameId) _wordsPointers.add(pointer);
+  }
+
+  @override
+  void reading(String frameId, {required bool paused, int? moveIndex}) {
+    if (frameId != _activeFrameId) return;
+    _reading = paused;
+    _readingMoveIndex = moveIndex;
+    _sync();
   }
 
   // ------------------------------------------------------------- caught up
@@ -1017,6 +1039,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// Records how the surface's own space stands to the screen's under a
   /// new finger ([_touchScale]).
   void _onPointerDown(PointerDownEvent event) {
+    _downOnWords = _wordsPointers.contains(event.pointer);
+    if (_downOnWords) _sync();
     final took = _boardTook ?? false;
     _boardTook = null;
     _downOnBoard = took && (zone.value?.contains(event.position) ?? false);
@@ -1031,8 +1055,12 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _touchScale = local.abs() < 1e-3 ? 1 : (100 / local).abs();
   }
 
+  void _onPointerEnd(PointerEvent event) {
+    if (_wordsPointers.remove(event.pointer)) _sync();
+  }
+
   void _onTapDown(TapDownDetails details) {
-    if (!_takesTouches || _downOnBoard) return;
+    if (!_takesTouches || _downOnBoard || _downOnWords) return;
     _pressing = true;
     _sync();
   }
@@ -1049,7 +1077,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       unawaited(_close());
       return;
     }
-    if (_downOnBoard) return;
+    if (_downOnBoard || _downOnWords) return;
     final x = details.localPosition.dx;
     final back = Directionality.of(context) == TextDirection.rtl
         ? x > _size.width * 2 / 3
@@ -1079,7 +1107,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// A finger that rests on the story holds it, even one that came down
   /// while the surface was still growing: the story waits under it.
   void _onHoldStart(LongPressStartDetails details) {
-    if (_closing || _away || _downOnBoard) return;
+    if (_closing || _away || _downOnBoard || _downOnWords) return;
     _setHolding(true);
   }
 
@@ -1122,6 +1150,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// a drag that starts while the surface is still growing (drawn smaller
   /// than the screen) moves it exactly as far as the finger, no further.
   void _onDragStart(DragStartDetails details) {
+    if (_downOnWords) return;
     _beginDrag();
     _dragFromGlobal = details.globalPosition.dy;
     _dragFromValue = _drag.value;
@@ -1384,9 +1413,9 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
         collection: _activeCollection,
         batch: batch,
         story: frame.game,
-        moveIndex: segment.isStill
-            ? -1
-            : segment.boardMoveIndex(before: asking),
+        moveIndex:
+            _readingMoveIndex ??
+            (segment.isStill ? -1 : segment.boardMoveIndex(before: asking)),
       );
     } finally {
       if (mounted) {
@@ -1585,6 +1614,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     final content = RepaintBoundary(
       child: Listener(
         onPointerDown: _onPointerDown,
+        onPointerUp: _onPointerEnd,
+        onPointerCancel: _onPointerEnd,
         child: RawGestureDetector(
           key: const ValueKey('story_gestures'),
           behavior: HitTestBehavior.opaque,

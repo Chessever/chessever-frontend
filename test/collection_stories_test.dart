@@ -1412,6 +1412,120 @@ void main() {
 
   // ---------------------------------------------------------------- viewer
   group('the viewer', () {
+    testWidgets(
+      'notation selects moves and explores nested variations in place',
+      (tester) async {
+        const pgn = '''[Result "*"]
+
+1. e4 {The king's pawn.} e5 (1... c5 {The Sicilian.}
+2. Nf3 (2. Nc3 {The closed variation.}) (2. d4 {The open variation.}) d6) 2. Nf3 {Attacks e5.}
+Nc6 3. Bb5 a6 *''';
+        final harness = await _pumpRow(
+          tester,
+          collections: [_collection('a')],
+          batches: {'a': _batch('a', 1, pgn: pgn)},
+        );
+        await _open(tester, 'a');
+        expect(_headline(tester), '1. e4');
+
+        Future<void> tap(String key) async {
+          await tester.tap(find.byKey(ValueKey(key)));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 250));
+        }
+
+        String? fen() => tester
+            .widget<GameCardChessboard>(
+              find.byKey(const ValueKey('story_board')),
+            )
+            .fen;
+
+        await tap('story_notation_move_2');
+        expect(_headline(tester), '2. Nf3');
+        expect(find.text('Attacks e5.'), findsOneWidget);
+        expect(fen(), parseStoryPgn(pgn)!.game.moves[2].after.fen);
+        await tap('story_open_game');
+        expect(harness.opened.single, ('a', 'a0', 2));
+
+        await tap('story_notation_variation_1');
+        expect(_headline(tester), '1… c5');
+        expect(find.text('The Sicilian.'), findsOneWidget);
+        await tester.drag(
+          find.byKey(const ValueKey('story_notation')),
+          const Offset(-160, 0),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tap('story_notation_variation_2');
+        await tester.tap(find.text('2. Nc3'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(_headline(tester), '2. Nc3');
+        expect(find.text('The closed variation.'), findsOneWidget);
+        expect(
+          fen(),
+          parseStoryPgn('1. e4 c5 2. Nc3')!.game.moves.last.after.fen,
+        );
+        await tap('story_notation_parent');
+        expect(_headline(tester), '2. Nf3');
+        await tap('story_notation_parent');
+        expect(_headline(tester), '1… e5');
+        expect(find.text('The closed variation.'), findsNothing);
+
+        await tester.pump(const Duration(seconds: 15));
+        expect(find.byKey(const ValueKey('story_frame_a0#0')), findsOneWidget);
+        await tap('story_resume_reading');
+        expect(_headline(tester), '1. e4');
+        await _tapAside(tester, 0.8);
+        expect(_headline(tester), '2. Nf3');
+      },
+    );
+
+    testWidgets(
+      'a long annotation scrolls without moving or closing the story',
+      (tester) async {
+        final comment = List.filled(
+          60,
+          'The pawn controls the centre.',
+        ).join(' ');
+        await _pumpRow(
+          tester,
+          collections: [_collection('a')],
+          batches: {
+            'a': _batch('a', 1, pgn: '1. e4 {$comment} e5 2. Nf3 {Next.} *'),
+          },
+        );
+        await _open(tester, 'a');
+        final annotation = find.byKey(
+          const ValueKey('story_annotation_scroll'),
+        );
+        final scroll = tester
+            .widget<SingleChildScrollView>(annotation)
+            .controller!;
+        expect(scroll.position.maxScrollExtent, greaterThan(200));
+        final fade = find.byKey(const ValueKey('story_comment_fade'));
+        expect(fade, findsOneWidget);
+
+        await tester.drag(annotation, const Offset(0, -180));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(scroll.offset, greaterThan(80));
+        await tester.pump(const Duration(seconds: 15));
+        expect(find.byKey(const ValueKey('story_frame_a0#0')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('story_resume_reading')),
+          findsOneWidget,
+        );
+        expect(find.text(comment), findsOneWidget);
+
+        scroll.jumpTo(scroll.position.maxScrollExtent);
+        await tester.pump();
+        expect(fade, findsNothing);
+        await tester.drag(annotation, const Offset(0, 100));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(scroll.offset, lessThan(scroll.position.maxScrollExtent));
+        expect(fade, findsOneWidget);
+      },
+    );
+
     testWidgets('a tap on the right two thirds is the next position, on the '
         'left third the previous one; each position its own bar, a wider '
         'gap before each game', (tester) async {

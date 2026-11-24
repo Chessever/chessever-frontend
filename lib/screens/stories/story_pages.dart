@@ -26,6 +26,8 @@ import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart'
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart'
     show FeedGlyph, FeedGlyphs;
 import 'package:chessever2/screens/stories/story_models.dart';
+import 'package:chessever2/screens/stories/story_notation.dart';
+import 'package:chessever2/screens/stories/story_notation_strip.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -44,6 +46,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -106,7 +109,7 @@ abstract final class StoryPageMetrics {
 /// The type and room of the words under a story's board: the game's line,
 /// the move, why it matters, and the book's words. One size whatever their
 /// length (a larger text setting grows it up to [kDenseTextScale]); long
-/// words wrap to the lines there is room for and fade at their end.
+/// comments scroll within the space below the notation.
 @immutable
 class StoryTextMetrics {
   const StoryTextMetrics._({
@@ -157,7 +160,7 @@ class StoryTextMetrics {
       labelStyle: labelStyle,
       commentStyle: commentStyle,
       captionLine: line(captionStyle),
-      moveLine: line(moveStyle),
+      moveLine: math.max(44.0, line(moveStyle.copyWith(fontSize: 26)) + 8),
       labelLine: line(labelStyle),
       commentLine:
           scaler.scale(commentStyle.fontSize ?? 15) *
@@ -268,13 +271,13 @@ abstract final class StoryFrameLayout {
   /// upright; the bar, the board and the words beside them on its side. The
   /// actions under the story line up with its edges.
   static double storyWidth(BuildContext context, BoxConstraints constraints) {
-    if (beside(constraints)) {
+    final text = StoryTextMetrics.of(context);
+    if (beside(constraints, text)) {
       final side = boardBeside(constraints);
       final bar = evalWidth(side);
       return bar + side + sideGap + sideWidth(constraints, side, bar);
     }
-    return barWidth(constraints) +
-        boardSize(constraints, StoryTextMetrics.of(context));
+    return barWidth(constraints) + boardSize(constraints, text);
   }
 
   /// Air above and below a board beside its words, split evenly.
@@ -289,11 +292,13 @@ abstract final class StoryFrameLayout {
 
   /// Whether the story area [constraints] sets the words beside the board
   /// (a phone on its side).
-  static bool beside(BoxConstraints constraints) {
+  static bool beside(BoxConstraints constraints, StoryTextMetrics text) {
     if (!constraints.hasBoundedHeight) return false;
     final across = constraints.maxWidth - 2 * _gutter;
     final side = constraints.maxHeight - besideAir;
-    return across - evalWidth(side) - sideGap - minSide >= side;
+    final words = side - 2 * StoryPlayerRow.height - 2 * rowGap;
+    return words >= text.box(StoryTextMetrics.minLines) &&
+        across - evalWidth(side) - sideGap - minSide >= side;
   }
 
   /// The board's side when [beside]: as tall as the area, less [besideAir].
@@ -341,7 +346,7 @@ class _StoryFrameScaffold extends StatelessWidget {
     final text = StoryTextMetrics.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (StoryFrameLayout.beside(constraints)) {
+        if (StoryFrameLayout.beside(constraints, text)) {
           final side = StoryFrameLayout.boardBeside(constraints);
           final bar = StoryFrameLayout.evalWidth(side);
           final middle =
@@ -453,6 +458,13 @@ abstract class StoryPuzzleHost {
   /// moves on like one anywhere else on the page. The board hears a touch
   /// before the viewer does, so this arrives first.
   void boardTouch(String frameId, {required bool takes});
+
+  /// A touch that belongs to notation or annotations rather than the story.
+  void wordsTouch(String frameId, int pointer);
+
+  /// Holds playback while the reader browses or reads a scrollable comment.
+  /// [moveIndex] is the selected mainline move or the start of its branch.
+  void reading(String frameId, {required bool paused, int? moveIndex});
 }
 
 /// What a touch on [square] of a board asking for a move is, as the board
@@ -1100,6 +1112,27 @@ class StoryFrameView extends ConsumerStatefulWidget {
   ConsumerState<StoryFrameView> createState() => _StoryFrameViewState();
 }
 
+class _StoryLine {
+  const _StoryLine(this.moves, {this.parent, this.branchIndex});
+
+  final List<StoryNotationMove> moves;
+  final _StoryLine? parent;
+  final int? branchIndex;
+
+  _StoryLine branch(int index, StoryNotationVariation variation) => _StoryLine(
+    [...moves.take(index), ...variation.readLine()],
+    parent: this,
+    branchIndex: index,
+  );
+
+  int boardIndex(int index) {
+    final mainlineIndex = moves[index].mainlineIndex;
+    if (mainlineIndex != null) return mainlineIndex;
+    final start = branchIndex!;
+    return start == 0 ? -1 : parent!.boardIndex(start - 1);
+  }
+}
+
 class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   /// A move that was not it stands this long, then goes back: the Feed
   /// puzzle's beat (its `_wrongHold`, 520ms).
@@ -1160,6 +1193,108 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   StorySegment get _segment => widget.frame.position;
   StoryPuzzle? get _puzzle => _segment.puzzle;
 
+  late _StoryLine? _mainline = _buildMainline();
+  late _StoryLine? _answerLine = _buildAnswerLine();
+  _StoryLine? _inspectionLine;
+  int? _inspectedIndex;
+  StorySegment? _inspected;
+  bool _reading = false;
+
+  int get _storyMoveIndex =>
+      _segment.isStill ? (_mainline?.moves.length ?? 1) - 1 : _segment.ply - 1;
+
+  _StoryLine? _buildMainline() {
+    final moves = widget.frame.game.notation?.mainline;
+    return moves == null || moves.isEmpty ? null : _StoryLine(moves);
+  }
+
+  _StoryLine? _buildAnswerLine() {
+    final mainline = _mainline;
+    final puzzle = _puzzle;
+    final index = _storyMoveIndex;
+    if (puzzle?.kind != StoryPuzzleKind.findMissed ||
+        mainline == null ||
+        index >= mainline.moves.length) {
+      return null;
+    }
+    for (final variation in mainline.moves[index].variations) {
+      if (variation.firstMove == puzzle!.answer) {
+        return mainline.branch(index, variation);
+      }
+    }
+    return null;
+  }
+
+  void _reportReading() {
+    if (!widget.active) return;
+    final index = _inspectedIndex;
+    widget.puzzles?.reading(
+      widget.frame.id,
+      paused: _reading,
+      moveIndex: index == null ? null : _inspectionLine?.boardIndex(index),
+    );
+  }
+
+  void _beginReading() {
+    if (!widget.active || _reading) return;
+    setState(() => _reading = true);
+    _pauseBeats();
+    _reportReading();
+  }
+
+  void _inspect(_StoryLine line, int index) {
+    if (!widget.active) return;
+    final move = line.moves[index];
+    setState(() {
+      _reading = true;
+      _inspectionLine = line;
+      _inspectedIndex = index;
+      _inspected = storyInspectedSegment(
+        move,
+        finalPly: move.mainlineIndex == _mainline!.moves.length - 1,
+      );
+    });
+    _pauseBeats();
+    _reportReading();
+  }
+
+  void _resumeStory() {
+    setState(() {
+      _reading = false;
+      _inspectionLine = null;
+      _inspectedIndex = null;
+      _inspected = null;
+    });
+    _resumeBeats();
+    _reportReading();
+  }
+
+  Widget? _notation(BuildContext context) {
+    if (_puzzle != null && !_answered) return null;
+    final line =
+        _inspectionLine ?? (_answered ? _answerLine : null) ?? _mainline;
+    if (line == null) return null;
+    final selected = _inspectedIndex ?? _storyMoveIndex + _linePly;
+    final parent = line.parent;
+    return StoryNotationStrip(
+      key: const ValueKey('story_notation'),
+      moves: line.moves,
+      selected: selected.clamp(0, line.moves.length - 1),
+      selectedStyle: StoryTextMetrics.of(
+        context,
+      ).moveStyle.copyWith(fontSize: 26),
+      glyphInk: storyGlyphInk,
+      headline: _puzzle == null || _inspected != null,
+      onMove: (index) => _inspect(line, index),
+      onVariation: (index, variation) =>
+          _inspect(line.branch(index, variation), index),
+      onRead: _beginReading,
+      onParent: parent == null
+          ? null
+          : () => _inspect(parent, line.branchIndex!),
+    );
+  }
+
   /// The board takes a move.
   bool get _asking =>
       _puzzle != null && _phase == _Phase.prompt && widget.active;
@@ -1204,6 +1339,17 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
       widget.progress.addListener(_onProgress);
     }
     _landed = widget.progress.value >= kStorySlideAt;
+    if (!identical(oldWidget.frame.game.notation, widget.frame.game.notation)) {
+      _mainline = _buildMainline();
+      _answerLine = _buildAnswerLine();
+      _inspectionLine = null;
+      _inspectedIndex = null;
+      _inspected = null;
+      if (_reading) _afterFrame(_reportReading);
+    }
+    if (widget.active && !oldWidget.active && _reading) {
+      _afterFrame(_reportReading);
+    }
     if (_puzzle != null && oldWidget.active != widget.active) {
       _selected = null;
       _promoting = false;
@@ -1271,7 +1417,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   }
 
   void _resumeBeats() {
-    if (_timer != null) return;
+    if (_timer != null || _reading) return;
     if (_phase == _Phase.wrong) {
       _timer = Timer(_wrongHold, _takeBack);
     } else if (_answered && _linePending) {
@@ -1652,9 +1798,11 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   @override
   Widget build(BuildContext context) {
     final game = widget.frame.game.game;
+    final segment = _inspected ?? _segment;
     final orientation = _orientation;
     final shown = _watchShownEval();
-    final revealed = _segment.finalPly && (_puzzle == null ? _landed : true);
+    final revealed =
+        segment.finalPly && (_landed || _puzzle != null || _inspected != null);
     return _StoryFrameScaffold(
       top: StoryPlayerRow(
         game: game,
@@ -1669,21 +1817,25 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
       board: (side, bar) => Row(
         children: [
           _evalBar(bar, side, orientation, shown),
-          if (_puzzle == null)
-            _stillBoard(side, game)
+          if (_puzzle == null || _inspected != null)
+            _stillBoard(side, game, segment, orientation)
           else
             _puzzleBoard(side, orientation),
         ],
       ),
       words: (beside, lines) => StoryMomentText(
         key: const ValueKey('story_words'),
-        segment: _segment,
+        segment: segment,
         caption: widget.frame.game.caption,
-        lines: lines,
         puzzleState: _puzzleState,
         misses: _misses,
         missedPlayed: _missedPlayed,
         onShow: _waiting ? _show : null,
+        notation: _notation(context),
+        onRead: _beginReading,
+        onResume: _reading ? _resumeStory : null,
+        onWordsTouch: (pointer) =>
+            widget.puzzles?.wordsTouch(widget.frame.id, pointer),
       ),
     );
   }
@@ -1696,6 +1848,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   /// A miss stands for a beat only: the bar keeps to the question unless
   /// the miss is the move the game played, whose evaluation it recorded.
   (String, StoryEval?) _shownPosition() {
+    if (_inspected case final move?) return (move.fenAfter, move.evalAfter);
     final segment = _segment;
     final puzzle = _puzzle;
     if (puzzle == null) {
@@ -1776,9 +1929,13 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
 
   /// The position as it stands, the move sliding in a beat after the page
   /// shows, its badge landing with it.
-  Widget _stillBoard(double side, GamesTourModel game) {
-    final segment = _segment;
-    final landed = _landed || segment.isStill;
+  Widget _stillBoard(
+    double side,
+    GamesTourModel game,
+    StorySegment segment,
+    Side orientation,
+  ) {
+    final landed = _landed || segment.isStill || _inspected != null;
     final move = segment.move;
     final badge = landed && move is NormalMove && segment.moveClass != null
         ? segment.moveClass
@@ -1793,7 +1950,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
             fen: landed ? segment.fenAfter : segment.fenBefore,
             lastMove: landed ? move : segment.moveBefore,
             boardSize: side,
-            orientation: Side.white,
+            orientation: orientation,
             showCoordinates: false,
             gameStatus: landed && segment.finalPly ? game.gameStatus : null,
             // The board is the story's subject, set flat on its page.
@@ -1806,7 +1963,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
               square: move.to,
               moveClass: badge,
               boardSize: side,
-              orientation: Side.white,
+              orientation: orientation,
             ),
         ],
       ),
@@ -1914,10 +2071,9 @@ Color storyTintOf(bool found) => found
 /// a room that never changes size:
 ///
 /// * the game's line (event, opening);
-/// * the move, its number a step quieter and its glyphs in the app's
-///   annotation colours;
+/// * the selected move, with its neighbours in the notation strip;
 /// * why it matters, in the verdict's colour ("Brilliant", "Missed win");
-/// * the book's words, wrapping to [lines] lines and fading at their end.
+/// * the book's words in a scrollable area.
 ///
 /// No evaluation is put in words: the eval bar beside the board carries it.
 ///
@@ -1937,17 +2093,23 @@ class StoryMomentText extends StatelessWidget {
   const StoryMomentText({
     super.key,
     required this.segment,
-    required this.lines,
     this.caption,
     this.puzzleState,
     this.misses = 0,
     this.missedPlayed = false,
     this.onShow,
+    this.notation,
+    this.onRead,
+    this.onResume,
+    this.onWordsTouch,
   });
 
   final StorySegment segment;
   final String? caption;
-  final int lines;
+  final Widget? notation;
+  final VoidCallback? onRead;
+  final VoidCallback? onResume;
+  final ValueChanged<int>? onWordsTouch;
 
   /// Where the position's question stands; null reads as the question on a
   /// position that asks one.
@@ -1974,39 +2136,21 @@ class StoryMomentText extends StatelessWidget {
         : (puzzleState ?? StoryPuzzleState.prompt);
     final asking =
         state == StoryPuzzleState.prompt || state == StoryPuzzleState.missed;
-    final Widget moveLine;
-    Widget labelLine = const SizedBox();
-    String? comment;
-    String? label;
-    if (puzzle != null && asking) {
-      moveLine = _askLine(context, text, puzzle, state!);
-    } else {
-      moveLine = _moveLine(context, text, puzzle, state);
-      label = _labelOf(segment, state);
-      if (label != null) {
-        labelLine = Text(
-          label,
-          key: const ValueKey('story_label'),
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.fade,
-          style: text.labelStyle.copyWith(
-            color: storyToneInk(context, segment, state),
-          ),
-        );
-      }
-      comment = _commentOf(segment);
-    }
-    // A question has no label line: its action stands under it instead.
-    final hasLabel = !asking && (puzzle != null || label != null);
-    // Without a label the words begin on its line: the room stays the same.
-    final commentLines = lines + (hasLabel ? 0 : 1);
-    final commentHeight =
-        text.box(lines) -
-        text.captionLine -
-        StoryTextMetrics.captionGap -
-        text.moveLine -
-        (hasLabel ? text.labelLine + StoryTextMetrics.commentGap : 0);
+    final strip = notation;
+    final moveLine = puzzle != null && asking
+        ? _askLine(context, text, puzzle, state!)
+        : _moveLine(context, text, puzzle, state);
+    final label = asking ? null : _labelOf(segment, state);
+    final comment = asking ? null : _commentOf(segment);
+    final labelLine = label == null
+        ? null
+        : Text(
+            label,
+            key: const ValueKey('story_label'),
+            style: text.labelStyle.copyWith(
+              color: storyToneInk(context, segment, state),
+            ),
+          );
     final show = onShow;
     // Where the platform takes no announcement, the headline is a live
     // region: each step of a question speaks as it lands.
@@ -2034,58 +2178,114 @@ class StoryMomentText extends StatelessWidget {
           SizedBox(height: StoryTextMetrics.captionGap),
           SizedBox(
             height: text.moveLine,
-            child: Semantics(
-              liveRegion: live,
-              child: StorySpringIn(
-                id: (state, misses, missedPlayed),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: moveLine,
-                ),
-              ),
-            ),
-          ),
-          if (hasLabel) ...[
-            SizedBox(
-              height: text.labelLine,
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: labelLine,
-              ),
-            ),
-            SizedBox(height: StoryTextMetrics.commentGap),
-          ],
-          SizedBox(
-            height: math.max(0.0, commentHeight),
-            child: puzzle != null && asking
-                ? (show == null
-                      ? null
-                      : Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              top: StoryTextMetrics.revealGap,
-                            ),
-                            child: StoryRevealButton(
-                              label: puzzle.reveal,
-                              onTap: show,
-                              emphasised: misses >= showAfterMisses,
+            child: Row(
+              children: [
+                Expanded(
+                  child: puzzle == null && strip != null
+                      ? _readingSurface(strip, Axis.horizontal)
+                      : Semantics(
+                          liveRegion: live,
+                          child: StorySpringIn(
+                            id: (state, misses, missedPlayed),
+                            child: Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: moveLine,
                             ),
                           ),
-                        ))
-                : comment == null || commentLines <= 0
-                ? null
-                : _StoryCommentText(
-                    key: const ValueKey('story_comment'),
-                    text: comment,
-                    lines: commentLines,
-                    style: text.commentStyle,
+                        ),
+                ),
+                if (onResume case final resume?)
+                  IconButton(
+                    key: const ValueKey('story_resume_reading'),
+                    tooltip: 'Resume story',
+                    onPressed: resume,
+                    icon: const Icon(Icons.play_arrow_rounded),
                   ),
+              ],
+            ),
           ),
+          if (puzzle != null && asking && show != null)
+            Expanded(
+              child: Align(
+                alignment: AlignmentDirectional.topStart,
+                child: Padding(
+                  padding: EdgeInsets.only(top: StoryTextMetrics.revealGap),
+                  child: StoryRevealButton(
+                    label: puzzle.reveal,
+                    onTap: show,
+                    emphasised: misses >= showAfterMisses,
+                  ),
+                ),
+              ),
+            )
+          else if (labelLine != null ||
+              comment != null ||
+              (puzzle != null && strip != null))
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final answerStrip = puzzle != null && strip != null
+                      ? SizedBox(
+                          height: text.moveLine,
+                          child: _readingSurface(strip, Axis.horizontal),
+                        )
+                      : null;
+                  final pinned =
+                      answerStrip != null &&
+                      constraints.maxHeight >= text.moveLine + text.commentLine;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (pinned) answerStrip,
+                      Expanded(
+                        child: _readingSurface(
+                          _StoryCommentText(
+                            key: ObjectKey(segment),
+                            children: [
+                              if (!pinned && answerStrip != null) answerStrip,
+                              if (labelLine != null) labelLine,
+                              if (labelLine != null && comment != null)
+                                SizedBox(height: StoryTextMetrics.commentGap),
+                              if (comment != null)
+                                Padding(
+                                  padding: const EdgeInsetsDirectional.only(
+                                    end: 9,
+                                  ),
+                                  child: Text(
+                                    comment,
+                                    key: const ValueKey('story_comment'),
+                                    style: text.commentStyle,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          Axis.vertical,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
   }
+
+  Widget _readingSurface(Widget child, Axis axis) => Listener(
+    behavior: HitTestBehavior.opaque,
+    onPointerDown: (event) => onWordsTouch?.call(event.pointer),
+    child: NotificationListener<UserScrollNotification>(
+      onNotification: (scroll) {
+        if (scroll.metrics.axis == axis &&
+            scroll.direction != ScrollDirection.idle) {
+          onRead?.call();
+        }
+        return false;
+      },
+      child: child,
+    ),
+  );
 
   /// The question's line: the question, or a miss in the missed tone.
   Widget _askLine(
@@ -2481,85 +2681,99 @@ Color _liftedInk(Color hue, Color on) {
   return _liftedInks[key] = ink;
 }
 
-/// The annotator's words, wrapping to [lines] lines at one size. Words that
-/// run longer stay one paragraph, its last line fading downward, so the
-/// shape of the paragraph holds to its end; never cut with dots or shrunk.
-///
-/// Whether the words run over is measured with exactly what they are drawn
-/// with, and the fade sits on the last line as drawn.
-class _StoryCommentText extends StatelessWidget {
-  const _StoryCommentText({
-    super.key,
-    required this.text,
-    required this.lines,
-    required this.style,
-  });
+/// The annotation keeps its full length inside the story's reading area.
+class _StoryCommentText extends StatefulWidget {
+  const _StoryCommentText({super.key, required this.children});
 
-  final String text;
-  final int lines;
-  final TextStyle style;
+  final List<Widget> children;
 
-  /// The last line's fade, from its top (whole) to its foot (gone), eased
-  /// over several steps so it never reads as a band.
-  static const List<double> _fadeStops = [0, 0.2, 0.4, 0.6, 0.8, 1];
-  static const List<double> _fadeAlphas = [1, 0.86, 0.62, 0.36, 0.14, 0];
+  @override
+  State<_StoryCommentText> createState() => _StoryCommentTextState();
+}
+
+class _StoryCommentTextState extends State<_StoryCommentText> {
+  final _scroll = ScrollController(keepScrollOffset: false);
+  final _fade = ValueNotifier<double>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_updateFade);
+  }
+
+  void _updateFade() {
+    if (_scroll.hasClients && _scroll.position.hasContentDimensions) {
+      _fade.value = _fadeHeight(_scroll.position);
+    }
+  }
+
+  static double _fadeHeight(ScrollMetrics metrics) => math.min(
+    math.min(18.0, metrics.viewportDimension / 3),
+    metrics.extentAfter,
+  );
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _fade.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    const align = TextAlign.start;
-    final defaults = DefaultTextStyle.of(context);
-    final drawn = defaults.style.merge(style);
-    final direction = Directionality.of(context);
-    final scaler = MediaQuery.textScalerOf(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final painter = TextPainter(
-          text: TextSpan(text: text, style: drawn),
-          textAlign: align,
-          textDirection: direction,
-          textScaler: scaler,
-          maxLines: lines,
-          textWidthBasis: defaults.textWidthBasis,
-          textHeightBehavior: defaults.textHeightBehavior,
-        )..layout(maxWidth: constraints.maxWidth);
-        final runsOver = painter.didExceedMaxLines;
-        final shown = runsOver ? painter.computeLineMetrics() : null;
-        painter.dispose();
-        final paragraph = Text(
-          text,
-          maxLines: lines,
-          textAlign: align,
-          overflow: TextOverflow.clip,
-          style: drawn,
-        );
-        if (shown == null || shown.isEmpty) return paragraph;
-        final last = shown.last;
-        final lineTop = last.baseline - last.ascent;
-        final lineFoot = last.baseline + last.descent;
-        return ShaderMask(
-          key: const ValueKey('story_comment_fade'),
-          blendMode: BlendMode.dstIn,
-          shaderCallback: (bounds) {
-            final height = bounds.height <= 0 ? 1.0 : bounds.height;
-            final top = (lineTop / height).clamp(0.0, 1.0);
-            final foot = (lineFoot / height).clamp(top, 1.0);
-            const ink = Color(0xFF000000);
-            return LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                ink,
-                for (final alpha in _fadeAlphas) ink.withValues(alpha: alpha),
-              ],
-              stops: [
-                0,
-                for (final stop in _fadeStops) top + (foot - top) * stop,
-              ],
-            ).createShader(bounds);
-          },
-          child: paragraph,
-        );
-      },
+    final background = context.colors.background;
+    return Scrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          NotificationListener<ScrollMetricsNotification>(
+            onNotification: (notification) {
+              if (notification.depth == 0 &&
+                  notification.metrics.axis == Axis.vertical) {
+                _fade.value = _fadeHeight(notification.metrics);
+              }
+              return false;
+            },
+            child: SingleChildScrollView(
+              key: const ValueKey('story_annotation_scroll'),
+              controller: _scroll,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: ClampingScrollPhysics(),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: widget.children,
+              ),
+            ),
+          ),
+          ValueListenableBuilder<double>(
+            valueListenable: _fade,
+            builder: (context, height, _) {
+              if (height <= 0) return const SizedBox.shrink();
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: height,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    key: const ValueKey('story_comment_fade'),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [background.withValues(alpha: 0), background],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
