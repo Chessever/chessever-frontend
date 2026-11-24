@@ -12,9 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// watched, and whether they were caught up with it as it stood
 /// ([signature]).
 ///
-/// A circle stays quiet once caught up, whatever the day's picks are, until
-/// its signature changes: a new game, an update to the book, a new day of
-/// Missed chances. Then it is new again and leads the row.
+/// The device remembers watched games across visits so a collection can
+/// feature something the reader hasn't seen yet.
 @immutable
 class StorySeen {
   const StorySeen({
@@ -23,7 +22,7 @@ class StorySeen {
     required this.caught,
   });
 
-  /// The seen stories' game ids.
+  /// The most recently watched game ids, including earlier visits.
   final List<String> ids;
 
   /// The circle's [storySignature] when the record was last counted. A
@@ -133,6 +132,7 @@ class StorySeenNotifier extends StateNotifier<Map<String, StorySeen>?> {
 
   /// Circles remembered at most; the longest untouched go first.
   static const int capacity = 200;
+  static const int gamesPerCollection = 64;
 
   /// The document's format: `{"v": 3, "c": {slug: record}, "a": {slug:
   /// page}}`, `a` the page each circle was left on ([markAt]). Older
@@ -178,6 +178,23 @@ class StorySeenNotifier extends StateNotifier<Map<String, StorySeen>?> {
   bool isSeen(Collection collection) {
     final record = state?[collection.slug];
     return record != null && record.caught && record.matches(collection);
+  }
+
+  Set<String> watchedGames(String slug) => {...?state?[slug]?.ids};
+
+  /// Resume an unfinished game in a stable collection when it is still in
+  /// the candidate pool. New content gets the first chance after an update.
+  String? unfinishedGame(Collection collection) {
+    final at = _at[collection.slug];
+    final separator = at?.lastIndexOf('#') ?? -1;
+    if (at == null || separator < 0) return null;
+    final last = at.substring(0, separator);
+    final current = state?[collection.slug];
+    if (current != null &&
+        (!current.matches(collection) || current.ids.contains(last))) {
+      return null;
+    }
+    return last;
   }
 
   /// The game ids of [batch]'s stories the reader has seen.
@@ -248,17 +265,19 @@ class StorySeenNotifier extends StateNotifier<Map<String, StorySeen>?> {
     // Counted as of the stories in hand: a batch read before the catalog
     // grew does not hold the new games, which stay new.
     final signature = batch.signature ?? storySignature(collection);
-    final seen = {...?current?.ids, ?add};
-    final ids = [
-      for (final id in shown)
-        if (seen.contains(id)) id,
-    ];
+    final seen = {...?current?.ids};
+    if (add != null) {
+      seen
+        ..remove(add)
+        ..add(add);
+    }
     final same = current != null && current.signature == signature;
-    // Caught up once, caught up until something new: the day's other
-    // picks never light the ring again.
     final caught =
-        (same && current.caught) ||
-        (shown.isNotEmpty && ids.length == shown.length);
+        (shown.isNotEmpty && shown.every(seen.contains)) ||
+        (!batch.featuredGame && same && current.caught);
+    final ids = seen.skip(
+      seen.length > gamesPerCollection ? seen.length - gamesPerCollection : 0,
+    );
     final record = StorySeen(
       ids: List.unmodifiable(ids),
       signature: signature,

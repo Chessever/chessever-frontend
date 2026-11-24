@@ -16,6 +16,7 @@ import 'package:chessever2/screens/stories/story_row_access.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/screens/stories/story_viewer.dart';
+import 'package:chessever2/screens/stories/story_visit.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -281,11 +282,9 @@ void refreshStoryCatalog(WidgetRef ref) {
   ref.invalidate(collectionsProvider);
 }
 
-/// The collections' story row at the top of Today: the Missed chances
-/// circle and the [kStoryCollectionCap] collections updated most recently,
-/// the circles with something the reader has not seen first, then the seen
-/// ones, quiet. A collection that gets a new game or an update lands
-/// leftmost. A skeleton of the same geometry while they load.
+/// The stories at the top of Today: Missed Chances, recent collections and
+/// rotating archive picks. Watched circles quieten in place. A skeleton of
+/// the same geometry while the catalog loads.
 ///
 /// The row stays while it is On, everything seen or not: watched circles
 /// go grey, and the row is never empty of what the reader can come back to.
@@ -396,6 +395,13 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
         if (mode == StoryRowMode.on) _retireHiddenSnack();
       },
     );
+    ref.listenManual(storyVisitProvider, (_, __) {
+      _refreshCatalogIfStale();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients || _pointer != null) return;
+        _scroll.jumpTo(_scroll.position.minScrollExtent);
+      });
+    });
   }
 
   void _scheduleRetry() {
@@ -424,22 +430,32 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   }
 
   List<Collection> _ordered(
-    List<Collection> collections,
-    StorySeenNotifier seen,
-  ) {
+    ({List<Collection> recent, List<Collection> archive}) lineup,
+    StorySeenNotifier seen, {
+    required Collection? missed,
+    required StoryVisit visit,
+    required bool viewerOpen,
+  }) {
+    if (viewerOpen && _order.isNotEmpty) return _order;
     // The order is fixed while the row is on screen; a circle watched just
     // now goes quiet where it stands. A circle that gets something new (a
     // game, an update: its signature changes) orders the row again, so it
     // lands leftmost the moment the catalog says so.
+    final all = [?missed, ...lineup.recent, ...lineup.archive];
     final slugs = [
-      for (final c in collections) '${c.slug}|${storySignature(c)}',
+      '${visit.rotation}|${lineup.recent.length}',
+      for (final c in all) '${c.slug}|${storySignature(c)}',
     ];
     if (!listEquals(slugs, _orderedFrom)) {
       _orderedFrom = slugs;
-      _order = orderStoryCollections(collections, seen.isSeen);
+      _order = [
+        ?missed,
+        ...orderStoryCollections(lineup.recent, seen.isSeen),
+        ...lineup.archive,
+      ];
     } else {
       // Same collections: keep the order, take the fresh rows.
-      final bySlug = {for (final c in collections) c.slug: c};
+      final bySlug = {for (final c in all) c.slug: c};
       _order = [for (final c in _order) bySlug[c.slug] ?? c];
     }
     return _order;
@@ -572,13 +588,17 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   /// start.
   void _onResume() {
     if (!mounted) return;
+    _refreshCatalogIfStale();
+    setState(() {});
+  }
+
+  void _refreshCatalogIfStale() {
     final readAt = _catalogReadAt;
     final now = ref.read(storyClockProvider)();
     if (readAt != null && now.difference(readAt) >= kStoryCatalogStale) {
       _catalogReadAt = now;
       refreshStoryCatalog(ref);
     }
-    setState(() {});
   }
 
   /// A catalog read where a collection changed since its stories were read
@@ -798,36 +818,50 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     } else {
       final collections = ref.watch(storyCollectionsProvider);
       final seenRecord = ref.watch(storySeenProvider);
-      final list = collections.valueOrNull;
-      final missed = list == null ? null : _missedCircle(now);
-      if (list == null && collections.hasError) {
+      final visit = ref.watch(storyVisitProvider);
+      final viewerOpen = ref.watch(storyViewerOpenProvider);
+      final catalog = collections.valueOrNull;
+      final missed = catalog == null && !collections.hasError
+          ? (waiting: false, circle: null)
+          : _missedCircle(now);
+      if (catalog == null && collections.hasError) {
         _scheduleRetry();
-        shown = false;
-        content = null;
-      } else if (list == null ||
+      }
+      final list =
+          catalog ?? (collections.hasError ? const <Collection>[] : null);
+      if (list == null ||
           seenRecord == null ||
-          ((missed?.waiting ?? false) && _order.isEmpty)) {
+          (missed.waiting && _order.isEmpty)) {
         // Loading: the device's copy says whether the row will be there, so
         // a row that stays away never shows its skeleton.
         if (list == null) _retryDelay = const Duration(seconds: 8);
         shown = storyRowExpected(prefs);
         content = shown ? _StoryRowSkeleton(gutter: widget.gutter) : null;
       } else {
-        _retryDelay = const Duration(seconds: 8);
-        if (!identical(list, _arrived)) {
-          _arrived = list;
-          _onCatalogArrived(list);
+        if (catalog != null) {
+          _retryDelay = const Duration(seconds: 8);
+          if (!identical(catalog, _arrived)) {
+            _arrived = catalog;
+            _onCatalogArrived(catalog);
+          }
         }
         final seen = ref.read(storySeenProvider.notifier);
-        // On, with collections to show: there, everything seen or not.
-        shown = list.isNotEmpty;
-        // Coming back onto Today: ordered afresh before its first frame.
-        if (shown && _shown == false) _orderedFrom = null;
-        final circles = [?missed?.circle, ...selectStoryCollections(list)];
+        final lineup = selectStoryCollections(
+          list,
+          visit: visit,
+          hasMissedChances: missed.circle != null,
+        );
+        if (_shown == false) _orderedFrom = null;
+        final circles = _ordered(
+          lineup,
+          seen,
+          missed: missed.circle,
+          visit: visit,
+          viewerOpen: viewerOpen,
+        );
+        shown = circles.isNotEmpty;
         // Drawn while it is there or still springing away.
-        content = circles.isEmpty || (!shown && _shown != true)
-            ? null
-            : _row(circles, seen);
+        content = shown ? _row(circles, seen) : null;
       }
     }
     _setShown(shown);
@@ -838,8 +872,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     );
   }
 
-  Widget _row(List<Collection> list, StorySeenNotifier seen) {
-    final order = _ordered(list, seen);
+  Widget _row(List<Collection> order, StorySeenNotifier seen) {
     return Semantics(
       container: true,
       customSemanticsActions: {
@@ -1315,7 +1348,7 @@ class _StoryRowSkeleton extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (var i = 0; i < 6; i++)
+                    for (var i = 0; i < kStoryLineupSize; i++)
                       Padding(
                         padding: EdgeInsetsDirectional.only(
                           end: StoryRowMetrics.spacing,

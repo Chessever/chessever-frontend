@@ -43,12 +43,13 @@ import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
+import 'package:chessever2/screens/stories/story_visit.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/adaptive_window.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:country_picker/country_picker.dart';
-import 'package:dartchess/dartchess.dart' show Square;
+import 'package:dartchess/dartchess.dart' show NormalMove, Square;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -307,15 +308,13 @@ StoryGame _report(String id) => buildStoryGame(
 
 StoryBatch _batchOf(String slug) {
   final collection = _catalog.firstWhere((c) => c.slug == slug);
-  final stories = switch (slug) {
-    'us-championship-2026' => [_report('r0'), _opera('o1')],
-    _ => [_opera('o0'), _report('r1')],
-  };
+  final story = slug == 'us-championship-2026' ? _report('r0') : _opera('o0');
   return StoryBatch(
-    games: stories,
-    ordered: [for (final s in stories) s.game],
+    games: [story],
+    ordered: [story.game],
     gameCount: collection.gameCount,
     signature: storySignature(collection),
+    featuredGame: true,
   );
 }
 
@@ -327,13 +326,6 @@ StoryBatch _missedBatch() {
     result: '1-0',
     event: 'Myvatn OI Open 2026',
   ).game;
-  final game = _card(
-    'm1',
-    white: _firouzja,
-    black: _caruana,
-    result: '1/2-1/2',
-    event: 'Sinquefield Cup 2026',
-  ).game;
   return StoryBatch(
     games: [
       StoryGame(
@@ -341,13 +333,8 @@ StoryBatch _missedBatch() {
         segments: pickMissedChanceSegments(parseStoryPgn(_blackMissPgn)!),
         caption: 'Sel Hotel Myvatn · Myvatn OI Open 2026',
       ),
-      StoryGame(
-        game: game,
-        segments: pickMissedChanceSegments(parseStoryPgn(_reportPgn)!),
-        caption: 'Sinquefield Cup 2026 · Round 5',
-      ),
     ],
-    ordered: [myvatn, game],
+    ordered: [myvatn],
     signature: 'v:missed:2026-11-21',
   );
 }
@@ -859,25 +846,22 @@ void main() {
     ) async {
       await _pumpToday(tester, light: light);
       await _open(tester, 'exchange-sacrifice-2');
-      // To the third position: 13. Rxd7! asks.
-      await _tapAside(tester, 0.8);
-      await _play(tester, const Duration(milliseconds: 300));
-      await _tapAside(tester, 0.8);
-      await _play(tester, const Duration(milliseconds: 600));
+      for (
+        var i = 0;
+        i < kStoryMaxSegments - 1 && !_present('story_prompt');
+        i++
+      ) {
+        await _tapAside(tester, 0.8);
+        await _play(tester, const Duration(milliseconds: 600));
+      }
       await _precache(tester);
       expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
       await _shot(tester, '04_puzzle_prompt', light);
-      final board = tester.getRect(
-        find.byKey(const ValueKey('story_puzzle_board')),
-      );
-      Offset at(int file, int rank) => Offset(
-        board.left + (file + 0.5) * board.width / 8,
-        board.top + (7 - rank + 0.5) * board.width / 8,
-      );
-      // The rook takes on d7.
-      await tester.tapAt(at(3, 0));
-      await tester.pump(const Duration(milliseconds: 80));
-      await tester.tapAt(at(3, 6));
+      final frame = tester
+          .widget<StoryFrameView>(find.byType(StoryFrameView))
+          .frame;
+      final answer = frame.position.puzzle!.answer as NormalMove;
+      await _move(tester, answer.from.name, answer.to.name);
       await _play(tester, const Duration(milliseconds: 700));
       expect(find.textContaining('You found it'), findsOneWidget);
       await _shot(tester, '05_puzzle_solved', light);
@@ -902,8 +886,12 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await _pumpToday(tester, light: light, allWatched: true);
       await _shot(tester, '09_today_row_all_watched', light);
-      // The row's last circle: the 2022 book is the ninth by its update,
-      // past the row's eight.
+      final lineup = selectStoryCollections(
+        _catalog,
+        visit: StoryVisit(_now),
+        hasMissedChances: true,
+      );
+      // Open the last circle after bringing it into view.
       final row = tester.state<ScrollableState>(
         find.descendant(
           of: find.byType(TodayStoryRow),
@@ -912,8 +900,7 @@ void main() {
       );
       row.position.jumpTo(row.position.maxScrollExtent);
       await tester.pump();
-      expect(_circle('2022-in-53-games'), findsNothing);
-      await _open(tester, '2021-in-52-games');
+      await _open(tester, lineup.archive.last.slug);
       // Through the last circle's pages.
       for (var i = 0; i < 12; i++) {
         if (find

@@ -12,6 +12,8 @@ import 'package:chessever2/screens/stories/story_moments.dart';
 import 'package:chessever2/screens/stories/story_notation.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart'
     show storyClockProvider, storyDayKey;
+import 'package:chessever2/screens/stories/story_seen_store.dart';
+import 'package:chessever2/screens/stories/story_visit.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/average_game_rating.dart';
 import 'package:dartchess/dartchess.dart';
@@ -20,23 +22,13 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 export 'package:chessever2/screens/stories/story_moments.dart';
 
-/// At most this many collection circles on the row: the ones updated most
-/// recently. A collection that gets a new game or an update moves in.
-const int kStoryCollectionCap = 8;
-
-/// At most this many stories per collection: its latest game, then up to
-/// two others picked for the day.
-const int kStoriesPerCollection = 3;
-
-/// A game must show at least this many positions to be a story: a game
-/// with one moment is not a story of its own (the latest game included).
-const int kStoryMinSegments = 2;
+/// Missed Chances and the featured collection games share a six-story visit.
+const int kStoryLineupSize = 6;
+const int kStoryRecentSlots = 3;
+const Duration kStoryRecentWindow = Duration(days: 7);
 
 /// How many games, besides the latest, are read to find the day's picks.
 const int kStoryCandidatePool = 8;
-
-/// Missed chances shows at most this many games a day.
-const int kMissedChancesPerDay = 3;
 
 /// How long a collection with no game to show holds before moving on.
 const Duration kStoryEmptyDuration = Duration(seconds: 3);
@@ -100,6 +92,7 @@ class StoryBatch {
     int? total,
     this.gameCount,
     this.signature,
+    this.featuredGame = false,
   }) : total = total ?? ordered.length,
        frames = List.unmodifiable([
          for (var s = 0; s < games.length; s++)
@@ -123,6 +116,10 @@ class StoryBatch {
   /// The collection's news signature ([storySignature]) these stories were
   /// read under: watching them all catches the reader up to it.
   final String? signature;
+
+  /// This collection visit features one specific game. Its circle goes
+  /// quiet when that game was watched, even if earlier visits featured others.
+  final bool featuredGame;
 
   /// The viewer's pages: every story's positions, in order.
   final List<StoryFrame> frames;
@@ -180,7 +177,7 @@ Collection missedChancesCollection(DateTime now) {
     kind: CollectionKind.event,
     title: 'Missed chances',
     subtitle: 'Wins that got away',
-    gameCount: kMissedChancesPerDay,
+    gameCount: 1,
     contentVersion: 'missed:$day',
     updatedAt: DateTime(now.year, now.month, now.day),
     access: CollectionAccess.free,
@@ -213,18 +210,43 @@ int _byRecency(Collection a, Collection b) {
   return rb.compareTo(ra);
 }
 
-/// The collections the row shows: the [cap] updated most recently, in that
-/// order (catalog order between equals).
-List<Collection> selectStoryCollections(
+/// Reserves up to three places for recent additions or updates. The rest
+/// come from a rotating window through the catalog, so books that seldom
+/// change can surface without occupying a permanent slot.
+({List<Collection> recent, List<Collection> archive}) selectStoryCollections(
   List<Collection> catalog, {
-  int cap = kStoryCollectionCap,
+  required StoryVisit visit,
+  required bool hasMissedChances,
 }) {
-  final indexed = [for (var i = 0; i < catalog.length; i++) (i, catalog[i])];
-  indexed.sort((a, b) {
-    final byRecency = _byRecency(a.$2, b.$2);
-    return byRecency != 0 ? byRecency : a.$1.compareTo(b.$1);
-  });
-  return [for (final e in indexed.take(cap)) e.$2];
+  final unique = <String>{};
+  final ordered =
+      [
+        for (final c in catalog)
+          if (!isMissedChances(c) && c.gameCount > 0 && unique.add(c.slug)) c,
+      ]..sort((a, b) {
+        final byRecency = _byRecency(a, b);
+        return byRecency == 0 ? a.slug.compareTo(b.slug) : byRecency;
+      });
+  final cutoff = visit.startedAt.subtract(kStoryRecentWindow);
+  final recent = ordered
+      .where((c) {
+        final changed = storyRecency(c);
+        return changed != null && !changed.isBefore(cutoff);
+      })
+      .take(kStoryRecentSlots)
+      .toList(growable: false);
+  final slugs = {for (final c in recent) c.slug};
+  final pool = [
+    for (final c in ordered)
+      if (!slugs.contains(c.slug)) c,
+  ];
+  final count = kStoryLineupSize - (hasMissedChances ? 1 : 0) - recent.length;
+  if (pool.length <= count) return (recent: recent, archive: pool);
+  final offset = (visit.rotation * count) % pool.length;
+  return (
+    recent: recent,
+    archive: [for (var i = 0; i < count; i++) pool[(offset + i) % pool.length]],
+  );
 }
 
 /// The row's order: circles with something the reader has not seen, then
@@ -509,37 +531,35 @@ List<CollectionGame> storyDailyCandidates(
   ].take(pool).toList(growable: false);
 }
 
-/// A collection's stories from the positions found: [latest] first, then
-/// [candidates] in their order, each only with at least
-/// [kStoryMinSegments] positions, up to [kStoriesPerCollection] in all.
-///
-/// A collection where no game has that many still shows one story: the
-/// first game (the latest first) with a position worth a stop, else the
-/// latest game's final position. A circle is never empty.
-List<StoryGame> chooseCollectionStories({
+/// Features one playable game per collection. Keep the visit's pick or an
+/// unfinished story if available, then prefer an unwatched game, latest
+/// first. When moves are unavailable, the latest game's final board remains
+/// a usable preview.
+StoryGame? chooseCollectionStory({
   required CollectionGame? latest,
   required List<CollectionGame> candidates,
-  required Map<String, List<StorySegment>> segments,
-  Map<String, StoryNotation> notations = const {},
+  required Map<String, StoryAnalysis> analysis,
+  Set<String> watched = const {},
+  String? preferredId,
 }) {
   final games = [?latest, ...candidates];
-  final stories = <StoryGame>[];
-  for (final g in games) {
-    if (stories.length >= kStoriesPerCollection) break;
-    final found = segments[g.id] ?? const [];
-    if (found.length < kStoryMinSegments) continue;
-    stories.add(buildStoryGame(g, segments: found, notation: notations[g.id]));
+  final playable = games.where(
+    (g) => analysis[g.id]?.segments.isNotEmpty ?? false,
+  );
+  final picked =
+      playable.where((g) => g.id == preferredId).firstOrNull ??
+      playable.where((g) => !watched.contains(g.id)).firstOrNull ??
+      playable.firstOrNull;
+  if (picked != null) {
+    final story = analysis[picked.id]!;
+    return buildStoryGame(
+      picked,
+      segments: story.segments,
+      notation: story.notation,
+    );
   }
-  if (stories.isNotEmpty) return stories;
-  for (final g in games) {
-    final found = segments[g.id] ?? const [];
-    if (found.isNotEmpty) {
-      return [buildStoryGame(g, segments: found, notation: notations[g.id])];
-    }
-  }
-  return latest == null
-      ? const []
-      : [stillStoryGame(latest, notation: notations[latest.id])];
+  final fallback = games.firstOrNull;
+  return fallback == null ? null : stillStoryGame(fallback);
 }
 
 // ----------------------------------------------------------- analysis
@@ -586,7 +606,7 @@ StoryAnalysis _analyze(StoryAnalysisJob job) {
     return StoryAnalysis(
       segments: job.missed
           ? pickMissedChanceSegments(story, hint: job.hint)
-          : pickStorySegments(story),
+          : completeCollectionStory(story, pickStorySegments(story)),
       event: eventTitleFromPgnHeaders(story.game.headers),
       notation: story.notation,
     );
@@ -616,14 +636,15 @@ const Duration kStoryReplayWait = Duration(seconds: 6);
 /// minutes after the viewer lets them go, so reopening a circle is instant
 /// and the next collection is ready before the reader reaches it.
 ///
-/// Its latest game first, then up to two others picked for the day; only
-/// the games those are read with their moves ([readStoryGames]). Guests,
-/// free and Premium readers get the same stories.
+/// One game from the day's candidate pool, with identical playable content
+/// across account tiers ([readStoryGames]).
 final storyBatchProvider = FutureProvider.autoDispose
     .family<StoryBatch, String>((ref, slug) async {
       if (slug == kMissedChancesSlug) {
         return ref.watch(missedChancesBatchProvider.future);
       }
+      final visit = ref.watch(storyVisitProvider);
+      final seen = ref.read(storySeenProvider.notifier);
       final link = _holdAfterLastListener(ref, const Duration(minutes: 5));
       try {
         final contentsRead = ref.watch(collectionContentsProvider(slug).future);
@@ -631,7 +652,6 @@ final storyBatchProvider = FutureProvider.autoDispose
         final contents = await contentsRead;
         final detail = await detailRead;
         final ordered = storyGameOrder(detail.kind, contents);
-        final day = storyDayKey(ref.read(storyClockProvider)());
         var latest = latestStoryGame(contents.games);
         var candidates = const <CollectionGame>[];
         var analysis = const <String, StoryAnalysis>{};
@@ -640,7 +660,7 @@ final storyBatchProvider = FutureProvider.autoDispose
             final read = await readStoryGames(
               ref.read(collectionsRepositoryProvider),
               slug: slug,
-              day: day,
+              day: visit.day,
               detail: detail,
               games: contents.games,
             ).timeout(kStoryReplayWait);
@@ -655,20 +675,25 @@ final storyBatchProvider = FutureProvider.autoDispose
             debugPrint('[Stories] $slug positions unavailable: $e');
           }
         }
+        final signature = storySignature(detail);
+        final picked = chooseCollectionStory(
+          latest: latest,
+          candidates: candidates,
+          analysis: analysis,
+          watched: seen.watchedGames(slug),
+          preferredId:
+              visit.pickFor(slug, signature) ?? seen.unfinishedGame(detail),
+        );
+        if (picked != null && !picked.segments.first.isStill) {
+          visit.remember(slug, signature, picked.id);
+        }
         return StoryBatch(
-          games: chooseCollectionStories(
-            latest: latest,
-            candidates: candidates,
-            segments: analysis.map((id, value) => MapEntry(id, value.segments)),
-            notations: {
-              for (final MapEntry(:key, :value) in analysis.entries)
-                if (value.notation case final notation?) key: notation,
-            },
-          ),
+          games: [?picked],
           ordered: List.unmodifiable([for (final g in ordered) g.game]),
           total: ordered.length,
           gameCount: detail.gameCount,
-          signature: storySignature(detail),
+          signature: signature,
+          featuredGame: true,
         );
       } catch (_) {
         // A failed read is never kept: the next look tries again.
@@ -677,11 +702,9 @@ final storyBatchProvider = FutureProvider.autoDispose
       }
     });
 
-/// The day's Missed chances: up to [kMissedChancesPerDay] games from the
-/// Reports' Missed Chance topic, read from games finished before today (the
-/// same games all day, new ones tomorrow), the ones with the most missed
-/// wins to find first, then shown newest first. Free readers see the same
-/// stories; opening a game asks for access as Reports does.
+/// One Missed Chances game from Reports, kept for the day. It prefers an
+/// unwatched game with a win to find. Opening it uses the Reports access
+/// rules.
 final missedChancesBatchProvider = FutureProvider.autoDispose<StoryBatch>((
   ref,
 ) async {
@@ -706,7 +729,14 @@ final missedChancesBatchProvider = FutureProvider.autoDispose<StoryBatch>((
             hint: page.storyPlies[game.gameId],
           ),
     ]);
-    final games = chooseMissedChanceStories(page.items, analysis, day: day);
+    final games = chooseMissedChanceStories(
+      page.items,
+      analysis,
+      day: day,
+      watched: ref
+          .read(storySeenProvider.notifier)
+          .watchedGames(kMissedChancesSlug),
+    );
     return StoryBatch(
       games: games,
       ordered: List.unmodifiable([for (final g in games) g.game]),
@@ -721,12 +751,12 @@ final missedChancesBatchProvider = FutureProvider.autoDispose<StoryBatch>((
 
 /// A Missed chances day from [games] and what reading them gave: the games
 /// with the most missed wins to find (a game asking for none comes last),
-/// stronger games first between equals, at most [kMissedChancesPerDay],
-/// then newest first.
+/// stronger games first between equals.
 List<StoryGame> chooseMissedChanceStories(
   List<GamesTourModel> games,
   Map<String, StoryAnalysis> analysis, {
   required String day,
+  Set<String> watched = const {},
 }) {
   int asks(StoryAnalysis a) => a.segments.where((s) => s.puzzle != null).length;
   final usable = [
@@ -755,24 +785,25 @@ List<StoryGame> chooseMissedChanceStories(
       '$day|${a.gameId}',
     ).compareTo(storySeed('$day|${b.gameId}'));
   });
-  final picked = usable.take(kMissedChancesPerDay).toList()
-    ..sort((a, b) {
-      final at = a.lastMoveTime;
-      final bt = b.lastMoveTime;
-      if (at == null || bt == null) {
-        if (at == bt) return 0;
-        return at == null ? 1 : -1;
-      }
-      return bt.compareTo(at);
-    });
+  final best = usable.firstOrNull;
+  if (best == null) return const [];
+  final needsPuzzle = asks(analysis[best.gameId]!) > 0;
+  final picked =
+      usable
+          .where(
+            (g) =>
+                !watched.contains(g.gameId) &&
+                (!needsPuzzle || asks(analysis[g.gameId]!) > 0),
+          )
+          .firstOrNull ??
+      best;
   return [
-    for (final g in picked)
-      StoryGame(
-        game: g,
-        segments: List.unmodifiable(analysis[g.gameId]!.segments),
-        caption: analysis[g.gameId]!.event,
-        notation: analysis[g.gameId]!.notation,
-      ),
+    StoryGame(
+      game: picked,
+      segments: List.unmodifiable(analysis[picked.gameId]!.segments),
+      caption: analysis[picked.gameId]!.event,
+      notation: analysis[picked.gameId]!.notation,
+    ),
   ];
 }
 

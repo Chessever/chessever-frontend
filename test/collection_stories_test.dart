@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/for_you_games_provider.dart'
+    show forYouSurfaceVisibleProvider;
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
 import 'package:chessever2/screens/chessboard/utils/pgn_comment_annotations.dart'
     show pgnCommentProse;
@@ -23,6 +25,7 @@ import 'package:chessever2/screens/stories/story_row_access.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/screens/stories/story_viewer.dart';
+import 'package:chessever2/screens/stories/story_visit.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -532,16 +535,12 @@ void main() {
   // ---------------------------------------------------------------- moments
   group('key positions', () {
     test('the annotator\'s words come first, then verdicts, spread over the '
-        'game, never more than four', () {
+        'game, never more than three', () {
       final story = parseStoryPgn(_operaPgn)!;
       final segments = pickStorySegments(story);
-      // Four commented moves; the mate at the end (a verdict of the board)
-      // waits behind them.
+      // The annotated moves outrank the mate at the end.
       expect(segments, hasLength(kStoryMaxSegments));
-      expect(
-        [for (final s in segments) s.san],
-        ['Qb3', 'Nxb5', 'Rxd7', 'Qb8+'],
-      );
+      expect([for (final s in segments) s.san], ['Qb3', 'Rxd7', 'Qb8+']);
       expect(segments.every((s) => s.tier == 0), isTrue);
       // In game order, each a readable moment: the move, its number, its
       // glyphs, the book's words with every command gone, the arrows.
@@ -557,10 +556,7 @@ void main() {
       expect(queen.moveClass, MoveClass.brilliant);
       // The strong moves ask for the move, at most two: a brilliancy
       // before a good move, then the heavier position.
-      expect(
-        [for (final s in segments) s.puzzle != null],
-        [false, false, true, true],
-      );
+      expect([for (final s in segments) s.puzzle != null], [false, true, true]);
       expect(queen.puzzle!.kind, StoryPuzzleKind.findPlayed);
       expect(queen.puzzle!.answerSan, 'Qb8+');
       expect(queen.puzzle!.prompt, 'White to move');
@@ -579,12 +575,12 @@ void main() {
       final segments = pickStorySegments(
         parseStoryPgn('[Result "*"]\n\n$moves *')!,
       );
-      expect(segments, hasLength(4));
+      expect(segments, hasLength(kStoryMaxSegments));
       final plies = [for (final s in segments) s.ply];
       // The last note is far from the rest and always makes it.
       expect(plies.last, 34);
       // The first pass keeps notes apart; only then do neighbours fill.
-      expect(plies.toSet(), hasLength(4));
+      expect(plies.toSet(), hasLength(kStoryMaxSegments));
       expect(plies, orderedEquals([...plies]..sort()));
     });
 
@@ -705,48 +701,42 @@ void main() {
       ], isNot([for (final g in today) g.id]));
     });
 
-    test('at most three stories, the latest first, each game with at least '
-        'two positions', () {
+    test('features one playable game and prefers unwatched games', () {
       final latest = _game('latest');
-      final candidates = [for (var i = 0; i < 6; i++) _game('c$i')];
-      final mate = pickStorySegments(parseStoryPgn(_pgn)!);
-      final opera = pickStorySegments(parseStoryPgn(_operaPgn)!);
-      final picks = {'c0': mate, 'c1': opera, 'c2': opera, 'c3': opera};
-      // The latest with two positions or more leads.
-      final stories = chooseCollectionStories(
+      final candidates = [_game('c1'), _game('c2')];
+      final analysis = analyzeStoryJobs([
+        const StoryAnalysisJob(id: 'latest', pgn: _pgn),
+        const StoryAnalysisJob(id: 'c1', pgn: _operaPgn),
+        const StoryAnalysisJob(id: 'c2', pgn: _quietPgn),
+      ]);
+      StoryGame? pick({
+        Set<String> watched = const {},
+        String? preferred,
+        Map<String, StoryAnalysis>? reads,
+      }) => chooseCollectionStory(
         latest: latest,
         candidates: candidates,
-        segments: {'latest': opera, ...picks},
+        analysis: reads ?? analysis,
+        watched: watched,
+        preferredId: preferred,
       );
-      expect([for (final s in stories) s.id], ['latest', 'c1', 'c2']);
-      expect(stories, hasLength(kStoriesPerCollection));
-      // One position is not a story, the latest's included.
-      final skipped = chooseCollectionStories(
-        latest: latest,
-        candidates: candidates,
-        segments: {'latest': mate, ...picks},
-      );
-      expect([for (final s in skipped) s.id], ['c1', 'c2', 'c3']);
-      // No game with two: the first with one, the latest first.
-      final single = chooseCollectionStories(
-        latest: latest,
-        candidates: candidates,
-        segments: {'c0': mate, 'latest': mate},
-      );
-      expect(single.single.id, 'latest');
-      expect(single.single.segments.single.label, 'Checkmate');
-      // Nothing to show at all: the latest game's final position.
-      final still = chooseCollectionStories(
-        latest: latest,
-        candidates: candidates,
-        segments: const {},
-      );
-      expect(still.single.segments.single.isStill, isTrue);
+
+      final first = pick()!;
+      expect(first.id, 'latest');
+      expect(first.segments.map((s) => s.san), ['Qh5', 'Nf6', 'Qxf7#']);
+      expect(pick(watched: {'latest'})?.id, 'c1');
+      expect(pick(watched: {'latest'}, preferred: 'latest')?.id, 'latest');
+      final quiet = pick(watched: {'latest', 'c1'})!;
+      expect(quiet.id, 'c2');
+      expect(quiet.segments, hasLength(kStoryMaxSegments));
+      expect(pick(watched: {'latest', 'c1', 'c2'})?.id, 'latest');
+      expect(pick(reads: {'c1': analysis['c1']!})?.id, 'c1');
+      expect(pick(reads: {})?.segments.single.isStill, isTrue);
     });
 
-    test('on a server from before the stories\' read, the batch provider '
-        'reads only the latest and the day\'s pool, and builds the stories '
-        'from them', () async {
+    test('the fallback reads only the daily pool and changes played picks '
+        'on return', () async {
+      var now = _now;
       final games = [
         for (var i = 0; i < 10; i++)
           _game('g$i', updated: DateTime(2026, 11, 1 + i), annotated: true),
@@ -767,30 +757,42 @@ void main() {
           storyAnalyzerProvider.overrideWithValue(
             (jobs) async => analyzeStoryJobs(jobs),
           ),
-          storyClockProvider.overrideWithValue(() => _now),
+          storyClockProvider.overrideWithValue(() => now),
+          storySeenStorageProvider.overrideWithValue(_MemoryStorage()),
         ],
       );
       addTearDown(container.dispose);
-      final sub = container.listen(storyBatchProvider('a'), (_, _) {});
+      final surface = container.read(forYouSurfaceVisibleProvider.notifier);
+      surface.state = true;
+      final provider = storyBatchProvider('a');
+      final sub = container.listen(provider, (_, _) {});
       addTearDown(sub.close);
-      final batch = await container.read(storyBatchProvider('a').future);
-      // The latest (g9) is read first, but its one position is no story:
-      // the day's picks fill the three.
-      expect(batch.games.any((g) => g.id == 'g9'), isFalse);
-      expect(batch.games, hasLength(kStoriesPerCollection));
-      expect(batch.games.every((g) => g.segments.length == 4), isTrue);
+      final batch = await container.read(provider.future);
+      expect(batch.games.single.id, 'g9');
+      expect(batch.games.single.segments, hasLength(kStoryMaxSegments));
+      expect(batch.storyCount, kStoryMaxSegments);
       // The latest and the pool, never the whole collection.
       expect(repository.asked.single, hasLength(1 + kStoryCandidatePool));
       expect(repository.asked.single, contains('g9'));
-      // Pages: one per position, a new game opening every fourth.
-      expect(batch.storyCount, 4 + 4 + 4);
-      expect(batch.frames[4].startsStory, isTrue);
-      expect(batch.frames[8].startsStory, isTrue);
       expect(batch.signature, 'v:v-a');
+
+      final seen = container.read(storySeenProvider.notifier);
+      final collection = _collection('a', games: 10);
+      seen.markSeen(collection, batch, 'g9');
+      container.invalidate(provider);
+      final reopened = await container.read(provider.future);
+      expect(reopened.games.single.id, 'g9');
+      surface.state = false;
+      now = now.add(storyReturnPause);
+      surface.state = true;
+      final next = await container.read(provider.future);
+      expect(next.games.single.id, isNot('g9'));
+      expect(next.games.single.segments, hasLength(kStoryMaxSegments));
+      seen.markSeen(collection, next, next.games.single.id);
+      expect(seen.watchedGames('a'), {'g9', next.games.single.id});
     });
 
-    test('Missed chances: at most three games a day, the ones with the most '
-        'wins to find, newest first', () {
+    test('Missed Chances features one game with a win to find', () {
       final analysis = <String, StoryAnalysis>{};
       final games = <GamesTourModel>[];
       for (var i = 0; i < 5; i++) {
@@ -808,11 +810,15 @@ void main() {
         analysis,
         day: '2026-11-21',
       );
-      expect(stories, hasLength(kMissedChancesPerDay));
-      expect(stories.any((s) => s.id == 'm0'), isFalse);
-      final times = [for (final s in stories) s.game.lastMoveTime!];
-      expect(times, orderedEquals([...times]..sort((a, b) => b.compareTo(a))));
-      expect(stories.first.caption, 'E');
+      expect(stories.single.id, isNot('m0'));
+      expect(stories.single.caption, 'E');
+      final next = chooseMissedChanceStories(
+        games,
+        analysis,
+        day: '2026-11-21',
+        watched: {stories.single.id},
+      );
+      expect(next.single.id, isNot(stories.single.id));
     });
   });
 
@@ -883,10 +889,10 @@ void main() {
       expect(again.resumeIndex(a, batch), 2);
       // The story is seen: the place is past, the next story's start.
       again.markSeen(a, batch, 'a0');
-      expect(again.resumeIndex(a, batch), 4);
+      expect(again.resumeIndex(a, batch), kStoryMaxSegments);
       // A place in a game no longer shown is no place.
       again.markAt(a, 'gone#1');
-      expect(again.resumeIndex(a, batch), 4);
+      expect(again.resumeIndex(a, batch), kStoryMaxSegments);
     });
 
     test('a record from 39.1.0 keeps a quiet ring quiet while the collection '
@@ -919,31 +925,117 @@ void main() {
 
   // ------------------------------------------------------------------- row
   group('the row', () {
-    test('the eight updated most recently; a collection that changes lands '
-        'leftmost, the watched ones after the rest', () {
+    test('recent and rotating archive picks fill the lineup', () {
+      final now = DateTime(2026, 11, 21, 9);
+      final fresh = [
+        for (var i = 0; i < 4; i++)
+          _collection('fresh$i', updated: now.subtract(Duration(hours: i))),
+      ];
+      final old = [
+        for (var i = 0; i < 5; i++)
+          _collection('old$i', updated: DateTime(2026, 10, 20 - i)),
+      ];
+      final catalog = [...old, ...fresh];
+      final visit = StoryVisit(now);
+      final first = selectStoryCollections(
+        catalog,
+        visit: visit,
+        hasMissedChances: true,
+      );
+      expect(first.recent.map((c) => c.slug), ['fresh0', 'fresh1', 'fresh2']);
+      expect(first.archive.toSet(), hasLength(2));
+      final next = selectStoryCollections(
+        catalog.reversed.toList(),
+        visit: StoryVisit(now, rotation: visit.rotation + 1),
+        hasMissedChances: true,
+      );
+      expect(next.recent, first.recent);
+      expect(next.archive.toSet().intersection(first.archive.toSet()), isEmpty);
+      final noMiss = selectStoryCollections(
+        catalog,
+        visit: visit,
+        hasMissedChances: false,
+      );
+      expect(noMiss.archive, hasLength(3));
+      final stale = selectStoryCollections(
+        old,
+        visit: visit,
+        hasMissedChances: true,
+      );
+      expect(stale.recent, isEmpty);
+      expect(stale.archive, hasLength(5));
+
+      final updated = _collection(
+        'old4',
+        games: 2,
+        updated: now.add(const Duration(minutes: 1)),
+      );
+      final withUpdate = selectStoryCollections(
+        [...fresh, ...old.take(4), updated],
+        visit: visit,
+        hasMissedChances: true,
+      );
+      expect(withUpdate.recent.first, updated);
+    });
+
+    test('brief interruptions keep the visit and a return rotates it', () {
+      var now = DateTime(2026, 11, 21, 9);
+      final container = ProviderContainer(
+        overrides: [storyClockProvider.overrideWithValue(() => now)],
+      );
+      addTearDown(container.dispose);
+      final surface = container.read(forYouSurfaceVisibleProvider.notifier);
+      surface.state = true;
+      final first = container.read(storyVisitProvider);
+
+      surface.state = false;
+      now = now.add(const Duration(seconds: 20));
+      surface.state = true;
+      expect(container.read(storyVisitProvider), same(first));
+
+      surface.state = false;
+      now = now.add(storyReturnPause);
+      surface.state = true;
+      expect(container.read(storyVisitProvider).rotation, first.rotation + 1);
+
+      surface.state = false;
+      now = DateTime(2026, 11, 22, 9);
+      surface.state = true;
+      expect(container.read(storyVisitProvider).day, '2026-11-22');
+      expect(container.read(storyVisitProvider).rotation, first.rotation + 2);
+    });
+
+    testWidgets('the viewer gets six entries with Missed Chances first', (
+      tester,
+    ) async {
       final catalog = [
-        for (var i = 0; i < 10; i++)
-          _collection('c$i', updated: DateTime(2026, 11, 20, 20 - i)),
+        for (var i = 0; i < 3; i++)
+          _collection('recent$i', updated: _now.subtract(Duration(hours: i))),
+        for (var i = 0; i < 5; i++)
+          _collection(
+            'archive$i',
+            updated: _now.subtract(Duration(days: 8 + i)),
+          ),
       ];
-      final shown = selectStoryCollections(catalog);
-      expect(shown, hasLength(kStoryCollectionCap));
-      expect(shown.last.slug, 'c7');
-      // c9 gets a new game: its update is the newest of all.
-      final updated = [
-        ...catalog.take(9),
-        _collection('c9', version: 'new', updated: DateTime(2026, 11, 21, 9)),
-      ];
-      final again = selectStoryCollections(updated);
-      expect(again.first.slug, 'c9');
-      expect(again.any((c) => c.slug == 'c7'), isFalse);
-      final ordered = orderStoryCollections(
-        again,
-        (c) => c.slug == 'c0' || c.slug == 'c1',
+      final missed = missedChancesCollection(_now);
+      final batches = {
+        for (final c in [missed, ...catalog]) c.slug: _batch(c.slug, 1),
+      };
+      await _pumpRow(
+        tester,
+        collections: catalog,
+        batches: batches,
+        seen: _caughtUp({missed.slug: (missed, batches[missed.slug]!)}),
       );
-      expect(
-        [for (final c in ordered) c.slug],
-        ['c9', 'c2', 'c3', 'c4', 'c5', 'c6', 'c0', 'c1'],
+      expect(tester.getTopLeft(_circle(missed.slug)).dx, closeTo(16, 0.01));
+      await _open(tester, missed.slug);
+      final viewer = tester.widget<CollectionStoryViewer>(
+        find.byType(CollectionStoryViewer),
       );
+      final slugs = viewer.collections.map((c) => c.slug).toList();
+      expect(slugs, hasLength(kStoryLineupSize));
+      expect(slugs.take(4), [missed.slug, 'recent0', 'recent1', 'recent2']);
+      expect(slugs.skip(4).every((slug) => slug.startsWith('archive')), isTrue);
     });
 
     testWidgets('everything seen, the row stays: grey circles, the unseen '
@@ -1002,7 +1094,7 @@ void main() {
       );
       harness.container.invalidate(storyCollectionsProvider);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
       expect(x('c'), closeTo(16, 0.01));
       expect(x('c') < x('a') && x('a') < x('b'), isTrue);
       expect(
@@ -1546,8 +1638,8 @@ Nc6 3. Bb5 a6 *''';
       final bars = tester.widget<StoryProgressBars>(
         find.byType(StoryProgressBars),
       );
-      expect(bars.count, 5);
-      expect(bars.storyStarts, {4});
+      expect(bars.count, kStoryMaxSegments + 1);
+      expect(bars.storyStarts, {kStoryMaxSegments});
       expect(find.byKey(const ValueKey('story_frame_a0#0')), findsOneWidget);
       // The commented move reads at once: its number, SAN, the words.
       expect(find.byKey(const ValueKey('story_move')), findsOneWidget);

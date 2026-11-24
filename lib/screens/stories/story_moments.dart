@@ -17,7 +17,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
 /// A game story shows at most this many positions.
-const int kStoryMaxSegments = 4;
+const int kStoryMaxSegments = 3;
 
 /// At most this many of a collection game's positions ask the reader for a
 /// move: the story stays a story, never a run of puzzles. A Missed chances
@@ -646,7 +646,13 @@ List<StorySegment> pickStorySegments(
       );
     }
   }
-  final picked = _spread(candidates, moves.length, max);
+  // A short annotated story uses its first note for context and its last
+  // for the payoff. The strongest remaining moment goes between them.
+  final notes = candidates.where((c) => c.tier == 0);
+  final anchors = max == kStoryMaxSegments && notes.length > max
+      ? [notes.first, notes.last]
+      : const <_Candidate>[];
+  final picked = _spread(candidates, moves.length, max, anchors: anchors);
   // Puzzles on the strongest moves that can ask one: a brilliancy before
   // a good move, then the heavier position.
   final asks = <int>{};
@@ -680,10 +686,15 @@ int _strongestFirst(_Candidate a, _Candidate b) {
 /// The strongest of [candidates], at most [max], spread over a game of
 /// [plies]: first never two within a few moves of each other, then (while
 /// room is left) any distinct ones. In game order.
-List<_Candidate> _spread(List<_Candidate> candidates, int plies, int max) {
+List<_Candidate> _spread(
+  List<_Candidate> candidates,
+  int plies,
+  int max, {
+  List<_Candidate> anchors = const [],
+}) {
   final sorted = [...candidates]..sort(_strongestFirst);
   final gap = math.max(3, (plies / (max * 2)).round());
-  final picked = <_Candidate>[];
+  final picked = [...anchors];
   for (final distance in [gap, 1]) {
     for (final c in sorted) {
       if (picked.length >= max) break;
@@ -829,6 +840,48 @@ StorySegment _segmentOf(StoryPgn story, _Candidate c, {required bool puzzle}) {
     evalBefore: _evalAt(moves, c.index - 1),
     evalAfter: _evalAt(moves, c.index),
   );
+}
+
+/// Gives a playable game enough context for a short story. Keep the chosen
+/// highlights, fill from nearby moves, and play the result in game order.
+List<StorySegment> completeCollectionStory(
+  StoryPgn story,
+  List<StorySegment> highlights,
+) {
+  final count = story.game.moves.length;
+  final limit = math.min(kStoryMaxSegments, count);
+  if (highlights.length >= limit) return highlights;
+  final byIndex = {for (final s in highlights) s.ply - 1: s};
+
+  void add(int index) {
+    if (index < 0 || index >= count || byIndex.length >= limit) return;
+    byIndex.putIfAbsent(
+      index,
+      () => _segmentOf(
+        story,
+        _Candidate(index: index, tier: 3, weight: 0),
+        puzzle: false,
+      ),
+    );
+  }
+
+  if (highlights.isEmpty) {
+    add(0);
+    add(count - 1);
+    add(count ~/ 2);
+  } else {
+    for (
+      var distance = 1;
+      distance < count && byIndex.length < limit;
+      distance++
+    ) {
+      for (final highlight in highlights) {
+        add(highlight.ply - 1 - distance);
+        add(highlight.ply - 1 + distance);
+      }
+    }
+  }
+  return byIndex.values.toList()..sort((a, b) => a.ply.compareTo(b.ply));
 }
 
 /// Missed chances in [story]: the moves where the side that did not win

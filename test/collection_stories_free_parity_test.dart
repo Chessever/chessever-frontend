@@ -18,6 +18,7 @@ import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
+import 'package:chessever2/screens/stories/story_seen_store.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -46,6 +47,7 @@ void main() {
               opens: opens,
             ),
             storyClockProvider.overrideWithValue(() => now),
+            storySeenStorageProvider.overrideWithValue(MemoryStorySeen()),
           ],
         );
         addTearDown(container.dispose);
@@ -79,7 +81,7 @@ void main() {
         expect(batch.total, premium.total, reason: tier.name);
         expect(batch.gameCount, premium.gameCount, reason: tier.name);
       }
-      // The screenshot's story: four positions with the book's words,
+      // The screenshot's story: three positions with the book's words,
       // never one still frame.
       final (guest, _) = reads[Tier.guest]!;
       expect(guest.games.first.id, 'latest');
@@ -487,6 +489,7 @@ void main() {
               (jobs) async => analyzeStoryJobs(jobs),
             ),
             storyClockProvider.overrideWithValue(() => now),
+            storySeenStorageProvider.overrideWithValue(MemoryStorySeen()),
           ],
         );
         addTearDown(container.dispose);
