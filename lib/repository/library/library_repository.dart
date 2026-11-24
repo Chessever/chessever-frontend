@@ -461,24 +461,23 @@ class LibraryRepository extends BaseRepository {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
-    var query = supabase
-        .from('user_saved_analyses')
-        .select()
-        .eq('user_id', userId);
+    const pageSize = 1000;
+    final analyses = <SavedAnalysis>[];
+    for (var start = 0; ; start += pageSize) {
+      var query = supabase
+          .from('user_saved_analyses')
+          .select()
+          .eq('user_id', userId);
+      if (folderId != null) query = query.eq('folder_id', folderId);
+      if (isFavorite != null) query = query.eq('is_favorite', isFavorite);
 
-    if (folderId != null) {
-      query = query.eq('folder_id', folderId);
+      final rows = await query
+          .order('created_at', ascending: false)
+          .order('id', ascending: false)
+          .range(start, start + pageSize - 1);
+      analyses.addAll(rows.map(SavedAnalysis.fromSupabase));
+      if (rows.length < pageSize) return analyses;
     }
-
-    if (isFavorite != null) {
-      query = query.eq('is_favorite', isFavorite);
-    }
-
-    final response = await query.order('created_at', ascending: false);
-
-    return (response as List)
-        .map((json) => SavedAnalysis.fromSupabase(json))
-        .toList();
   });
 
   /// Get a single saved analysis by ID
@@ -582,6 +581,64 @@ class LibraryRepository extends BaseRepository {
                 .single();
 
         return SavedAnalysis.fromSupabase(response);
+      });
+
+  /// Creates a like or returns the existing saved analysis for this source.
+  Future<SavedAnalysis> createGameLike(SavedAnalysis analysis) =>
+      handleApiCall(() async {
+        if (supabase.auth.currentUser?.id != analysis.userId) {
+          throw StateError('My Likes account changed');
+        }
+        try {
+          final result = await supabase.rpc(
+            'write_game_like',
+            params: {
+              'p_source_game_id': analysis.sourceGameId,
+              'p_folder_id': analysis.folderId,
+              'p_like': analysis.toSupabaseInsert(),
+            },
+          );
+          return SavedAnalysis.fromSupabase(result as Map<String, dynamic>);
+        } on PostgrestException catch (error) {
+          if (error.code != 'PGRST202') rethrow;
+          // The previous schema remains usable during a staggered rollout.
+          final existing = await supabase
+              .from('user_saved_analyses')
+              .select()
+              .eq('user_id', analysis.userId)
+              .eq('folder_id', analysis.folderId!)
+              .eq('source_game_id', analysis.sourceGameId!)
+              .order('created_at', ascending: false)
+              .limit(1)
+              .maybeSingle();
+          if (existing != null) return SavedAnalysis.fromSupabase(existing);
+          return createSavedAnalysis(analysis);
+        }
+      });
+
+  /// Unlikes the source game without touching any copies saved in databases.
+  Future<void> deleteGameLike(SavedAnalysis analysis) =>
+      handleApiCall(() async {
+        if (supabase.auth.currentUser?.id != analysis.userId) {
+          throw StateError('My Likes account changed');
+        }
+        try {
+          await supabase.rpc(
+            'write_game_like',
+            params: {
+              'p_source_game_id': analysis.sourceGameId,
+              'p_folder_id': analysis.folderId,
+            },
+          );
+        } on PostgrestException catch (error) {
+          if (error.code != 'PGRST202') rethrow;
+          await supabase
+              .from('user_saved_analyses')
+              .delete()
+              .eq('user_id', analysis.userId)
+              .eq('folder_id', analysis.folderId!)
+              .eq('source_game_id', analysis.sourceGameId!);
+        }
       });
 
   /// Insert many saved analyses in a single request for better performance.

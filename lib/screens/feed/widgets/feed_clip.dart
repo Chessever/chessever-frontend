@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/liked_games/game_like_count_provider.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
@@ -2077,12 +2078,16 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// so a like or unlike here moves the loaded count by one.
   bool? _likedAtOpen;
 
-  /// The count the Like button shows: Feed's loaded count, moved by the
-  /// viewer's own like or unlike since.
-  int _likesShown(bool liked) {
-    final base = widget.item.likes;
-    if (base <= 0) return 0;
-    final delta = (liked ? 1 : 0) - ((_likedAtOpen ?? liked) ? 1 : 0);
+  /// Prefer the live count. The feed snapshot keeps the rail populated while
+  /// the active clip connects or when the viewer is offline.
+  int _likesShown({
+    required bool liked,
+    required bool likedStored,
+    required int? live,
+  }) {
+    final base = live ?? widget.item.likes;
+    final countIncludesViewer = live == null ? _likedAtOpen ?? liked : likedStored;
+    final delta = (liked ? 1 : 0) - (countIncludesViewer ? 1 : 0);
     return (base + delta).clamp(0, 1 << 30).toInt();
   }
 
@@ -2138,6 +2143,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final likedStored = ref.watch(isGameLikedProvider(_game.likeId));
     _likedAtOpen ??= likedStored;
     final liked = _likeIntent ?? likedStored;
+    final liveLikes = widget.isVisible && widget.isCurrent && _item.likeable
+        ? ref.watch(gameLikeCountProvider(_game.likeId)).valueOrNull
+        : null;
     final tagOffer = _tagOffer;
     final saved =
         ref.watch(feedGameSavedProvider(_game.likeId)).valueOrNull ?? false;
@@ -2491,11 +2499,14 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 child: FeedActionRail(
                   cellHeight: l.railCell,
                   liked: liked,
-                  likes: _likesShown(liked),
+                  likes: _likesShown(
+                    liked: liked,
+                    likedStored: likedStored,
+                    live: liveLikes,
+                  ),
                   // Until an incoming heart lands, the button shows the game
                   // as it was.
                   shownLiked: liked && !_heartInbound,
-                  shownLikes: _likesShown(liked && !_heartInbound),
                   heartPop: _heartDocks,
                   saved: saved,
                   // The backing frosts the chart under the marks; while the

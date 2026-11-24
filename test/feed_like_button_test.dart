@@ -3,6 +3,7 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/repository/liked_games/game_like_count_provider.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -356,6 +357,29 @@ void main() {
     await _tearDown(tester);
   });
 
+  testWidgets('the feed count follows other accounts and a pending local like', (
+    tester,
+  ) async {
+    final otherLikes = StateProvider<int>((ref) => 40);
+    final feed = await _pump(
+      tester,
+      otherLikes: otherLikes,
+      writeTime: const Duration(seconds: 2),
+    );
+    expect(find.text('40'), findsOneWidget);
+
+    await tester.tap(_likeButton);
+    await _frames(tester, 32);
+    expect(feed.likes.writing, isTrue);
+    expect(find.text('41'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(tester.element(_likeButton));
+    container.read(otherLikes.notifier).state = 42;
+    await _frames(tester, 32);
+    expect(find.text('43'), findsOneWidget);
+    await _tearDown(tester);
+  });
+
   testWidgets('a like the notifier rolls back without throwing is said so', (
     tester,
   ) async {
@@ -500,6 +524,7 @@ Future<_Feed> _pump(
   double textScale = 1,
   bool light = false,
   List<FeedItem>? items,
+  StateProvider<int>? otherLikes,
 }) async {
   tester.view.devicePixelRatio = 3;
   tester.view.physicalSize = size * 3;
@@ -540,6 +565,12 @@ Future<_Feed> _pump(
         feedMoveSoundProvider.overrideWithValue(_QuietMoveSound(sfx)),
         boardSettingsProviderNew.overrideWith(_TestBoardSettings.new),
         likedGamesProvider.overrideWith(() => likes),
+        if (otherLikes != null)
+          gameLikeCountProvider.overrideWith((ref, likeId) async {
+            final others = ref.watch(otherLikes);
+            final liked = ref.watch(isGameLikedProvider(likeId));
+            return others + (liked ? 1 : 0);
+          }),
         spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
         currentUserProvider.overrideWithValue(null),
         subscriptionProvider.overrideWith((ref) => _FreeSubscription()),

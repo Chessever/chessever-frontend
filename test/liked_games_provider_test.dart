@@ -93,7 +93,7 @@ class _FakeLibraryRepository extends LibraryRepository {
   }
 
   @override
-  Future<SavedAnalysis> createSavedAnalysis(SavedAnalysis analysis) async {
+  Future<SavedAnalysis> createGameLike(SavedAnalysis analysis) async {
     final call = ++createCalls;
     if (!createStarted.isCompleted) createStarted.complete();
     await allowCreate.future;
@@ -123,6 +123,10 @@ class _FakeLibraryRepository extends LibraryRepository {
       ..insert(0, created);
     return created;
   }
+
+  @override
+  Future<void> deleteGameLike(SavedAnalysis analysis) =>
+      deleteSavedAnalysis(analysis.id, folderId: analysis.folderId);
 
   @override
   Future<void> deleteSavedAnalysis(
@@ -175,11 +179,14 @@ class _FakeLibraryRepository extends LibraryRepository {
     lastLikedViewTags = List<String>.from(tags);
 
     var rows = _saved.where((item) => item.folderId == folderId).toList();
-    final selectedTags =
-        tags.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toSet();
+    final selectedTags = tags
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty)
+        .toSet();
     if (selectedTags.isNotEmpty) {
-      rows =
-          rows.where((item) => item.tags.any(selectedTags.contains)).toList();
+      rows = rows
+          .where((item) => item.tags.any(selectedTags.contains))
+          .toList();
     }
     return rows;
   }
