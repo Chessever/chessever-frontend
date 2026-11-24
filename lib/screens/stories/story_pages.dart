@@ -25,11 +25,14 @@ import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart'
     show feedSfxProvider;
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart'
     show FeedGlyph, FeedGlyphs;
+import 'package:chessever2/screens/stories/story_media.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_notation.dart';
 import 'package:chessever2/screens/stories/story_notation_strip.dart';
+import 'package:chessever2/screens/stories/story_publications.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
+import 'package:chessever2/screens/stories/story_short_player.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -587,6 +590,9 @@ class StoryCollectionPage extends ConsumerWidget {
     this.onOpenEvent,
     this.avatarHidden,
     this.puzzles,
+    this.shortPlayback,
+    this.onShortClock,
+    this.onOpenLayer,
     this.active = false,
   });
 
@@ -623,6 +629,9 @@ class StoryCollectionPage extends ConsumerWidget {
 
   /// The viewer's side of positions that ask for a move.
   final StoryPuzzleHost? puzzles;
+  final ValueListenable<bool>? shortPlayback;
+  final void Function(String frameId, StoryShortClock?)? onShortClock;
+  final ValueChanged<Uri>? onOpenLayer;
 
   /// The face in view: only it takes a move.
   final bool active;
@@ -646,6 +655,10 @@ class StoryCollectionPage extends ConsumerWidget {
           );
     final padding = MediaQuery.paddingOf(context);
     final frame = batch?.frameAt(index);
+    final media = frame?.media;
+    final publication = storyPublicationKey(collection.slug);
+    final collectionAction =
+        publication == null || publication.sourceSlug != null;
 
     final Widget body;
     if (batch == null && read.hasError) {
@@ -656,7 +669,41 @@ class StoryCollectionPage extends ConsumerWidget {
       body = _StoryNotice(
         text: isMissedChances(collection)
             ? 'No missed chances today.'
-            : 'No games here yet.',
+            : publication == null
+            ? 'No games here yet.'
+            : 'This story is unavailable.',
+      );
+    } else if (media?.shortUrl case final link?) {
+      final poster = StoryMediaImage(media: media!);
+      final playback = shortPlayback;
+      final video = playback == null
+          ? poster
+          : StoryShortPlayer(
+              key: ValueKey(frame.id),
+              url: link,
+              playing: playback,
+              poster: poster,
+              onClock: (clock) => onShortClock?.call(frame.id, clock),
+            );
+      body = Column(
+        children: [
+          Expanded(child: video),
+          if (media.title.isNotEmpty || media.body != null)
+            StoryMediaCaption(
+              media: media,
+              onTouch: active
+                  ? (pointer) => puzzles?.wordsTouch(frame.id, pointer)
+                  : null,
+            ),
+        ],
+      );
+    } else if (media != null) {
+      body = PublishedStoryMedia(
+        key: ValueKey(frame.id),
+        media: media,
+        onTouch: active
+            ? (pointer) => puzzles?.wordsTouch(frame.id, pointer)
+            : null,
       );
     } else {
       body = KeyedSubtree(
@@ -705,14 +752,17 @@ class StoryCollectionPage extends ConsumerWidget {
               child: StoryHeader(
                 collection: collection,
                 onClose: onClose,
-                onOpen: onOpenCollection,
+                onOpen: collectionAction ? onOpenCollection : null,
                 avatarHidden: avatarHidden,
               ),
             ),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, area) {
-                  final actions = StoryActions.heightOf(context);
+                  final actions =
+                      frame == null || (media != null && media.action == null)
+                      ? 0.0
+                      : StoryActions.heightOf(context);
                   // The story's own area, as the Center below hands it on:
                   // the actions line up with the story's edges in it.
                   final story = BoxConstraints(
@@ -724,13 +774,22 @@ class StoryCollectionPage extends ConsumerWidget {
                   );
                   return Column(
                     children: [
-                      Expanded(child: Center(child: body)),
-                      SizedBox(height: StoryPageMetrics.actionGap),
+                      Expanded(
+                        child: frame == null || frame.layers.isEmpty
+                            ? Center(child: body)
+                            : StoryLayerSurface(
+                                layers: frame.layers,
+                                onOpen: active ? onOpenLayer : null,
+                                child: body,
+                              ),
+                      ),
+                      if (actions > 0)
+                        SizedBox(height: StoryPageMetrics.actionGap),
                       FadeTransition(
                         opacity: chrome,
                         child: SizedBox(
                           height: actions,
-                          child: frame == null
+                          child: actions == 0
                               ? null
                               : Center(
                                   child: SizedBox(
@@ -738,14 +797,27 @@ class StoryCollectionPage extends ConsumerWidget {
                                       context,
                                       story,
                                     ),
-                                    child: StoryActions(
-                                      collectionLabel: storyCollectionAction(
-                                        collection,
+                                    child: switch (media?.action) {
+                                      final label? => _StoryAction(
+                                        label: label,
+                                        glyph: CustomPaint(
+                                          size: const Size.square(15),
+                                          painter: StoryArrowPainter(
+                                            color: context.colors.textPrimary,
+                                          ),
+                                        ),
+                                        onTap: onOpenGame,
                                       ),
-                                      onOpenGame: onOpenGame,
-                                      onOpenCollection:
-                                          onOpenEvent ?? onOpenCollection,
-                                    ),
+                                      null => StoryActions(
+                                        collectionLabel: storyCollectionAction(
+                                          collection,
+                                        ),
+                                        onOpenGame: onOpenGame,
+                                        onOpenCollection: collectionAction
+                                            ? onOpenEvent ?? onOpenCollection
+                                            : null,
+                                      ),
+                                    },
                                   ),
                                 ),
                         ),
@@ -2903,7 +2975,7 @@ class StoryActions extends StatelessWidget {
 
   final String collectionLabel;
   final VoidCallback onOpenGame;
-  final VoidCallback onOpenCollection;
+  final VoidCallback? onOpenCollection;
 
   /// The actions' line at the reader's text size, never under 48pt.
   static double heightOf(BuildContext context) =>
@@ -2932,19 +3004,21 @@ class StoryActions extends StatelessWidget {
             onTap: onOpenGame,
           ),
         ),
-        SizedBox(width: gap),
-        Expanded(
-          child: _StoryAction(
-            key: const ValueKey('story_view_collection'),
-            label: collectionLabel,
-            // The stories' own arrow out: to the page it came from.
-            glyph: CustomPaint(
-              size: const Size.square(15),
-              painter: StoryArrowPainter(color: ink, weight: 1.6),
+        if (onOpenCollection case final openCollection?) ...[
+          SizedBox(width: gap),
+          Expanded(
+            child: _StoryAction(
+              key: const ValueKey('story_view_collection'),
+              label: collectionLabel,
+              // The stories' own arrow out: to the page it came from.
+              glyph: CustomPaint(
+                size: const Size.square(15),
+                painter: StoryArrowPainter(color: ink, weight: 1.6),
+              ),
+              onTap: openCollection,
             ),
-            onTap: onOpenCollection,
           ),
-        ),
+        ],
       ],
     );
   }

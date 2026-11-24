@@ -201,7 +201,7 @@ class StorySeenNotifier extends StateNotifier<Map<String, StorySeen>?> {
   Set<String> seenIn(Collection collection, StoryBatch batch) {
     final record = state?[collection.slug];
     if (record == null) return const {};
-    final shown = {for (final g in batch.games) g.id};
+    final shown = batch.storyIds.toSet();
     return {
       for (final id in record.ids)
         if (shown.contains(id)) id,
@@ -218,17 +218,14 @@ class StorySeenNotifier extends StateNotifier<Map<String, StorySeen>?> {
     final at = _at[collection.slug];
     if (at != null) {
       final index = batch.frames.indexWhere((f) => f.id == at);
-      if (index >= 0 && !seen.contains(batch.frames[index].game.id)) {
+      if (index >= 0 && !seen.contains(batch.frames[index].storyId)) {
         return index;
       }
     }
-    for (var s = 0; s < batch.games.length; s++) {
-      if (!seen.contains(batch.games[s].id)) {
-        final frame = batch.firstFrameOf(s);
-        return frame < 0 ? 0 : frame;
-      }
-    }
-    return 0;
+    final frame = batch.frames.indexWhere(
+      (frame) => frame.startsStory && !seen.contains(frame.storyId),
+    );
+    return frame < 0 ? 0 : frame;
   }
 
   /// The reader is on page [frameId] ([StoryFrame.id]) of [collection]:
@@ -261,7 +258,7 @@ class StorySeenNotifier extends StateNotifier<Map<String, StorySeen>?> {
 
   void _count(Collection collection, StoryBatch batch, {String? add}) {
     final current = state?[collection.slug];
-    final shown = [for (final g in batch.games) g.id];
+    final shown = batch.storyIds;
     // Counted as of the stories in hand: a batch read before the catalog
     // grew does not hold the new games, which stay new.
     final signature = batch.signature ?? storySignature(collection);

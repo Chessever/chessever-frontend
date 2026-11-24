@@ -245,6 +245,28 @@ class StorySegment {
 
   /// The words the reader reads on this segment, for its reading time.
   int get readLength => (label?.length ?? 0) + (comment?.length ?? 0);
+
+  StorySegment withEditorialNote(String note) => StorySegment(
+    ply: ply,
+    fenBefore: fenBefore,
+    fenAfter: fenAfter,
+    move: move,
+    san: san,
+    moveNumber: moveNumber,
+    white: white,
+    moveBefore: moveBefore,
+    nags: nags,
+    label: label,
+    tone: tone,
+    moveClass: moveClass,
+    comment: [note, ?comment].join('\n\n'),
+    shapes: shapes,
+    puzzle: puzzle,
+    tier: tier,
+    finalPly: finalPly,
+    evalBefore: evalBefore,
+    evalAfter: evalAfter,
+  );
 }
 
 /// How long [segment] stays: a base for the board, then the time to read
@@ -493,6 +515,7 @@ List<int> _printedNags(FeedPgnMove move) {
 StorySegment storyInspectedSegment(
   StoryNotationMove notation, {
   required bool finalPly,
+  bool findMove = false,
 }) {
   final move = notation.ply;
   final verdict = _verdictOf(move, report: move.classification != null);
@@ -512,6 +535,16 @@ StorySegment storyInspectedSegment(
     shapes: pgnCommentShapes(move.comments).toSet(),
     finalPly: finalPly,
     evalAfter: move.hasEval ? (cp: move.cp, mate: move.mate) : null,
+    puzzle: findMove
+        ? StoryPuzzle(
+            kind: StoryPuzzleKind.findPlayed,
+            solver: move.mover,
+            answer: move.move,
+            answerSan: move.san,
+            answerFen: move.after.fen,
+            answerEval: move.hasEval ? (cp: move.cp, mate: move.mate) : null,
+          )
+        : null,
   );
 }
 

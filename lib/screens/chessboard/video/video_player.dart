@@ -93,8 +93,17 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   NativeEventVideoPlayer(
     this.embedOrigin, {
     Future<bool> Function(Uri)? openExternal,
+    this.onInlineTiming,
   }) : _openExternal = openExternal ?? _launchExternal;
   final Future<bool> Function(Uri) _openExternal;
+  final void Function(
+    double seconds,
+    double duration,
+    bool buffering,
+    bool ended,
+  )?
+  onInlineTiming;
+  bool? _inlinePlayback;
   static Future<bool> _launchExternal(Uri uri) =>
       launchUrl(uri, mode: LaunchMode.externalApplication);
   final Uri embedOrigin;
@@ -154,6 +163,15 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
           } else if (data['type'] == 'error') {
             _session?.reportPlayback(false, _revision);
             _setFailed(true);
+          } else if (data['type'] == 'timing' &&
+              data['seconds'] is num &&
+              data['duration'] is num) {
+            onInlineTiming?.call(
+              (data['seconds'] as num).toDouble(),
+              (data['duration'] as num).toDouble(),
+              data['buffering'] == true,
+              data['ended'] == true,
+            );
           }
         } on FormatException {
           /* Ignore unrelated provider messages. */
@@ -221,6 +239,20 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
     if (_disposed || value == _failed) return;
     _failed = value;
     notifyListeners();
+  }
+
+  void setInlinePlayback(bool play) {
+    if (_disposed || _inlinePlayback == play) return;
+    _inlinePlayback = play;
+    final controller = _controller;
+    if (controller == null) return;
+    unawaited(
+      controller
+          .runJavaScript(
+            'window.chessInlinePlaying=$play;window.chessInlinePlayback?.($play);',
+          )
+          .catchError((Object _) {}),
+    );
   }
 
   @override
@@ -308,10 +340,13 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               selected.source,
               embedOrigin,
               revision: _revision,
-              play: session.playRequested,
+              play: _inlinePlayback ?? session.playRequested,
               muted: session.muted,
-              nativeFullscreen: defaultTargetPlatform != TargetPlatform.iOS,
+              nativeFullscreen:
+                  onInlineTiming == null &&
+                  defaultTargetPlatform != TargetPlatform.iOS,
               showCaptionsByDefault: !selected.isAnalysis,
+              reportTiming: onInlineTiming != null,
             ),
             baseUrl: '${embedOrigin.toString()}/',
           );
@@ -489,6 +524,7 @@ String videoPlayerHtml(
   required bool muted,
   bool nativeFullscreen = true,
   bool showCaptionsByDefault = true,
+  bool reportTiming = false,
 }) {
   final id = jsonEncode(source.id), host = jsonEncode(origin.host);
   final youtube = source.platform == VideoPlatform.youtube
@@ -511,7 +547,24 @@ String videoPlayerHtml(
   final mutedFlag = muted ? 'true' : 'false';
   // The tap that chose the stream is the play gesture. Autoplay params alone
   // can be ignored, so each provider is also started explicitly once ready.
-  final youtubeStart = play ? 'try{ytPlayer.playVideo();}catch(e){}' : '';
+  final youtubeStart = reportTiming
+      ? 'window.chessInlinePlayback=(value)=>{try{value?ytPlayer.playVideo():ytPlayer.pauseVideo();}catch(e){}};'
+            'if(window.chessInlinePlaying??$autoplay)window.chessInlinePlayback(true);'
+            'publishTiming();setInterval(publishTiming,500);'
+      : play
+      ? 'try{ytPlayer.playVideo();}catch(e){}'
+      : '';
+  final timing = reportTiming
+      ? '''
+function publishTiming() {
+  try {
+    const start=${youtube?.start ?? 0}, duration=Math.max(0,Math.min(ytPlayer.getDuration(),${youtube?.end ?? 'Infinity'})-start);
+    const seconds=Math.min(duration,Math.max(0,ytPlayer.getCurrentTime()-start));
+    const state=ytPlayer.getPlayerState();
+    if(duration>0)send('timing',{seconds,duration,buffering:state!==1&&state!==0,ended:state===0||seconds>=duration});
+  } catch(e){}
+}'''
+      : '';
   final twitchStart = play ? 'try{p.play();}catch(e){}' : '';
   // Fullscreen hook used to nudge a live stream back if the HTML5 element
   // paused while the Android custom view attached.
@@ -528,7 +581,8 @@ String videoPlayerHtml(
 function onYouTubeIframeAPIReady() {
   const ytPlayer=new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
     playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:${jsonEncode(origin.toString())}, mute:${muted ? 1 : 0}, controls:1, rel:0, ...$youtubeVars},
-    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>{send('playback',{playing:e.data===1});$youtubeRepeat}, onError:()=>send('error',{})}});
+    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>{send('playback',{playing:e.data===1});${reportTiming ? 'publishTiming();' : ''}$youtubeRepeat}, onError:()=>send('error',{})}});
+  $timing
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',
     VideoPlatform.twitch =>
@@ -551,7 +605,8 @@ try {
     // Kick stays paused unless a future documented adapter can confirm state.
     // Mute is likewise unreadable inside the Kick frame, so the last mute state
     // known from another provider carries into its embed URL.
-    VideoPlatform.kick => '''
+    VideoPlatform.kick =>
+      '''
 <script>
 const frame=document.createElement('iframe');
 frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=$mutedFlag&controls=true';

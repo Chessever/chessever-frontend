@@ -10,6 +10,7 @@ import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionScreen;
 import 'package:chessever2/screens/collections/open_collection_game.dart'
     show resolvePlayableCollectionGames;
+import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart'
     show reportsGameTypeProvider;
@@ -18,8 +19,10 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_card
     show openDiscoveryGame;
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
+import 'package:chessever2/screens/stories/story_publications.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
+import 'package:chessever2/screens/stories/story_short_player.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
@@ -35,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
@@ -190,6 +194,23 @@ Future<void> openStoryGame(
   required int moveIndex,
 }) async {
   final moves = {story.id: moveIndex};
+  if (story.source == StoryBoardSource.pgn ||
+      story.source == StoryBoardSource.broadcast) {
+    final game = story.game;
+    if (story.source == StoryBoardSource.broadcast &&
+        (!await ensurePastGameAccess(context, game: game) ||
+            !context.mounted)) {
+      return;
+    }
+    await ref.read(storyBoardOpenerProvider)(
+      context,
+      ref,
+      games: [game],
+      index: 0,
+      moves: moves,
+    );
+    return;
+  }
   if (isMissedChances(collection)) {
     // As Reports: the stories are for everyone, the game behind the gate.
     if (!await ensureGameReportAccess(context) || !context.mounted) return;
@@ -204,8 +225,10 @@ Future<void> openStoryGame(
     );
     return;
   }
-  final previews = batch.ordered;
-  final index = batch.orderedIndexOf(story.id);
+  final previews = story.source == StoryBoardSource.collection
+      ? [story.game]
+      : batch.ordered;
+  final index = previews.indexWhere((game) => game.gameId == story.id);
   if (index < 0) return;
   final owner = ref.read(currentUserProvider)?.id;
   bool current() =>
@@ -213,7 +236,10 @@ Future<void> openStoryGame(
   try {
     final games = await resolvePlayableCollectionGames(
       repository: ref.read(collectionsRepositoryProvider),
-      slug: collection.slug,
+      slug:
+          story.collectionSlug ??
+          storyPublicationKey(collection.slug)?.sourceSlug ??
+          collection.slug,
       visibleIds: [for (final game in previews) game.gameId],
       requestAccess: (detail) =>
           ref.read(storyPremiumChooserProvider)(context, detail),
@@ -517,6 +543,9 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
 
   StoryBatch? _activeBatch;
   Object? _bound;
+  final _playingShort = ValueNotifier(false);
+  String? _clockFrame;
+  bool _shortBuffering = false;
 
   /// Read once: [dispose] may not read providers.
   late final StateController<bool> _openFlag;
@@ -563,6 +592,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _pages.removeListener(_onPageScroll);
     _pages.dispose();
     _progress.dispose();
+    _playingShort.dispose();
     _presence.dispose();
     _drag.dispose();
     _chrome.dispose();
@@ -600,13 +630,40 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   /// Runs the active story's bar when nothing holds it, stops it otherwise.
   void _sync() {
     if (!mounted) return;
-    if (_canPlay) {
+    final canPlay = _canPlay;
+    _playingShort.value = canPlay;
+    final frame = _activeBatch?.frameAt(_story[_activeSlug] ?? 0);
+    final waits =
+        frame?.media?.shortUrl != null &&
+        (_clockFrame != frame?.id || _shortBuffering);
+    if (canPlay && !waits) {
       if (!_progress.isAnimating && !_progress.isCompleted) {
         _progress.forward();
       }
     } else if (_progress.isAnimating) {
       _progress.stop();
     }
+  }
+
+  void _onShortClock(String frameId, StoryShortClock? clock) {
+    if (!mounted || frameId != _activeFrameId || _closing) return;
+    _clockFrame = frameId;
+    _shortBuffering = clock?.buffering ?? false;
+    if (clock != null && clock.duration > Duration.zero) {
+      final run = clock.duration.inMicroseconds;
+      final actual = (clock.position.inMicroseconds / run).clamp(0.0, 1.0);
+      final drift = (_progress.value - actual).abs() * run;
+      if (_progress.duration != clock.duration || drift > 750000) {
+        _progress.stop();
+        _progress.duration = clock.duration;
+        _setProgress(actual);
+      }
+      if (clock.ended && _canPlay) {
+        _next(auto: true);
+        return;
+      }
+    }
+    _sync();
   }
 
   void _onProgressStatus(AnimationStatus status) {
@@ -655,7 +712,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     final frame = batch.frameAt(index);
     if (frame == null || !frame.endsStory || _countedFor == bound) return;
     _countedFor = bound;
-    _seen.markSeen(_activeCollection, batch, frame.game.id);
+    _seen.markSeen(_activeCollection, batch, frame.storyId);
   }
 
   /// How long page [index] runs: the time to read its words.
@@ -805,6 +862,8 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _promptFor = null;
     _reading = false;
     _readingMoveIndex = null;
+    _clockFrame = null;
+    _shortBuffering = false;
     zone.value = null;
   }
 
@@ -1400,6 +1459,10 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     final index = _story[_activeSlug] ?? 0;
     final frame = batch?.frameAt(index);
     if (batch == null || frame == null || _away || _closing) return;
+    if (frame.media case final media?) {
+      await _openMedia(media);
+      return;
+    }
     final segment = frame.position;
     final asking = segment.puzzle != null && _outcomes[frame.id] == null;
     unawaited(HapticFeedbackService.buttonPress());
@@ -1432,8 +1495,17 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     final batch = _activeBatch;
     final index = _story[_activeSlug] ?? 0;
     final frame = batch?.frameAt(index);
-    if (frame == null || _away || _closing || !_opened) return;
+    if (frame == null || frame.media != null) return;
     final game = frame.game.game;
+    await _openStoryEvent(tourId: game.tourId, roundId: game.roundId);
+  }
+
+  Future<void> _openStoryEvent({
+    String? eventId,
+    String? tourId,
+    String? roundId,
+  }) async {
+    if (_away || _closing || !_opened) return;
     unawaited(HapticFeedbackService.buttonPress());
     setState(() => _away = true);
     _publishCover();
@@ -1448,10 +1520,19 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
 
     route?.onUncovered = back;
-    final opened = await ref.read(storyEventOpenerProvider)(
-      tourId: game.tourId,
-      roundId: game.roundId,
-    );
+    var opened = false;
+    try {
+      opened = eventId == null
+          ? await ref.read(storyEventOpenerProvider)(
+              tourId: tourId,
+              roundId: roundId,
+            )
+          : await DeepLinkService.instance.openEventForShortcut(
+              eventId: eventId,
+            );
+    } catch (_) {
+      opened = false;
+    }
     if (!opened) {
       back();
       if (mounted) {
@@ -1464,19 +1545,65 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     }
   }
 
+  Future<void> _openMedia(StoryEditorialMedia media) async {
+    if (_away || _closing || !_opened || media.action == null) return;
+    if (media.eventId case final eventId?) {
+      await _openStoryEvent(eventId: eventId);
+      return;
+    }
+    unawaited(HapticFeedbackService.buttonPress());
+    setState(() => _away = true);
+    _publishCover();
+    _sync();
+    try {
+      if (media.news case final article?) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => NewsReaderScreen(news: article),
+          ),
+        );
+      } else if ((media.link ?? media.shortUrl) case final link?) {
+        if (!await launchUrl(link, mode: LaunchMode.externalApplication)) {
+          throw StateError('Link unavailable');
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          "Couldn't open this story link",
+          tone: AppSnackTone.danger,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _away = false);
+        _publishCover();
+        _sync();
+      }
+    }
+  }
+
   /// The collection's own page (its header, View collection) over the
   /// stories, which wait where they are and play on once the reader is
   /// back. A Premium collection asks a reader without Premium first
   /// ([ensureStoryCollectionAccess]); turned down, the stories play on.
   Future<void> _openCollection() async {
     if (_away || _closing || !_opened) return;
+    final publication = storyPublicationKey(_activeSlug);
+    if (publication != null && publication.sourceSlug == null) return;
     unawaited(HapticFeedbackService.buttonPress());
     setState(() => _away = true);
     _publishCover();
     _sync();
     final page = ref.read(storyCollectionPageProvider);
-    final collection = _activeCollection;
     try {
+      final collection = publication == null
+          ? _activeCollection
+          : await ref.read(
+              collectionDetailProvider(publication.sourceSlug!).future,
+            );
+      if (!mounted) return;
       if (!await ensureStoryCollectionAccess(context, ref, collection) ||
           !mounted) {
         return;
@@ -1484,6 +1611,14 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
       await Navigator.of(
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => page(collection)));
+    } catch (_) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          "Couldn't open this collection",
+          tone: AppSnackTone.danger,
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _away = false);
@@ -1494,8 +1629,13 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   }
 
   void _retry(String slug) {
-    ref.invalidate(collectionContentsProvider(slug));
-    ref.invalidate(collectionDetailProvider(slug));
+    final publication = storyPublicationKey(slug);
+    final source = publication == null ? slug : publication.sourceSlug;
+    if (source != null) {
+      ref.invalidate(collectionContentsProvider(source));
+      ref.invalidate(collectionDetailProvider(source));
+      if (source != slug) ref.invalidate(storyBatchProvider(source));
+    }
     ref.invalidate(storyBatchProvider(slug));
   }
 
@@ -1597,6 +1737,13 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
                 backdrop: backdrop,
                 onClose: () => unawaited(_close()),
                 onOpenGame: () => unawaited(_openGame()),
+                shortPlayback: active ? _playingShort : null,
+                onShortClock: _onShortClock,
+                onOpenLayer: (link) => unawaited(
+                  _openMedia(
+                    StoryEditorialMedia(kind: 'link', title: '', link: link),
+                  ),
+                ),
                 onOpenCollection: () => unawaited(_openCollection()),
                 onOpenEvent: isMissedChances(collection)
                     ? () => unawaited(_openEvent())

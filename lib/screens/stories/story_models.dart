@@ -10,6 +10,8 @@ import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.d
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/stories/story_moments.dart';
 import 'package:chessever2/screens/stories/story_notation.dart';
+import 'package:chessever2/screens/stories/story_publication_batch.dart';
+import 'package:chessever2/screens/stories/story_publications.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart'
     show storyClockProvider, storyDayKey;
 import 'package:chessever2/screens/stories/story_seen_store.dart';
@@ -33,6 +35,8 @@ const int kStoryCandidatePool = 8;
 /// How long a collection with no game to show holds before moving on.
 const Duration kStoryEmptyDuration = Duration(seconds: 3);
 
+enum StoryBoardSource { collection, broadcast, pgn }
+
 /// One game story: up to [kStoryMaxSegments] key positions of one game.
 @immutable
 class StoryGame {
@@ -41,6 +45,8 @@ class StoryGame {
     required this.segments,
     this.caption,
     this.notation,
+    this.source,
+    this.collectionSlug,
   });
 
   /// Players and result as the collection's cards (or the report list)
@@ -54,6 +60,8 @@ class StoryGame {
   final String? caption;
 
   final StoryNotation? notation;
+  final StoryBoardSource? source;
+  final String? collectionSlug;
 
   String get id => game.gameId;
 }
@@ -64,12 +72,31 @@ class StoryFrame {
   const StoryFrame({
     required this.story,
     required this.segment,
-    required this.game,
-  });
+    required StoryGame value,
+    String? publicationId,
+    this.layers = const [],
+  }) : _game = value,
+       _storyId = publicationId,
+       media = null;
+
+  const StoryFrame.media({
+    required this.story,
+    required String publicationId,
+    required StoryEditorialMedia this.media,
+    this.layers = const [],
+  }) : _storyId = publicationId,
+       _game = null,
+       segment = 0;
 
   final int story;
   final int segment;
-  final StoryGame game;
+  final StoryGame? _game;
+  final String? _storyId;
+  final StoryEditorialMedia? media;
+  final List<StoryLayer> layers;
+
+  StoryGame get game => _game!;
+  String get storyId => _storyId ?? game.id;
 
   StorySegment get position => game.segments[segment];
 
@@ -78,9 +105,9 @@ class StoryFrame {
   bool get startsStory => segment == 0;
 
   /// The story's last page: watching it sees the story.
-  bool get endsStory => segment == game.segments.length - 1;
+  bool get endsStory => media != null || segment == game.segments.length - 1;
 
-  String get id => '${game.id}#$segment';
+  String get id => '$storyId#$segment';
 }
 
 /// A collection's stories, and the games its page lists (for Open game).
@@ -93,12 +120,16 @@ class StoryBatch {
     this.gameCount,
     this.signature,
     this.featuredGame = false,
+    List<StoryFrame>? publishedFrames,
   }) : total = total ?? ordered.length,
-       frames = List.unmodifiable([
-         for (var s = 0; s < games.length; s++)
-           for (var p = 0; p < games[s].segments.length; p++)
-             StoryFrame(story: s, segment: p, game: games[s]),
-       ]);
+       frames = List.unmodifiable(
+         publishedFrames ??
+             [
+               for (var s = 0; s < games.length; s++)
+                 for (var p = 0; p < games[s].segments.length; p++)
+                   StoryFrame(story: s, segment: p, value: games[s]),
+             ],
+       );
 
   /// The stories, each one game.
   final List<StoryGame> games;
@@ -124,6 +155,9 @@ class StoryBatch {
   /// The viewer's pages: every story's positions, in order.
   final List<StoryFrame> frames;
 
+  Iterable<String> get storyIds =>
+      frames.where((f) => f.startsStory).map((f) => f.storyId);
+
   /// Pages in the viewer.
   int get storyCount => frames.length;
 
@@ -135,7 +169,7 @@ class StoryBatch {
     final frame = frameAt(index);
     return frame == null
         ? kStoryEmptyDuration
-        : storySegmentDuration(frame.position);
+        : frame.media?.duration ?? storySegmentDuration(frame.position);
   }
 
   /// The page story [story] opens on.
@@ -572,6 +606,9 @@ class StoryAnalysisJob {
     required this.pgn,
     this.missed = false,
     this.hint,
+    this.plies = const [],
+    this.editorialPuzzle = false,
+    this.note,
   });
 
   final String id;
@@ -582,6 +619,9 @@ class StoryAnalysisJob {
 
   /// The Missed Chance topic's own ply, for a missed game.
   final int? hint;
+  final List<int> plies;
+  final bool editorialPuzzle;
+  final String? note;
 }
 
 /// What a game read gave: its positions and the event its PGN names.
@@ -603,10 +643,29 @@ StoryAnalysis _analyze(StoryAnalysisJob job) {
   try {
     final story = parseStoryPgn(job.pgn);
     if (story == null) return const StoryAnalysis(segments: []);
+    final selected = job.plies.isEmpty && job.editorialPuzzle ? [1] : job.plies;
+    final requested = [
+      for (final ply in selected)
+        if (ply > 0 && ply <= story.notation.mainline.length)
+          storyInspectedSegment(
+            story.notation.mainline[ply - 1],
+            finalPly: ply == story.notation.mainline.length,
+            findMove: job.editorialPuzzle,
+          ),
+    ];
     return StoryAnalysis(
-      segments: job.missed
-          ? pickMissedChanceSegments(story, hint: job.hint)
-          : completeCollectionStory(story, pickStorySegments(story)),
+      segments: [
+        for (final segment
+            in job.missed
+                ? pickMissedChanceSegments(story, hint: job.hint)
+                : selected.isNotEmpty
+                ? requested
+                : completeCollectionStory(story, pickStorySegments(story)))
+          if (job.note case final note?)
+            segment.withEditorialNote(note)
+          else
+            segment,
+      ],
       event: eventTitleFromPgnHeaders(story.game.headers),
       notation: story.notation,
     );
@@ -643,6 +702,15 @@ final storyBatchProvider = FutureProvider.autoDispose
       if (slug == kMissedChancesSlug) {
         return ref.watch(missedChancesBatchProvider.future);
       }
+      if (storyPublicationKey(slug) case final publication?) {
+        final hold = _holdAfterLastListener(ref, const Duration(minutes: 5));
+        try {
+          return await readPublishedStoryBatch(ref, publication);
+        } catch (_) {
+          hold.close();
+          rethrow;
+        }
+      }
       final visit = ref.watch(storyVisitProvider);
       final seen = ref.read(storySeenProvider.notifier);
       final link = _holdAfterLastListener(ref, const Duration(minutes: 5));
@@ -676,13 +744,20 @@ final storyBatchProvider = FutureProvider.autoDispose
           }
         }
         final signature = storySignature(detail);
+        final watched = seen.watchedGames(slug);
+        final preferred =
+            visit.pickFor(slug, signature) ?? seen.unfinishedGame(detail);
+        final serverPick = await pickPublishedStoryGame([
+          for (final g in [?latest, ...candidates])
+            if (analysis[g.id]?.segments.isNotEmpty ?? false)
+              (id: g.id, watched: watched.contains(g.id)),
+        ], preferred);
         final picked = chooseCollectionStory(
           latest: latest,
           candidates: candidates,
           analysis: analysis,
-          watched: seen.watchedGames(slug),
-          preferredId:
-              visit.pickFor(slug, signature) ?? seen.unfinishedGame(detail),
+          watched: watched,
+          preferredId: serverPick ?? preferred,
         );
         if (picked != null && !picked.segments.first.isStill) {
           visit.remember(slug, signature, picked.id);

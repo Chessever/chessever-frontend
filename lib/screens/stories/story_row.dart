@@ -12,6 +12,7 @@ import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart'
     show LichessMoveAnnotationType;
 import 'package:chessever2/screens/stories/story_models.dart';
+import 'package:chessever2/screens/stories/story_publications.dart';
 import 'package:chessever2/screens/stories/story_row_access.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
@@ -280,6 +281,7 @@ const Duration kStoryCatalogStale = Duration(minutes: 10);
 void refreshStoryCatalog(WidgetRef ref) {
   if (ref.read(storyRowPrefsProvider).mode == StoryRowMode.off) return;
   ref.invalidate(collectionsProvider);
+  ref.invalidate(storyPublicationLineupProvider);
 }
 
 /// The stories at the top of Today: Missed Chances, recent collections and
@@ -377,11 +379,20 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   _RowEdge _shownEdge = _RowEdge.start;
 
   late final AppLifecycleListener _lifecycle;
+  Timer? _publicationRefresh;
 
   @override
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: _onResume);
+    _publicationRefresh = Timer.periodic(storyReturnPause, (_) {
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+          ref.read(storyViewerOpenProvider) ||
+          ref.read(storyRowPrefsProvider).mode == StoryRowMode.off) {
+        return;
+      }
+      ref.invalidate(storyPublicationLineupProvider);
+    });
     // The server holds the signed-in reader's choice, perhaps changed on
     // another device since this one last read it.
     scheduleMicrotask(() {
@@ -420,6 +431,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
   @override
   void dispose() {
     _lifecycle.dispose();
+    _publicationRefresh?.cancel();
     _retry?.cancel();
     _missedWait?.cancel();
     _scroll.dispose();
@@ -435,24 +447,27 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
     required Collection? missed,
     required StoryVisit visit,
     required bool viewerOpen,
+    List<Collection>? published,
   }) {
     if (viewerOpen && _order.isNotEmpty) return _order;
     // The order is fixed while the row is on screen; a circle watched just
     // now goes quiet where it stands. A circle that gets something new (a
     // game, an update: its signature changes) orders the row again, so it
     // lands leftmost the moment the catalog says so.
-    final all = [?missed, ...lineup.recent, ...lineup.archive];
+    final all = published ?? [?missed, ...lineup.recent, ...lineup.archive];
     final slugs = [
-      '${visit.rotation}|${lineup.recent.length}',
+      '${visit.rotation}|${published == null ? lineup.recent.length : 'published'}',
       for (final c in all) '${c.slug}|${storySignature(c)}',
     ];
     if (!listEquals(slugs, _orderedFrom)) {
       _orderedFrom = slugs;
-      _order = [
-        ?missed,
-        ...orderStoryCollections(lineup.recent, seen.isSeen),
-        ...lineup.archive,
-      ];
+      _order =
+          published ??
+          [
+            ?missed,
+            ...orderStoryCollections(lineup.recent, seen.isSeen),
+            ...lineup.archive,
+          ];
     } else {
       // Same collections: keep the order, take the fresh rows.
       final bySlug = {for (final c in all) c.slug: c};
@@ -851,6 +866,15 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
           visit: visit,
           hasMissedChances: missed.circle != null,
         );
+        final published = ref
+            .watch(
+              storyPublicationLineupProvider((
+                catalog: list,
+                missedDay: missed.circle?.updatedAt,
+                rotation: visit.rotation,
+              )),
+            )
+            .valueOrNull;
         if (_shown == false) _orderedFrom = null;
         final circles = _ordered(
           lineup,
@@ -858,6 +882,7 @@ class _TodayStoryRowState extends ConsumerState<TodayStoryRow>
           missed: missed.circle,
           visit: visit,
           viewerOpen: viewerOpen,
+          published: published,
         );
         shown = circles.isNotEmpty;
         // Drawn while it is there or still springing away.
@@ -1188,7 +1213,8 @@ class _StoryCircle extends ConsumerWidget {
         ),
       ),
     );
-    if (isMissedChances(collection)) {
+    if (isMissedChances(collection) ||
+        storyPublicationKey(collection.slug) != null) {
       // Not a collection: no collection menu to hold it into.
       return Semantics(
         container: true,
