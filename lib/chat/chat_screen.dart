@@ -44,14 +44,7 @@ Uri? safeChatSourceUri(String? href) {
 final Curve _panelCurve = const CupertinoMotion.smooth().toCurve;
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({
-    this.screenContext,
-    this.initialConversationId,
-    this.createNewConversationOnOpen = false,
-    this.onConversationChanged,
-    this.embedded = false,
-    super.key,
-  });
+  const ChatScreen({this.screenContext, this.embedded = false, super.key});
 
   /// Botvinnik as the home bar's tab: nothing to close (a new chat sits where
   /// the close button would), and the home shell lifts the page over the
@@ -59,23 +52,12 @@ class ChatScreen extends ConsumerStatefulWidget {
   final bool embedded;
 
   final ChatScreenContext? screenContext;
-  final String? initialConversationId;
-  final bool createNewConversationOnOpen;
-  final ValueChanged<String>? onConversationChanged;
 
   static Future<void> show(
     BuildContext context, {
     ChatScreenContext? screenContext,
-    String? initialConversationId,
-    bool createNewConversationOnOpen = false,
-    ValueChanged<String>? onConversationChanged,
   }) async {
-    Widget buildChatScreen() => ChatScreen(
-      screenContext: screenContext,
-      initialConversationId: initialConversationId,
-      createNewConversationOnOpen: createNewConversationOnOpen,
-      onConversationChanged: onConversationChanged,
-    );
+    Widget buildChatScreen() => ChatScreen(screenContext: screenContext);
 
     final width = MediaQuery.sizeOf(context).width;
     final light = context.isLightTheme;
@@ -149,6 +131,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// The Botvinnik tab outlives a sign-in made in place (the auth sheet, the
   /// guest prompt), so it reloads when the signed-in account stops matching.
   String? _account;
+  BotvinnikSession? _session;
+  int _loadGeneration = 0;
 
   Locale get _locale => Localizations.localeOf(context);
 
@@ -181,9 +165,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // in view. An open chats drawer holds a Back entry on that route, so the
     // next Back there would only close a drawer nobody can see. Out of sight,
     // the drawer closes.
-    if (widget.embedded && !TickerMode.valuesOf(context).enabled) {
+    if (TickerMode.valuesOf(context).enabled || widget.embedded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _closeDrawer();
+        if (!mounted) return;
+        if (TickerMode.valuesOf(context).enabled) {
+          _followConversation();
+        } else {
+          _closeDrawer();
+        }
       });
     }
   }
@@ -207,8 +196,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final account = _signedInAccount();
-    _account = account;
+    if (_account != account) {
+      _account = account;
+      _conversations = const [];
+      _messages = const [];
+      _selected = null;
+      _sending = false;
+      _feedbackPending.clear();
+      _controller.clear();
+    }
     if (account == null) {
       if (mounted) {
         setState(() {
@@ -222,53 +220,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _loading = true;
       _error = null;
     });
+    final session = ref.read(botvinnikSessionProvider);
+    _session = session;
     try {
       final conversations = await _api.conversations();
-      late final ChatConversation selected;
-      late final List<ChatMessage> messages;
-      if (widget.createNewConversationOnOpen) {
-        selected = ChatConversation.draft(locale: _locale.toLanguageTag());
-        messages = const [];
-      } else {
-        if (conversations.isEmpty) {
-          selected = ChatConversation.draft(locale: _locale.toLanguageTag());
-          messages = const [];
-        } else {
-          selected = chatConversationForOpen(
-            conversations,
-            widget.initialConversationId,
-          );
-          messages = await _api.messages(selected.id);
-        }
-      }
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
+      final selected =
+          chatConversationForOpen(conversations, session.conversationId) ??
+          ChatConversation.draft(locale: _locale.toLanguageTag());
+      final messages = selected.isDraft
+          ? const <ChatMessage>[]
+          : await _api.messages(selected.id);
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _conversations = conversations;
         _selected = selected;
         _messages = messages;
       });
-      if (!selected.isDraft) {
-        widget.onConversationChanged?.call(selected.id);
+      if (selected.isDraft &&
+          session.conversationId != null &&
+          session == ref.read(botvinnikSessionProvider)) {
+        _rememberConversation(selected);
       }
     } on ChatApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _error = error.message);
+      }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() => _loading = false);
         _scrollToEnd(animate: false);
       }
     }
   }
 
+  void _rememberConversation(
+    ChatConversation conversation, {
+    bool messagesUpdated = false,
+  }) {
+    if (_account == null || _signedInAccount() != _account) return;
+    final session = ref.read(botvinnikSessionProvider);
+    final id = conversation.isDraft ? null : conversation.id;
+    if (session.conversationId == id && !messagesUpdated) return;
+    final next = (conversationId: id, revision: session.revision + 1);
+    _session = next;
+    ref.read(botvinnikSessionProvider.notifier).state = next;
+  }
+
+  void _followConversation() {
+    if (!_sending &&
+        _account != null &&
+        _signedInAccount() == _account &&
+        TickerMode.valuesOf(context).enabled &&
+        _session != ref.read(botvinnikSessionProvider)) {
+      unawaited(_load());
+    }
+  }
+
   Future<void> _newConversation() async {
+    if (_loading || _sending) return;
+    _loadGeneration++;
     final conversation = ChatConversation.draft(
       locale: _locale.toLanguageTag(),
     );
+    _controller.clear();
     setState(() {
       _selected = conversation;
       _messages = const [];
       _error = null;
     });
+    _rememberConversation(conversation);
     _closeDrawer();
   }
 
@@ -280,34 +301,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _select(ChatConversation conversation) async {
-    if (_sending) return;
+    if (_loading || _sending) return;
+    final generation = ++_loadGeneration;
     try {
       final messages = conversation.isDraft
           ? const <ChatMessage>[]
           : await _api.messages(conversation.id);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration || _sending) return;
       setState(() {
         _selected = conversation;
         _messages = messages;
         _error = null;
       });
-      if (!conversation.isDraft) {
-        widget.onConversationChanged?.call(conversation.id);
-      }
+      _rememberConversation(conversation);
       _scrollToEnd(animate: false);
       _closeDrawer();
     } on ChatApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _error = error.message);
+      }
     }
   }
 
   Future<void> _delete(ChatConversation conversation) async {
-    if (_sending) return;
+    if (_loading || _sending) return;
+    final account = _account;
     try {
       if (!conversation.isDraft) {
         await _api.deleteConversation(conversation.id);
       }
-      if (!mounted) return;
+      if (!mounted || _account != account) return;
       final remaining = _conversations
           .where((item) => item.id != conversation.id)
           .toList();
@@ -320,7 +343,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
     } on ChatApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted && _account == account) {
+        setState(() => _error = error.message);
+      }
     }
   }
 
@@ -344,7 +369,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     var selected = _selected;
     final content = _controller.text.trim();
-    if (selected == null || content.isEmpty || _sending) return;
+    if (selected == null || content.isEmpty || _loading || _sending) return;
+    final generation = ++_loadGeneration;
     _controller.clear();
     final localUser = ChatMessage(
       id: 'local-user-${DateTime.now().microsecondsSinceEpoch}',
@@ -370,7 +396,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           title: chatTitleFromQuestion(content),
         );
         selected = persisted;
-        if (!mounted) return;
+        if (!mounted || generation != _loadGeneration) return;
         setState(() {
           _conversations = [
             persisted,
@@ -380,7 +406,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ];
           _selected = persisted;
         });
-        widget.onConversationChanged?.call(persisted.id);
+        _rememberConversation(persisted);
       }
       final viewport = MediaQuery.sizeOf(context);
       await for (final event in _api.send(
@@ -396,7 +422,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         screenContext: widget.screenContext,
       )) {
-        if (!mounted) return;
+        if (!mounted || generation != _loadGeneration) return;
         final messages = [..._messages];
         final assistant = messages.last;
         switch (event.type) {
@@ -433,9 +459,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollToEnd();
       }
       final refreshed = await _api.messages(selected.id);
-      if (mounted) setState(() => _messages = refreshed);
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() => _messages = refreshed);
+      if (_session == ref.read(botvinnikSessionProvider)) {
+        _rememberConversation(selected, messagesUpdated: true);
+      }
     } on ChatApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       if (error.quota != null) {
         ref.read(botvinnikQuotaProvider.notifier).setQuota(error.quota!);
       } else {
@@ -472,7 +502,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       if (upgradeRequired) unawaited(_showUpgrade(resend: restore));
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _sending = false);
+        _followConversation();
+      }
     }
   }
 
@@ -695,6 +728,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }),
       (_, _) => _followAccount(),
     );
+    ref.listen(botvinnikSessionProvider, (_, _) => _followConversation());
     // Out of sight (the home tab kept alive behind another), nothing on the
     // timeline is being read.
     final inView = TickerMode.valuesOf(context).enabled;
@@ -792,7 +826,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             if (widget.embedded)
               _BotvinnikBar(
                 onChats: () => _scaffoldKey.currentState?.openDrawer(),
-                onNewChat: _sending ? null : _newConversation,
+                onNewChat: _loading || _sending ? null : _newConversation,
               ),
             if (_error != null)
               MaterialBanner(
@@ -1022,16 +1056,15 @@ ChatComposerAccess chatComposerAccess({
   return ChatComposerAccess.enabled;
 }
 
-ChatConversation chatConversationForOpen(
+ChatConversation? chatConversationForOpen(
   List<ChatConversation> conversations,
-  String? preferredId,
+  String? activeId,
 ) {
-  if (preferredId != null) {
-    for (final conversation in conversations) {
-      if (conversation.id == preferredId) return conversation;
-    }
+  if (activeId == null) return null;
+  for (final conversation in conversations) {
+    if (conversation.id == activeId) return conversation;
   }
-  return conversations.first;
+  return null;
 }
 
 String normalizeChatMarkdown(String source) {

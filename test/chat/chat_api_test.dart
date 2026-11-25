@@ -111,7 +111,7 @@ void main() {
     });
   });
 
-  test('restores the tournament conversation when it is still available', () {
+  test('opens only the active conversation when it is available', () {
     final conversations = [
       ChatConversation(
         id: 'latest',
@@ -128,10 +128,11 @@ void main() {
     ];
 
     expect(
-      chatConversationForOpen(conversations, 'tournament-chat').id,
-      'tournament-chat',
+      chatConversationForOpen(conversations, 'tournament-chat'),
+      conversations.last,
     );
-    expect(chatConversationForOpen(conversations, 'missing').id, 'latest');
+    expect(chatConversationForOpen(conversations, null), isNull);
+    expect(chatConversationForOpen(conversations, 'missing'), isNull);
   });
 
   test(
