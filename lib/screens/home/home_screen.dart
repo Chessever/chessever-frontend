@@ -368,6 +368,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           chrome: chrome,
           // Feed lays its own deck under the dock.
           scrim: underDock && section != BottomNavBarItem.feed,
+          // Feed alone keeps the dock: reading on draws it in to a smaller
+          // capsule instead of sending it away (product decision,
+          // 2026-11-26).
+          compact: section == BottomNavBarItem.feed,
         ),
         body: HomeNavScope(metrics: metrics, child: body),
       ),

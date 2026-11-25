@@ -617,7 +617,14 @@ void main() {
       expect(m.extent, 78);
       // Gone, only the home indicator's strip covers the page's foot.
       expect(m.awayExtent, 34);
-      expect(m.compactExtent, m.awayExtent);
+      // Feed's capsule never leaves: drawn in, it covers 44 over its gap.
+      expect(m.compactExtent, 22 + 44);
+      expect(m.heightAt(0), 44);
+      expect(m.heightAt(1), 56);
+      // Four 44pt targets, 6 apart, inside 10 at either end.
+      expect(m.compactWidth, 4 * 44 + 3 * 6 + 2 * 10);
+      expect(m.widthAt(1), m.normalWidth);
+      expect(m.markScaleAt(0), 22 / 28);
       // The buttons come down from over the capsule to over the strip.
       expect(m.ride, 78 - 34);
       // Past the screen's edge, its contact shadow included.

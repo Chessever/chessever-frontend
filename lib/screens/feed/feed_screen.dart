@@ -989,11 +989,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       shown: clear,
       away: EdgeInsets.only(
         // The status bar's strip is all there is at the top, bars shown or
-        // not. Reading on, the dock leaves whole: only the system's own
-        // strip (the home indicator, the gesture bar, the three buttons)
-        // still covers the foot, as with no dock (a tablet's rail).
+        // not. Reading on, Feed's dock draws in to its smaller capsule
+        // ([HomeNavDock.compact]): the posts centre clear of that. With no
+        // dock (a tablet's rail) only the system's own strip covers the
+        // foot.
         top: math.min(system.top, clear.top),
-        bottom: math.min(dock?.awayExtent ?? system.bottom, clear.bottom),
+        bottom: math.min(dock?.compactExtent ?? system.bottom, clear.bottom),
       ),
     );
     Widget clearOfBars(Widget page) {

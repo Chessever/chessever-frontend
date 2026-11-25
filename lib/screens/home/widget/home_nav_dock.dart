@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
@@ -18,6 +19,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// (the section's chrome at 1) it stands there; reading on (the chrome at
 /// 0) it has left whole: slid down past the screen's edge ([slide]) and
 /// faded out.
+///
+/// Feed is the one exception ([HomeNavDock.compact]): there the capsule
+/// never leaves. Reading on, it draws in to [compactHeight] tall and only as
+/// wide as its marks need, its marks scaled to [compactMark].
 ///
 /// Its slot in the Scaffold is [extent] tall whether the capsule is there
 /// or not, so the capsule coming and going never lays the page out again:
@@ -66,6 +71,20 @@ class HomeNavMetrics {
   /// The capsule's height.
   static const double normalHeight = 56;
 
+  /// Feed's capsule drawn in: down to every mark's own 44pt target and no
+  /// further.
+  static const double compactHeight = 44;
+
+  /// The marks' side at full size and on Feed's drawn-in capsule
+  /// ([BottomNavBarWidget.iconSide] at 28).
+  static const double normalMark = 28;
+  static const double compactMark = 22;
+
+  /// Feed's drawn-in capsule: [count] 44pt targets, [compactStep] apart,
+  /// inside [padding] at either end.
+  static const double compactSlot = 44;
+  static const double compactStep = 6;
+
   /// The least space between the capsule and the screen's bottom edge.
   static const double minGap = 12;
 
@@ -88,13 +107,12 @@ class HomeNavMetrics {
   double get extent => gap + normalHeight;
 
   /// How far the page's foot is covered with the dock away: the system's
-  /// own strip ([inset]), the room a page centred between the bars keeps
-  /// clear of (Feed).
+  /// own strip ([inset]) alone.
   double get awayExtent => inset;
 
-  /// [awayExtent], under the name Feed reads it by (from when the dock drew
-  /// in to a smaller capsule instead of leaving).
-  double get compactExtent => awayExtent;
+  /// How far the page's foot is covered with Feed's capsule drawn in: what
+  /// Feed keeps its posts centred clear of as the reader reads on.
+  double get compactExtent => gap + compactHeight;
 
   /// How far floating buttons over the dock come down as it leaves: from
   /// the end-float corner over the capsule to the one over the system's own
@@ -107,6 +125,23 @@ class HomeNavMetrics {
 
   double get normalWidth =>
       math.max(0, math.min(screenWidth - 2 * sideMargin, maxWidth));
+
+  double get compactWidth => math.min(
+    normalWidth,
+    count * compactSlot + math.max(0, count - 1) * compactStep + 2 * padding,
+  );
+
+  /// Feed's capsule at [shown] (the section's chrome: 1 full, 0 drawn in).
+  double heightAt(double shown) =>
+      lerpDouble(compactHeight, normalHeight, shown.clamp(0.0, 1.0))!;
+
+  double widthAt(double shown) =>
+      lerpDouble(compactWidth, normalWidth, shown.clamp(0.0, 1.0))!;
+
+  /// The marks' scale at [shown]: drawn at their full size and scaled, so a
+  /// photo's cache never changes size as the capsule draws in.
+  double markScaleAt(double shown) =>
+      lerpDouble(compactMark / normalMark, 1, shown.clamp(0.0, 1.0))!;
 
   @override
   bool operator ==(Object other) =>
@@ -165,8 +200,17 @@ class HomeNavScope extends InheritedWidget {
 /// capsule and the system's own bar under it read over any content. It
 /// fades in over many eased steps, with no edge of its own, and leaves with
 /// the dock. Feed has its own deck there and turns it off.
+///
+/// On Feed ([compact]) the capsule never leaves: reading on draws it in to
+/// a smaller capsule with smaller marks, heading back opens it up again, on
+/// the chrome's own value. Every mark stays a 44pt target at every size.
 class HomeNavDock extends ConsumerWidget {
-  const HomeNavDock({super.key, this.chrome, this.scrim = true});
+  const HomeNavDock({
+    super.key,
+    this.chrome,
+    this.scrim = true,
+    this.compact = false,
+  });
 
   /// How much of the section's chrome is shown: 1 the dock in place, 0 the
   /// dock gone. Null stands it in place.
@@ -174,6 +218,10 @@ class HomeNavDock extends ConsumerWidget {
 
   /// Whether the page's ground rises behind the dock.
   final bool scrim;
+
+  /// Whether the capsule draws in as the chrome goes instead of leaving
+  /// (Feed).
+  final bool compact;
 
   /// How far the scrim reaches above the dock's slot.
   static const double scrimReach = 24;
@@ -197,100 +245,108 @@ class HomeNavDock extends ConsumerWidget {
         : 0;
     final m = HomeNavMetrics.of(context, count: items.length);
     final shown = chrome;
-    final fade = shown == null ? null : _DockFade(shown);
+    final compact = this.compact && shown != null;
+    final fade = shown == null || compact ? null : _DockFade(shown);
 
-    final width = m.normalWidth;
-    final left = (m.screenWidth - width) / 2;
-    final slotWidth = items.isEmpty
-        ? 0.0
-        : math.max(0.0, width - 2 * HomeNavMetrics.padding) / items.length;
+    Widget capsuleAt(double at) {
+      final width = compact ? m.widthAt(at) : m.normalWidth;
+      final height = compact ? m.heightAt(at) : HomeNavMetrics.normalHeight;
+      final markScale = compact ? m.markScaleAt(at) : 1.0;
+      final left = (m.screenWidth - width) / 2;
+      final slotWidth = items.isEmpty
+          ? 0.0
+          : math.max(0.0, width - 2 * HomeNavMetrics.padding) / items.length;
 
-    Widget glass = GlassSurface(
-      key: const ValueKey('home-nav-capsule'),
-      borderRadius: BorderRadius.circular(HomeNavMetrics.normalHeight / 2),
-      child: const SizedBox.expand(),
-    );
-    Widget marks = Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final item in items)
-          BottomNavBarWidget(
-            key: bottomNavBarItemKey(item),
-            width: slotWidth,
-            bottomInset: m.gap,
-            semanticsValue: switch (item) {
-              BottomNavBarItem.botvinnik when botvinnikUnread > 0 =>
-                '$botvinnikUnread unread Inbox ${botvinnikUnread == 1 ? 'message' : 'messages'}',
-              BottomNavBarItem.profile when unread => 'Unread Inbox messages',
-              _ => null,
-            },
-            isSelected: selected == item,
-            dotId: item == BottomNavBarItem.botvinnik && botvinnikUnread > 0
-                ? null
-                : bottomNavBarDotIds[item],
-            onTap: () => selectBottomNavBarItem(ref, item),
-            glyph: (ink, side) {
-              final mark = bottomNavBarGlyph(
-                item,
-                ink: ink,
-                side: side,
-                selected: selected == item,
-              );
-              if (item != BottomNavBarItem.botvinnik || botvinnikUnread == 0) {
-                return mark;
-              }
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  mark,
-                  PositionedDirectional(
-                    top: -6,
-                    end: -10,
-                    child: IgnorePointer(
-                      child: SearchCountBadge(
-                        key: const ValueKey('botvinnik-dock-unread-badge'),
-                        count: botvinnikUnread,
-                        diameter: 16,
+      Widget glass = GlassSurface(
+        key: const ValueKey('home-nav-capsule'),
+        borderRadius: BorderRadius.circular(height / 2),
+        child: const SizedBox.expand(),
+      );
+      Widget marks = Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final item in items)
+            BottomNavBarWidget(
+              key: bottomNavBarItemKey(item),
+              width: slotWidth,
+              bottomInset: m.gap,
+              markScale: markScale,
+              semanticsValue: switch (item) {
+                BottomNavBarItem.botvinnik when botvinnikUnread > 0 =>
+                  '$botvinnikUnread unread Inbox ${botvinnikUnread == 1 ? 'message' : 'messages'}',
+                BottomNavBarItem.profile when unread => 'Unread Inbox messages',
+                _ => null,
+              },
+              isSelected: selected == item,
+              dotId: item == BottomNavBarItem.botvinnik && botvinnikUnread > 0
+                  ? null
+                  : bottomNavBarDotIds[item],
+              onTap: () => selectBottomNavBarItem(ref, item),
+              glyph: (ink, side) {
+                final mark = bottomNavBarGlyph(
+                  item,
+                  ink: ink,
+                  side: side,
+                  selected: selected == item,
+                );
+                if (item != BottomNavBarItem.botvinnik ||
+                    botvinnikUnread == 0) {
+                  return mark;
+                }
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    mark,
+                    PositionedDirectional(
+                      top: -6,
+                      end: -10,
+                      child: IgnorePointer(
+                        child: SearchCountBadge(
+                          key: const ValueKey('botvinnik-dock-unread-badge'),
+                          count: botvinnikUnread,
+                          diameter: 16,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
-            title: namesBottomNavBarIcons[item]!,
-            onLongPress: () =>
-                unawaited(makeStartScreenDefault(context, ref, section: item)),
-          ),
-      ],
-    );
-    if (fade != null) {
-      // The glass scales its own plate, rim, shadow and frost; the marks,
-      // which hold no glass, fade in their own layer.
-      glass = GlassFade(opacity: fade, child: glass);
-      marks = FadeTransition(opacity: fade, child: marks);
-    }
+                  ],
+                );
+              },
+              title: namesBottomNavBarIcons[item]!,
+              onLongPress: () => unawaited(
+                makeStartScreenDefault(context, ref, section: item),
+              ),
+            ),
+        ],
+      );
+      if (fade != null) {
+        // The glass scales its own plate, rim, shadow and frost; the marks,
+        // which hold no glass, fade in their own layer.
+        glass = GlassFade(opacity: fade, child: glass);
+        marks = FadeTransition(opacity: fade, child: marks);
+      }
 
-    final capsule = Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: left,
-          width: width,
-          bottom: m.gap,
-          height: HomeNavMetrics.normalHeight,
-          child: glass,
-        ),
-        // The marks: each target from the capsule's top to the screen's
-        // edge, its mark centred in the capsule.
-        Positioned(
-          left: left + HomeNavMetrics.padding,
-          width: math.max(0, width - 2 * HomeNavMetrics.padding),
-          bottom: 0,
-          height: HomeNavMetrics.normalHeight + m.gap,
-          child: marks,
-        ),
-      ],
-    );
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: left,
+            width: width,
+            bottom: m.gap,
+            height: height,
+            child: glass,
+          ),
+          // The marks: each target from the capsule's top to the screen's
+          // edge, its mark centred in the capsule.
+          Positioned(
+            left: left + HomeNavMetrics.padding,
+            width: math.max(0, width - 2 * HomeNavMetrics.padding),
+            bottom: 0,
+            height: height + m.gap,
+            child: marks,
+          ),
+        ],
+      );
+    }
 
     return RepaintBoundary(
       child: SizedBox(
@@ -307,12 +363,19 @@ class HomeNavDock extends ConsumerWidget {
                 right: 0,
                 bottom: 0,
                 height: m.extent + scrimReach,
-                child: IgnorePointer(child: _DockScrim(shown: shown)),
+                child: IgnorePointer(
+                  child: _DockScrim(shown: compact ? null : shown),
+                ),
               ),
             if (shown == null)
-              capsule
+              capsuleAt(1)
+            else if (compact)
+              AnimatedBuilder(
+                animation: shown,
+                builder: (context, _) => capsuleAt(shown.value),
+              )
             else
-              _DockSlide(shown: shown, slide: m.slide, child: capsule),
+              _DockSlide(shown: shown, slide: m.slide, child: capsuleAt(1)),
           ],
         ),
       ),

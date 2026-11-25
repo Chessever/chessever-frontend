@@ -1,7 +1,7 @@
 // Feed as the home shell holds it: no top bar of its own (no title, no
-// speaker), the posts under the status bar's strip; the dock leaves whole
-// (past the screen's edge, faded out) as the reader pages on and comes back
-// as they page back,
+// speaker), the posts under the status bar's strip; the dock draws in to
+// its smaller capsule as the reader pages on and opens up again as they
+// page back,
 // on the same chrome as every other root. The posts never change size and
 // are never under a bar at rest; as the dock moves, each post is moved
 // (never laid out again) so its centre stays on the centre of the room the
@@ -59,9 +59,9 @@ const HomeNavMetrics _dock = HomeNavMetrics(
 /// The dock's slot, constant: 78.
 final double _bar = _dock.extent;
 
-/// What covers the screen's foot with the dock gone: the home indicator's
-/// strip, 34.
-final double _away = _dock.awayExtent;
+/// What covers the screen's foot with Feed's dock drawn in: its 44pt
+/// capsule over its 22 gap, 66.
+final double _away = _dock.compactExtent;
 
 final Finder _pages = find.byKey(const ValueKey('feed_pages'));
 final Finder _deck = find.byKey(const ValueKey('feed_bottom_deck'));
@@ -201,8 +201,7 @@ Rect _likeOnScreen(WidgetTester tester) {
 
 /// The room the bars leave a post when [shown] of them is on screen (1 all
 /// of it, 0 none): from under the top bar's band (the status bar's strip
-/// always stays) to over the dock (gone, only the home indicator's strip
-/// stays).
+/// always stays) to over the dock (drawn in, its smaller capsule stays).
 ({double top, double bottom}) _room(double shown, double header) => (
   top: _statusBar + shown * (header - _statusBar),
   bottom: _phone.height - (_away + shown * (_bar - _away)),
@@ -291,7 +290,7 @@ void _expectDeckUnderPost(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('paging on sends the bars away, the dock whole; every '
+  testWidgets('paging on sends the bars away and draws the dock in; every '
       'post keeps one size and stays centred in the room they leave', (
     tester,
   ) async {
@@ -350,13 +349,13 @@ void main() {
       tester.getRect(find.byKey(const ValueKey('feed_status_strip'))).height,
       closeTo(_statusBar, 0.5),
     );
-    // The dock's slot keeps its place, the dock gone or not.
+    // The dock's slot keeps its place, the capsule drawn in or not.
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('bottom-bar'))).dy,
       closeTo(_phone.height - _bar, 0.5),
     );
     // With the bars away, the post is framed between the status bar and
-    // the home indicator's strip, and still answers where it is drawn. The
+    // the drawn-in capsule, and still answers where it is drawn. The
     // deck
     // moved with it.
     final away = _room(0, header);
