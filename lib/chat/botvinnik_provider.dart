@@ -2,9 +2,23 @@ import 'dart:async';
 
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+typedef BotvinnikSession = ({String? conversationId, int revision});
+
+/// The active conversation for this app launch. A null ID opens a blank chat.
+final botvinnikSessionProvider = StateProvider<BotvinnikSession>((ref) {
+  ref.watch(
+    authStateProvider.select((auth) {
+      final user = auth.valueOrNull?.user;
+      return user == null || user.isAnonymous ? null : user.id;
+    }),
+  );
+  return (conversationId: null, revision: 0);
+});
 
 final botvinnikEnabledProvider =
     AsyncNotifierProvider<BotvinnikEnabledNotifier, bool>(

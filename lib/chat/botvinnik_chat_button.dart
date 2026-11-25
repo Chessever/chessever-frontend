@@ -12,7 +12,7 @@ import 'package:chessever2/widgets/search_mode/search_count_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Floating launcher that opens a fresh Botvinnik conversation.
+/// Floating launcher for Botvinnik's active conversation.
 ///
 /// One of the page's floating buttons ([InkFabStack]), cut from the same
 /// frosted glass ([GlassSurface]) at the same [InkFabSize] discs, with the
@@ -48,7 +48,7 @@ class BotvinnikChatButton extends ConsumerWidget {
   /// above another one in the stack.
   final InkFabSize size;
 
-  /// Replaces the default action (open a new Botvinnik chat for
+  /// Replaces the default action (open Botvinnik for
   /// [screenContext]). Hosts that route the chat themselves, and tests, pass
   /// it; everyone else leaves it null.
   final VoidCallback? onPressed;
@@ -64,11 +64,7 @@ class BotvinnikChatButton extends ConsumerWidget {
       unreadCount: ref.watch(inboxUnreadCountProvider),
       onPressed:
           onPressed ??
-          () => ChatScreen.show(
-            context,
-            screenContext: screenContext,
-            createNewConversationOnOpen: true,
-          ),
+          () => ChatScreen.show(context, screenContext: screenContext),
     );
   }
 }
