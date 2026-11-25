@@ -27,23 +27,20 @@ class _Guest extends AuthController {
 
 /// The tab's place in Home, as `BottomNavBarView` keeps it.
 class _Harness {
-  _Harness(this.source)
-    : container = ProviderContainer(
-        overrides: [
-          authStateProvider.overrideWith(_Guest.new),
-          attentionClockProvider.overrideWithValue(inboxFixtureNow),
-          inboxSourceProvider.overrideWithValue(source),
-          inboxCacheProvider.overrideWithValue(FakeInboxCache()),
-        ],
-      );
+  _Harness(this.source);
 
   final FakeInboxSource source;
-  final ProviderContainer container;
+  late ProviderContainer container;
   final navigator = GlobalKey<NavigatorState>();
   final inView = ValueNotifier(true);
 
-  Widget host() => UncontrolledProviderScope(
-    container: container,
+  Widget host() => ProviderScope(
+    overrides: [
+      authStateProvider.overrideWith(_Guest.new),
+      attentionClockProvider.overrideWithValue(inboxFixtureNow),
+      inboxSourceProvider.overrideWithValue(source),
+      inboxCacheProvider.overrideWithValue(FakeInboxCache()),
+    ],
     child: MaterialApp(
       navigatorKey: navigator,
       theme: AppTheme.darkTheme,
@@ -54,6 +51,7 @@ class _Harness {
       ),
       home: Builder(
         builder: (context) {
+          container = ProviderScope.containerOf(context, listen: false);
           ResponsiveHelper.init(context);
           return ValueListenableBuilder<bool>(
             valueListenable: inView,
@@ -85,11 +83,7 @@ Future<_Harness> _pump(WidgetTester tester, FakeInboxSource source) async {
   // Resuming starts the placeholder client's token refresh timer.
   Supabase.instance.client.auth.stopAutoRefresh();
   final harness = _Harness(source);
-  addTearDown(() async {
-    await tester.pumpWidget(const SizedBox());
-    harness.container.dispose();
-    harness.inView.dispose();
-  });
+  addTearDown(harness.inView.dispose);
   await tester.pumpWidget(harness.host());
   await tester.pumpAndSettle();
   return harness;
