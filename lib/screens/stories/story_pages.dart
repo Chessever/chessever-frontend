@@ -27,8 +27,6 @@ import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart'
     show FeedGlyph, FeedGlyphs;
 import 'package:chessever2/screens/stories/story_media.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
-import 'package:chessever2/screens/stories/story_notation.dart';
-import 'package:chessever2/screens/stories/story_notation_strip.dart';
 import 'package:chessever2/screens/stories/story_publications.dart';
 import 'package:chessever2/screens/stories/story_row.dart';
 import 'package:chessever2/screens/stories/story_seen_store.dart';
@@ -112,7 +110,7 @@ abstract final class StoryPageMetrics {
 /// The type and room of the words under a story's board: the game's line,
 /// the move, why it matters, and the book's words. One size whatever their
 /// length (a larger text setting grows it up to [kDenseTextScale]); long
-/// comments scroll within the space below the notation.
+/// comments scroll within the space below the move.
 @immutable
 class StoryTextMetrics {
   const StoryTextMetrics._({
@@ -163,7 +161,7 @@ class StoryTextMetrics {
       labelStyle: labelStyle,
       commentStyle: commentStyle,
       captionLine: line(captionStyle),
-      moveLine: math.max(44.0, line(moveStyle.copyWith(fontSize: 26)) + 8),
+      moveLine: line(moveStyle),
       labelLine: line(labelStyle),
       commentLine:
           scaler.scale(commentStyle.fontSize ?? 15) *
@@ -462,7 +460,7 @@ abstract class StoryPuzzleHost {
   /// before the viewer does, so this arrives first.
   void boardTouch(String frameId, {required bool takes});
 
-  /// A touch that belongs to notation or annotations rather than the story.
+  /// A touch that belongs to the annotations rather than the story.
   void wordsTouch(String frameId, int pointer);
 
   /// Holds playback while the reader browses or reads a scrollable comment.
@@ -1184,27 +1182,6 @@ class StoryFrameView extends ConsumerStatefulWidget {
   ConsumerState<StoryFrameView> createState() => _StoryFrameViewState();
 }
 
-class _StoryLine {
-  const _StoryLine(this.moves, {this.parent, this.branchIndex});
-
-  final List<StoryNotationMove> moves;
-  final _StoryLine? parent;
-  final int? branchIndex;
-
-  _StoryLine branch(int index, StoryNotationVariation variation) => _StoryLine(
-    [...moves.take(index), ...variation.readLine()],
-    parent: this,
-    branchIndex: index,
-  );
-
-  int boardIndex(int index) {
-    final mainlineIndex = moves[index].mainlineIndex;
-    if (mainlineIndex != null) return mainlineIndex;
-    final start = branchIndex!;
-    return start == 0 ? -1 : parent!.boardIndex(start - 1);
-  }
-}
-
 class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   /// A move that was not it stands this long, then goes back: the Feed
   /// puzzle's beat (its `_wrongHold`, 520ms).
@@ -1265,46 +1242,11 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   StorySegment get _segment => widget.frame.position;
   StoryPuzzle? get _puzzle => _segment.puzzle;
 
-  late _StoryLine? _mainline = _buildMainline();
-  late _StoryLine? _answerLine = _buildAnswerLine();
-  _StoryLine? _inspectionLine;
-  int? _inspectedIndex;
-  StorySegment? _inspected;
   bool _reading = false;
-
-  int get _storyMoveIndex =>
-      _segment.isStill ? (_mainline?.moves.length ?? 1) - 1 : _segment.ply - 1;
-
-  _StoryLine? _buildMainline() {
-    final moves = widget.frame.game.notation?.mainline;
-    return moves == null || moves.isEmpty ? null : _StoryLine(moves);
-  }
-
-  _StoryLine? _buildAnswerLine() {
-    final mainline = _mainline;
-    final puzzle = _puzzle;
-    final index = _storyMoveIndex;
-    if (puzzle?.kind != StoryPuzzleKind.findMissed ||
-        mainline == null ||
-        index >= mainline.moves.length) {
-      return null;
-    }
-    for (final variation in mainline.moves[index].variations) {
-      if (variation.firstMove == puzzle!.answer) {
-        return mainline.branch(index, variation);
-      }
-    }
-    return null;
-  }
 
   void _reportReading() {
     if (!widget.active) return;
-    final index = _inspectedIndex;
-    widget.puzzles?.reading(
-      widget.frame.id,
-      paused: _reading,
-      moveIndex: index == null ? null : _inspectionLine?.boardIndex(index),
-    );
+    widget.puzzles?.reading(widget.frame.id, paused: _reading);
   }
 
   void _beginReading() {
@@ -1314,57 +1256,10 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
     _reportReading();
   }
 
-  void _inspect(_StoryLine line, int index) {
-    if (!widget.active) return;
-    final move = line.moves[index];
-    setState(() {
-      _reading = true;
-      _inspectionLine = line;
-      _inspectedIndex = index;
-      _inspected = storyInspectedSegment(
-        move,
-        finalPly: move.mainlineIndex == _mainline!.moves.length - 1,
-      );
-    });
-    _pauseBeats();
-    _reportReading();
-  }
-
   void _resumeStory() {
-    setState(() {
-      _reading = false;
-      _inspectionLine = null;
-      _inspectedIndex = null;
-      _inspected = null;
-    });
+    setState(() => _reading = false);
     _resumeBeats();
     _reportReading();
-  }
-
-  Widget? _notation(BuildContext context) {
-    if (_puzzle != null && !_answered) return null;
-    final line =
-        _inspectionLine ?? (_answered ? _answerLine : null) ?? _mainline;
-    if (line == null) return null;
-    final selected = _inspectedIndex ?? _storyMoveIndex + _linePly;
-    final parent = line.parent;
-    return StoryNotationStrip(
-      key: const ValueKey('story_notation'),
-      moves: line.moves,
-      selected: selected.clamp(0, line.moves.length - 1),
-      selectedStyle: StoryTextMetrics.of(
-        context,
-      ).moveStyle.copyWith(fontSize: 26),
-      glyphInk: storyGlyphInk,
-      headline: _puzzle == null || _inspected != null,
-      onMove: (index) => _inspect(line, index),
-      onVariation: (index, variation) =>
-          _inspect(line.branch(index, variation), index),
-      onRead: _beginReading,
-      onParent: parent == null
-          ? null
-          : () => _inspect(parent, line.branchIndex!),
-    );
   }
 
   /// The board takes a move.
@@ -1411,14 +1306,6 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
       widget.progress.addListener(_onProgress);
     }
     _landed = widget.progress.value >= kStorySlideAt;
-    if (!identical(oldWidget.frame.game.notation, widget.frame.game.notation)) {
-      _mainline = _buildMainline();
-      _answerLine = _buildAnswerLine();
-      _inspectionLine = null;
-      _inspectedIndex = null;
-      _inspected = null;
-      if (_reading) _afterFrame(_reportReading);
-    }
     if (widget.active && !oldWidget.active && _reading) {
       _afterFrame(_reportReading);
     }
@@ -1870,11 +1757,10 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   @override
   Widget build(BuildContext context) {
     final game = widget.frame.game.game;
-    final segment = _inspected ?? _segment;
+    final segment = _segment;
     final orientation = _orientation;
     final shown = _watchShownEval();
-    final revealed =
-        segment.finalPly && (_landed || _puzzle != null || _inspected != null);
+    final revealed = segment.finalPly && (_landed || _puzzle != null);
     return _StoryFrameScaffold(
       top: StoryPlayerRow(
         game: game,
@@ -1889,7 +1775,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
       board: (side, bar) => Row(
         children: [
           _evalBar(bar, side, orientation, shown),
-          if (_puzzle == null || _inspected != null)
+          if (_puzzle == null)
             _stillBoard(side, game, segment, orientation)
           else
             _puzzleBoard(side, orientation),
@@ -1903,7 +1789,6 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
         misses: _misses,
         missedPlayed: _missedPlayed,
         onShow: _waiting ? _show : null,
-        notation: _notation(context),
         onRead: _beginReading,
         onResume: _reading ? _resumeStory : null,
         onWordsTouch: (pointer) =>
@@ -1920,7 +1805,6 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   /// A miss stands for a beat only: the bar keeps to the question unless
   /// the miss is the move the game played, whose evaluation it recorded.
   (String, StoryEval?) _shownPosition() {
-    if (_inspected case final move?) return (move.fenAfter, move.evalAfter);
     final segment = _segment;
     final puzzle = _puzzle;
     if (puzzle == null) {
@@ -2007,7 +1891,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
     StorySegment segment,
     Side orientation,
   ) {
-    final landed = _landed || segment.isStill || _inspected != null;
+    final landed = _landed || segment.isStill;
     final move = segment.move;
     final badge = landed && move is NormalMove && segment.moveClass != null
         ? segment.moveClass
@@ -2143,7 +2027,8 @@ Color storyTintOf(bool found) => found
 /// a room that never changes size:
 ///
 /// * the game's line (event, opening);
-/// * the selected move, with its neighbours in the notation strip;
+/// * the move, its number a step quieter and its glyphs in the app's
+///   annotation colours;
 /// * why it matters, in the verdict's colour ("Brilliant", "Missed win");
 /// * the book's words in a scrollable area.
 ///
@@ -2170,7 +2055,6 @@ class StoryMomentText extends StatelessWidget {
     this.misses = 0,
     this.missedPlayed = false,
     this.onShow,
-    this.notation,
     this.onRead,
     this.onResume,
     this.onWordsTouch,
@@ -2178,7 +2062,6 @@ class StoryMomentText extends StatelessWidget {
 
   final StorySegment segment;
   final String? caption;
-  final Widget? notation;
   final VoidCallback? onRead;
   final VoidCallback? onResume;
   final ValueChanged<int>? onWordsTouch;
@@ -2208,7 +2091,6 @@ class StoryMomentText extends StatelessWidget {
         : (puzzleState ?? StoryPuzzleState.prompt);
     final asking =
         state == StoryPuzzleState.prompt || state == StoryPuzzleState.missed;
-    final strip = notation;
     final moveLine = puzzle != null && asking
         ? _askLine(context, text, puzzle, state!)
         : _moveLine(context, text, puzzle, state);
@@ -2253,18 +2135,16 @@ class StoryMomentText extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: puzzle == null && strip != null
-                      ? _readingSurface(strip, Axis.horizontal)
-                      : Semantics(
-                          liveRegion: live,
-                          child: StorySpringIn(
-                            id: (state, misses, missedPlayed),
-                            child: Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: moveLine,
-                            ),
-                          ),
-                        ),
+                  child: Semantics(
+                    liveRegion: live,
+                    child: StorySpringIn(
+                      id: (state, misses, missedPlayed),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: moveLine,
+                      ),
+                    ),
+                  ),
                 ),
                 if (onResume case final resume?)
                   IconButton(
@@ -2290,53 +2170,27 @@ class StoryMomentText extends StatelessWidget {
                 ),
               ),
             )
-          else if (labelLine != null ||
-              comment != null ||
-              (puzzle != null && strip != null))
+          else if (labelLine != null || comment != null)
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final answerStrip = puzzle != null && strip != null
-                      ? SizedBox(
-                          height: text.moveLine,
-                          child: _readingSurface(strip, Axis.horizontal),
-                        )
-                      : null;
-                  final pinned =
-                      answerStrip != null &&
-                      constraints.maxHeight >= text.moveLine + text.commentLine;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (pinned) answerStrip,
-                      Expanded(
-                        child: _readingSurface(
-                          _StoryCommentText(
-                            key: ObjectKey(segment),
-                            children: [
-                              if (!pinned && answerStrip != null) answerStrip,
-                              if (labelLine != null) labelLine,
-                              if (labelLine != null && comment != null)
-                                SizedBox(height: StoryTextMetrics.commentGap),
-                              if (comment != null)
-                                Padding(
-                                  padding: const EdgeInsetsDirectional.only(
-                                    end: 9,
-                                  ),
-                                  child: Text(
-                                    comment,
-                                    key: const ValueKey('story_comment'),
-                                    style: text.commentStyle,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          Axis.vertical,
+              child: _readingSurface(
+                _StoryCommentText(
+                  key: ObjectKey(segment),
+                  children: [
+                    if (labelLine != null) labelLine,
+                    if (labelLine != null && comment != null)
+                      SizedBox(height: StoryTextMetrics.commentGap),
+                    if (comment != null)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 9),
+                        child: Text(
+                          comment,
+                          key: const ValueKey('story_comment'),
+                          style: text.commentStyle,
                         ),
                       ),
-                    ],
-                  );
-                },
+                  ],
+                ),
+                Axis.vertical,
               ),
             ),
         ],
