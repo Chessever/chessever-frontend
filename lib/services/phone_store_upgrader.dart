@@ -4,8 +4,19 @@ import 'package:upgrader/upgrader.dart';
 /// Keeps Upgrader's store/version/URL contracts, but the app shell owns
 /// launch/resume checks so they can be serialized and safely deferred.
 class PhoneStoreUpgrader extends Upgrader {
-  PhoneStoreUpgrader({required super.messages})
-    : super(storeController: UpgraderStoreController(oniOS: PhoneAppStore.new));
+  PhoneStoreUpgrader({
+    required super.messages,
+    this.storeCheckTimeout = defaultStoreCheckTimeout,
+  }) : super(
+         storeController: UpgraderStoreController(oniOS: PhoneAppStore.new),
+       );
+
+  /// Upgrader's store requests have no timeout of their own. One that never
+  /// answers (a silently dropped connection) would hold this check, and the
+  /// launch/resume prompt behind it, until the process dies, so the 72h
+  /// reminder would never come back. A timed-out check counts as a failed one.
+  static const defaultStoreCheckTimeout = Duration(seconds: 20);
+  final Duration storeCheckTimeout;
 
   Future<UpgraderVersionInfo?>? _inFlight;
 
@@ -21,7 +32,7 @@ class PhoneStoreUpgrader extends Upgrader {
 
   Future<UpgraderVersionInfo?> _refresh() async {
     try {
-      final info = await super.updateVersionInfo();
+      final info = await super.updateVersionInfo().timeout(storeCheckTimeout);
       // Upgrader's copyWith retains old info on a null store response.
       // Failed checks must never redisplay a stale offer.
       if (info == null) updateState(state.copyWithNull(versionInfo: true));

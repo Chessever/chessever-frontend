@@ -91,6 +91,30 @@ void main() {
     expect(upgrader.currentAppStoreVersion, '35.25.4');
   });
 
+  test('a store request that never answers times out; the next check '
+      'sends a new one', () async {
+    final hanging = PhoneStoreUpgrader(
+      messages: CustomUpgraderMessages(),
+      storeCheckTimeout: const Duration(milliseconds: 50),
+    )..storeController = controller;
+    addTearDown(hanging.dispose);
+    hanging.updateState(
+      hanging.state.copyWith(packageInfo: upgrader.state.packageInfo),
+    );
+    await hanging.updateVersionInfo();
+    expect(hanging.currentAppStoreVersion, '35.25.4');
+
+    store.pending = Completer<UpgraderVersionInfo>(); // never completed
+    expect(await hanging.updateVersionInfo(), isNull);
+    expect(hanging.versionInfo, isNull, reason: 'no stale offer after a hang');
+    expect(store.calls, 2);
+
+    store.pending = null;
+    await hanging.updateVersionInfo();
+    expect(store.calls, 3, reason: 'the hung request no longer blocks');
+    expect(hanging.currentAppStoreVersion, '35.25.4');
+  });
+
   test(
     'null check result cannot retain stale info via Upgrader.copyWith',
     () async {
