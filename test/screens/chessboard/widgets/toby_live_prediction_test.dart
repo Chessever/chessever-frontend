@@ -272,8 +272,8 @@ void main() {
       expect(
         await height(
           TobyPredictsLine(
-            white: (name: 'Vachier-Lagrave', federation: 'FRA'),
-            black: (name: 'Nepomniachtchi', federation: 'FID'),
+            white: (name: 'Vachier-Lagrave'),
+            black: (name: 'Nepomniachtchi'),
             wdl: wdl,
             tokens: tokens(),
           ),
