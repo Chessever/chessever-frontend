@@ -12210,13 +12210,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     children: rows,
                   ),
                 ),
-                // Toby's live prediction, under the last notation row. A
-                // sibling of the rows (not one of them) so screen readers
-                // reach it: the rows sit inside ExcludeSemantics.
-                TobyLivePrediction(
-                  params: params,
-                  onLayoutChange: _repinAfterNotationReflow,
-                ),
               ],
             ),
           ),
@@ -12381,6 +12374,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   ),
               ],
             ),
+          ),
+          // "Toby predicts", pinned under the notation of a live game (it
+          // builds nothing otherwise). Outside the scroll, so it never reads
+          // as one more notation row.
+          TobyLivePrediction(
+            params: params,
+            onLayoutChange: _repinAfterNotationReflow,
           ),
           if (showNextMovePanel)
             _NextMoveOptionsPanel(

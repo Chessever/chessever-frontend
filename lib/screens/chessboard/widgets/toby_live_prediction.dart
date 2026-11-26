@@ -1,10 +1,11 @@
-/// Toby's live prediction at the end of the notation: who is likelier to win
-/// from here (a White / Draw / Black capsule) and the moves Toby expects
-/// next, each in its own hue. Tapping a move draws its arrow on the board in
-/// that hue.
+/// "Toby predicts": a panel pinned under the notation of a live game, with
+/// two labelled rows. Result: White / Draw / Black chances as a legend over
+/// one stacked bar. Next move: the three moves Toby expects, each in its own
+/// hue with its chance. Tapping a move draws its arrow on the board in that
+/// hue.
 ///
-/// The capsule carries Toby's credit ([kTobyAttribution]): a tap or long
-/// press shows it, and screen readers hear it with the chances and the moves.
+/// The title carries Toby's credit ([kTobyAttribution]): a tap shows it, and
+/// screen readers hear it with the chances and the moves.
 ///
 /// Shown only on a live broadcast game, while it is being played, with the
 /// reader on the last move. Whatever the engine source setting says: the
@@ -27,7 +28,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -121,6 +121,7 @@ class TobyPredictionToken {
     required this.rank,
     required this.uci,
     required this.chance,
+    required this.san,
     required this.move,
     required this.hue,
   });
@@ -132,7 +133,10 @@ class TobyPredictionToken {
   /// "34%", or "<1%".
   final String chance;
 
-  /// "24.Nf6" / "24…Nf6".
+  /// "Nf6", as the panel shows it (the move number is the game's next).
+  final String san;
+
+  /// "24.Nf6" / "24…Nf6", as screen readers hear it.
   final String move;
   final Color hue;
 
@@ -161,6 +165,7 @@ List<TobyPredictionToken> tobyPredictionTokens(
         rank: rank,
         uci: candidate.uci,
         chance: tobyEngineLineChance(candidate.probability),
+        san: san.trim(),
         move: tobyNumberedMove(fen, san.trim()),
         hue: tobyCandidateHue(rank),
       ),
@@ -217,39 +222,13 @@ List<double> tobyWdlSegmentWidths(
   return widths;
 }
 
-/// Which token a tap at [x] lands on: the token whose horizontal extent
-/// holds [x], else the nearest one within [slop]. Null entries are tokens
-/// not on screen (cut by the ellipsis).
-int? tobyTokenAtX(
-  List<({double left, double right})?> extents,
-  double x, {
-  required double slop,
-}) {
-  int? best;
-  var bestDistance = double.infinity;
-  for (var i = 0; i < extents.length; i++) {
-    final extent = extents[i];
-    if (extent == null) continue;
-    final distance = x < extent.left
-        ? extent.left - x
-        : x > extent.right
-        ? x - extent.right
-        : 0.0;
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = i;
-    }
-  }
-  return bestDistance <= slop ? best : null;
-}
-
 // ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
 
-/// The live prediction block. Builds nothing when the board is not live at
+/// The "Toby predicts" panel. Builds nothing when the board is not live at
 /// its last move, when Toby cannot read the position, or when the reader is
-/// refused (no paywall in the notation).
+/// refused (no paywall under the notation).
 class TobyLivePrediction extends ConsumerStatefulWidget {
   const TobyLivePrediction({
     super.key,
@@ -259,8 +238,8 @@ class TobyLivePrediction extends ConsumerStatefulWidget {
 
   final ChessBoardProviderParams params;
 
-  /// Called during build, before layout, whenever the block appears or
-  /// disappears, so the notation can hold its scroll anchor.
+  /// Called during build, before layout, whenever the panel appears or
+  /// disappears, so the notation above can hold its scroll anchor.
   final VoidCallback? onLayoutChange;
 
   @override
@@ -274,15 +253,10 @@ String? _liveFenOf(AsyncValue<ChessBoardStateNew> async) {
   return state.analysisState.position.fen;
 }
 
-/// The shortest the tappable prediction line may be, as every tap target.
+/// The shortest a tappable move may be, as every tap target.
 const double _minTapExtent = 44;
 
-/// How far beside a move a tap still picks it.
-const double _tapSlop = 12;
-
 class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
-  final GlobalKey _lineKey = GlobalKey();
-
   /// The reader was refused (sign-in or Premium): nothing more is asked on
   /// this board.
   bool _refused = false;
@@ -293,9 +267,6 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
   /// The last position chances shown, held while the next reading comes.
   TobyWdl? _heldWdl;
   bool _visible = false;
-
-  List<({int start, int end})> _tokenRanges = const [];
-  List<TobyPredictionToken> _tokens = const [];
 
   String get _gameId => widget.params.game.gameId;
 
@@ -317,6 +288,9 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     widget.onLayoutChange?.call();
   }
 
+  // Appears at full size in one frame: the notation above re-pins its scroll
+  // once ([TobyLivePrediction.onLayoutChange]), which a growing panel would
+  // outrun.
   @override
   Widget build(BuildContext context) {
     // The board's fen while the prediction may show, else null.
@@ -374,9 +348,9 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     }
 
     // Thinking about a new position: hold the last chances shown, with a
-    // quiet line, at the same height. Before anything was ever shown (or
-    // when the budget ran out with nothing), stay out of the notation
-    // rather than flash a placeholder.
+    // quiet moves row, at the same height. Before anything was ever shown
+    // (or when the budget ran out with nothing), stay away rather than flash
+    // a placeholder.
     if (shown == null &&
         (reading.status == TobyStatus.busy || _heldWdl == null)) {
       _setVisible(false);
@@ -387,7 +361,6 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     if (shown?.positionWdl != null) _heldWdl = shown!.positionWdl;
     _setVisible(true);
 
-    final muted = shown != null && !shown.isFinal;
     final tokens = shown == null
         ? const <TobyPredictionToken>[]
         : tobyPredictionTokens(shown, liveFen);
@@ -396,182 +369,14 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
         ? selection.uci
         : null;
 
-    return Padding(
-      padding: EdgeInsets.only(top: 10.sp),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TobyWdlCapsule(wdl: wdl),
-          _buildLine(
-            context,
-            tokens: tokens,
-            fen: liveFen,
-            muted: muted,
-            selectedUci: selectedUci,
-          ),
-        ],
-      ),
+    return TobyPredictsPanel(
+      wdl: wdl,
+      tokens: tokens,
+      thinking: shown == null,
+      muted: shown != null && !shown.isFinal,
+      selectedUci: selectedUci,
+      onMoveTap: (token) => _toggle(token, liveFen),
     );
-  }
-
-  Widget _buildLine(
-    BuildContext context, {
-    required List<TobyPredictionToken> tokens,
-    required String fen,
-    required bool muted,
-    required String? selectedUci,
-  }) {
-    final colors = context.colors;
-    final paper = Color.alphaBlend(
-      colors.surfaceRecessed.withValues(alpha: 0.3),
-      colors.background,
-    );
-    final quietStyle = AppTypography.textXsMedium.copyWith(
-      color: context.textInk(0.6),
-      fontSize: 12.sp,
-      fontWeight: FontWeight.w500,
-      height: 1.2,
-    );
-
-    // One line height for the moves and the thinking placeholder, so the
-    // block never changes height between readings.
-    final lineStrut = StrutStyle(
-      fontSize: 13.sp,
-      height: 1.2,
-      forceStrutHeight: true,
-    );
-
-    // The line is a tap target (it toggles board arrows), so it is at least
-    // [_minTapExtent] tall; the text sits centred in it.
-    Widget lineBox(Widget child) => ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: _minTapExtent),
-      child: Align(alignment: AlignmentDirectional.centerStart, child: child),
-    );
-
-    if (tokens.isEmpty) {
-      _tokens = const [];
-      _tokenRanges = const [];
-      return lineBox(
-        Text(
-          'Toby is thinking…',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: quietStyle,
-          strutStyle: lineStrut,
-        ),
-      );
-    }
-
-    // Selection reads through the type alone: the selected move stays bold
-    // while the others drop to the regular weight. The network stage (a
-    // first, quicker reading) is set lighter too, never fainter: every ink
-    // keeps its full contrast on the paper.
-    final hasSelection =
-        selectedUci != null && tokens.any((token) => token.uci == selectedUci);
-
-    final spans = <InlineSpan>[];
-    final ranges = <({int start, int end})>[];
-    var offset = 0;
-    for (final token in tokens) {
-      if (spans.isNotEmpty) {
-        spans.add(TextSpan(text: ', ', style: quietStyle));
-        offset += 2;
-      }
-      final selected = token.uci == selectedUci;
-      final ink = context.accentInk(token.hue, on: paper);
-      final light = muted || (hasSelection && !selected);
-      final chanceText = '${token.chance} ';
-      spans.add(
-        TextSpan(
-          text: chanceText,
-          style: AppTypography.textXsMedium.copyWith(
-            color: ink,
-            fontSize: 12.sp,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            height: 1.2,
-          ),
-        ),
-      );
-      spans.add(
-        TextSpan(
-          text: token.move,
-          style: AppTypography.textXsMedium.copyWith(
-            color: ink,
-            fontSize: 13.sp,
-            fontWeight: selected
-                ? FontWeight.w800
-                : light
-                ? FontWeight.w500
-                : FontWeight.w700,
-            letterSpacing: -0.1,
-            height: 1.2,
-          ),
-        ),
-      );
-      final start = offset;
-      offset += chanceText.length + token.move.length;
-      ranges.add((start: start, end: offset));
-    }
-    _tokens = tokens;
-    _tokenRanges = ranges;
-
-    return Semantics(
-      container: true,
-      label:
-          'Toby predicts ${tokens.map((t) => t.text).join(', ')}. '
-          '$kTobyAttribution',
-      customSemanticsActions: {
-        for (final token in tokens)
-          CustomSemanticsAction(label: 'Show arrow for ${token.move}'): () =>
-              _toggle(token, fen),
-      },
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (details) => _onTapUp(details, fen),
-          child: lineBox(
-            Text.rich(
-              TextSpan(children: spans),
-              key: _lineKey,
-              strutStyle: lineStrut,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _onTapUp(TapUpDetails details, String fen) {
-    final paragraph = _lineKey.currentContext?.findRenderObject();
-    if (paragraph is! RenderParagraph || !paragraph.hasSize) return;
-    final local = paragraph.globalToLocal(details.globalPosition);
-    final extents = <({double left, double right})?>[];
-    for (final range in _tokenRanges) {
-      final boxes = paragraph.getBoxesForSelection(
-        TextSelection(baseOffset: range.start, extentOffset: range.end),
-      );
-      final visible = boxes.where((box) => box.left < paragraph.size.width);
-      if (visible.isEmpty) {
-        extents.add(null);
-        continue;
-      }
-      extents.add((
-        left: visible.map((box) => box.left).reduce(math.min),
-        right: visible
-            .map((box) => box.right)
-            .reduce(math.max)
-            .clamp(0.0, paragraph.size.width)
-            .toDouble(),
-      ));
-    }
-    final index = tobyTokenAtX(extents, local.dx, slop: _tapSlop);
-    if (index == null || index >= _tokens.length) return;
-    _toggle(_tokens[index], fen);
   }
 
   void _toggle(TobyPredictionToken token, String fen) {
@@ -584,154 +389,369 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
   }
 }
 
-/// White / Draw / Black chances as one horizontal capsule, each share as
-/// wide as its chance (with a floor so a sliver stays visible) and its
-/// number centred inside when it fits.
-class TobyWdlCapsule extends StatelessWidget {
-  const TobyWdlCapsule({super.key, required this.wdl});
+/// The panel itself, free of providers: a title, then a Result row (legend
+/// over one stacked bar) and a Next move row (three tappable moves, most
+/// likely first). Both rows share one label column.
+class TobyPredictsPanel extends StatelessWidget {
+  const TobyPredictsPanel({
+    super.key,
+    required this.wdl,
+    required this.tokens,
+    this.thinking = false,
+    this.muted = false,
+    this.selectedUci,
+    this.onMoveTap,
+  });
 
   final TobyWdl? wdl;
+  final List<TobyPredictionToken> tokens;
+
+  /// Toby is reading a new position: the moves row says so.
+  final bool thinking;
+
+  /// A first, quicker reading: the moves are set lighter, never fainter.
+  final bool muted;
+  final String? selectedUci;
+  final ValueChanged<TobyPredictionToken>? onMoveTap;
 
   static const Duration _motion = Duration(milliseconds: 300);
+
+  /// Space above the legend inside the Result row.
+  static const double _legendInset = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    // One tonal step above the notation panel it sits in: no outline, no
+    // shadow.
+    final tray = Color.alphaBlend(
+      colors.surfaceRecessed.withValues(alpha: 0.6),
+      Color.alphaBlend(
+        colors.surfaceRecessed.withValues(alpha: 0.3),
+        colors.background,
+      ),
+    );
+    final labelWidth = 76.sp;
+    final rowLabel = AppTypography.textXsMedium.copyWith(
+      color: context.textInk(0.55),
+      fontSize: 12.sp,
+      fontWeight: FontWeight.w500,
+      height: 1.2,
+    );
+
+    // [top] puts the label on the first line of its row (the legend) rather
+    // than between the legend and the bar.
+    Widget labelled(String label, Widget child, {double? top}) => Row(
+      crossAxisAlignment: top == null
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: top ?? 0),
+          child: SizedBox(
+            width: labelWidth,
+            // Shrinks rather than clips under a large text size.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(label, maxLines: 1, style: rowLabel),
+            ),
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
+
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.fromLTRB(8.sp, 4.sp, 8.sp, 8.sp),
+      padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 14.sp, 2.sp),
+      decoration: BoxDecoration(
+        color: tray,
+        borderRadius: BorderRadius.circular(16.sp),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _title(context),
+          SizedBox(height: 12.sp),
+          labelled('Result', _result(context, tray), top: _legendInset.sp),
+          SizedBox(height: 2.sp),
+          labelled('Next move', _moves(context, tray, rowLabel)),
+        ],
+      ),
+    );
+  }
+
+  /// "Toby predicts", which shows Toby's credit on a tap.
+  Widget _title(BuildContext context) => Semantics(
+    header: true,
+    label: 'Toby predicts. $kTobyAttribution',
+    child: ExcludeSemantics(
+      child: Tooltip(
+        message: kTobyAttribution,
+        triggerMode: TooltipTriggerMode.tap,
+        showDuration: const Duration(seconds: 4),
+        excludeFromSemantics: true,
+        child: Text(
+          'Toby predicts',
+          maxLines: 1,
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimary,
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w600,
+            height: 1.2,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// Legend over the bar: White at the bar's left end, Draw in the middle,
+  /// Black at its right end, so each number sits by its share.
+  Widget _result(BuildContext context, Color tray) {
+    final wdl = this.wdl;
+    final percentages = wdl?.percentages;
+    final name = AppTypography.textXsMedium.copyWith(
+      color: context.textInk(0.6),
+      fontSize: 12.sp,
+      fontWeight: FontWeight.w500,
+      height: 1.2,
+    );
+    final value = name.copyWith(
+      color: context.colors.textPrimary,
+      fontWeight: FontWeight.w700,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    Widget entry(String label, int? share, Alignment alignment) => Expanded(
+      child: Align(
+        alignment: alignment,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alignment,
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: '$label ', style: name),
+                TextSpan(text: share == null ? '…' : '$share%', style: value),
+              ],
+            ),
+            maxLines: 1,
+          ),
+        ),
+      ),
+    );
+
+    return Semantics(
+      container: true,
+      label: percentages == null
+          ? 'Result chances loading'
+          : 'Result chances: ${tobyWdlSemantics(percentages)}',
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: _legendInset.sp),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  entry('White', percentages?.white, Alignment.centerLeft),
+                  entry('Draw', percentages?.draw, Alignment.center),
+                  entry('Black', percentages?.black, Alignment.centerRight),
+                ],
+              ),
+              SizedBox(height: 6.sp),
+              TobyWdlBar(wdl: wdl),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The three likeliest moves, each a full-height tap target.
+  Widget _moves(BuildContext context, Color tray, TextStyle quiet) {
+    if (thinking || tokens.isEmpty) {
+      return SizedBox(
+        height: _minTapExtent,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Toby is thinking…',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: quiet,
+          ),
+        ),
+      );
+    }
+    // A ranked list read left to right, starting on the legend's left edge.
+    // Not on the legend's three columns: under "White" a Black move would
+    // read as White's.
+    final hasSelection =
+        selectedUci != null && tokens.any((token) => token.uci == selectedUci);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final token in tokens.take(3))
+              _move(
+                context,
+                token,
+                tray: tray,
+                selected: token.uci == selectedUci,
+                dimmed: hasSelection && token.uci != selectedUci,
+                // The gap to the next move belongs to this one's tap area.
+                trailing: token == tokens.take(3).last ? 0 : 22.sp,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _move(
+    BuildContext context,
+    TobyPredictionToken token, {
+    required Color tray,
+    required bool selected,
+    required bool dimmed,
+    required double trailing,
+  }) {
+    // Selection reads through the type alone (and the arrow on the board):
+    // the selected move goes heavier, the others lighter. Every ink keeps
+    // its full contrast on the tray.
+    final ink = context.accentInk(token.hue, on: tray);
+    final weight = selected
+        ? FontWeight.w800
+        : dimmed || muted
+        ? FontWeight.w500
+        : FontWeight.w700;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${token.move}, ${token.chance}',
+      hint: selected ? 'Hide arrow' : 'Show arrow on the board',
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onMoveTap == null ? null : () => onMoveTap!(token),
+          child: Container(
+            height: _minTapExtent,
+            padding: EdgeInsets.only(right: trailing),
+            alignment: Alignment.centerLeft,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: token.san,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: ink,
+                      fontSize: 15.sp,
+                      fontWeight: weight,
+                      height: 1.2,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '  ${token.chance}',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.textInk(0.6),
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// White / Draw / Black chances as one thin stacked bar, each share as wide
+/// as its chance (with a floor so a sliver stays visible). The numbers live
+/// in the legend above it.
+class TobyWdlBar extends StatelessWidget {
+  const TobyWdlBar({super.key, required this.wdl});
+
+  final TobyWdl? wdl;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final isLight = context.isLightTheme;
-    final height = 16.sp;
+    final height = 8.sp;
     final radius = BorderRadius.circular(height / 2);
     final drawFill = isLight
         ? const Color(0xFFB3BEBF)
         : const Color(0xFF5C5C60);
+    // One soft rim in the page's own ink, so the end share that would melt
+    // into the tray (white on paper, black on the dark panel) keeps its
+    // edge. Never a contrasting outline.
+    final rim = isLight
+        ? colors.textPrimary.withValues(alpha: 0.14)
+        : Colors.white.withValues(alpha: 0.12);
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = math.min(constraints.maxWidth, 184.sp);
+        final width = constraints.maxWidth;
         final wdl = this.wdl;
         if (wdl == null) {
-          return _credited(
-            label: 'Win chances loading',
-            child: Container(
-              width: width,
-              height: height,
-              decoration: BoxDecoration(
-                color: drawFill.withValues(alpha: 0.35),
-                borderRadius: radius,
-              ),
+          return Container(
+            height: height,
+            decoration: BoxDecoration(
+              color: drawFill.withValues(alpha: 0.35),
+              borderRadius: radius,
             ),
           );
         }
-        final percentages = wdl.percentages;
         final widths = tobyWdlSegmentWidths(
-          percentages,
+          wdl.percentages,
           width,
-          minSegment: 6.sp,
+          minSegment: 4.sp,
         );
-        final textScaler = MediaQuery.textScalerOf(context);
-        final labelStyle = AppTypography.textXsMedium.copyWith(
-          fontSize: 10.sp,
-          fontWeight: FontWeight.w600,
-          fontFeatures: const [FontFeature.tabularFigures()],
-          height: 1.0,
-          letterSpacing: 0,
-        );
-        bool fits(int value, double segment) {
-          if (value <= 0) return false;
-          final painter = TextPainter(
-            text: TextSpan(text: '$value', style: labelStyle),
-            textDirection: TextDirection.ltr,
-            textScaler: textScaler,
-            maxLines: 1,
-          )..layout();
-          final ok =
-              painter.width + 8.sp <= segment && painter.height <= height;
-          painter.dispose();
-          return ok;
-        }
-
-        Widget label(int value, double segment, Color ink) {
-          if (!fits(value, segment)) return const SizedBox.shrink();
-          return Center(
-            child: Text(
-              '$value',
-              maxLines: 1,
-              softWrap: false,
-              textAlign: TextAlign.center,
-              style: labelStyle.copyWith(color: ink),
-              textHeightBehavior: const TextHeightBehavior(
-                applyHeightToFirstAscent: false,
-                applyHeightToLastDescent: false,
-              ),
+        return ClipRRect(
+          borderRadius: radius,
+          child: Container(
+            height: height,
+            foregroundDecoration: BoxDecoration(
+              border: Border.all(color: rim),
+              borderRadius: radius,
             ),
-          );
-        }
-
-        // One soft rim in the page's own ink, so the end share that would
-        // melt into the page (white on paper, black on the dark panel) keeps
-        // its edge. Never a contrasting outline.
-        final rim = isLight
-            ? colors.textPrimary.withValues(alpha: 0.14)
-            : Colors.white.withValues(alpha: 0.12);
-        final whiteInk = isLight ? colors.textPrimary : colors.evalBlack;
-        final drawInk = isLight ? colors.textPrimary : Colors.white;
-        const blackInk = Colors.white;
-
-        return _credited(
-          label: tobyWdlSemantics(percentages),
-          child: ClipRRect(
-            borderRadius: radius,
-            child: Container(
-              width: width,
-              height: height,
-              foregroundDecoration: BoxDecoration(
-                border: Border.all(color: rim),
-                borderRadius: radius,
-              ),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: _motion,
-                    curve: Curves.easeOutCubic,
-                    width: widths[0],
-                    color: colors.evalWhite,
-                    child: label(percentages.white, widths[0], whiteInk),
-                  ),
-                  AnimatedContainer(
-                    duration: _motion,
-                    curve: Curves.easeOutCubic,
-                    width: widths[1],
-                    color: drawFill,
-                    child: label(percentages.draw, widths[1], drawInk),
-                  ),
-                  Expanded(
-                    child: ColoredBox(
-                      color: colors.evalBlack,
-                      child: label(percentages.black, widths[2], blackInk),
-                    ),
-                  ),
-                ],
-              ),
+            // Stretch: an empty share box would otherwise take no height.
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AnimatedContainer(
+                  duration: TobyPredictsPanel._motion,
+                  curve: Curves.easeOutCubic,
+                  width: widths[0],
+                  color: colors.evalWhite,
+                ),
+                AnimatedContainer(
+                  duration: TobyPredictsPanel._motion,
+                  curve: Curves.easeOutCubic,
+                  width: widths[1],
+                  color: drawFill,
+                ),
+                Expanded(child: ColoredBox(color: colors.evalBlack)),
+              ],
             ),
           ),
         );
       },
     );
   }
-
-  /// The capsule as one tap target that shows Toby's credit, heard with the
-  /// chances by screen readers.
-  static Widget _credited({required String label, required Widget child}) =>
-      Semantics(
-        container: true,
-        label: '$label. $kTobyAttribution',
-        child: ExcludeSemantics(
-          child: Tooltip(
-            message: kTobyAttribution,
-            triggerMode: TooltipTriggerMode.tap,
-            showDuration: const Duration(seconds: 4),
-            excludeFromSemantics: true,
-            child: child,
-          ),
-        ),
-      );
 }

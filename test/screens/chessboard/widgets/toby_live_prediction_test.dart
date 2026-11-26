@@ -54,6 +54,7 @@ void main() {
         '7% 24.c4',
       ]);
       expect(tokens.map((t) => t.uci), ['e1g1', 'g1f3', 'c2c4']);
+      expect(tokens.map((t) => t.san), ['O-O', 'Nf3', 'c4']);
       expect(tokens.map((t) => t.rank), [0, 1, 2]);
     });
 
@@ -153,25 +154,6 @@ void main() {
     );
   });
 
-  group('tobyTokenAtX', () {
-    final extents = <({double left, double right})?>[
-      (left: 0, right: 60),
-      (left: 70, right: 130),
-      null,
-    ];
-    test('picks the token under the tap', () {
-      expect(tobyTokenAtX(extents, 30, slop: 8), 0);
-      expect(tobyTokenAtX(extents, 100, slop: 8), 1);
-    });
-    test('picks the nearest token within the slop, in the gap too', () {
-      expect(tobyTokenAtX(extents, 63, slop: 8), 0);
-      expect(tobyTokenAtX(extents, 68, slop: 8), 1);
-    });
-    test('ignores taps far from any visible token', () {
-      expect(tobyTokenAtX(extents, 200, slop: 8), isNull);
-    });
-  });
-
   group('tobyLivePredictionOpen', () {
     bool open({
       GameStatus status = GameStatus.ongoing,
@@ -234,41 +216,126 @@ void main() {
     });
   });
 
-  testWidgets('capsule centres each number in its share', (tester) async {
-    final semantics = tester.ensureSemantics();
-    ResponsiveHelper.initFromSize(const Size(390, 844));
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: 300,
-              child: TobyWdlCapsule(
-                wdl: TobyWdl(white: .32, draw: .38, black: .30),
+  group('TobyPredictsPanel', () {
+    Future<void> pump(
+      WidgetTester tester, {
+      List<TobyPredictionToken>? tokens,
+      bool thinking = false,
+      String? selectedUci,
+      ValueChanged<TobyPredictionToken>? onMoveTap,
+    }) async {
+      ResponsiveHelper.initFromSize(const Size(390, 844));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                width: 390,
+                child: TobyPredictsPanel(
+                  wdl: const TobyWdl(white: .17, draw: .76, black: .07),
+                  tokens:
+                      tokens ??
+                      tobyPredictionTokens(
+                        _reading(const [
+                          TobyCandidate(
+                            uci: 'c4d4',
+                            san: 'Qxd4',
+                            probability: .88,
+                          ),
+                          TobyCandidate(
+                            uci: 'c4c2',
+                            san: 'Qxc2',
+                            probability: .11,
+                          ),
+                          TobyCandidate(
+                            uci: 'c6c5',
+                            san: 'c5',
+                            probability: .004,
+                          ),
+                        ]),
+                        _blackToMove24,
+                      ),
+                  thinking: thinking,
+                  selectedUci: selectedUci,
+                  onMoveTap: onMoveTap,
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      // The chances, then Toby's credit, which the capsule always carries.
-      find.bySemanticsLabel('White 32, draw 38, Black 30. $kTobyAttribution'),
-      findsOneWidget,
-    );
-    for (final label in ['32', '38', '30']) {
-      final text = find.text(label);
-      expect(text, findsOneWidget);
-      final share = find
-          .ancestor(of: text, matching: find.byType(Center))
-          .first;
-      final textCenter = tester.getCenter(text);
-      final shareCenter = tester.getCenter(share);
-      expect((textCenter.dx - shareCenter.dx).abs(), lessThan(0.5));
-      expect((textCenter.dy - shareCenter.dy).abs(), lessThan(0.5));
+      );
+      await tester.pumpAndSettle();
     }
-    semantics.dispose();
+
+    testWidgets('names both rows and every outcome', (tester) async {
+      await pump(tester);
+      for (final text in ['Toby predicts', 'Result', 'Next move']) {
+        expect(find.text(text), findsOneWidget);
+      }
+      for (final text in ['White 17%', 'Draw 76%', 'Black 7%']) {
+        expect(find.text(text, findRichText: true), findsOneWidget);
+      }
+      for (final text in ['Qxd4  88%', 'Qxc2  11%', 'c5  <1%']) {
+        expect(find.text(text, findRichText: true), findsOneWidget);
+      }
+    });
+
+    testWidgets('moves read left to right from the legend\'s edge', (
+      tester,
+    ) async {
+      await pump(tester);
+      double left(String t) =>
+          tester.getTopLeft(find.text(t, findRichText: true)).dx;
+      expect(left('Qxd4  88%'), moreOrLessEquals(left('White 17%')));
+      expect(left('Qxd4  88%'), lessThan(left('Qxc2  11%')));
+      expect(left('Qxc2  11%'), lessThan(left('c5  <1%')));
+      // The two row labels share one left edge.
+      expect(
+        tester.getTopLeft(find.text('Result')).dx,
+        tester.getTopLeft(find.text('Next move')).dx,
+      );
+    });
+
+    testWidgets('a move is a 44dp tap target that reports itself', (
+      tester,
+    ) async {
+      TobyPredictionToken? tapped;
+      await pump(tester, onMoveTap: (token) => tapped = token);
+      final move = find.text('Qxc2  11%', findRichText: true);
+      final target = find.ancestor(
+        of: move,
+        matching: find.byType(GestureDetector),
+      );
+      expect(tester.getSize(target.first).height, greaterThanOrEqualTo(44));
+      await tester.tap(move);
+      expect(tapped?.uci, 'c4c2');
+    });
+
+    testWidgets('says Toby is thinking while it reads a new position', (
+      tester,
+    ) async {
+      await pump(tester, tokens: const [], thinking: true);
+      expect(find.text('Toby is thinking…'), findsOneWidget);
+      expect(find.text('White 17%', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('screen readers hear the chances and Toby\'s credit', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pump(tester);
+      expect(
+        find.bySemanticsLabel('Toby predicts. $kTobyAttribution'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('Result chances: White 17, draw 76, Black 7'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('24…Qxd4, 88%'), findsOneWidget);
+      semantics.dispose();
+    });
   });
 }
