@@ -1,7 +1,7 @@
 /// Toby's live prediction, in the notation after the last move:
 /// "Toby Predicts: 16…Qxd4 or 16…Qxc2 or 16…c5", each move in its own hue
 /// (tapping one draws its arrow on the board in that hue), and under it the
-/// result chances by player, "[flag] Gukesh 17% · Draw 76% · [flag] Sindarov
+/// result chances by player, "[flag] Gukesh 17%, Draw 76%, [flag] Sindarov
 /// 7%". Each move carries its chance. "Toby Predicts:" is
 /// dashed: a tap explains the chances and credits Toby.
 ///
@@ -418,7 +418,7 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
 /// Free of providers: "Toby Predicts:" (dashed, a tap explains it), then
 /// the likeliest moves joined by "or", each in its arrow hue and tappable
 /// with its chance (no tokens: "thinking…"); under it the result chances
-/// by player, "[flag] Gukesh 17% · Draw 76% · [flag] Sindarov 7%".
+/// by player, "[flag] Gukesh 17%, Draw 76%, [flag] Sindarov 7%".
 class TobyPredictsLine extends StatelessWidget {
   const TobyPredictsLine({
     super.key,
@@ -542,7 +542,7 @@ class TobyPredictsLine extends StatelessWidget {
         TextSpan(text: percent == null ? '…' : '$percent%', style: value),
       ],
     );
-    final separator = TextSpan(text: '  ·  ', style: quiet);
+    final separator = TextSpan(text: ', ', style: quiet);
 
     return Padding(
       padding: EdgeInsets.only(top: 2.sp, bottom: 4.sp),

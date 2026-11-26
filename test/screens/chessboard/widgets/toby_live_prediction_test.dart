@@ -222,7 +222,7 @@ void main() {
     testWidgets('puts the result chances under the moves', (tester) async {
       await pump(tester);
       final chances = find.text(
-        'White 17%  ·  Draw 76%  ·  Black 7%',
+        'White 17%, Draw 76%, Black 7%',
         findRichText: true,
       );
       expect(chances, findsOneWidget);
