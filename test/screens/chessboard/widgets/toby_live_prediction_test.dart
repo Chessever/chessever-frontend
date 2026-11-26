@@ -190,6 +190,7 @@ void main() {
             body: SizedBox(
               width: width,
               child: TobyPredictsLine(
+                wdl: const TobyWdl(white: .17, draw: .76, black: .07),
                 tokens: moves ?? tokens(),
                 onMoveTap: onMoveTap,
               ),
@@ -211,6 +212,23 @@ void main() {
         expect(tester.getCenter(find.text(move)).dy, first.dy);
       }
       expect(find.text('Next move'), findsNothing);
+    });
+
+    testWidgets('puts the result chances under the moves', (tester) async {
+      await pump(tester);
+      final chances = find.text(
+        'White 17%  ·  Draw 76%  ·  Black 7%',
+        findRichText: true,
+      );
+      expect(chances, findsOneWidget);
+      expect(
+        tester.getTopLeft(chances).dy,
+        greaterThan(tester.getBottomLeft(find.text('24…Qxd4')).dy),
+      );
+      expect(
+        tester.getTopLeft(chances).dx,
+        moreOrLessEquals(tester.getTopLeft(find.text('Toby Predicts:')).dx),
+      );
     });
 
     testWidgets('a tapped move reports itself', (tester) async {
@@ -242,11 +260,12 @@ void main() {
     });
   });
 
-  test('the chance explanation names every outcome and the credit', () {
+  test('the explanation names every outcome and the credit', () {
     final text = tobyChanceExplanation((white: 17, draw: 76, black: 7));
     expect(text, contains('White wins 17%'));
     expect(text, contains('draw 76%'));
     expect(text, contains('Black wins 7%'));
     expect(text, contains(kTobyAttribution));
+    expect(tobyChanceExplanation(null), kTobyAttribution);
   });
 }

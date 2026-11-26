@@ -5,7 +5,6 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
-import 'package:chessever2/screens/chessboard/widgets/toby_live_prediction.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -140,12 +139,6 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
         : null;
     final effectiveGameModel = scopedClockGame ?? baseGameModel;
-    // Toby's live chances, only on the focused board's rows (the notation
-    // publishes them while the game is live at its last move).
-    final tobyChances =
-        playerView == PlayerView.boardView && chessBoardState != null
-        ? ref.watch(tobyLiveChancesProvider(baseGameModel.gameId))
-        : null;
     // "No spoilers" is keyed by broadcast tour id. Archive sources (gamebase,
     // TWIC, saved) put an event *name* in tourId, so the lookup never applies —
     // waiting on it only delays result/eval-bar padding and causes layout shift
@@ -1064,42 +1057,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   );
                 }
 
-                // Toby's live win chance for this side, after the rating:
-                // "(17%)", dashed because a tap explains it. Its own tap
-                // target, beside the name's scorecard tap.
-                final tobyShares = tobyChances?.percentages;
-                final chance = tobyShares == null
-                    ? null
-                    : (isWhitePlayer ? tobyShares.white : tobyShares.black);
-                if (chance == null) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: nameTarget,
-                  );
-                }
                 return Align(
                   alignment: Alignment.centerLeft,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(child: nameTarget),
-                      // The gap stays outside the dashed underline.
-                      SizedBox(width: 4.w),
-                      TobyDashedHint(
-                        text: '($chance%)',
-                        style: ratingStyle.copyWith(
-                          // The row sits on the page background.
-                          color: context.accentInk(kTobyChanceHue),
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                        message: tobyChanceExplanation(tobyShares!),
-                        semanticsLabel:
-                            'Toby: ${isWhitePlayer ? 'White' : 'Black'} '
-                            'wins $chance%',
-                      ),
-                    ],
-                  ),
+                  child: nameTarget,
                 );
               },
             ),
