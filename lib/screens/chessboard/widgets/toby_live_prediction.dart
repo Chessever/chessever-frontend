@@ -1,7 +1,7 @@
 /// Toby's live prediction, in the notation after the last move:
 /// "Toby Predicts: 16…Qxd4 or 16…Qxc2 or 16…c5", each move in its own hue
 /// (tapping one draws its arrow on the board in that hue), and under it the
-/// result chances by player, "[flag] Gukesh 17%, Draw 76%, [flag] Sindarov
+/// result chances by player, "[flag] Gukesh 17%   Draw 76%   [flag] Sindarov
 /// 7%". Each move carries its chance. "Toby Predicts:" is
 /// dashed: a tap explains the chances and credits Toby.
 ///
@@ -287,9 +287,19 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
 
   /// The last position chances shown, held while the next reading comes.
   TobyWdl? _heldWdl;
+
+  /// Clears a tapped move's arrow on its own after [_arrowLife].
+  Timer? _arrowTimer;
+  static const Duration _arrowLife = Duration(seconds: 6);
   bool _visible = false;
 
   String get _gameId => widget.params.game.gameId;
+
+  @override
+  void dispose() {
+    _arrowTimer?.cancel();
+    super.dispose();
+  }
 
   TobyRequest? _requestFor(String fen) {
     if (_requestFen == fen) return _request;
@@ -411,14 +421,23 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     final current = notifier.state;
     final same =
         current != null && current.fen == fen && current.uci == token.uci;
-    notifier.state = same ? null : (fen: fen, uci: token.uci, color: token.hue);
+    final next = same ? null : (fen: fen, uci: token.uci, color: token.hue);
+    notifier.state = next;
+    // The arrow goes away by itself (or on the next move, or a second tap).
+    _arrowTimer?.cancel();
+    if (next == null) return;
+    _arrowTimer = Timer(_arrowLife, () {
+      if (!mounted) return;
+      final arrow = ref.read(tobyArrowProvider(_gameId).notifier);
+      if (arrow.state == next) arrow.state = null;
+    });
   }
 }
 
 /// Free of providers: "Toby Predicts:" (dashed, a tap explains it), then
 /// the likeliest moves joined by "or", each in its arrow hue and tappable
 /// with its chance (no tokens: "thinking…"); under it the result chances
-/// by player, "[flag] Gukesh 17%, Draw 76%, [flag] Sindarov 7%".
+/// by player, "[flag] Gukesh 17%   Draw 76%   [flag] Sindarov 7%".
 class TobyPredictsLine extends StatelessWidget {
   const TobyPredictsLine({
     super.key,
@@ -542,7 +561,8 @@ class TobyPredictsLine extends StatelessWidget {
         TextSpan(text: percent == null ? '…' : '$percent%', style: value),
       ],
     );
-    final separator = TextSpan(text: ', ', style: quiet);
+    // Space alone parts the three: no glyph between them.
+    final separator = WidgetSpan(child: SizedBox(width: 14.sp));
 
     return Padding(
       padding: EdgeInsets.only(top: 2.sp, bottom: 4.sp),
