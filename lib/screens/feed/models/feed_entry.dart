@@ -61,17 +61,13 @@ final class FeedCollectionEntry extends FeedEntry {
   String get key => 'collection:${card.collection.id}';
 }
 
-/// An ad on a page of its own, laid between posts by [withFeedAds]. Never
-/// part of [composeFeedEntries]'s arrangement.
+/// An ad page issued by the backend or inserted into a legacy feed.
 final class FeedAdEntry extends FeedEntry {
-  const FeedAdEntry(this.after);
-
-  /// The key of the post it follows: unique in an arrangement, and gone with
-  /// it when a refresh draws new posts.
-  final String after;
+  const FeedAdEntry(String after) : key = 'ad:$after';
+  const FeedAdEntry.server(this.key);
 
   @override
-  String get key => 'ad:$after';
+  final String key;
 }
 
 /// Distance between planned ad pages, counting ads as pages.
@@ -99,6 +95,29 @@ List<FeedEntry> withFeedAds(
     }
   }
   return List.unmodifiable(out);
+}
+
+/// Retain the backend's positions, hiding slots without a post on both sides.
+List<FeedEntry> serverFeedPages(
+  List<FeedEntry> entries, {
+  required bool adsVisible,
+  required Set<String> withdrawn,
+}) {
+  final lastPost = entries.lastIndexWhere((entry) => entry is! FeedAdEntry);
+  final pages = <FeedEntry>[];
+  for (var index = 0; index < entries.length; index++) {
+    final entry = entries[index];
+    if (entry is FeedAdEntry &&
+        (!adsVisible ||
+            withdrawn.contains(entry.key) ||
+            pages.isEmpty ||
+            pages.last is FeedAdEntry ||
+            index > lastPost)) {
+      continue;
+    }
+    pages.add(entry);
+  }
+  return List.unmodifiable(pages);
 }
 
 /// Page [index] of [pages] as an index into the posts under them: a post's

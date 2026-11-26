@@ -715,7 +715,10 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         : await server.next(_boardCursor!);
     for (var attempt = 0; ; attempt++) {
       if (generation != _generation) return const [];
-      final items = await _hydrateServerEntries(server, page.cards);
+      final hydrated = await _hydrateServerEntries(server, page.cards);
+      final items = hydrated.any((item) => item is! FeedAdEntry)
+          ? hydrated
+          : const <FeedEntry>[];
       if (generation != _generation) return const [];
       final cursor = page.nextCursor;
       if (items.isNotEmpty || cursor == null || attempt == 4) {
@@ -763,7 +766,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final (boards, news) = await (
       _hydrateServerBoards(server, [
         for (final card in cards)
-          if (card.articleCount == null &&
+          if (!card.isAd &&
+              card.articleCount == null &&
               card.short == null &&
               card.collection == null)
             card.id,
@@ -773,7 +777,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final boardsById = {for (final board in boards) board.game.gameId: board};
     return [
       for (final card in cards)
-        if (card.collection case final collection?)
+        if (card.isAd)
+          FeedAdEntry.server(card.id)
+        else if (card.collection case final collection?)
           FeedCollectionEntry(collection)
         else if (card.short case final short?)
           FeedShortEntry(short)

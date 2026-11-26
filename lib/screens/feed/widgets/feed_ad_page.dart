@@ -182,7 +182,7 @@ class _FeedAdPageState extends ConsumerState<FeedAdPage> {
     final ad = _ad;
     final size = _size;
     return Semantics(
-      key: ValueKey('feed_ad_${widget.entry.after}'),
+      key: ValueKey('feed_${widget.entry.key}'),
       container: true,
       label: 'Advertisement',
       child: Padding(

@@ -28,6 +28,9 @@ final feedEntriesProvider =
 class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
   List<FeedEntry> _last = const [];
   int _frozenThrough = -1;
+  bool _usesServerFeed = false;
+
+  bool get usesServerFeed => _usesServerFeed;
 
   /// Articles the viewer reached in an arrangement a refresh has replaced.
   /// The next arrangement opens its news slots with the ones not reached
@@ -38,7 +41,8 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
   List<FeedEntry> build() {
     final games = ref.watch(feedProvider).valueOrNull ?? const [];
     final notifier = ref.read(feedProvider.notifier);
-    if (notifier.usesServerBoardFeed) return notifier.serverEntries;
+    _usesServerFeed = notifier.usesServerBoardFeed;
+    if (_usesServerFeed) return notifier.serverEntries;
     if (games.isEmpty) {
       // A refresh (or a failed load) starts the arrangement over.
       _retire();
@@ -88,13 +92,20 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
   }
 }
 
-/// Feed's pages: posts with ads at positions 3, 8, 13… for viewers
-/// who see ads ([feedAdsVisibleProvider]).
-/// Ads sit at fixed places among the posts, so the frozen pages keep theirs.
+/// Use the backend's slots for the server feed and the existing local ad
+/// cadence for the legacy feed. Both honor subscription and ad availability.
 final feedPagesProvider = Provider<List<FeedEntry>>((ref) {
   final entries = ref.watch(feedEntriesProvider);
-  if (!ref.watch(feedAdsVisibleProvider)) return entries;
-  return withFeedAds(entries, withdrawn: ref.watch(feedAdWithdrawnProvider));
+  final adsVisible = ref.watch(feedAdsVisibleProvider);
+  final withdrawn = ref.watch(feedAdWithdrawnProvider);
+  if (ref.read(feedEntriesProvider.notifier).usesServerFeed) {
+    return serverFeedPages(
+      entries,
+      adsVisible: adsVisible,
+      withdrawn: withdrawn,
+    );
+  }
+  return adsVisible ? withFeedAds(entries, withdrawn: withdrawn) : entries;
 });
 
 /// Platform/configuration availability, separate from subscriber eligibility.

@@ -1,5 +1,17 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/feed/models/feed_collection.dart';
 import 'package:chessever2/screens/feed/providers/board_feed_client.dart';
+import 'package:chessever2/screens/feed/widgets/feed_collection_page.dart';
+import 'package:chessever2/screens/stories/story_models.dart';
+import 'package:chessever2/screens/stories/story_pages.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'support/story_parity_harness.dart';
 
 BoardFeedPage page(Map<String, Object> fields) =>
     BoardFeedPage({'sessionId': 'session', 'pageId': 'page', ...fields});
@@ -13,13 +25,34 @@ void main() {
           {'type': 'board', 'id': 'first'},
           {'type': 'news', 'id': '42', 'articleCount': 3},
           {'type': 'unsupported', 'id': 'other'},
+          {'type': 'ad', 'id': 'ad:page:8'},
+          {'type': 'ad', 'id': 'bad-slot'},
           {'type': 'board', 'id': 'second'},
         ],
       }).cards,
       [
-        (id: 'first', articleCount: null, short: null, collection: null),
-        (id: '42', articleCount: 3, short: null, collection: null),
-        (id: 'second', articleCount: null, short: null, collection: null),
+        (
+          id: 'first',
+          isAd: false,
+          articleCount: null,
+          short: null,
+          collection: null,
+        ),
+        (id: '42', isAd: false, articleCount: 3, short: null, collection: null),
+        (
+          id: 'ad:page:8',
+          isAd: true,
+          articleCount: null,
+          short: null,
+          collection: null,
+        ),
+        (
+          id: 'second',
+          isAd: false,
+          articleCount: null,
+          short: null,
+          collection: null,
+        ),
       ],
     );
   });
@@ -72,6 +105,64 @@ void main() {
     expect(cards[1].collection?.resume, (gameId: 'game-2', moveIndex: 12));
   });
 
+  testWidgets('browse all collection games on one Feed card', (tester) async {
+    final collection = Collection(
+      id: 'collection',
+      slug: 'collection',
+      kind: CollectionKind.book,
+      title: 'Twenty games',
+      gameCount: 20,
+      access: CollectionAccess.premium,
+      contentLocked: true,
+    );
+    final server = _FeedCollectionServer(collection);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          collectionsRepositoryProvider.overrideWithValue(server),
+          boardSettingsProviderNew.overrideWith(DefaultBoard.new),
+          premiumAccessProvider.overrideWithValue(false),
+          storyAnalyzerProvider.overrideWithValue((_) async => {}),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: FeedCollectionPage(
+                  card: FeedCollection(collection, null),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    String visibleGame() => tester
+        .widget<StoryFrameView>(find.byType(StoryFrameView))
+        .frame
+        .game
+        .id;
+    expect(visibleGame(), 'game-1');
+    expect(server.browseReads, 0);
+    for (var number = 2; number <= 20; number++) {
+      await tester.tap(find.byTooltip('Next collection game'));
+      await tester.pumpAndSettle();
+      expect(visibleGame(), 'game-$number');
+      expect(find.text('Game $number of 20'), findsOneWidget);
+    }
+    await tester.tap(find.byTooltip('Next collection game'));
+    await tester.pumpAndSettle();
+    expect(visibleGame(), 'game-1');
+    await tester.tap(find.byTooltip('Previous collection game'));
+    await tester.pumpAndSettle();
+    expect(visibleGame(), 'game-20');
+    expect(server.browseReads, 1);
+    expect(server.playableReads, 0);
+    expect(find.text('Upgrade'), findsOneWidget);
+  });
+
   test(
     'keeps board-only compatibility but respects an empty mixed response',
     () {
@@ -79,7 +170,15 @@ void main() {
         page({
           'gameIds': ['first'],
         }).cards,
-        [(id: 'first', articleCount: null, short: null, collection: null)],
+        [
+          (
+            id: 'first',
+            isAd: false,
+            articleCount: null,
+            short: null,
+            collection: null,
+          ),
+        ],
       );
       expect(
         page({
@@ -90,4 +189,27 @@ void main() {
       );
     },
   );
+}
+
+class _FeedCollectionServer extends StoryServer {
+  _FeedCollectionServer(Collection collection)
+    : super(collection: collection, entitled: () => false);
+
+  final cards = [
+    for (var number = 1; number <= 20; number++)
+      storyCard('game-$number', 'White $number', botvinnikPgn),
+  ];
+  int browseReads = 0;
+
+  @override
+  Future<List<CollectionGameCard>?> fetchStoryGames(
+    String slug, {
+    required String day,
+  }) async => cards.take(1).toList();
+
+  @override
+  Future<List<CollectionGame>> fetchGames(String slug) async {
+    browseReads++;
+    return [for (final card in cards) CollectionGame.fromPreviewCard(card)!];
+  }
 }

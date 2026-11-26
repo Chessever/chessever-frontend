@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 typedef BoardFeedPosition = ({String sessionId, String pageId});
 typedef BoardFeedCard = ({
   String id,
+  bool isAd,
   int? articleCount,
   FeedShort? short,
   FeedCollection? collection,
@@ -39,25 +40,61 @@ class BoardFeedPage {
     if (items is! List) {
       return [
         for (final id in List<String>.from(body['gameIds'] as List))
-          (id: id, articleCount: null, short: null, collection: null),
+          (
+            id: id,
+            isAd: false,
+            articleCount: null,
+            short: null,
+            collection: null,
+          ),
       ];
     }
     return [
       for (final item in items)
         if (item case {'type': 'board', 'id': final String id})
-          (id: id, articleCount: null, short: null, collection: null)
+          (
+            id: id,
+            isAd: false,
+            articleCount: null,
+            short: null,
+            collection: null,
+          )
+        else if (item case {
+          'type': 'ad',
+          'id': final String id,
+        } when id.startsWith('ad:') && id.length > 3)
+          (
+            id: id,
+            isAd: true,
+            articleCount: null,
+            short: null,
+            collection: null,
+          )
         else if (item case {
           'type': 'news',
           'id': final String id,
           'articleCount': final int count,
         })
-          (id: id, articleCount: count, short: null, collection: null)
+          (
+            id: id,
+            isAd: false,
+            articleCount: count,
+            short: null,
+            collection: null,
+          )
         else if (FeedShort.fromJson(item) case final FeedShort short)
-          (id: short.id, articleCount: null, short: short, collection: null)
+          (
+            id: short.id,
+            isAd: false,
+            articleCount: null,
+            short: short,
+            collection: null,
+          )
         else if (FeedCollection.fromJson(item)
             case final FeedCollection collection)
           (
             id: collection.collection.id,
+            isAd: false,
             articleCount: null,
             short: null,
             collection: collection,

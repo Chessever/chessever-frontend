@@ -82,9 +82,8 @@ import 'package:motor/motor.dart';
 /// After the last post stands one more page ([FeedTail]): the next post's
 /// skeleton while more can load, the end of the feed once nothing is left.
 ///
-/// Feed is open to everyone. A viewer without a paid subscription gets an ad page
-/// at positions 3, 8, 13… ([feedPagesProvider], [FeedAdPage]) and swipes past
-/// it like any post: no prompt ever stands between them and the next one.
+/// Viewers without a paid subscription swipe past [FeedAdPage] like any
+/// post. Slot placement comes from [feedPagesProvider].
 ///
 /// Watch ([watch], the board's menu) opens Feed on a game of the viewer's
 /// choosing: [lead] is the first post and the feed carries on after it as it
@@ -535,16 +534,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   void _remember(int index, List<FeedEntry> pages) {
     if (index >= pages.length) return;
     var page = pages[index];
-    if (page is FeedAdEntry && _lead != null && index > 0) {
-      // Under a lead the post an ad follows on screen may not be the one it
-      // follows in Feed (that one may be the lead's hidden copy): the post
-      // before it here stands for it.
-      page = pages[index - 1];
-    }
+    // Restore to the preceding post even if the ad is withdrawn or the
+    // same feed is opened with ads disabled.
+    if (page is FeedAdEntry && index > 0) page = pages[index - 1];
     if (identical(page, _lead)) return;
-    ref.read(feedCurrentEntryKeyProvider.notifier).state = page is FeedAdEntry
-        ? page.after
-        : page.key;
+    ref.read(feedCurrentEntryKeyProvider.notifier).state = page.key;
   }
 
   /// Freezes the pages the viewer has reached and keeps games coming: the

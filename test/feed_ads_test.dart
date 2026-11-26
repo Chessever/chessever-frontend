@@ -45,6 +45,45 @@ void main() {
     expect(container.read(feedAdsVisibleProvider), isFalse);
   });
 
+  test('server slots use existing subscriber and no-fill gates', () {
+    const slot = FeedAdEntry.server('ad:page:8');
+    const trailingSlot = FeedAdEntry.server('ad:page:16');
+    final content = posts(4);
+    final feed = [
+      content[0],
+      content[1],
+      content[2],
+      slot,
+      content[3],
+      trailingSlot,
+    ];
+    final subscription = _Subscription(SubscriptionState(isLoading: true));
+    final container = ProviderContainer(
+      overrides: [
+        feedAdsAvailableProvider.overrideWithValue(true),
+        subscriptionProvider.overrideWith((ref) => subscription),
+        feedEntriesProvider.overrideWith(() => _ServerEntries(feed)),
+      ],
+    );
+    addTearDown(container.dispose);
+    List<FeedEntry> pages() => container.read(feedPagesProvider);
+    expect(pages(), content);
+
+    subscription.update(SubscriptionState(isLoading: false));
+    expect(keys(pages()), [
+      'news:1',
+      'news:2',
+      'news:3',
+      'ad:page:8',
+      'news:4',
+    ]);
+    container.read(feedAdWithdrawnProvider.notifier).state = {slot.key};
+    expect(pages(), content);
+    container.read(feedAdWithdrawnProvider.notifier).state = {};
+    subscription.update(SubscriptionState(isSubscribed: true));
+    expect(pages(), content);
+  });
+
   group('withFeedAds', () {
     test('ads occupy positions 3, 8, 13, 18 counting all pages', () {
       final pages = withFeedAds(posts(16));
@@ -108,6 +147,18 @@ FeedNews _news(int id) => FeedNews(
   content: 'Body',
   publishedAt: DateTime(2026, 9, 20),
 );
+
+class _ServerEntries extends FeedEntriesNotifier {
+  _ServerEntries(this.entries);
+
+  final List<FeedEntry> entries;
+
+  @override
+  bool get usesServerFeed => true;
+
+  @override
+  List<FeedEntry> build() => entries;
+}
 
 class _Subscription extends StateNotifier<SubscriptionState>
     implements SubscriptionNotifier {

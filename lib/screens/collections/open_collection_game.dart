@@ -75,10 +75,12 @@ Future<CollectionCheckpoint?> openFeedCollectionGame(
 }) async {
   final client = BoardFeedClient.forCurrentUser();
   final userId = ref.read(currentUserProvider)?.id;
+  // A checkpoint can resume the selected game without changing which game opens.
+  if (checkpoint?.gameId != featuredGameId) checkpoint = null;
   if (client != null) {
     try {
-      checkpoint =
-          await client.loadCollectionProgress(collection.id) ?? checkpoint;
+      final latest = await client.loadCollectionProgress(collection.id);
+      if (latest?.gameId == featuredGameId) checkpoint = latest;
     } catch (_) {
       // The feed card already supplies the last known position.
     }
@@ -135,7 +137,11 @@ Future<CollectionCheckpoint?> _openCollection(
       final featuredIndex = games.indexWhere(
         (game) => game.gameId == featuredGameId,
       );
-      if (featuredIndex >= 0) index = featuredIndex;
+      if (featuredIndex < 0) {
+        showAppSnack(context, 'This game is no longer in the collection.');
+        return null;
+      }
+      index = featuredIndex;
     }
     if (checkpoint != null) {
       final resumeIndex = games.indexWhere(

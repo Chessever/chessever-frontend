@@ -1,10 +1,12 @@
 # Feed ads
 
-Discovery › Feed shows a non-rewarded ad on a page of its own at positions
-3, 8, 13, 18… (`kFeedAdEvery` counts pages, including ads), swiped past like
-any post. Only viewers without a paid subscription see it, on Android and iOS,
-once the subscription has first been checked. Nothing gates scrolling: the old Watch ad / Upgrade prompt
-between posts is gone.
+Discovery › Feed shows a non-rewarded ad on a page of its own, swiped past like
+any post. The backend feed uses the `type: ad` slots in its ordered response,
+with a slot every eight issued content cards across pages. A slot at the end
+waits until the next post loads. The on-device feed inserts its own slots at
+positions 3, 8, 13, 18… (`kFeedAdEvery` counts pages, including ads).
+On Android and iOS, the app shows slots only after checking that the viewer
+has no paid subscription.
 
 Each ad page carries the ad surfaces' shared action (`ad_disclosure.dart`):
 "Remove Ads" under the ad, which opens the subscription paywall
@@ -59,9 +61,10 @@ placement off. New units can take up to an hour to start serving.
 
 ## Device checks
 
-- Guest or free account: ad pages at positions 3, 8, 13…, with both lines; swiping on
-  and back works over the ad; tapping the ad opens it; Remove Ads opens the
-  paywall without a Watch ad option.
+- Signed-in free account on the backend feed: confirm that a returned ad slot
+  renders between posts. For the on-device feed, check positions 3, 8, 13….
+  Swipe both ways over the ad and confirm Remove Ads opens the subscription
+  paywall.
 - Subscribe from Remove Ads: the ad pages leave, the post on screen stays.
 - Rewarded access active without a paid subscription: ad pages still appear.
 - Airplane mode or declined consent: no ad pages, no blank pages.
