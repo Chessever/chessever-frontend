@@ -1086,6 +1086,7 @@ class StoryFrameView extends ConsumerStatefulWidget {
     required this.frame,
     required this.progress,
     this.active = true,
+    this.showPuzzle = true,
     this.puzzles,
   });
 
@@ -1094,6 +1095,7 @@ class StoryFrameView extends ConsumerStatefulWidget {
 
   /// The face in view: only it takes a move.
   final bool active;
+  final bool showPuzzle;
   final StoryPuzzleHost? puzzles;
 
   @override
@@ -1158,7 +1160,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   bool _linePending = false;
 
   StorySegment get _segment => widget.frame.position;
-  StoryPuzzle? get _puzzle => _segment.puzzle;
+  StoryPuzzle? get _puzzle => widget.showPuzzle ? _segment.puzzle : null;
 
   /// The board takes a move.
   bool get _asking =>
@@ -1681,6 +1683,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
         caption: widget.frame.game.caption,
         lines: lines,
         puzzleState: _puzzleState,
+        showPuzzle: widget.showPuzzle,
         misses: _misses,
         missedPlayed: _missedPlayed,
         onShow: _waiting ? _show : null,
@@ -1939,6 +1942,7 @@ class StoryMomentText extends StatelessWidget {
     required this.segment,
     required this.lines,
     this.caption,
+    this.showPuzzle = true,
     this.puzzleState,
     this.misses = 0,
     this.missedPlayed = false,
@@ -1948,6 +1952,7 @@ class StoryMomentText extends StatelessWidget {
   final StorySegment segment;
   final String? caption;
   final int lines;
+  final bool showPuzzle;
 
   /// Where the position's question stands; null reads as the question on a
   /// position that asks one.
@@ -1968,7 +1973,7 @@ class StoryMomentText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = StoryTextMetrics.of(context);
-    final puzzle = segment.puzzle;
+    final puzzle = showPuzzle ? segment.puzzle : null;
     final state = puzzle == null
         ? null
         : (puzzleState ?? StoryPuzzleState.prompt);
@@ -1982,7 +1987,7 @@ class StoryMomentText extends StatelessWidget {
       moveLine = _askLine(context, text, puzzle, state!);
     } else {
       moveLine = _moveLine(context, text, puzzle, state);
-      label = _labelOf(segment, state);
+      label = _labelOf(segment, state, puzzle);
       if (label != null) {
         labelLine = Text(
           label,
@@ -1995,7 +2000,7 @@ class StoryMomentText extends StatelessWidget {
           ),
         );
       }
-      comment = _commentOf(segment);
+      comment = _commentOf(segment, puzzle);
     }
     // A question has no label line: its action stands under it instead.
     final hasLabel = !asking && (puzzle != null || label != null);
@@ -2198,8 +2203,11 @@ class StoryMomentText extends StatelessWidget {
 
   /// Why it matters; for a question once answered, what the game did (a
   /// missed win's move) or what the move is ("Brilliant").
-  static String? _labelOf(StorySegment s, StoryPuzzleState? state) {
-    final puzzle = s.puzzle;
+  static String? _labelOf(
+    StorySegment s,
+    StoryPuzzleState? state,
+    StoryPuzzle? puzzle,
+  ) {
     if (puzzle == null) return s.label;
     final san = s.san;
     if (puzzle.kind == StoryPuzzleKind.findMissed) {
@@ -2216,8 +2224,8 @@ class StoryMomentText extends StatelessWidget {
   /// The words under the label: the book's, and for a missed win how the
   /// win goes on past the move the headline already shows ("Then 61… Re8
   /// 62. Kc5"), as the board plays it.
-  static String? _commentOf(StorySegment s) {
-    final rest = s.puzzle?.continuation?.trim();
+  static String? _commentOf(StorySegment s, StoryPuzzle? puzzle) {
+    final rest = puzzle?.continuation?.trim();
     final words = s.comment;
     if (rest == null || rest.isEmpty) return words;
     final shown = 'Then $rest';

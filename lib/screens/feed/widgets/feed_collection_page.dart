@@ -10,27 +10,65 @@ import 'package:chessever2/screens/stories/story_viewer.dart'
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final _featuredGameProvider = FutureProvider.autoDispose
-    .family<CollectionGame?, ({String slug, String? resumeGameId})>((
+final _featuredFrameProvider = FutureProvider.autoDispose
+    .family<StoryFrame?, ({String slug, String? resumeGameId})>((
       ref,
       key,
     ) async {
       final repository = ref.watch(collectionsRepositoryProvider);
-      if (key.resumeGameId == null) {
-        final day = storyDayKey(ref.read(storyClockProvider)());
+      final analyze = ref.watch(storyAnalyzerProvider);
+      final day = storyDayKey(ref.read(storyClockProvider)());
+      CollectionGame? game;
+      String? pgn;
+      try {
+        final stories = await repository.fetchStoryGames(key.slug, day: day);
+        for (final card in stories ?? const []) {
+          if (key.resumeGameId != null && card.id != key.resumeGameId) continue;
+          game = CollectionGame.fromPreviewCard(card);
+          if (game != null) {
+            pgn = card.pgn;
+            break;
+          }
+        }
+      } on CollectionsRequestException {
+        // Fall back to the collection's browse previews.
+      }
+      if (game == null) {
+        final games = await repository.fetchGames(key.slug);
+        game =
+            games.where((game) => game.id == key.resumeGameId).firstOrNull ??
+            latestStoryGame(games);
+        if (game == null) return null;
         try {
-          final stories = await repository.fetchStoryGames(key.slug, day: day);
-          for (final card in stories ?? const []) {
-            final preview = CollectionGame.fromPreviewCard(card);
-            if (preview != null) return preview;
+          final detail = await repository.fetchCollection(key.slug);
+          if (storyMovesReadable(detail)) {
+            final moves = await repository.fetchPgnsOf(
+              key.slug,
+              {game.id},
+              order: [for (final preview in games) preview.id],
+            );
+            pgn = moves[game.id];
           }
         } on CollectionsRequestException {
-          // Fall back to public game previews if the story read is unavailable.
+          // Keep the board preview when its annotated moves are unavailable.
         }
       }
-      final games = await ref.watch(collectionGamesProvider(key.slug).future);
-      return games.where((game) => game.id == key.resumeGameId).firstOrNull ??
-          latestStoryGame(games);
+      final segments = pgn == null
+          ? null
+          : (await analyze([
+              StoryAnalysisJob(id: game.id, pgn: pgn),
+            ]))[game.id]?.segments;
+      final story = segments == null
+          ? stillStoryGame(game)
+          : buildStoryGame(game, segments: segments);
+      final annotated = story.segments.indexWhere(
+        (segment) => segment.comment?.trim().isNotEmpty ?? false,
+      );
+      return StoryFrame(
+        story: 0,
+        segment: annotated < 0 ? 0 : annotated,
+        game: story,
+      );
     });
 
 class FeedCollectionPage extends ConsumerStatefulWidget {
@@ -46,10 +84,7 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
   bool _opening = false;
   CollectionCheckpoint? _latest;
 
-  Future<void> _open(
-    CollectionGame game,
-    CollectionCheckpoint? checkpoint,
-  ) async {
+  Future<void> _open(String gameId, CollectionCheckpoint? checkpoint) async {
     if (_opening) return;
     setState(() => _opening = true);
     try {
@@ -57,7 +92,7 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
         context,
         ref,
         collection: widget.card.collection,
-        featuredGameId: game.id,
+        featuredGameId: gameId,
         checkpoint: checkpoint,
       );
       if (saved != null && mounted) _latest = saved;
@@ -88,15 +123,13 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
   Widget build(BuildContext context) {
     final collection = widget.card.collection;
     final checkpoint = _latest ?? widget.card.resume;
-    final provider = _featuredGameProvider((
+    final provider = _featuredFrameProvider((
       slug: collection.slug,
       resumeGameId: checkpoint?.gameId,
     ));
     final read = ref.watch(provider);
-    final game = read.valueOrNull;
-    final frame = game == null
-        ? null
-        : StoryFrame(story: 0, segment: 0, game: stillStoryGame(game));
+    final frame = read.valueOrNull;
+    final gameId = frame?.game.id;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -117,6 +150,7 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
                       frame: frame,
                       progress: const AlwaysStoppedAnimation(1.0),
                       active: false,
+                      showPuzzle: false,
                     )
                   : read.hasError
                   ? TextButton(
@@ -129,13 +163,13 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
             ),
           ),
           StoryActions(
-            gameLabel: checkpoint != null && checkpoint.gameId == game?.id
+            gameLabel: checkpoint != null && checkpoint.gameId == gameId
                 ? 'Continue'
                 : 'Open game',
             collectionLabel: storyCollectionAction(collection),
-            onOpenGame: _opening || game == null
+            onOpenGame: _opening || gameId == null
                 ? null
-                : () => _open(game, checkpoint),
+                : () => _open(gameId, checkpoint),
             onOpenCollection: _opening ? null : _openCollection,
           ),
         ],
