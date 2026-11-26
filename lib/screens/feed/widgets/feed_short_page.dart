@@ -5,10 +5,8 @@ import 'package:chessever2/screens/chessboard/video/video_player.dart';
 import 'package:chessever2/screens/chessboard/video/video_repository.dart';
 import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 import 'package:chessever2/screens/feed/models/feed_short.dart';
-import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
@@ -38,82 +36,34 @@ class _FeedShortPageState extends State<FeedShortPage> {
     widget.onOpened();
   }
 
-  Future<void> _open(BuildContext context) async {
-    try {
-      if (await launchUrl(
-        widget.short.watchUrl,
-        mode: LaunchMode.externalApplication,
-      )) {
-        _reportOpened();
-        return;
-      }
-    } catch (_) {
-      // The device may not have an app that handles the link.
-    }
-    if (context.mounted) {
-      showAppSnack(
-        context,
-        "Couldn't open YouTube.",
-        tone: AppSnackTone.danger,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final short = widget.short;
-    final theme = Theme.of(context);
     final origin = EventVideoConfiguration.fromEnvironment()?.embedOrigin;
     final inlineSupported =
         !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android);
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Center(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (!inlineSupported ||
-                      origin == null ||
-                      constraints.maxHeight < 200 ||
-                      constraints.maxWidth < 200) {
-                    return const Text('Watch this Short on YouTube.');
-                  }
-                  return ColoredBox(
-                    color: Colors.black,
-                    child: SizedBox.expand(
-                      child: widget.active
-                          ? _InlineFeedShort(
-                              key: ValueKey(short.id),
-                              short: short,
-                              origin: origin,
-                              onWatched: _reportOpened,
-                            )
-                          : null,
-                    ),
-                  );
-                },
-              ),
+    return ColoredBox(
+      color: Colors.black,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (!widget.active) return const SizedBox.expand();
+          if (!inlineSupported ||
+              origin == null ||
+              constraints.maxHeight < 200 ||
+              constraints.maxWidth < 200) {
+            return const _ShortUnavailable();
+          }
+          return SizedBox.expand(
+            child: _InlineFeedShort(
+              key: ValueKey(short.id),
+              short: short,
+              origin: origin,
+              onWatched: _reportOpened,
             ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            short.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleLarge,
-          ),
-          Text(short.channelName, maxLines: 1, overflow: TextOverflow.ellipsis),
-          TextButton.icon(
-            onPressed: () => _open(context),
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Open in YouTube'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -250,20 +200,28 @@ class _InlineFeedShortState extends State<_InlineFeedShort> {
 
   @override
   Widget build(BuildContext context) {
-    if (_failed) {
-      return const Center(
-        child: Text(
-          'This Short is unavailable here.',
-          style: TextStyle(color: Colors.white),
-        ),
-      );
-    }
+    if (_failed) return const _ShortUnavailable();
     final player = _player;
     if (player == null) return const Center(child: CircularProgressIndicator());
     return WebViewWidget(
       controller: player,
       // The vertical Feed swipe keeps ownership of vertical drags.
       gestureRecognizers: eventVideoGestureRecognizers,
+    );
+  }
+}
+
+class _ShortUnavailable extends StatelessWidget {
+  const _ShortUnavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Icon(
+        Icons.videocam_off_outlined,
+        color: Colors.white70,
+        semanticLabel: 'Short unavailable',
+      ),
     );
   }
 }
