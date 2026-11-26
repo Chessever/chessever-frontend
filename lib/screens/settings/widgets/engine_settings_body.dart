@@ -184,21 +184,22 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               SizedBox(height: 14.h),
               _SegmentTrack(
+                // Toby on the left, Stockfish on the right.
                 children: [
-                  _ToggleSegment(
-                    key: const ValueKey('engine-source-stockfish'),
-                    label: 'Stockfish',
-                    selected: settings.engineSource == EngineSource.stockfish,
-                    onTap: () => trackPersist(
-                      notifier.setEngineSource(EngineSource.stockfish),
-                    ),
-                  ),
                   _ToggleSegment(
                     key: const ValueKey('engine-source-toby'),
                     label: 'Toby',
                     selected: settings.engineSource == EngineSource.toby,
                     onTap: () => trackPersist(
                       notifier.setEngineSource(EngineSource.toby),
+                    ),
+                  ),
+                  _ToggleSegment(
+                    key: const ValueKey('engine-source-stockfish'),
+                    label: 'Stockfish',
+                    selected: settings.engineSource == EngineSource.stockfish,
+                    onTap: () => trackPersist(
+                      notifier.setEngineSource(EngineSource.stockfish),
                     ),
                   ),
                 ],
