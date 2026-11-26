@@ -23,21 +23,29 @@ import 'package:flutter/material.dart';
 /// the system dialog and the build was rejected.
 ///
 /// Contract: [ensurePrompted] is safe to call from any post-launch entry
-/// point. On the first call where the user's ATT status is `notDetermined`,
-/// it shows a short explainer sheet and then unconditionally triggers Apple's
-/// system dialog. The explainer cannot suppress the system dialog — it is
-/// purely informational. Subsequent calls within the same app session are
-/// no-ops.
+/// point. The onboarding welcome step calls it first, so a fresh install sees
+/// the explainer and Apple's dialog on its first screen. On the first call
+/// where the user's ATT status is `notDetermined`, it shows a short explainer
+/// sheet and then unconditionally triggers Apple's system dialog. The
+/// explainer cannot suppress the system dialog — it is purely informational.
+///
+/// AppsFlyer (the only tracking SDK) starts only once the question is
+/// settled. iOS silently ignores a request made while the app is not active,
+/// leaving the status `notDetermined`; then the request is repeated the next
+/// time the app comes to the foreground, and after [_maxAttempts] the
+/// question counts as settled so the install is still reported (without
+/// IDFA, as for a user who declined).
 class AttPromptService {
   AttPromptService._();
   static final AttPromptService instance = AttPromptService._();
 
+  static const int _maxAttempts = 3;
+
   bool _inFlight = false;
   bool _done = false;
+  int _attempts = 0;
+  AppLifecycleListener? _resumeRetry;
 
-  /// Ensure Apple's ATT system dialog has been shown exactly once per app
-  /// launch. Always fires `startSdkIfNotYetStarted` afterwards so AppsFlyer's
-  /// install event carries the correct ATT/IDFA state.
   Future<void> ensurePrompted(
     BuildContext context, {
     bool showExplainer = true,
@@ -47,10 +55,9 @@ class AttPromptService {
     if (_done || _inFlight) return;
     _inFlight = true;
     try {
-      final current =
-          await AppTrackingTransparency.trackingAuthorizationStatus;
+      final current = await AppTrackingTransparency.trackingAuthorizationStatus;
       if (current != TrackingStatus.notDetermined) {
-        _done = true;
+        _settle();
         return;
       }
 
@@ -62,14 +69,74 @@ class AttPromptService {
       // regardless of how the sheet was closed. Apple's reviewer needs to
       // actually see this dialog; gating it behind a pre-prompt button is
       // what got us rejected.
-      await AppsflyerService.instance.requestAtt();
-      _done = true;
+      await _askSystem();
     } catch (e) {
       if (kDebugMode) debugPrint('AttPromptService: $e');
+      _settle();
     } finally {
       _inFlight = false;
-      AppsflyerService.instance.startSdkIfNotYetStarted();
     }
+  }
+
+  Future<void> _askSystem() async {
+    await _untilAppActive();
+    final status = await AppsflyerService.instance.requestAtt();
+    _attempts++;
+    if (status != TrackingStatus.notDetermined || _attempts >= _maxAttempts) {
+      _settle();
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint('AttPromptService: request ignored, retrying on resume');
+    }
+    _resumeRetry ??= AppLifecycleListener(
+      onResume: () {
+        _resumeRetry?.dispose();
+        _resumeRetry = null;
+        unawaited(_retry());
+      },
+    );
+  }
+
+  Future<void> _retry() async {
+    if (_done || _inFlight) return;
+    _inFlight = true;
+    try {
+      await _askSystem();
+    } catch (e) {
+      if (kDebugMode) debugPrint('AttPromptService: $e');
+      _settle();
+    } finally {
+      _inFlight = false;
+    }
+  }
+
+  /// Apple drops the request unless the app is active.
+  Future<void> _untilAppActive() async {
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state == null || state == AppLifecycleState.resumed) return;
+    final active = Completer<void>();
+    final listener = AppLifecycleListener(
+      onResume: () {
+        if (!active.isCompleted) active.complete();
+      },
+    );
+    try {
+      await active.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {},
+      );
+    } finally {
+      listener.dispose();
+    }
+  }
+
+  /// The question is answered (or can no longer be asked): mark it done and
+  /// let AppsFlyer report the install with the resulting ATT/IDFA state.
+  void _settle() {
+    _done = true;
+    AppsflyerService.instance.markAttSettled();
+    AppsflyerService.instance.startSdkIfNotYetStarted();
   }
 }
 

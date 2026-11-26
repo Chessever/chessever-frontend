@@ -10,6 +10,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:chessever2/config/app_environment.dart';
+import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -201,6 +202,12 @@ class AppsflyerService {
   bool _sdkStarted = false;
   Timer? _autoStartTimer;
 
+  // iOS: true once Apple's ATT dialog has an answer (or the user can no
+  // longer be asked). AppsFlyer must not send anything before that: Apple
+  // review requires the tracking request to come before any data is
+  // collected (Guideline 2.1, rejected 2026-11-26 on 39.3.2).
+  bool _attSettled = false;
+
   // Holds a CUID that arrived from the auth listener before the SDK finished
   // initializing. Flushed when startSDK fires so the install event carries
   // the identifier.
@@ -260,7 +267,8 @@ class AppsflyerService {
       afDevKey: devKey,
       appId: appId,
       showDebug: kDebugMode,
-      // ATT prompt is not shown, so wait time is zero. We deliberately do NOT
+      // startSDK is manual and on iOS only runs after the ATT decision, so
+      // the SDK never needs to wait for it itself. We deliberately do NOT
       // set disableAdvertisingIdentifier — that flag also suppresses GAID
       // collection on Android, which would break deterministic attribution
       // there. iOS returns a zero IDFA without ATT consent regardless.
@@ -325,6 +333,9 @@ class AppsflyerService {
           'AppsflyerService: Session restored at init — starting SDK now',
         );
         startSdkIfNotYetStarted();
+      } else if (_attSettled) {
+        // The onboarding ATT dialog was answered before init finished.
+        startSdkIfNotYetStarted();
       } else {
         _autoStartTimer = Timer(_autoStartFallback, () {
           debugPrint(
@@ -343,7 +354,43 @@ class AppsflyerService {
   /// trigger points (post-ATT-decision, fallback timer, manual). The install
   /// event carries the ATT/IDFA state at the moment this runs, so call it
   /// AFTER the ATT decision has been made.
+  ///
+  /// iOS: waits for the ATT decision. While the status is still
+  /// `notDetermined` this does nothing; [AttPromptService] calls it again the
+  /// moment the user answers, so every install is still reported (and the
+  /// affiliate install data still arrives), just never before the dialog.
   void startSdkIfNotYetStarted() {
+    if (_sdkStarted) return;
+    if (!_isInitialized || _appsflyerSdk == null) return;
+    if (_attSettled ||
+        !Platform.isIOS ||
+        E2eConfig.suppressInterruptivePrompts) {
+      _startSdkNow();
+      return;
+    }
+    unawaited(_startSdkOnceAttDecided());
+  }
+
+  /// Called by [AttPromptService] once the ATT question is settled.
+  void markAttSettled() => _attSettled = true;
+
+  Future<void> _startSdkOnceAttDecided() async {
+    TrackingStatus status;
+    try {
+      status = await AppTrackingTransparency.trackingAuthorizationStatus;
+    } catch (e) {
+      debugPrint('AppsflyerService: ATT status unreadable: $e');
+      status = TrackingStatus.notSupported;
+    }
+    if (status == TrackingStatus.notDetermined) {
+      debugPrint('AppsflyerService: startSDK waits for the ATT decision');
+      return;
+    }
+    _attSettled = true;
+    _startSdkNow();
+  }
+
+  void _startSdkNow() {
     if (_sdkStarted) return;
     if (!_isInitialized || _appsflyerSdk == null) return;
     _sdkStarted = true;

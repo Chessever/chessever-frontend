@@ -91,7 +91,18 @@ class OnboardingFlowScreen extends HookConsumerWidget {
 
       // Log onboarding start for affiliate tracking
       AnalyticsService.instance.trackEventDetached('Onboarding Started');
-      return null;
+
+      // iOS: ask about tracking on the first screen of a fresh install,
+      // before AppsFlyer sends anything. The later onboarding calls are
+      // then no-ops. A short beat lets the welcome page paint first.
+      var cancelled = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future<void>.delayed(const Duration(milliseconds: 600), () {
+          if (cancelled || !context.mounted) return;
+          unawaited(AttPromptService.instance.ensurePrompted(context));
+        });
+      });
+      return () => cancelled = true;
     }, const []);
 
     Future<void> goToPage(int index) async {
