@@ -451,13 +451,23 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       _visitId = null;
       _loadingMore = false;
       _moreRun = null;
-      final entries = await _readServerEntries(
-        server,
-        generation,
-        refresh: true,
-      );
-      if (generation == _generation) state = AsyncData(_boardItems(entries));
-      return;
+      try {
+        final entries = await _readServerEntries(
+          server,
+          generation,
+          refresh: true,
+        );
+        if (generation == _generation) state = AsyncData(_boardItems(entries));
+        return;
+      } on BoardFeedUnavailable catch (error) {
+        if (generation != _generation) return;
+        if (error.status != 404) rethrow;
+        _boardServer = null;
+        _serverEntries = const [];
+        _boardCursor = null;
+        await (_loadShown(), _loadTaste()).wait;
+        if (generation != _generation) return;
+      }
     }
     final showing = [
       for (final item in state.valueOrNull ?? const <FeedItem>[])

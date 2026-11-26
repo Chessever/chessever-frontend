@@ -7,6 +7,8 @@ import 'package:chessever2/screens/stories/story_row_prefs.dart'
     show storyClockProvider, storyDayKey;
 import 'package:chessever2/screens/stories/story_viewer.dart'
     show ensureStoryCollectionAccess, storyCollectionPageProvider;
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart'
+    show premiumAccessProvider;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -130,6 +132,21 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
     final read = ref.watch(provider);
     final frame = read.valueOrNull;
     final gameId = frame?.game.id;
+    final needsUpgrade =
+        collection.isPremium && !ref.watch(premiumAccessProvider);
+    final gameLabel = needsUpgrade
+        ? 'Upgrade'
+        : checkpoint != null && checkpoint.gameId == gameId
+        ? 'Continue'
+        : 'Open game';
+    VoidCallback? openGame;
+    if (!_opening) {
+      if (gameId != null) {
+        openGame = () => _open(gameId, checkpoint);
+      } else if (needsUpgrade) {
+        openGame = _openCollection;
+      }
+    }
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -163,13 +180,9 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
             ),
           ),
           StoryActions(
-            gameLabel: checkpoint != null && checkpoint.gameId == gameId
-                ? 'Continue'
-                : 'Open game',
+            gameLabel: gameLabel,
             collectionLabel: storyCollectionAction(collection),
-            onOpenGame: _opening || gameId == null
-                ? null
-                : () => _open(gameId, checkpoint),
+            onOpenGame: openGame,
             onOpenCollection: _opening ? null : _openCollection,
           ),
         ],
