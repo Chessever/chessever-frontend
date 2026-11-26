@@ -207,9 +207,14 @@ void main() {
       await pump(tester);
       expect(find.text('Toby Predicts:'), findsOneWidget);
       expect(find.text(' or'), findsNWidgets(2));
-      final first = tester.getCenter(find.text('24…Qxd4'));
-      for (final move in ['24…Qxc2', '24…c5']) {
-        expect(tester.getCenter(find.text(move)).dy, first.dy);
+      final first = tester.getCenter(
+        find.text('24…Qxd4 88%', findRichText: true),
+      );
+      for (final move in ['24…Qxc2 11%', '24…c5 <1%']) {
+        expect(
+          tester.getCenter(find.text(move, findRichText: true)).dy,
+          first.dy,
+        );
       }
       expect(find.text('Next move'), findsNothing);
     });
@@ -223,7 +228,9 @@ void main() {
       expect(chances, findsOneWidget);
       expect(
         tester.getTopLeft(chances).dy,
-        greaterThan(tester.getBottomLeft(find.text('24…Qxd4')).dy),
+        greaterThan(
+          tester.getBottomLeft(find.text('24…Qxd4 88%', findRichText: true)).dy,
+        ),
       );
       expect(
         tester.getTopLeft(chances).dx,
@@ -231,10 +238,59 @@ void main() {
       );
     });
 
+    testWidgets('holds one height: thinking, ready, out, long names', (
+      tester,
+    ) async {
+      ResponsiveHelper.initFromSize(const Size(390, 844));
+      Future<double> height(TobyPredictsLine line) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(width: 358, child: line),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        return tester.getSize(find.byType(TobyPredictsLine)).height;
+      }
+
+      const wdl = TobyWdl(white: .17, draw: .76, black: .07);
+      final ready = await height(TobyPredictsLine(wdl: wdl, tokens: tokens()));
+      expect(await height(const TobyPredictsLine(tokens: [])), ready);
+      expect(
+        await height(
+          const TobyPredictsLine(wdl: wdl, tokens: [], waiting: false),
+        ),
+        ready,
+      );
+      expect(
+        await height(
+          TobyPredictsLine(
+            white: (name: 'Vachier-Lagrave', federation: 'FRA'),
+            black: (name: 'Nepomniachtchi', federation: 'FID'),
+            wdl: wdl,
+            tokens: tokens(),
+          ),
+        ),
+        ready,
+      );
+    });
+
+    test('names a side by surname, else its colour', () {
+      expect(tobySideName('Carlsen, Magnus', 'White'), 'Carlsen');
+      expect(tobySideName('Gukesh D', 'White'), 'Gukesh D');
+      expect(tobySideName('  ', 'Black'), 'Black');
+      expect(tobySideName(null, 'Black'), 'Black');
+    });
+
     testWidgets('a tapped move reports itself', (tester) async {
       TobyPredictionToken? tapped;
       await pump(tester, onMoveTap: (token) => tapped = token);
-      await tester.tap(find.text('24…Qxc2'));
+      await tester.tap(find.text('24…Qxc2 11%', findRichText: true));
       expect(tapped?.uci, 'c4c2');
     });
 

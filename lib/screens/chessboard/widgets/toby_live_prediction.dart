@@ -1,7 +1,8 @@
 /// Toby's live prediction, in the notation after the last move:
 /// "Toby Predicts: 16…Qxd4 or 16…Qxc2 or 16…c5", each move in its own hue
 /// (tapping one draws its arrow on the board in that hue), and under it the
-/// result chances, "White 17% · Draw 76% · Black 7%". "Toby Predicts:" is
+/// result chances by player, "[flag] Gukesh 17% · Draw 76% · [flag] Sindarov
+/// 7%". Each move carries its chance. "Toby Predicts:" is
 /// dashed: a tap explains the chances and credits Toby.
 ///
 /// Shown only on a live broadcast game, while it is being played, with the
@@ -12,6 +13,7 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/toby_palette.dart';
@@ -22,6 +24,7 @@ import 'package:chessever2/services/toby/toby_prediction.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -170,6 +173,16 @@ List<TobyPredictionToken> tobyPredictionTokens(
   }
   return tokens;
 }
+
+/// A side as the chances line names it: the surname ("Carlsen" from
+/// "Carlsen, Magnus"), else [fallback] ("White" / "Black") for a blank name.
+String tobySideName(String? name, String fallback) {
+  final surname = (name ?? '').split(',').first.trim();
+  return surname.isEmpty ? fallback : surname;
+}
+
+/// A player as the chances line shows it: surname and federation.
+typedef TobySide = ({String name, String federation});
 
 /// "White 28, draw 57, Black 15".
 String tobyWdlSemantics(({int white, int draw, int black}) percentages) =>
@@ -320,7 +333,16 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
       });
     });
 
+    // The block's room is decided before Toby answers and then held: a
+    // reader the app believes is Premium, in a build that can reach Toby,
+    // gets both lines at a fixed height from the first frame (placeholders
+    // until the reading lands). Everyone else never gets the block, so it
+    // never appears and then vanishes.
     if (liveFen == null || _refused) return _hidden();
+    if (!ref.watch(tobyReaderHasPremiumProvider) ||
+        !ref.read(gamebaseRepositoryProvider).hasApiKey) {
+      return _hidden();
+    }
     final request = _requestFor(liveFen);
     if (request == null) return _hidden();
 
@@ -332,29 +354,25 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     );
 
     TobyReading? shown;
+    var waiting = true;
     switch (reading.status) {
       case TobyStatus.ready:
       case TobyStatus.network:
-      case TobyStatus.busy:
         shown = reading.reading;
       case TobyStatus.thinking:
         shown = null;
+      case TobyStatus.busy:
+      case TobyStatus.unavailable:
+        // Out of budget or out of service: say so in place, same height.
+        shown = reading.reading;
+        waiting = false;
       case TobyStatus.signInRequired:
       case TobyStatus.premiumRequired:
       case TobyStatus.premiumUnconfirmed:
         _refused = true;
         return _hidden();
-      case TobyStatus.unavailable:
       case TobyStatus.notApplicable:
         return _hidden();
-    }
-
-    // Thinking about a new position: hold the last chances, with a quiet
-    // line. Before anything was ever shown (or when the budget ran out with
-    // nothing), stay away rather than flash a placeholder.
-    if (shown == null &&
-        (reading.status == TobyStatus.busy || _heldWdl == null)) {
-      return _hidden();
     }
 
     if (shown?.positionWdl != null) _heldWdl = shown!.positionWdl;
@@ -368,9 +386,19 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
         ? selection.uci
         : null;
 
+    final game = widget.params.game;
     return TobyPredictsLine(
+      white: (
+        name: tobySideName(game.whitePlayer.name, 'White'),
+        federation: game.whitePlayer.countryCode,
+      ),
+      black: (
+        name: tobySideName(game.blackPlayer.name, 'Black'),
+        federation: game.blackPlayer.countryCode,
+      ),
       wdl: _heldWdl,
       tokens: tokens,
+      waiting: waiting,
       muted: shown != null && !shown.isFinal,
       selectedUci: selectedUci,
       onMoveTap: (token) => _toggle(token, liveFen),
@@ -389,20 +417,35 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
 
 /// Free of providers: "Toby Predicts:" (dashed, a tap explains it), then
 /// the likeliest moves joined by "or", each in its arrow hue and tappable
-/// (no tokens: "thinking…"); under it the result chances, "White 17% ·
-/// Draw 76% · Black 7%".
+/// with its chance (no tokens: "thinking…"); under it the result chances
+/// by player, "[flag] Gukesh 17% · Draw 76% · [flag] Sindarov 7%".
 class TobyPredictsLine extends StatelessWidget {
   const TobyPredictsLine({
     super.key,
+    this.white = (name: 'White', federation: ''),
+    this.black = (name: 'Black', federation: ''),
     this.wdl,
     required this.tokens,
+    this.waiting = true,
     this.muted = false,
     this.selectedUci,
     this.onMoveTap,
   });
 
+  final TobySide white;
+  final TobySide black;
   final TobyWdl? wdl;
   final List<TobyPredictionToken> tokens;
+
+  /// No moves yet: true while Toby is reading ("thinking…"), false when it
+  /// gave up on this position ("not available").
+  final bool waiting;
+
+  /// The two lines' fixed heights: the block never changes height between
+  /// readings, placeholders, longer names or larger text (a line too wide
+  /// shrinks to fit rather than wrap).
+  static double get movesLineHeight => 34.sp;
+  static double get chancesLineHeight => 24.sp;
 
   /// A first, quicker reading: the moves are set lighter, never fainter.
   final bool muted;
@@ -426,86 +469,110 @@ class TobyPredictsLine extends StatelessWidget {
     );
     final hasSelection =
         selectedUci != null && tokens.any((token) => token.uci == selectedUci);
-    // Moves keep a comfortable tap height without spacing the line out.
-    final tapPad = EdgeInsets.symmetric(vertical: 8.sp);
+    // Every piece fills the line's height, so the moves are tall taps.
+    final line = movesLineHeight;
 
-    final moves = Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Padding(
-          padding: tapPad,
-          child: TobyDashedHint(
-            text: 'Toby Predicts:',
-            style: quiet,
-            message: tobyChanceExplanation(shares),
-            semanticsLabel: 'Toby Predicts. $kTobyAttribution',
-          ),
-        ),
-        if (tokens.isEmpty)
-          Padding(
-            padding: tapPad,
-            child: Text(' thinking…', style: quiet),
-          ),
-        for (var i = 0; i < tokens.length && i < 3; i++) ...[
-          if (i > 0)
-            Padding(
-              padding: tapPad,
-              child: Text(' or', style: quiet),
-            ),
-          _move(
-            context,
-            tokens[i],
-            background: background,
-            padding: tapPad,
-            selected: tokens[i].uci == selectedUci,
-            dimmed: hasSelection && tokens[i].uci != selectedUci,
-          ),
-        ],
-      ],
+    Widget fixedLine(double height, Widget child) => SizedBox(
+      height: height,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: child,
+      ),
     );
-    if (shares == null) {
-      return Padding(
-        padding: EdgeInsets.only(top: 2.sp),
-        child: moves,
-      );
-    }
+
+    final moves = fixedLine(
+      line,
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: line,
+            child: Center(
+              child: TobyDashedHint(
+                text: 'Toby Predicts:',
+                style: quiet,
+                message: tobyChanceExplanation(shares),
+                semanticsLabel: 'Toby Predicts. $kTobyAttribution',
+              ),
+            ),
+          ),
+          if (tokens.isEmpty)
+            Text(waiting ? ' thinking…' : ' not available', style: quiet),
+          for (var i = 0; i < tokens.length && i < 3; i++) ...[
+            if (i > 0) Text(' or', style: quiet),
+            _move(
+              context,
+              tokens[i],
+              background: background,
+              height: line,
+              selected: tokens[i].uci == selectedUci,
+              dimmed: hasSelection && tokens[i].uci != selectedUci,
+            ),
+          ],
+        ],
+      ),
+    );
 
     final value = quiet.copyWith(
       color: colors.textPrimary,
       fontWeight: FontWeight.w700,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
-    TextSpan share(String name, int percent) => TextSpan(
+    // The player rows' flag, at the line's size.
+    InlineSpan flag(String federation) =>
+        !FederationFlag.hasVisibleFlag(federation.trim())
+        ? const TextSpan()
+        : WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: EdgeInsets.only(right: 5.sp),
+              child: FederationFlag(
+                federation: federation.trim(),
+                width: 16.sp,
+                height: 12.sp,
+                borderRadius: BorderRadius.circular(2.sp),
+              ),
+            ),
+          );
+    // Before the first reading the numbers wait as "…", names in place.
+    TextSpan share(String name, int? percent) => TextSpan(
       children: [
         TextSpan(text: '$name ', style: quiet),
-        TextSpan(text: '$percent%', style: value),
+        TextSpan(text: percent == null ? '…' : '$percent%', style: value),
       ],
     );
     final separator = TextSpan(text: '  ·  ', style: quiet);
+
     return Padding(
-      padding: EdgeInsets.only(top: 2.sp),
+      padding: EdgeInsets.only(top: 2.sp, bottom: 4.sp),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
           moves,
           Semantics(
-            label: 'Result chances: ${tobyWdlSemantics(shares)}',
+            label: shares == null
+                ? 'Result chances loading'
+                : 'Result chances: ${white.name} ${shares.white}, '
+                      'draw ${shares.draw}, ${black.name} ${shares.black}',
             child: ExcludeSemantics(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: 6.sp),
-                child: Text.rich(
+              child: fixedLine(
+                chancesLineHeight,
+                Text.rich(
                   TextSpan(
                     children: [
-                      share('White', shares.white),
+                      flag(white.federation),
+                      share(white.name, shares?.white),
                       separator,
-                      share('Draw', shares.draw),
+                      share('Draw', shares?.draw),
                       separator,
-                      share('Black', shares.black),
+                      flag(black.federation),
+                      share(black.name, shares?.black),
                     ],
                   ),
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                 ),
               ),
             ),
@@ -519,7 +586,7 @@ class TobyPredictsLine extends StatelessWidget {
     BuildContext context,
     TobyPredictionToken token, {
     required Color background,
-    required EdgeInsets padding,
+    required double height,
     required bool selected,
     required bool dimmed,
   }) {
@@ -538,18 +605,36 @@ class TobyPredictsLine extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onMoveTap == null ? null : () => onMoveTap!(token),
-          child: Padding(
-            padding: padding.copyWith(left: 5.sp),
-            child: Text(
-              token.move,
+          child: Container(
+            height: height,
+            padding: EdgeInsets.only(left: 5.sp),
+            alignment: Alignment.center,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: token.move,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.accentInk(token.hue, on: background),
+                      fontSize: 14.sp,
+                      fontWeight: weight,
+                      height: 1.3,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' ${token.chance}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.textInk(0.6),
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
               maxLines: 1,
               softWrap: false,
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.accentInk(token.hue, on: background),
-                fontSize: 14.sp,
-                fontWeight: weight,
-                height: 1.3,
-              ),
             ),
           ),
         ),
