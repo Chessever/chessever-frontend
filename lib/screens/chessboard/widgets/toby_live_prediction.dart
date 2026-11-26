@@ -12,6 +12,7 @@ library;
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
@@ -30,6 +31,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:jovial_svg/jovial_svg.dart';
 
 // ---------------------------------------------------------------------------
 // Arrow selection (shared with the board)
@@ -519,7 +521,6 @@ class TobyPredictsLine extends StatelessWidget {
           if (tokens.isEmpty)
             Text(waiting ? ' thinking…' : ' not available', style: quiet),
           for (var i = 0; i < tokens.length && i < 3; i++) ...[
-            if (i > 0) Text(' or', style: quiet),
             _move(
               context,
               tokens[i],
@@ -538,31 +539,36 @@ class TobyPredictsLine extends StatelessWidget {
       fontWeight: FontWeight.w700,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
-    // The player rows' flag, at the line's size.
-    InlineSpan flag(String federation) =>
-        !FederationFlag.hasVisibleFlag(federation.trim())
-        ? const TextSpan()
-        : WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: EdgeInsets.only(right: 5.sp),
-              child: FederationFlag(
-                federation: federation.trim(),
-                width: 16.sp,
-                height: 12.sp,
-                borderRadius: BorderRadius.circular(2.sp),
-              ),
-            ),
-          );
     // Before the first reading the numbers wait as "…", names in place.
-    TextSpan share(String name, int? percent) => TextSpan(
-      children: [
-        TextSpan(text: '$name ', style: quiet),
-        TextSpan(text: percent == null ? '…' : '$percent%', style: value),
-      ],
-    );
+    String percentText(int? percent) => percent == null ? '…' : '$percent%';
+
+    // A player's share: name and chance painted in their flag's colours
+    // (top to bottom, as the flag runs). No flag drawn beside it.
+    Widget side(TobySide side, int? percent) {
+      final federation = side.federation.trim();
+      final hasFlag = FederationFlag.hasVisibleFlag(federation);
+      final pieces = <(String, TextStyle)>[
+        ('${side.name} ', quiet),
+        (percentText(percent), value),
+      ];
+      // No flag (FIDE, unknown): the line's own colours.
+      if (!hasFlag) {
+        return Text.rich(
+          TextSpan(
+            children: [
+              for (final (text, style) in pieces)
+                TextSpan(text: text, style: style),
+            ],
+          ),
+          maxLines: 1,
+          softWrap: false,
+        );
+      }
+      return TobyFlagInk(federation: federation, pieces: pieces);
+    }
+
     // Space alone parts the three: no glyph between them.
-    final separator = WidgetSpan(child: SizedBox(width: 14.sp));
+    final gap = SizedBox(width: 14.sp);
 
     return Padding(
       padding: EdgeInsets.only(top: 2.sp, bottom: 4.sp),
@@ -579,20 +585,27 @@ class TobyPredictsLine extends StatelessWidget {
             child: ExcludeSemantics(
               child: fixedLine(
                 chancesLineHeight,
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      flag(white.federation),
-                      share(white.name, shares?.white),
-                      separator,
-                      share('Draw', shares?.draw),
-                      separator,
-                      flag(black.federation),
-                      share(black.name, shares?.black),
-                    ],
-                  ),
-                  maxLines: 1,
-                  softWrap: false,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    side(white, shares?.white),
+                    gap,
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(text: 'Draw ', style: quiet),
+                          TextSpan(
+                            text: percentText(shares?.draw),
+                            style: value,
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      softWrap: false,
+                    ),
+                    gap,
+                    side(black, shares?.black),
+                  ],
                 ),
               ),
             ),
@@ -627,7 +640,8 @@ class TobyPredictsLine extends StatelessWidget {
           onTap: onMoveTap == null ? null : () => onMoveTap!(token),
           child: Container(
             height: height,
-            padding: EdgeInsets.only(left: 5.sp),
+            // Space alone parts the moves: no "or", no glyph.
+            padding: EdgeInsets.only(left: 12.sp),
             alignment: Alignment.center,
             child: Text.rich(
               TextSpan(
@@ -644,7 +658,7 @@ class TobyPredictsLine extends StatelessWidget {
                   TextSpan(
                     text: ' ${token.chance}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: context.textInk(0.6),
+                      color: context.accentInk(token.hue, on: background),
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w600,
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -659,6 +673,132 @@ class TobyPredictsLine extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// [pieces] painted in the flag of [federation]: the flag, stretched over
+/// the text's box, is the letters' fill, so the type carries the flag's own
+/// colours from top to bottom (or side to side, as the flag runs). Until
+/// the flag is ready, and for a federation with no country flag (FIDE,
+/// England, Scotland, Wales), the text keeps its own colours at the same
+/// size: nothing moves when the colours arrive.
+class TobyFlagInk extends StatefulWidget {
+  const TobyFlagInk({
+    super.key,
+    required this.federation,
+    required this.pieces,
+  });
+
+  final String federation;
+
+  /// The text, piece by piece in its own style.
+  final List<(String, TextStyle)> pieces;
+
+  /// Rendered flags by ISO code, kept for the session (a few KB each).
+  static final Map<String, Future<ui.Image?>> _flags = {};
+
+  /// The flag of [iso2] as an image, or null when it cannot be read.
+  static Future<ui.Image?> flagImage(String iso2) =>
+      _flags[iso2] ??= _render(iso2);
+
+  static Future<ui.Image?> _render(String iso2) async {
+    try {
+      final si = await ScalableImage.fromSIAsset(
+        rootBundle,
+        'packages/country_flags/res/si/$iso2.si',
+      );
+      final box = si.viewport;
+      if (box.width <= 0 || box.height <= 0) return null;
+      // Enough pixels for a stretched name, small enough to keep around.
+      const width = 120.0;
+      final height = width * box.height / box.width;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)
+        ..scale(width / box.width, height / box.height)
+        ..translate(-box.left, -box.top);
+      si.paint(canvas);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(width.round(), height.round());
+      picture.dispose();
+      return image;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  State<TobyFlagInk> createState() => _TobyFlagInkState();
+}
+
+class _TobyFlagInkState extends State<TobyFlagInk> {
+  ui.Image? _flag;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(TobyFlagInk old) {
+    super.didUpdateWidget(old);
+    if (old.federation != widget.federation) {
+      _flag = null;
+      _load();
+    }
+  }
+
+  void _load() {
+    final iso2 = FederationFlag.iso2Of(widget.federation)?.toLowerCase();
+    if (iso2 == null) return;
+    final federation = widget.federation;
+    TobyFlagInk.flagImage(iso2).then((image) {
+      if (!mounted || image == null || widget.federation != federation) {
+        return;
+      }
+      setState(() => _flag = image);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final flag = _flag;
+    final text = Text.rich(
+      TextSpan(
+        children: [
+          for (final (text, style) in widget.pieces)
+            TextSpan(
+              text: text,
+              // White under the mask: the flag shows through exactly.
+              style: flag == null
+                  ? style
+                  : style.copyWith(color: const Color(0xFFFFFFFF)),
+            ),
+        ],
+      ),
+      maxLines: 1,
+      softWrap: false,
+    );
+    if (flag == null) return text;
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (bounds) => ImageShader(
+        flag,
+        TileMode.clamp,
+        TileMode.clamp,
+        (Matrix4.identity()
+              ..translateByDouble(bounds.left, bounds.top, 0, 1)
+              ..scaleByDouble(
+                bounds.width / flag.width,
+                bounds.height / flag.height,
+                1,
+                1,
+              ))
+            .storage,
+        filterQuality: FilterQuality.medium,
+      ),
+      child: text,
     );
   }
 }

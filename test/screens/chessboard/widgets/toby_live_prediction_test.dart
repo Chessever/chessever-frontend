@@ -206,7 +206,8 @@ void main() {
     ) async {
       await pump(tester);
       expect(find.text('Toby Predicts:'), findsOneWidget);
-      expect(find.text(' or'), findsNWidgets(2));
+      // No "or" and no glyph between the moves: space alone.
+      expect(find.text(' or'), findsNothing);
       final first = tester.getCenter(
         find.text('24…Qxd4 88%', findRichText: true),
       );
@@ -221,19 +222,20 @@ void main() {
 
     testWidgets('puts the result chances under the moves', (tester) async {
       await pump(tester);
-      final chances = find.text(
-        'White 17%\uFFFCDraw 76%\uFFFCBlack 7%',
-        findRichText: true,
-      );
-      expect(chances, findsOneWidget);
+      for (final share in ['White 17%', 'Draw 76%', 'Black 7%']) {
+        final chance = find.text(share, findRichText: true);
+        expect(chance, findsOneWidget);
+        expect(
+          tester.getTopLeft(chance).dy,
+          greaterThan(
+            tester
+                .getBottomLeft(find.text('24…Qxd4 88%', findRichText: true))
+                .dy,
+          ),
+        );
+      }
       expect(
-        tester.getTopLeft(chances).dy,
-        greaterThan(
-          tester.getBottomLeft(find.text('24…Qxd4 88%', findRichText: true)).dy,
-        ),
-      );
-      expect(
-        tester.getTopLeft(chances).dx,
+        tester.getTopLeft(find.text('White 17%', findRichText: true)).dx,
         moreOrLessEquals(tester.getTopLeft(find.text('Toby Predicts:')).dx),
       );
     });
