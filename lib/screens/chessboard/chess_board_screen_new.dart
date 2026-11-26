@@ -12213,6 +12213,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ],
             ),
           ),
+          // "Toby predicts" at the end of the notation, above the footer
+          // buttons, scrolling with the moves (live game only; it builds
+          // nothing otherwise).
+          TobyLivePrediction(
+            params: params,
+            onLayoutChange: _repinAfterNotationReflow,
+          ),
           if (footerActions.isNotEmpty)
             NotationFooterActions(children: footerActions),
         ],
@@ -12374,13 +12381,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   ),
               ],
             ),
-          ),
-          // "Toby predicts", pinned under the notation of a live game (it
-          // builds nothing otherwise). Outside the scroll, so it never reads
-          // as one more notation row.
-          TobyLivePrediction(
-            params: params,
-            onLayoutChange: _repinAfterNotationReflow,
           ),
           if (showNextMovePanel)
             _NextMoveOptionsPanel(

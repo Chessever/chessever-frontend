@@ -1,4 +1,4 @@
-/// "Toby predicts": a panel pinned under the notation of a live game, with
+/// "Toby predicts": a panel at the end of a live game's notation, with
 /// two labelled rows. Result: White / Draw / Black chances as a legend over
 /// one stacked bar. Next move: the three moves Toby expects, each in its own
 /// hue with its chance. Tapping a move draws its arrow on the board in that
@@ -228,7 +228,7 @@ List<double> tobyWdlSegmentWidths(
 
 /// The "Toby predicts" panel. Builds nothing when the board is not live at
 /// its last move, when Toby cannot read the position, or when the reader is
-/// refused (no paywall under the notation).
+/// refused (no paywall in the notation).
 class TobyLivePrediction extends ConsumerStatefulWidget {
   const TobyLivePrediction({
     super.key,
@@ -239,7 +239,7 @@ class TobyLivePrediction extends ConsumerStatefulWidget {
   final ChessBoardProviderParams params;
 
   /// Called during build, before layout, whenever the panel appears or
-  /// disappears, so the notation above can hold its scroll anchor.
+  /// disappears, so the notation can hold its scroll anchor.
   final VoidCallback? onLayoutChange;
 
   @override
@@ -288,8 +288,8 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     widget.onLayoutChange?.call();
   }
 
-  // Appears at full size in one frame: the notation above re-pins its scroll
-  // once ([TobyLivePrediction.onLayoutChange]), which a growing panel would
+  // Appears at full size in one frame: the notation re-pins its scroll once
+  // ([TobyLivePrediction.onLayoutChange]), which a growing panel would
   // outrun.
   @override
   Widget build(BuildContext context) {
@@ -464,7 +464,8 @@ class TobyPredictsPanel extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.fromLTRB(8.sp, 4.sp, 8.sp, 8.sp),
+      // Its edges on the notation's text edges.
+      margin: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 4.sp),
       padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 14.sp, 2.sp),
       decoration: BoxDecoration(
         color: tray,
