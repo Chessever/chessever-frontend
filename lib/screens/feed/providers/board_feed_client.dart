@@ -221,17 +221,34 @@ class BoardFeedClient {
     _record(position, 'videoId', id, kind);
   }
 
+  void recordCollectionGame(
+    BoardFeedPosition position,
+    String collectionId,
+    String gameId,
+    String kind,
+  ) {
+    _record(
+      position,
+      'collectionGameId',
+      gameId,
+      kind,
+      collectionId: collectionId,
+    );
+  }
+
   void _record(
     BoardFeedPosition position,
     String type,
     String id,
-    String kind,
-  ) {
+    String kind, {
+    String? collectionId,
+  }) {
     _pending.add({
       'eventId': newRequestId(),
       'sessionId': position.sessionId,
       'pageId': position.pageId,
       type: id,
+      if (collectionId != null) 'collectionId': collectionId,
       'kind': kind,
     });
     unawaited(flush());

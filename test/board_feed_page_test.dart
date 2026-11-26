@@ -95,6 +95,7 @@ void main() {
           'slug': 'my-book',
           'title': 'Annotated games',
           'kind': 'book',
+          'featuredGameId': 'game-17',
           'resume': {'gameId': 'game-2', 'moveIndex': 12},
         },
         {'type': 'news', 'id': '42', 'articleCount': 2},
@@ -102,6 +103,7 @@ void main() {
     }).cards;
     expect(cards.map((card) => card.id), ['first', 'book-1', '42']);
     expect(cards[1].collection?.collection.slug, 'my-book');
+    expect(cards[1].collection?.featuredGameId, 'game-17');
     expect(cards[1].collection?.resume, (gameId: 'game-2', moveIndex: 12));
   });
 
@@ -116,6 +118,7 @@ void main() {
       contentLocked: true,
     );
     final server = _FeedCollectionServer(collection);
+    final impressions = <String>[];
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -130,7 +133,13 @@ void main() {
               ResponsiveHelper.init(context);
               return Scaffold(
                 body: FeedCollectionPage(
-                  card: FeedCollection(collection, null),
+                  card: FeedCollection(
+                    collection,
+                    null,
+                    featuredGameId: 'game-17',
+                  ),
+                  active: true,
+                  onGameVisible: impressions.add,
                 ),
               );
             },
@@ -144,9 +153,9 @@ void main() {
         .frame
         .game
         .id;
-    expect(visibleGame(), 'game-1');
-    expect(server.browseReads, 0);
-    for (var number = 2; number <= 20; number++) {
+    expect(visibleGame(), 'game-17');
+    for (var step = 1; step < 20; step++) {
+      final number = (16 + step) % 20 + 1;
       await tester.tap(find.byTooltip('Next collection game'));
       await tester.pumpAndSettle();
       expect(visibleGame(), 'game-$number');
@@ -154,12 +163,15 @@ void main() {
     }
     await tester.tap(find.byTooltip('Next collection game'));
     await tester.pumpAndSettle();
-    expect(visibleGame(), 'game-1');
+    expect(visibleGame(), 'game-17');
     await tester.tap(find.byTooltip('Previous collection game'));
     await tester.pumpAndSettle();
-    expect(visibleGame(), 'game-20');
-    expect(server.browseReads, 1);
+    expect(visibleGame(), 'game-16');
+    expect(server.browseReads, 2);
     expect(server.playableReads, 0);
+    expect(impressions.take(20), [
+      for (var step = 0; step < 20; step++) 'game-${(16 + step) % 20 + 1}',
+    ]);
     expect(find.text('Upgrade'), findsOneWidget);
   });
 

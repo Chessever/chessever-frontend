@@ -85,9 +85,18 @@ final _featuredFrameProvider = FutureProvider.autoDispose
     });
 
 class FeedCollectionPage extends ConsumerStatefulWidget {
-  const FeedCollectionPage({super.key, required this.card});
+  const FeedCollectionPage({
+    super.key,
+    required this.card,
+    this.active = false,
+    this.onGameVisible,
+    this.onGameOpened,
+  });
 
   final FeedCollection card;
+  final bool active;
+  final ValueChanged<String>? onGameVisible;
+  final ValueChanged<String>? onGameOpened;
 
   @override
   ConsumerState<FeedCollectionPage> createState() => _FeedCollectionPageState();
@@ -98,6 +107,7 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
   bool _browsing = false;
   String? _selectedGameId;
   List<CollectionGame>? _games;
+  String? _reportedGameId;
   CollectionCheckpoint? _latest;
 
   Future<void> _browse(String visibleGameId, int direction) async {
@@ -134,6 +144,9 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
         collection: widget.card.collection,
         featuredGameId: gameId,
         checkpoint: checkpoint,
+        onOpened: () {
+          if (mounted) widget.onGameOpened?.call(gameId);
+        },
       );
       if (saved != null && mounted) _latest = saved;
     } finally {
@@ -165,13 +178,26 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
     final checkpoint = _latest ?? widget.card.resume;
     final provider = _featuredFrameProvider((
       slug: collection.slug,
-      gameId: _selectedGameId ?? checkpoint?.gameId,
+      gameId:
+          _selectedGameId ?? checkpoint?.gameId ?? widget.card.featuredGameId,
       games: _games,
     ));
     final read = ref.watch(provider);
     final games = _games;
     final frame = read.valueOrNull;
     final gameId = frame?.game.id;
+    if (widget.active && gameId != null && gameId != _reportedGameId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            !widget.active ||
+            _reportedGameId == gameId ||
+            ref.read(provider).valueOrNull?.game.id != gameId) {
+          return;
+        }
+        _reportedGameId = gameId;
+        widget.onGameVisible?.call(gameId);
+      });
+    }
     final gameCount = games?.length ?? collection.gameCount;
     final gameIndex = games?.indexWhere((game) => game.id == gameId) ?? -1;
     final browseGameId = gameId ?? _selectedGameId;

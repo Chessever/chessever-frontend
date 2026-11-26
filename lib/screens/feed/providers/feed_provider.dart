@@ -300,6 +300,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   final _newsImpressions = <int>{};
   final _shortPositions = <String, BoardFeedPosition>{};
   final _shortImpressions = <String>{};
+  final _collectionPositions = <String, BoardFeedPosition>{};
+  final _collectionImpressions = <(String, String)>{};
   List<FeedEntry> _serverEntries = const [];
   List<FeedEntry> get serverEntries => _serverEntries;
   String? _boardCursor;
@@ -380,6 +382,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       _newsImpressions.clear();
       _shortPositions.clear();
       _shortImpressions.clear();
+      _collectionPositions.clear();
+      _collectionImpressions.clear();
       _serverEntries = const [];
       _boardCursor = null;
       final server = _boardServer;
@@ -728,6 +732,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           _newsImpressions.clear();
           _shortPositions.clear();
           _shortImpressions.clear();
+          _collectionPositions.clear();
+          _collectionImpressions.clear();
         }
         for (final item in items) {
           if (item is FeedGameEntry) {
@@ -736,6 +742,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             _newsPositions[item.news.id] = page.position;
           } else if (item is FeedShortEntry) {
             _shortPositions[item.short.id] = page.position;
+          } else if (item is FeedCollectionEntry) {
+            _collectionPositions[item.card.collection.id] = page.position;
           }
         }
         _serverEntries = List.unmodifiable([
@@ -825,6 +833,31 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   void noteShortOpened(String id) {
     final position = _shortPositions[id];
     if (position != null) _boardServer?.recordShort(position, id, 'open');
+  }
+
+  void noteCollectionGameVisible(String collectionId, String gameId) {
+    final position = _collectionPositions[collectionId];
+    if (position != null &&
+        _collectionImpressions.add((collectionId, gameId))) {
+      _boardServer?.recordCollectionGame(
+        position,
+        collectionId,
+        gameId,
+        'impression',
+      );
+    }
+  }
+
+  void noteCollectionGameOpened(String collectionId, String gameId) {
+    final position = _collectionPositions[collectionId];
+    if (position != null) {
+      _boardServer?.recordCollectionGame(
+        position,
+        collectionId,
+        gameId,
+        'open',
+      );
+    }
   }
 
   Future<List<FeedItem>> _hydrateServerBoards(

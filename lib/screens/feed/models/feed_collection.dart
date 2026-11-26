@@ -12,10 +12,11 @@ CollectionCheckpoint? collectionCheckpointFromJson(Object? json) {
 }
 
 class FeedCollection {
-  const FeedCollection(this.collection, this.resume);
+  const FeedCollection(this.collection, this.resume, {this.featuredGameId});
 
   final Collection collection;
   final CollectionCheckpoint? resume;
+  final String? featuredGameId;
 
   static FeedCollection? fromJson(Object? json) {
     if (json case {
@@ -29,6 +30,12 @@ class FeedCollection {
       return FeedCollection(
         Collection.fromJson(row),
         collectionCheckpointFromJson(row['resume']),
+        featuredGameId: switch (row['featuredGameId']) {
+          final String id
+              when RegExp(r'^[A-Za-z0-9_.:-]{1,128}$').hasMatch(id) =>
+            id,
+          _ => null,
+        },
       );
     }
     return null;

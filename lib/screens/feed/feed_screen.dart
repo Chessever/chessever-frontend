@@ -937,6 +937,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       FeedCollectionEntry(:final card) => FeedCollectionPage(
         key: ValueKey(entry.key),
         card: card,
+        active: isCurrent && visible,
+        onGameVisible: (gameId) => ref
+            .read(feedProvider.notifier)
+            .noteCollectionGameVisible(card.collection.id, gameId),
+        onGameOpened: (gameId) => ref
+            .read(feedProvider.notifier)
+            .noteCollectionGameOpened(card.collection.id, gameId),
       ),
       FeedShortEntry(:final short) => FeedShortPage(
         key: ValueKey(entry.key),

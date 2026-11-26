@@ -72,6 +72,7 @@ Future<CollectionCheckpoint?> openFeedCollectionGame(
   required Collection collection,
   required String featuredGameId,
   required CollectionCheckpoint? checkpoint,
+  VoidCallback? onOpened,
 }) async {
   final client = BoardFeedClient.forCurrentUser();
   final userId = ref.read(currentUserProvider)?.id;
@@ -94,6 +95,7 @@ Future<CollectionCheckpoint?> openFeedCollectionGame(
     slug: collection.slug,
     featuredGameId: featuredGameId,
     checkpoint: checkpoint,
+    onOpened: onOpened,
   );
 }
 
@@ -105,6 +107,7 @@ Future<CollectionCheckpoint?> _openCollection(
   int index = 0,
   String? featuredGameId,
   CollectionCheckpoint? checkpoint,
+  VoidCallback? onOpened,
 }) async {
   final owner = ref.read(currentUserProvider)?.id;
   bool current() =>
@@ -180,6 +183,7 @@ Future<CollectionCheckpoint?> _openCollection(
         ? _CollectionProgressWriter(client, id, checkpoint)
         : null;
     try {
+      onOpened?.call();
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ChessBoardScreenNew(
