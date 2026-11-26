@@ -1,19 +1,21 @@
-/// Toby's live prediction, in the notation after the last move:
-/// "Toby Predicts: 16…Qxd4 or 16…Qxc2 or 16…c5", each move in its own hue
-/// (tapping one draws its arrow on the board in that hue), and under it the
-/// result chances by player, "Gukesh 17%   Draw 76%   Sindarov 7%". Each
-/// move carries its chance. "Toby Predicts:" is
+/// "Toby Predicts" at the end of the notation: the moves Toby expects at the
+/// board's position, each in its own hue with its chance (tapping one draws
+/// its arrow on the board in that hue), and under them the result chances
+/// by player, "Gukesh 17%   Draw 76%   Sindarov 7%". "Toby Predicts:" is
 /// dashed: a tap explains the chances and credits Toby.
 ///
-/// Shown only on a live broadcast game, while it is being played, with the
-/// reader on the last move. Whatever the engine source setting says: the
-/// engine lines may run Stockfish while this reads Toby.
+/// Shown on any position of a broadcast game, live or finished, unless the
+/// reader turned it off (Settings → Engine → Toby Predicts). Where the game
+/// is over on the board it says so, with the result. Whatever the engine
+/// source setting says: the engine lines may run Stockfish while this reads
+/// Toby.
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/toby_palette.dart';
@@ -74,34 +76,40 @@ String _fenKey(String fen) =>
 // Pure logic
 // ---------------------------------------------------------------------------
 
-/// Whether the live prediction may show for a board in this state: a live
-/// broadcast game still being played, with the reader on its last move, not
-/// in a variation, a line preview or threats mode.
+/// Whether "Toby Predicts" may show for a board in this state: any position
+/// of a broadcast game, live or finished, on its moves or in a variation,
+/// but not under a line preview or in threats mode.
 bool tobyLivePredictionOpen({
-  required GameStatus status,
   required GameSource source,
-  required bool isAtLiveTail,
-  required bool isInAnalysisVariation,
   required bool isPvPreviewActive,
   required bool isThreatsMode,
-}) =>
-    status.isOngoing &&
-    source == GameSource.supabase &&
-    isAtLiveTail &&
-    !isInAnalysisVariation &&
-    !isPvPreviewActive &&
-    !isThreatsMode;
+}) => source == GameSource.supabase && !isPvPreviewActive && !isThreatsMode;
 
 /// [tobyLivePredictionOpen] for a board state.
 bool tobyLivePredictionOpenFor(ChessBoardStateNew state) =>
     tobyLivePredictionOpen(
-      status: state.game.effectiveGameStatus,
       source: state.game.source,
-      isAtLiveTail: state.isAtLiveTail,
-      isInAnalysisVariation: state.analysisState.isInAnalysisVariation,
       isPvPreviewActive: state.isPvPreviewActive,
       isThreatsMode: state.isThreatsMode,
     );
+
+/// The result at a position where the game is over on the board
+/// (checkmate, stalemate, insufficient material), as Toby's chances, else
+/// null. There is nothing for Toby to predict there.
+TobyWdl? tobyOverWdl(String fen) {
+  try {
+    final position = Chess.fromSetup(Setup.parseFen(fen));
+    if (position.isCheckmate) {
+      return position.turn == Side.white
+          ? const TobyWdl(white: 0, draw: 0, black: 1)
+          : const TobyWdl(white: 1, draw: 0, black: 0);
+    }
+    if (position.isStalemate || position.isInsufficientMaterial) {
+      return const TobyWdl(white: 0, draw: 1, black: 0);
+    }
+  } catch (_) {}
+  return null;
+}
 
 /// A move as the notation numbers it, from the position [fen] it is played
 /// in: "24.Nf6" for White, "24…Nf6" for Black (U+2026).
@@ -348,10 +356,33 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     // until the reading lands). Everyone else never gets the block, so it
     // never appears and then vanishes.
     if (liveFen == null || _refused) return _hidden();
+    final showSetting = ref.watch(
+      engineSettingsProviderNew.select(
+        (settings) => settings.valueOrNull?.showTobyPredicts ?? true,
+      ),
+    );
+    if (!showSetting) return _hidden();
     if (!ref.watch(tobyReaderHasPremiumProvider) ||
         !ref.read(gamebaseRepositoryProvider).hasApiKey) {
       return _hidden();
     }
+    final game = widget.params.game;
+    final white = (name: tobySideName(game.whitePlayer.name, 'White'));
+    final black = (name: tobySideName(game.blackPlayer.name, 'Black'));
+
+    // Game over on the board: the result, in the same two lines.
+    final over = tobyOverWdl(liveFen);
+    if (over != null) {
+      _setVisible(true);
+      return TobyPredictsLine(
+        white: white,
+        black: black,
+        wdl: over,
+        tokens: const [],
+        note: 'game over',
+      );
+    }
+
     final request = _requestFor(liveFen);
     if (request == null) return _hidden();
 
@@ -395,10 +426,9 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
         ? selection.uci
         : null;
 
-    final game = widget.params.game;
     return TobyPredictsLine(
-      white: (name: tobySideName(game.whitePlayer.name, 'White')),
-      black: (name: tobySideName(game.blackPlayer.name, 'Black')),
+      white: white,
+      black: black,
       wdl: _heldWdl,
       tokens: tokens,
       waiting: waiting,
@@ -439,6 +469,7 @@ class TobyPredictsLine extends StatelessWidget {
     this.wdl,
     required this.tokens,
     this.waiting = true,
+    this.note,
     this.muted = false,
     this.selectedUci,
     this.onMoveTap,
@@ -452,6 +483,10 @@ class TobyPredictsLine extends StatelessWidget {
   /// No moves yet: true while Toby is reading ("thinking…"), false when it
   /// gave up on this position ("not available").
   final bool waiting;
+
+  /// Said in place of the moves when there are none to predict
+  /// ("game over"); overrides [waiting].
+  final String? note;
 
   /// The two lines' fixed heights: the block never changes height between
   /// readings, placeholders, longer names or larger text (a line too wide
@@ -510,7 +545,10 @@ class TobyPredictsLine extends StatelessWidget {
             ),
           ),
           if (tokens.isEmpty)
-            Text(waiting ? ' thinking…' : ' not available', style: quiet),
+            Text(
+              ' ${note ?? (waiting ? 'thinking…' : 'not available')}',
+              style: quiet,
+            ),
           for (var i = 0; i < tokens.length && i < 3; i++) ...[
             _move(
               context,

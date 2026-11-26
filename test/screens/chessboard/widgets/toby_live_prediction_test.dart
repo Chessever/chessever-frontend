@@ -105,34 +105,45 @@ void main() {
 
   group('tobyLivePredictionOpen', () {
     bool open({
-      GameStatus status = GameStatus.ongoing,
       GameSource source = GameSource.supabase,
-      bool tail = true,
-      bool variation = false,
       bool preview = false,
       bool threats = false,
     }) => tobyLivePredictionOpen(
-      status: status,
       source: source,
-      isAtLiveTail: tail,
-      isInAnalysisVariation: variation,
       isPvPreviewActive: preview,
       isThreatsMode: threats,
     );
 
-    test('opens on a live broadcast game at its last move', () {
+    test('opens on any position of a broadcast game, live or finished', () {
       expect(open(), isTrue);
     });
-    test('stays shut otherwise', () {
-      expect(open(status: GameStatus.whiteWins), isFalse);
-      expect(open(status: GameStatus.draw), isFalse);
-      expect(open(status: GameStatus.unknown), isFalse);
+    test('stays shut off broadcasts, under a preview and in threats', () {
       expect(open(source: GameSource.savedAnalysis), isFalse);
       expect(open(source: GameSource.gamebase), isFalse);
-      expect(open(tail: false), isFalse);
-      expect(open(variation: true), isFalse);
       expect(open(preview: true), isFalse);
       expect(open(threats: true), isFalse);
+    });
+  });
+
+  group('tobyOverWdl', () {
+    test('checkmate: the side that mated wins', () {
+      // Fool's mate, White to move and mated.
+      expect(
+        tobyOverWdl(
+          'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3',
+        )?.percentages,
+        (white: 0, draw: 0, black: 100),
+      );
+    });
+    test('stalemate is a draw', () {
+      expect(tobyOverWdl('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1')?.percentages, (
+        white: 0,
+        draw: 100,
+        black: 0,
+      ));
+    });
+    test('a playable position is not over', () {
+      expect(tobyOverWdl(Chess.initial.fen), isNull);
     });
   });
 
@@ -294,6 +305,24 @@ void main() {
       await pump(tester, onMoveTap: (token) => tapped = token);
       await tester.tap(find.text('24…Qxc2 11%', findRichText: true));
       expect(tapped?.uci, 'c4c2');
+    });
+
+    testWidgets('says game over where the game ended', (tester) async {
+      ResponsiveHelper.initFromSize(const Size(390, 844));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: const Scaffold(
+            body: TobyPredictsLine(
+              wdl: TobyWdl(white: 1, draw: 0, black: 0),
+              tokens: [],
+              note: 'game over',
+            ),
+          ),
+        ),
+      );
+      expect(find.text(' game over'), findsOneWidget);
+      expect(find.text('White 100%', findRichText: true), findsOneWidget);
     });
 
     testWidgets('says thinking while Toby reads a new position', (

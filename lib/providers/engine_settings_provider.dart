@@ -109,10 +109,11 @@ class EngineDepthTrackerNotifier
   }
 }
 
-final engineDepthTrackerProvider = StateNotifierProvider<
-  EngineDepthTrackerNotifier,
-  Map<EngineComponent, EngineSearchProgress>
->((ref) => EngineDepthTrackerNotifier());
+final engineDepthTrackerProvider =
+    StateNotifierProvider<
+      EngineDepthTrackerNotifier,
+      Map<EngineComponent, EngineSearchProgress>
+    >((ref) => EngineDepthTrackerNotifier());
 
 /// Represents the most relevant engine depth snapshot at a moment in time.
 class EngineDepthSnapshot {
@@ -215,19 +216,18 @@ class EngineSettings {
     this.searchTimeIndex = 0,
     this.engineLinesView = EngineLinesView.list,
     this.engineSource = EngineSource.stockfish,
+    this.showTobyPredicts = true,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
-  }) : principalVariationIndex =
-           principalVariationIndex < 0
-               ? 0
-               : (principalVariationIndex >
-                       4 // Max index is 4 (we have 5 labels: 0-4)
-                   ? 4
-                   : principalVariationIndex),
-       maxArrowsOnBoard =
-           maxArrowsOnBoard < 0
-               ? 0
-               : (maxArrowsOnBoard > 4 ? 4 : maxArrowsOnBoard);
+  }) : principalVariationIndex = principalVariationIndex < 0
+           ? 0
+           : (principalVariationIndex >
+                     4 // Max index is 4 (we have 5 labels: 0-4)
+                 ? 4
+                 : principalVariationIndex),
+       maxArrowsOnBoard = maxArrowsOnBoard < 0
+           ? 0
+           : (maxArrowsOnBoard > 4 ? 4 : maxArrowsOnBoard);
 
   final bool showEngineGauge;
   final bool showEngineGaugeOnBoard;
@@ -255,6 +255,10 @@ class EngineSettings {
 
   /// Whether Toby replaces Stockfish on the board.
   bool get usesToby => engineSource == EngineSource.toby;
+
+  /// Whether the notation ends with "Toby Predicts" (the moves Toby expects
+  /// and the result chances). Device-local, like [engineSource].
+  final bool showTobyPredicts;
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -377,6 +381,7 @@ class EngineSettings {
     int? searchTimeIndex,
     EngineLinesView? engineLinesView,
     EngineSource? engineSource,
+    bool? showTobyPredicts,
     int? principalVariationIndex,
     int? maxArrowsOnBoard,
   }) {
@@ -392,6 +397,7 @@ class EngineSettings {
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
       engineLinesView: engineLinesView ?? this.engineLinesView,
       engineSource: engineSource ?? this.engineSource,
+      showTobyPredicts: showTobyPredicts ?? this.showTobyPredicts,
       principalVariationIndex:
           (principalVariationIndex ?? this.principalVariationIndex).clamp(
             0,
@@ -454,8 +460,7 @@ class EngineSettings {
     if (gaugeDuration == null || pvDuration == null) {
       searchDuration = null;
     } else {
-      searchDuration =
-          gaugeDuration >= pvDuration ? gaugeDuration : pvDuration;
+      searchDuration = gaugeDuration >= pvDuration ? gaugeDuration : pvDuration;
     }
 
     final gaugeMax = maxDepthFor(EngineComponent.evaluationGauge);
@@ -516,6 +521,9 @@ EngineSettings applyDeviceLocalEngineSettings(
     engineSource: cache.containsKey('engineSource')
         ? engineSourceFromName(cache['engineSource'])
         : settings.engineSource,
+    showTobyPredicts: cache['showTobyPredicts'] is bool
+        ? cache['showTobyPredicts'] as bool
+        : settings.showTobyPredicts,
   );
 }
 
@@ -574,12 +582,11 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       }
 
       // Fetch from Supabase (source of truth)
-      final response =
-          await _supabase
-              .from('user_engine_settings')
-              .select()
-              .eq('user_id', userId)
-              .maybeSingle();
+      final response = await _supabase
+          .from('user_engine_settings')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
 
       // Read the cache after the round trip, so a choice made while the request
       // was in flight is not overlaid with its older value.
@@ -787,6 +794,16 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     await _cacheSettings(newSettings);
   }
 
+  /// Show or hide "Toby Predicts" under the notation. Device-local, like
+  /// [setEngineSource].
+  Future<void> setShowTobyPredicts(bool show) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    if (currentState.showTobyPredicts == show) return;
+    final newSettings = currentState.copyWith(showTobyPredicts: show);
+    state = AsyncValue.data(newSettings);
+    await _cacheSettings(newSettings);
+  }
+
   /// Set max arrows on board index
   Future<void> setMaxArrowsOnBoard(int index) async {
     final clamped = index.clamp(0, EngineSettings.maxArrowsLabels.length - 1);
@@ -877,6 +894,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'searchTimeIndex': settings.searchTimeIndex,
         'engineLinesView': settings.engineLinesView.index,
         'engineSource': settings.engineSource.name,
+        'showTobyPredicts': settings.showTobyPredicts,
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
@@ -929,6 +947,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           map['engineLinesView'] as int?,
         ),
         engineSource: engineSourceFromName(map['engineSource']),
+        showTobyPredicts: map['showTobyPredicts'] as bool? ?? true,
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
         maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );

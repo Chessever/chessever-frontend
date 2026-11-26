@@ -89,10 +89,9 @@ class EngineSettingsBody extends ConsumerWidget {
                       value: settings.showEngineGauge,
                       // Dark keeps its always-cyan thumb; paper uses the
                       // shared AA pair (white on teal ON, grey OFF).
-                      thumbColor:
-                          context.isLightTheme
-                              ? settingsSwitchThumb(context)
-                              : const WidgetStatePropertyAll(kPrimaryColor),
+                      thumbColor: context.isLightTheme
+                          ? settingsSwitchThumb(context)
+                          : const WidgetStatePropertyAll(kPrimaryColor),
                       trackColor: settingsSwitchTrack(context),
                       onChanged: (value) {
                         trackPersist(notifier.toggleEngineGauge(value));
@@ -203,6 +202,45 @@ class EngineSettingsBody extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+        SettingCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Toby Predicts',
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: context.colors.textPrimary,
+                        fontSize: 13.f,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Under the moves of broadcast games: the moves Toby '
+                      'expects next and each result\'s chances.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: context.colors.textSecondary,
+                        fontSize: 11.f,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                key: const ValueKey('toby-predicts-switch'),
+                value: settings.showTobyPredicts,
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
+                onChanged: (value) {
+                  trackPersist(notifier.setShowTobyPredicts(value));
+                },
               ),
             ],
           ),
@@ -619,10 +657,9 @@ class _EvaluationSurfaceSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor =
-        enabled
-            ? context.colors.textPrimary
-            : context.colors.textSecondary.withValues(alpha: 0.6);
+    final textColor = enabled
+        ? context.colors.textPrimary
+        : context.colors.textSecondary.withValues(alpha: 0.6);
     return MergeSemantics(
       child: Padding(
         padding: EdgeInsets.only(left: 8.sp),
@@ -676,16 +713,18 @@ class _DiscreteSlider extends StatelessWidget {
       // Paper: the cyan track and thumb sit near 2:1, so light draws them in
       // the accent-text teal. Dark is unchanged.
       data: SliderTheme.of(context).copyWith(
-        activeTrackColor:
-            context.isLightTheme ? context.colors.accentText : kPrimaryColor,
-        inactiveTrackColor:
-            context.isLightTheme
-                ? context.colors.accentText.withValues(alpha: 0.25)
-                : kPrimaryColor.withValues(alpha: 0.2),
-        thumbColor:
-            context.isLightTheme ? context.colors.accentText : kPrimaryColor,
-        valueIndicatorColor:
-            context.isLightTheme ? context.colors.accentText : null,
+        activeTrackColor: context.isLightTheme
+            ? context.colors.accentText
+            : kPrimaryColor,
+        inactiveTrackColor: context.isLightTheme
+            ? context.colors.accentText.withValues(alpha: 0.25)
+            : kPrimaryColor.withValues(alpha: 0.2),
+        thumbColor: context.isLightTheme
+            ? context.colors.accentText
+            : kPrimaryColor,
+        valueIndicatorColor: context.isLightTheme
+            ? context.colors.accentText
+            : null,
         valueIndicatorTextStyle: AppTypography.textSmMedium.copyWith(
           color: context.colors.textInverse,
           fontSize: 11.f,

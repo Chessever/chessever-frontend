@@ -1,1 +1,1 @@
-Starred events, players and collections now tell you how many new games they added today, counted from your local midnight. The Games tab puts the next round on top as soon as its pairings are out. Clock fixes for rapid playoff boards, plus other improvements.
+Toby Predicts: under the moves of every broadcast game, live or finished, see the moves Toby expects next and each player's chances. Tap a move to see it on the board. Turn it off in Settings, Engine. Plus fixes and improvements.
