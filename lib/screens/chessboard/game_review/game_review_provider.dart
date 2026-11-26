@@ -173,6 +173,10 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
   /// provider state instead of reading this from a held notifier reference.
   MobileGameReviewState get reviewState => state;
 
+  /// The game last configured: the board's mainline and its PGN headers. The
+  /// sheet reads the Toby rating's game facts from it.
+  ChessGame? get game => _game;
+
   void _emit(MobileGameReviewState next) {
     state = next;
     _sheetListenable.tick();

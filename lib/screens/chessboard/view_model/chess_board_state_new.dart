@@ -17,33 +17,41 @@ class AnalysisLine {
   final double? evaluation;
   final int? mate;
 
+  /// Text the line's badge shows instead of [evaluation] (a Toby line shows
+  /// the move's chance, "34%"). [evaluation] still decides the badge colour.
+  final String? evalLabel;
+
   const AnalysisLine({
     this.moves = const [],
     this.sanMoves = const [],
     this.evaluation,
     this.mate,
+    this.evalLabel,
   });
 
   bool get isEmpty => moves.isEmpty;
   bool get isMate => mate != null;
   String get displayEval =>
-      isMate
+      evalLabel ??
+      (isMate
           ? '#$mate'
           : evaluation != null
           ? evaluation!.toStringAsFixed(1)
-          : '';
+          : '');
 
   AnalysisLine copyWith({
     List<Move>? moves,
     List<String>? sanMoves,
     double? evaluation,
     int? mate,
+    String? evalLabel,
   }) {
     return AnalysisLine(
       moves: moves ?? this.moves,
       sanMoves: sanMoves ?? this.sanMoves,
       evaluation: evaluation ?? this.evaluation,
       mate: mate ?? this.mate,
+      evalLabel: evalLabel ?? this.evalLabel,
     );
   }
 
@@ -60,6 +68,7 @@ class AnalysisLine {
     }
     return other.evaluation == evaluation &&
         other.mate == mate &&
+        other.evalLabel == evalLabel &&
         _stringListEquality.equals(other.sanMoves, sanMoves) &&
         _stringListEquality.equals(other._uciMoves(), _uciMoves());
   }
@@ -69,6 +78,7 @@ class AnalysisLine {
     return Object.hash(
       evaluation,
       mate,
+      evalLabel,
       Object.hashAll(_uciMoves()),
       Object.hashAll(sanMoves),
     );

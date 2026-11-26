@@ -1,0 +1,12 @@
+{
+  "status": 202,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "private, no-store",
+    "retry-after": "1"
+  },
+  "body": {
+    "status": "pending",
+    "reason": "queued"
+  }
+}

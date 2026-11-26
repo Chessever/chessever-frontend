@@ -1,6 +1,8 @@
 import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
+import 'package:chessever2/services/toby/toby_prediction.dart'
+    show kTobyAttribution;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -139,7 +141,7 @@ class EngineSettingsBody extends ConsumerWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Enable Stockfish to analyze positions and suggest best moves.',
+                      'Analyze positions and suggest moves.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textSecondary,
                         fontSize: 11.f,
@@ -155,6 +157,51 @@ class EngineSettingsBody extends ConsumerWidget {
                 onChanged: (value) {
                   trackPersist(notifier.toggleEngineAnalysis(value));
                 },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+        SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Engine',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  fontSize: 13.f,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                engineSourceSubtitle(settings.engineSource),
+                key: const ValueKey('engine-source-subtitle'),
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 14.h),
+              _SegmentTrack(
+                children: [
+                  _ToggleSegment(
+                    key: const ValueKey('engine-source-stockfish'),
+                    label: 'Stockfish',
+                    selected: settings.engineSource == EngineSource.stockfish,
+                    onTap: () => trackPersist(
+                      notifier.setEngineSource(EngineSource.stockfish),
+                    ),
+                  ),
+                  _ToggleSegment(
+                    key: const ValueKey('engine-source-toby'),
+                    label: 'Toby',
+                    selected: settings.engineSource == EngineSource.toby,
+                    onTap: () => trackPersist(
+                      notifier.setEngineSource(EngineSource.toby),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -221,9 +268,12 @@ class EngineSettingsBody extends ConsumerWidget {
                 ),
               ),
               Switch.adaptive(
+                key: const ValueKey('depth-indicator-switch'),
                 value: settings.showDepthOverlay,
                 thumbColor: settingsSwitchThumb(context),
                 trackColor: settingsSwitchTrack(context),
+                // Kept live with Toby chosen: Stockfish still runs in
+                // threats mode and wherever Toby cannot read the position.
                 onChanged: (value) {
                   trackPersist(notifier.toggleDepthOverlay(value));
                 },
@@ -290,9 +340,12 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               SizedBox(height: 14.h),
               _DiscreteSlider(
+                key: const ValueKey('thinking-time-slider'),
                 value: settings.searchTimeIndex.toDouble(),
                 divisions: EngineSettings.searchTimeLabels.length - 1,
                 labels: EngineSettings.searchTimeLabels,
+                // Kept live with Toby chosen: it still sets Stockfish's time
+                // in threats mode and wherever Toby cannot read the position.
                 onChanged: (value) {
                   final index = value.toInt();
                   trackPersist(notifier.setSearchTimeIndex(index));
@@ -412,6 +465,39 @@ class _EngineLinesToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _SegmentTrack(
+      children: [
+        _ToggleSegment(
+          label: 'Off',
+          icon: Icons.visibility_off_outlined,
+          selected: !visible,
+          onTap: onOff,
+        ),
+        _ToggleSegment(
+          label: 'Cards',
+          icon: Icons.view_carousel_outlined,
+          selected: visible && value == EngineLinesView.cards,
+          onTap: () => onChanged(EngineLinesView.cards),
+        ),
+        _ToggleSegment(
+          label: 'List',
+          icon: Icons.view_agenda_outlined,
+          selected: visible && value == EngineLinesView.list,
+          onTap: () => onChanged(EngineLinesView.list),
+        ),
+      ],
+    );
+  }
+}
+
+/// The recessed track the settings segmented controls sit in.
+class _SegmentTrack extends StatelessWidget {
+  const _SegmentTrack({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
@@ -420,42 +506,41 @@ class _EngineLinesToggle extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _segment(
-            context,
-            label: 'Off',
-            icon: Icons.visibility_off_outlined,
-            selected: !visible,
-            onTap: onOff,
-          ),
-          SizedBox(width: 4.w),
-          _segment(
-            context,
-            label: 'Cards',
-            icon: Icons.view_carousel_outlined,
-            selected: visible && value == EngineLinesView.cards,
-            onTap: () => onChanged(EngineLinesView.cards),
-          ),
-          SizedBox(width: 4.w),
-          _segment(
-            context,
-            label: 'List',
-            icon: Icons.view_agenda_outlined,
-            selected: visible && value == EngineLinesView.list,
-            onTap: () => onChanged(EngineLinesView.list),
-          ),
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) SizedBox(width: 4.w),
+            Expanded(child: children[i]),
+          ],
         ],
       ),
     );
   }
+}
 
-  Widget _segment(
-    BuildContext context, {
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
+/// One segment of a [_SegmentTrack]: accent fill when selected.
+class _ToggleSegment extends StatelessWidget {
+  const _ToggleSegment({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected
+        ? (context.isLightTheme
+              ? context.colors.inkOnAccent
+              : context.colors.textInverse)
+        : context.colors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -469,24 +554,14 @@ class _EngineLinesToggle extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 16.f,
-                color: selected
-                    ? (context.isLightTheme
-                        ? context.colors.inkOnAccent
-                        : context.colors.textInverse)
-                    : context.colors.textSecondary,
-              ),
-              SizedBox(width: 6.w),
+              if (icon != null) ...[
+                Icon(icon, size: 16.f, color: color),
+                SizedBox(width: 6.w),
+              ],
               Text(
                 label,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: selected
-                      ? (context.isLightTheme
-                          ? context.colors.inkOnAccent
-                          : context.colors.textInverse)
-                      : context.colors.textSecondary,
+                  color: color,
                   fontSize: 12.f,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
@@ -498,6 +573,33 @@ class _EngineLinesToggle extends StatelessWidget {
     );
   }
 }
+
+/// The subtitle of the Engine card. Toby's licence asks for its attribution
+/// wherever its readings are offered: it is here where Toby is chosen, and
+/// on the board's live prediction capsule ([kTobyAttribution]).
+@visibleForTesting
+String engineSourceSubtitle(EngineSource source) => switch (source) {
+  EngineSource.stockfish => 'The strongest moves.',
+  EngineSource.toby =>
+    'The moves a player of this level is likely to choose, with their '
+        'chances. $kTobyAttribution',
+};
+
+WidgetStateProperty<Color?> _dimmableThumb(BuildContext context) =>
+    WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return context.colors.textSecondary.withValues(alpha: 0.35);
+      }
+      return settingsSwitchThumb(context).resolve(states);
+    });
+
+WidgetStateProperty<Color?> _dimmableTrack(BuildContext context) =>
+    WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return context.colors.divider.withValues(alpha: 0.3);
+      }
+      return settingsSwitchTrack(context).resolve(states);
+    });
 
 class _EvaluationSurfaceSwitch extends StatelessWidget {
   const _EvaluationSurfaceSwitch({
@@ -537,18 +639,8 @@ class _EvaluationSurfaceSwitch extends StatelessWidget {
             Switch.adaptive(
               key: switchKey,
               value: value,
-              thumbColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.disabled)) {
-                  return context.colors.textSecondary.withValues(alpha: 0.35);
-                }
-                return settingsSwitchThumb(context).resolve(states);
-              }),
-              trackColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.disabled)) {
-                  return context.colors.divider.withValues(alpha: 0.3);
-                }
-                return settingsSwitchTrack(context).resolve(states);
-              }),
+              thumbColor: _dimmableThumb(context),
+              trackColor: _dimmableTrack(context),
               onChanged: enabled ? onChanged : null,
             ),
           ],
@@ -560,6 +652,7 @@ class _EvaluationSurfaceSwitch extends StatelessWidget {
 
 class _DiscreteSlider extends StatelessWidget {
   const _DiscreteSlider({
+    super.key,
     required this.value,
     required this.divisions,
     required this.labels,
@@ -569,7 +662,9 @@ class _DiscreteSlider extends StatelessWidget {
   final double value;
   final int divisions;
   final List<String> labels;
-  final ValueChanged<double> onChanged;
+
+  /// Null disables (and dims) the slider.
+  final ValueChanged<double>? onChanged;
 
   @override
   Widget build(BuildContext context) {

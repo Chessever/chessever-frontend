@@ -184,6 +184,25 @@ EngineLinesView engineLinesViewFromIndex(int? index) {
   return EngineLinesView.values[index];
 }
 
+/// Which engine fills the board's evaluation bar, engine lines and arrows.
+/// Device-local (cache only, no Supabase column), like the gauge surfaces.
+enum EngineSource {
+  /// The strongest moves (local Stockfish and cached evaluations).
+  stockfish,
+
+  /// The moves a player of the game's level is likely to choose, with their
+  /// chances (Toby, through Gamebase).
+  toby,
+}
+
+/// Map a cached name to [EngineSource], defaulting to Stockfish.
+EngineSource engineSourceFromName(Object? name) {
+  for (final source in EngineSource.values) {
+    if (source.name == name) return source;
+  }
+  return EngineSource.stockfish;
+}
+
 /// Engine settings configuration class
 class EngineSettings {
   const EngineSettings({
@@ -195,6 +214,7 @@ class EngineSettings {
     this.showEngineAnalysis = true,
     this.searchTimeIndex = 0,
     this.engineLinesView = EngineLinesView.list,
+    this.engineSource = EngineSource.stockfish,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex =
@@ -229,6 +249,12 @@ class EngineSettings {
   maxArrowsOnBoard; // Index for max arrows on board (0-4 = 1-5 arrows)
   final EngineLinesView
   engineLinesView; // Layout for engine PV lines (cards vs list)
+
+  /// Which engine fills the board's bar, lines and arrows. Device-local.
+  final EngineSource engineSource;
+
+  /// Whether Toby replaces Stockfish on the board.
+  bool get usesToby => engineSource == EngineSource.toby;
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -350,6 +376,7 @@ class EngineSettings {
     bool? showEngineAnalysis,
     int? searchTimeIndex,
     EngineLinesView? engineLinesView,
+    EngineSource? engineSource,
     int? principalVariationIndex,
     int? maxArrowsOnBoard,
   }) {
@@ -364,9 +391,12 @@ class EngineSettings {
       showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
       engineLinesView: engineLinesView ?? this.engineLinesView,
-      principalVariationIndex: (principalVariationIndex ??
-              this.principalVariationIndex)
-          .clamp(0, principalVariationLabels.length - 1),
+      engineSource: engineSource ?? this.engineSource,
+      principalVariationIndex:
+          (principalVariationIndex ?? this.principalVariationIndex).clamp(
+            0,
+            principalVariationLabels.length - 1,
+          ),
       maxArrowsOnBoard: (maxArrowsOnBoard ?? this.maxArrowsOnBoard).clamp(
         0,
         maxArrowsLabels.length - 1,
@@ -471,8 +501,8 @@ int resolveSearchTimeIndex({required int cloud, required int? cached}) {
   return cached.clamp(0, EngineSettings.searchTimeLabels.length - 1);
 }
 
-/// Overlays every device-local choice (evaluation bar surfaces and thinking
-/// time) on settings loaded from the cloud.
+/// Overlays every device-local choice (evaluation bar surfaces, thinking
+/// time and the engine source) on settings loaded from the cloud.
 EngineSettings applyDeviceLocalEngineSettings(
   EngineSettings settings,
   Map<String, dynamic> cache,
@@ -483,6 +513,9 @@ EngineSettings applyDeviceLocalEngineSettings(
       cloud: settings.searchTimeIndex,
       cached: cachedSearchTime is int ? cachedSearchTime : null,
     ),
+    engineSource: cache.containsKey('engineSource')
+        ? engineSourceFromName(cache['engineSource'])
+        : settings.engineSource,
   );
 }
 
@@ -737,6 +770,23 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     await _persist(newSettings);
   }
 
+  /// Choose which engine fills the board's bar, lines and arrows. The choice
+  /// is device-local: it is written to the local cache only, like the
+  /// evaluation bar surfaces, so no Supabase column is needed.
+  Future<void> setEngineSource(EngineSource source) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    if (currentState.engineSource == source) return;
+    final newSettings = currentState.copyWith(engineSource: source);
+    // No global Stockfish cancel here: other owners (a local Game Review, the
+    // explorer) keep their jobs. Each board cancels its own work when it
+    // sees the switch.
+    state = AsyncValue.data(newSettings);
+    ref
+        .read(engineDepthTrackerProvider.notifier)
+        .clearAll(reason: 'engine source changed');
+    await _cacheSettings(newSettings);
+  }
+
   /// Set max arrows on board index
   Future<void> setMaxArrowsOnBoard(int index) async {
     final clamped = index.clamp(0, EngineSettings.maxArrowsLabels.length - 1);
@@ -826,6 +876,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'showEngineAnalysis': settings.showEngineAnalysis,
         'searchTimeIndex': settings.searchTimeIndex,
         'engineLinesView': settings.engineLinesView.index,
+        'engineSource': settings.engineSource.name,
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
@@ -877,6 +928,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         engineLinesView: engineLinesViewFromIndex(
           map['engineLinesView'] as int?,
         ),
+        engineSource: engineSourceFromName(map['engineSource']),
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
         maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );

@@ -164,6 +164,7 @@ import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_nudge.dart';
 import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
+import 'package:chessever2/screens/chessboard/widgets/toby_live_prediction.dart';
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
@@ -10922,8 +10923,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final annotationShapes = showLocalAnnotations
         ? _extractAnnotationShapes(activeMove)
         : const <Shape>[];
+    // The Toby move tapped in the live prediction, in its own hue. Drawn
+    // whatever the engine arrow settings say: the reader asked for it.
+    final tobyArrow = tobyArrowShape(
+      ref.watch(tobyArrowProvider(widget.game.gameId)),
+      widget.chessBoardState.analysisState.position.fen,
+    );
     // chessground v10 takes a plain Set<Shape> (was ISet<Shape>).
-    final allShapes = <Shape>{...pvShapes, ...annotationShapes};
+    final allShapes = <Shape>{
+      ...pvShapes,
+      ...annotationShapes,
+      if (tobyArrow != null) tobyArrow,
+    };
     final androidPipRecoveryEpoch = ref.watch(
       _androidPipBoardRecoveryEpochProvider(
         _androidPipBoardRecoveryKey(widget.game, widget.index),
@@ -12188,12 +12199,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           Container(
             alignment: Alignment.centerLeft,
             padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 20.sp),
-            child: ExcludeSemantics(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: rows,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ExcludeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: rows,
+                  ),
+                ),
+                // Toby's live prediction, under the last notation row. A
+                // sibling of the rows (not one of them) so screen readers
+                // reach it: the rows sit inside ExcludeSemantics.
+                TobyLivePrediction(
+                  params: params,
+                  onLayoutChange: _repinAfterNotationReflow,
+                ),
+              ],
             ),
           ),
           if (footerActions.isNotEmpty)
@@ -15603,6 +15627,8 @@ class _PrincipalVariationListState
   }
 
   String _formatEvalLabel(AnalysisLine line) {
+    final label = line.evalLabel;
+    if (label != null) return label;
     if (line.isMate) {
       final mate = line.mate ?? 0;
       final absMate = mate.abs();

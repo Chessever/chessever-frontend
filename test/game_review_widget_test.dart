@@ -17,12 +17,37 @@ import 'package:chessever2/screens/chessboard/utils/chessever_report_stamp.dart'
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/toby/toby_performance.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// The sheet's Toby Rating row reads Riverpod. These tests are about the
+/// rest of the sheet, so the estimate is known up front to be unavailable and
+/// the row stays hidden (its own tests are in
+/// test/services/toby/toby_performance_test.dart and below).
+class _NoTobyPerformance extends TobyPerformanceNotifier {
+  @override
+  TobyPerformanceState build(TobyPerformanceQuery query) =>
+      TobyPerformanceState.unavailable;
+}
+
+class _FixedTobyPerformance extends TobyPerformanceNotifier {
+  _FixedTobyPerformance(this._state);
+
+  final TobyPerformanceState _state;
+
+  @override
+  TobyPerformanceState build(TobyPerformanceQuery query) => _state;
+}
+
+Widget _tobyScope(BuildContext context, Widget? child) => ProviderScope(
+  overrides: [tobyPerformanceProvider.overrideWith(_NoTobyPerformance.new)],
+  child: child!,
+);
 
 Future<GameAnalysisClaimResult> _allowClaim(String _) async =>
     const GameAnalysisClaimResult(
@@ -1075,6 +1100,100 @@ void main() {
     }
   });
 
+  testWidgets('Toby Rating sits under Game Rating, with its placeholders', (
+    tester,
+  ) async {
+    GameAnalysisReportController.clearSessionCacheForTest();
+    addTearDown(GameAnalysisReportController.clearSessionCacheForTest);
+    final chessGame = withChesseverReportStamp(
+      ChessGame.fromPgn(
+        'toby-sheet',
+        r'1. e4 $247 {[%eval 0.32]} e5 {[%eval 0.22]} 1-0',
+      ),
+    );
+    final report = gameAnalysisReportFromPgn(chessGame)!;
+    final store = GameAnalysisReportStore.memory();
+    await store.save(report);
+    final reports = GameAnalysisReportController(store: store);
+    final review = MobileGameReviewController(reportController: reports);
+    addTearDown(review.dispose);
+    review.configure(
+      game: chessGame,
+      active: false,
+      finished: true,
+      whiteRating: 0,
+      blackRating: 0,
+    );
+    await reports.loadExistingReport(chessGame);
+
+    Future<void> pumpWith(TobyPerformanceState toby) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          // A fresh scope per state: overrides are read once per scope.
+          builder: (context, child) => ProviderScope(
+            key: ValueKey(toby.status),
+            overrides: [
+              tobyPerformanceProvider.overrideWith(
+                () => _FixedTobyPerformance(toby),
+              ),
+            ],
+            child: child!,
+          ),
+          home: Scaffold(
+            body: GameReviewSheet(
+              controller: review,
+              game: _game(),
+              activePly: 0,
+              onJumpToPly: (_) {},
+              onClose: _noop,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    await pumpWith(
+      TobyPerformanceState.ready(
+        TobyPerformance.fromJson({
+          'model': 'toby2-level-v1',
+          'cadence': 'classical',
+          'white': {
+            'rating': 2480,
+            'display': '2480',
+            'method': 'rated',
+            'moves': 24,
+            'sd': 120.0,
+          },
+          'black': null,
+        })!,
+      ),
+    );
+    expect(find.text('Toby Rating'), findsOneWidget);
+    expect(find.text('2480', findRichText: true), findsOneWidget);
+    // Black played too few moves to estimate: the placeholder holds the cell.
+    expect(find.text('\u2014', findRichText: true), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Toby Rating')).dy,
+      greaterThan(tester.getTopLeft(find.text('Game Rating')).dy),
+    );
+    // Same label column as every other summary row.
+    expect(
+      tester.getSize(find.text('Toby Rating')).width,
+      lessThanOrEqualTo(132),
+    );
+
+    await pumpWith(TobyPerformanceState.loading);
+    expect(find.text('Toby Rating'), findsOneWidget);
+    expect(find.text('\u2014', findRichText: true), findsNWidgets(2));
+
+    await pumpWith(TobyPerformanceState.unavailable);
+    expect(find.text('Toby Rating'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await store.flush();
+  });
+
   testWidgets('saved report shows its metrics and keeps the starting eval blank', (
     tester,
   ) async {
@@ -1103,6 +1222,7 @@ void main() {
     int? jumpedToPly;
     await tester.pumpWidget(
       MaterialApp(
+        builder: _tobyScope,
         home: Scaffold(
           body: GameReviewSheet(
             controller: review,
@@ -1188,6 +1308,7 @@ void main() {
     var boardTaps = 0;
     await tester.pumpWidget(
       MaterialApp(
+        builder: _tobyScope,
         home: Scaffold(
           body: Stack(
             children: [
@@ -1374,6 +1495,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          builder: _tobyScope,
           home: Scaffold(
             body: StatefulBuilder(
               builder: (context, setState) {
@@ -1457,6 +1579,7 @@ void main() {
       activePly = lastPly;
       await tester.pumpWidget(
         MaterialApp(
+          builder: _tobyScope,
           home: Scaffold(
             body: StatefulBuilder(
               builder: (context, setState) {
@@ -1492,6 +1615,7 @@ void main() {
       activePly = 0;
       await tester.pumpWidget(
         MaterialApp(
+          builder: _tobyScope,
           home: Scaffold(
             body: StatefulBuilder(
               builder: (context, setState) {
@@ -1562,6 +1686,7 @@ void main() {
     });
 
     Widget sheetAt(int ply) => MaterialApp(
+      builder: _tobyScope,
       home: Scaffold(
         body: GameReviewSheet(
           controller: controller,
@@ -1596,6 +1721,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: _tobyScope,
         home: Scaffold(
           body: Center(
             child: SizedBox(

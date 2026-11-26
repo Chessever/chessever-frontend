@@ -22,6 +22,8 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/tour_detail/games_tour/providers/tour_game_snapshot_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/services/toby/toby_board_request.dart';
+import 'package:chessever2/services/toby/toby_prediction.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
@@ -332,6 +334,52 @@ class ChessBoardScreenNotifierNew
     _activeEvalKey = null;
     _activeEvalRequestId = null;
     _activeEvalStartTime = null;
+    _stopToby();
+  }
+
+  /// This board's Toby session: Gamebase drops the board's previous position
+  /// as soon as it asks about a new one.
+  final String _tobySession = newTobySession();
+
+  /// This board's Toby session. Other Toby readers on the same board (the
+  /// live prediction under the notation) ask with it, so a position the
+  /// engine lines already read runs one shared loop ([tobyReadingProvider]).
+  String get tobySession => _tobySession;
+
+  /// The Toby reading loop for the position being evaluated, when Toby fills
+  /// the engine lines. Closing it disposes the loop and cancels its request.
+  ProviderSubscription<TobyReadingState>? _tobySubscription;
+
+  /// Completes with the loop's terminal state, or null when it was stopped.
+  Completer<TobyReadingState?>? _tobyDone;
+
+  /// Bumped per Toby apply so a late network stage never lands after the
+  /// final reading.
+  int _tobyApplyGeneration = 0;
+
+  /// The cache key whose final Toby reading is on the board. Toby sends as
+  /// many lines as it has candidates, often fewer than the MultiPV setting,
+  /// so its final reading counts as complete without the width check;
+  /// otherwise every forced re-evaluation (page swipe, resume) would restart
+  /// it and blank the lines meanwhile. Cleared when a new request starts.
+  String? _tobyCompleteKey;
+
+  /// How long an active request may run before a same-position request
+  /// replaces it. A Toby reading has its own 20 s budget, so it gets longer
+  /// than a Stockfish search.
+  Duration _staleRequestAfter() => (_activeEvalKey?.endsWith('_toby') ?? false)
+      ? tobyPositionBudget + const Duration(seconds: 5)
+      : const Duration(seconds: 15);
+
+  /// Stops the running Toby loop, if any. Called on a new evaluation request,
+  /// engine toggle off, visibility changes and dispose.
+  void _stopToby() {
+    _tobyApplyGeneration++;
+    _tobySubscription?.close();
+    _tobySubscription = null;
+    final done = _tobyDone;
+    _tobyDone = null;
+    if (done != null && !done.isCompleted) done.complete(null);
   }
 
   void _initializeState() {
@@ -441,6 +489,7 @@ class ChessBoardScreenNotifierNew
               prevValue.showPvArrows == nextValue.showPvArrows &&
               prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
               prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
+              prevValue.engineSource == nextValue.engineSource &&
               prevValue.showEngineAnalysis ==
                   nextValue.showEngineAnalysis; // ← same value
 
@@ -453,6 +502,7 @@ class ChessBoardScreenNotifierNew
               prevValue.showPvArrows == nextValue.showPvArrows &&
               prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
               prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
+              prevValue.engineSource == nextValue.engineSource &&
               prevValue.showEngineAnalysis != nextValue.showEngineAnalysis;
 
           if (nothingChanged || onlyVisibilityChanged) {
@@ -460,6 +510,8 @@ class ChessBoardScreenNotifierNew
               '⏭️ [SETTINGS] skipped re-eval '
               '(${nothingChanged ? "no change" : "visibility-only change"})',
             );
+            // Engine analysis turned off in Settings: stop asking Toby too.
+            if (!nextValue.showEngineAnalysis) _stopToby();
             // Still sync visibility state if needed
             final currentState = state.valueOrNull;
             if (currentState != null &&
@@ -532,6 +584,16 @@ class ChessBoardScreenNotifierNew
               variantBaseFen: null,
               variantMovePointer: const [],
             ),
+          );
+        }
+
+        // Switched to Toby: this board's Stockfish search is no longer
+        // wanted. Only this board's jobs; other owners keep theirs.
+        if (prevValue != null &&
+            prevValue.engineSource != nextValue.engineSource &&
+            nextValue.usesToby) {
+          unawaited(
+            StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
           );
         }
 
@@ -625,6 +687,9 @@ class ChessBoardScreenNotifierNew
     if (!mounted || _pendingEvalFen != targetFen) {
       return;
     }
+    // A Toby read keeps its own budget and never runs Stockfish: a held poll
+    // is not a stalled engine, so the watchdog stands down for it.
+    if (_tobyDone != null) return;
 
     final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
     if (visibleIndex != index || _cancelEvaluation || _isLongPressing) {
@@ -890,12 +955,19 @@ class ChessBoardScreenNotifierNew
             ? fen
             : '${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}';
 
+    // Toby and Stockfish answer the same position differently: a switch of
+    // source must never coalesce with, or count as, the other's result.
+    final source =
+        ref.read(engineSettingsProviderNew).valueOrNull?.usesToby ?? false
+        ? '_toby'
+        : '';
+
     // Include multiPV count in cache key to prevent wrong PV count being returned
     // e.g., cached 3-PV result shouldn't be returned when user wants 5 PVs
     if (multiPV != null && multiPV > 0) {
-      return '${baseFen}_pv$multiPV';
+      return '${baseFen}_pv$multiPV$source';
     }
-    return baseFen;
+    return '$baseFen$source';
   }
 
   void _updateLastSeenMoveCount(int moveCount) {
@@ -4991,6 +5063,8 @@ class ChessBoardScreenNotifierNew
           .toggleEngineAnalysis(newValue),
     );
 
+    if (!newValue) _stopToby();
+
     // When turning ON, cancel stale jobs and trigger fresh eval with the
     // full user search budget (no short first-eval window).
     if (newValue) {
@@ -5059,7 +5133,8 @@ class ChessBoardScreenNotifierNew
     // from duplicate visibility callbacks.
     if (alreadyEvaluatingCurrentFen && !stockfish.requiresRecovery) {
       _cancelEvaluation = false;
-      if (activeFen != null) {
+      // A running Toby read is not watched (see _evaluateWithToby).
+      if (activeFen != null && _tobyDone == null) {
         _registerPendingEvaluation(activeFen);
       }
       return;
@@ -6065,7 +6140,7 @@ class ChessBoardScreenNotifierNew
       final activeRequestIsStale =
           _activeEvalStartTime != null &&
           DateTime.now().difference(_activeEvalStartTime!) >
-              const Duration(seconds: 15);
+              _staleRequestAfter();
       final hasCompleteUsable = hasCompleteUsableBoardEval(
         principalVariationsBaseFen: initialState.principalVariationsBaseFen,
         principalVariationCount: initialState.principalVariations.length,
@@ -6074,8 +6149,10 @@ class ChessBoardScreenNotifierNew
         normalizeFen: _normalizeFen,
         configuredMultiPv: configuredMultiPV,
         maxLegalLines: _maxLegalLinesForCurrentState(initialState),
-        // Mate cloud settles are full results even when MultiPV > 1.
-        waiveWidthRequirement: initialState.mate != null,
+        // Mate cloud settles are full results even when MultiPV > 1, and so
+        // is a final Toby reading (as many lines as Toby has candidates).
+        waiveWidthRequirement:
+            initialState.mate != null || _tobyCompleteKey == cacheKey,
         // Depth is not used for short-circuit after natural budget exhaust —
         // isEvaluating stays true for the whole live search so interim
         // half-move frames never look "complete" mid-flight.
@@ -6132,6 +6209,10 @@ class ChessBoardScreenNotifierNew
       }
 
       final currentRequestId = requestId = ++_evalRequestCounter;
+      // A new request owns the board: the previous position's Toby loop (if
+      // any) stops and cancels its request.
+      _stopToby();
+      _tobyCompleteKey = null;
       _activeEvalKey = cacheKey;
       _activeEvalRequestId = currentRequestId;
       _activeEvalStartTime = DateTime.now(); // Track when this request started
@@ -6157,6 +6238,36 @@ class ChessBoardScreenNotifierNew
       // _releaseLog(
       //   '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
       // );
+
+      // Toby instead of Stockfish (Settings > Engine). Runs before the cached
+      // evaluation cascade, never persists, and never touches Stockfish. When
+      // Toby cannot read this position (threats mode, another variant, a
+      // refusal, an empty busy answer), the Stockfish path below runs.
+      if (effectiveEngineSettings.usesToby && !isThreatsMode) {
+        final tobyRequest = buildTobyRequestFromBoardState(
+          state.value ?? baselineState,
+          targetFen: fen,
+        );
+        if (tobyRequest != null && tobyRequest.isSupported) {
+          final handled = await _evaluateWithToby(
+            request: tobyRequest,
+            currentRequestId: currentRequestId,
+            fen: fen,
+            position: positionForAnalysis,
+            configuredMultiPV: configuredMultiPV,
+            skipPv: effectiveSkipPv,
+          );
+          if (handled) return;
+          if (!_evalApplyStillValid(
+            currentRequestId: currentRequestId,
+            expectedBoardFen: fen,
+          )) {
+            return;
+          }
+          _releaseLog('🎯 EVAL: Toby unavailable here, using Stockfish');
+          _registerPendingEvaluation(fen);
+        }
+      }
 
       int startingDepth = 0;
 
@@ -7257,6 +7368,208 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  /// Fills the evaluation bar, engine lines and arrows from Toby for [fen].
+  ///
+  /// Runs the shared reading loop ([tobyReadingProvider]) until its final
+  /// reading, showing the quick network stage meanwhile. Returns true when
+  /// the board is handled (a reading was shown, or the loop was stopped by a
+  /// newer request); false when Toby could not read the position and the
+  /// caller should run Stockfish instead.
+  Future<bool> _evaluateWithToby({
+    required TobyRequest request,
+    required int currentRequestId,
+    required String fen,
+    required Position position,
+    required int configuredMultiPV,
+    required bool skipPv,
+  }) async {
+    // Toby keeps its own time budget (20 s); the Stockfish watchdog would
+    // read a held poll as a stalled engine and force restarts.
+    _abandonPendingEvaluation(fen);
+    _stopToby();
+    final done = Completer<TobyReadingState?>();
+    _tobyDone = done;
+
+    void onState(TobyReadingState next) {
+      if (done.isCompleted) return;
+      switch (next.status) {
+        case TobyStatus.thinking:
+          return;
+        case TobyStatus.network:
+          final reading = next.reading;
+          if (reading != null) {
+            unawaited(
+              _applyTobyReading(
+                reading,
+                isFinal: false,
+                currentRequestId: currentRequestId,
+                fen: fen,
+                position: position,
+                configuredMultiPV: configuredMultiPV,
+                skipPv: skipPv,
+              ),
+            );
+          }
+        case TobyStatus.ready:
+        case TobyStatus.busy:
+        case TobyStatus.unavailable:
+        case TobyStatus.premiumUnconfirmed:
+        case TobyStatus.premiumRequired:
+        case TobyStatus.signInRequired:
+        case TobyStatus.notApplicable:
+          done.complete(next);
+      }
+    }
+
+    _tobySubscription = ref.listen<TobyReadingState>(
+      tobyReadingProvider(TobyQuery(request: request, session: _tobySession)),
+      (_, next) => onState(next),
+      fireImmediately: true,
+    );
+
+    final result = await done.future;
+    if (result == null) return true; // Stopped: a newer request owns the UI.
+    if (identical(_tobyDone, done)) _stopToby();
+
+    final reading = result.reading;
+    final showable =
+        reading != null &&
+        (result.status == TobyStatus.ready || result.status == TobyStatus.busy);
+    if (!showable) {
+      _releaseLog('🎯 TOBY: ${result.status.name}');
+      return false;
+    }
+    await _applyTobyReading(
+      reading,
+      isFinal: true,
+      currentRequestId: currentRequestId,
+      fen: fen,
+      position: position,
+      configuredMultiPV: configuredMultiPV,
+      skipPv: skipPv,
+    );
+    if (_evalApplyStillValid(
+      currentRequestId: currentRequestId,
+      expectedBoardFen: fen,
+    )) {
+      _tobyCompleteKey = _fenCacheKey(fen, multiPV: configuredMultiPV);
+    }
+    return true;
+  }
+
+  /// Writes one Toby [reading] to the board in the same shape a Stockfish
+  /// result takes, so the same widgets render it: one-move lines whose badge
+  /// shows the move's chance, a pseudo evaluation whose bar fill is White's
+  /// expected score, and the usual best-move arrows. Never persisted.
+  Future<void> _applyTobyReading(
+    TobyReading reading, {
+    required bool isFinal,
+    required int currentRequestId,
+    required String fen,
+    required Position position,
+    required int configuredMultiPV,
+    required bool skipPv,
+  }) async {
+    final generation = ++_tobyApplyGeneration;
+    final lines = tobyEngineLines(reading, configuredMultiPV);
+    final pvs = <Pv>[
+      for (final line in lines)
+        Pv(moves: line.uci, cp: line.whiteCp, whitePerspective: true),
+    ];
+    var pvLines = await _buildPrincipalVariations(fen, pvs);
+    if (generation != _tobyApplyGeneration ||
+        !_evalApplyStillValid(
+          currentRequestId: currentRequestId,
+          expectedBoardFen: fen,
+        )) {
+      return;
+    }
+    final labels = <String, String>{
+      for (final line in lines) line.uci: line.label,
+    };
+    pvLines = [
+      for (final line in pvLines)
+        if (line.moves.isEmpty)
+          line
+        else
+          line.copyWith(
+            evalLabel: labels[tobyStyleUci(position, line.moves.first)],
+          ),
+    ];
+
+    final positionWdl = reading.positionWdl;
+    final evaluation = positionWdl != null
+        ? tobyPseudoEvaluation(positionWdl)
+        : (pvs.isNotEmpty ? pvs.first.cp / 100.0 : 0.0);
+
+    final snapshot = state.value;
+    if (snapshot == null) return;
+    final inAnalysis = snapshot.isAnalysisMode;
+    final basePointer = inAnalysis ? snapshot.analysisState.movePointer : null;
+    final inVariantExploration =
+        snapshot.selectedVariantIndex != null &&
+        snapshot.variantMovePointer.isNotEmpty &&
+        snapshot.variantBaseFen != null;
+
+    final ISet<Shape> shapes;
+    if (snapshot.selectedVariantIndex != null && pvLines.isNotEmpty) {
+      shapes = _getAllVariantArrowShapes(
+        pvLines,
+        snapshot.selectedVariantIndex!,
+        isThreatsMode: false,
+        legalForPosition: position,
+      );
+    } else {
+      shapes = getBestMoveShape(
+        position,
+        CloudEval(
+          fen: fen,
+          knodes: 0,
+          depth: 0,
+          pvs: pvs,
+          requestedMultiPv: pvs.length,
+        ),
+      );
+    }
+    final overlayShapes = snapshot.isPvPreviewActive
+        ? const ISet<Shape>.empty()
+        : shapes;
+
+    if (skipPv || pvLines.isEmpty) {
+      state = AsyncValue.data(
+        snapshot.copyWith(
+          evaluation: evaluation,
+          mate: null,
+          isEvaluating: !isFinal,
+          shapes: overlayShapes,
+        ),
+      );
+      return;
+    }
+
+    final updated = snapshot.copyWith(
+      evaluation: evaluation,
+      mate: null,
+      isEvaluating: !isFinal,
+      shapes: overlayShapes,
+      principalVariations: pvLines,
+      principalVariationsBaseFen: fen,
+      variantBaseFen: inVariantExploration ? snapshot.variantBaseFen : fen,
+      variantBaseMovePointer: inVariantExploration
+          ? snapshot.variantBaseMovePointer
+          : basePointer,
+      analysisState: snapshot.analysisState.copyWith(suggestionLines: pvLines),
+    );
+    state = AsyncValue.data(updated);
+    _applyPrincipalVariationResults(
+      currentState: updated,
+      currentPosition: inAnalysis ? updated.analysisState.position : position,
+      baseFen: fen,
+      baseMovePointer: basePointer,
+      pvLines: pvLines,
+    );
+  }
+
   void _syncAnalysisFromNavigator(ChessGameNavigatorState navigatorState) {
     final current = state.value;
     if (current == null) {
@@ -7593,8 +7906,7 @@ class ChessBoardScreenNotifierNew
     final activeCacheKey = _fenCacheKey(fenToAnalyze, multiPV: multiPv);
     final activeRequestIsStale =
         _activeEvalStartTime != null &&
-        DateTime.now().difference(_activeEvalStartTime!) >
-            const Duration(seconds: 15);
+        DateTime.now().difference(_activeEvalStartTime!) > _staleRequestAfter();
     final hasCompleteUsable = hasCompleteUsableBoardEval(
       principalVariationsBaseFen: currentState.principalVariationsBaseFen,
       principalVariationCount: currentState.principalVariations.length,
@@ -7603,7 +7915,8 @@ class ChessBoardScreenNotifierNew
       normalizeFen: _normalizeFen,
       configuredMultiPv: multiPv,
       maxLegalLines: _maxLegalLinesForCurrentState(currentState),
-      waiveWidthRequirement: currentState.mate != null,
+      waiveWidthRequirement:
+          currentState.mate != null || _tobyCompleteKey == activeCacheKey,
       reachedDepth: null,
     );
     final startDecision = decideBoardEvalStart(
@@ -7794,6 +8107,7 @@ class ChessBoardScreenNotifierNew
     }
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
+    _stopToby();
     final engineReleasedListener = _engineReleasedListener;
     if (engineReleasedListener != null) {
       StockfishSingleton().engineReleasedGeneration.removeListener(

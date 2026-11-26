@@ -28,6 +28,7 @@ import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/services/toby/toby_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -278,7 +279,12 @@ class ServerGameReportClient {
 
     onProgress?.call(0.99, 'Fetching report…');
     final payload = await _fetchResult(token, job.id);
-    return gameAnalysisReportFromServerJson(payload, game: game);
+    return gameAnalysisReportFromServerJson(
+      payload,
+      game: game,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    );
   }
 
   Future<_ReportJob> _createJob(
@@ -465,9 +471,15 @@ class _ReportJob {
 /// checked against the one the server computed: everything downstream — the
 /// badges, the graph, the export — is keyed on that fingerprint, so a mismatch
 /// would silently paint one game's verdicts onto another.
+///
+/// [whiteRating] and [blackRating] are the ratings the Worker was sent; the
+/// report's Toby estimate is kept under them (see
+/// [TobyPerformanceMemory.storeFromReport]).
 GameAnalysisReport gameAnalysisReportFromServerJson(
   Map<String, dynamic> json, {
   required ChessGame game,
+  int? whiteRating,
+  int? blackRating,
 }) {
   final expected = gameReportFingerprint(game);
   final fingerprint = json['fingerprint'] as String?;
@@ -525,6 +537,19 @@ GameAnalysisReport gameAnalysisReportFromServerJson(
   final ratings = json['estimatedRating'] as Map<String, dynamic>? ?? const {};
   final generatedAt = DateTime.tryParse(json['generatedAt'] as String? ?? '');
 
+  // Toby's level estimate rides beside the report, never inside the report
+  // model. The sheet reads it from memory first, when it asks with the same
+  // ratings, and saves it beside the stored report.
+  final toby = tobyPerformanceFromServerJson(json);
+  if (toby != null) {
+    tobyPerformanceMemory.storeFromReport(
+      expected,
+      toby,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    );
+  }
+
   return GameAnalysisReport(
     fingerprint: expected,
     positions: List.unmodifiable(positions),
@@ -536,6 +561,12 @@ GameAnalysisReport gameAnalysisReportFromServerJson(
     generatedAt: generatedAt ?? DateTime.now(),
   );
 }
+
+/// The report's optional top-level `tobyPerformance` (the Gamebase
+/// `/api/toby-performance` 200 body). Null when absent or malformed: the
+/// sheet then asks Gamebase itself.
+TobyPerformance? tobyPerformanceFromServerJson(Map<String, dynamic> json) =>
+    TobyPerformance.fromJson(json['tobyPerformance']);
 
 GameReportSearchEvidence? _nativeSearchFromJson(Object? raw) {
   if (raw is! Map ||

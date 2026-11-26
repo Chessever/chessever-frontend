@@ -2,6 +2,7 @@ import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -47,6 +48,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:dio/dio.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/services/toby/toby_performance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -581,6 +585,16 @@ void main() {
           onClose: _noop,
         ),
         theme: AppTheme.lightTheme,
+        // No Gamebase and no device database in tests: the Toby rating
+        // settles on its placeholder at once instead of sending a request.
+        overrides: [
+          gamebaseRepositoryProvider.overrideWithValue(
+            GamebaseRepository(Dio(), baseUrl: ''),
+          ),
+          tobyPerformanceStoreProvider.overrideWithValue(
+            GameAnalysisReportStore.memory(),
+          ),
+        ],
         size: const Size(393, 900),
       );
       await tester.pump(const Duration(milliseconds: 600));
@@ -616,6 +630,16 @@ void main() {
           onClose: _noop,
         ),
         theme: AppTheme.darkTheme,
+        // No Gamebase and no device database in tests: the Toby rating
+        // settles on its placeholder at once instead of sending a request.
+        overrides: [
+          gamebaseRepositoryProvider.overrideWithValue(
+            GamebaseRepository(Dio(), baseUrl: ''),
+          ),
+          tobyPerformanceStoreProvider.overrideWithValue(
+            GameAnalysisReportStore.memory(),
+          ),
+        ],
         size: const Size(393, 900),
       );
       await tester.pump(const Duration(milliseconds: 600));

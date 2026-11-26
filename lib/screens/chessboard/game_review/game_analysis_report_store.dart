@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/services/toby/toby_performance.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
@@ -13,6 +15,14 @@ import 'package:flutter/foundation.dart';
 /// LRU is enforced with `cached_at` timestamps (max [maxEntries] rows).
 ///
 /// Tests inject [GameAnalysisReportStore.memory] so they never open the real DB.
+///
+/// Toby's estimate of each side's level ([TobyPerformance]) is kept in the
+/// same row, beside the report rather than inside it (`tobyPerformance` and
+/// `tobyPerformanceBasis`, additive keys: older rows simply lack them). The
+/// estimate usually arrives after the report is saved. It is kept with the
+/// [TobyPerformanceRequest.basis] it was computed for and served only to a
+/// request with the same basis and the current [kTobyPerformanceModel], so a
+/// re-analysed report or edited headers are read again.
 class GameAnalysisReportStore {
   /// Production store on the shared app SQLite database ([AppDatabase]).
   GameAnalysisReportStore.sqlite([AppDatabase? database])
@@ -42,6 +52,13 @@ class GameAnalysisReportStore {
   final Map<String, _MemoryEntry>? _memory;
   final int maxEntries;
   Future<void>? _writeChain;
+
+  /// Toby estimates of this session by report fingerprint, capped at
+  /// [maxEntries]. A report saved again keeps its estimate through it. A
+  /// fingerprint mapped to null is known to have no stored estimate, so the
+  /// next save of its report does not read the row back to find out.
+  final LinkedHashMap<String, StoredTobyPerformance?> _hotToby =
+      LinkedHashMap<String, StoredTobyPerformance?>();
 
   static const String keyPrefix = 'game_report:';
 
@@ -122,7 +139,25 @@ class GameAnalysisReportStore {
 
   Future<void> _saveUnlocked(GameAnalysisReport report) async {
     final key = cacheKeyForFingerprint(report.fingerprint);
-    final payload = jsonEncode(gameAnalysisReportToJson(report));
+    // The same game keeps its Toby estimate, with the basis it was computed
+    // for, when its report is saved again. A re-analysis with other values no
+    // longer matches that basis, so the estimate is then read again rather
+    // than served.
+    StoredTobyPerformance? toby;
+    if (_hotToby.containsKey(report.fingerprint)) {
+      toby = _hotToby[report.fingerprint];
+    } else {
+      try {
+        final existing = await _readJson(key);
+        if (existing != null && existing['fingerprint'] == report.fingerprint) {
+          toby = gameReportTobyPerformanceFromJson(existing);
+        }
+        _rememberToby(report.fingerprint, toby);
+      } catch (_) {
+        toby = null;
+      }
+    }
+    final payload = jsonEncode(gameAnalysisReportToJson(report, toby: toby));
     final memory = _memory;
     if (memory != null) {
       memory[key] = _MemoryEntry(
@@ -156,10 +191,12 @@ class GameAnalysisReportStore {
       if (raw == null) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
-      final report = gameAnalysisReportFromJson(
-        Map<String, dynamic>.from(decoded),
-      );
+      final json = Map<String, dynamic>.from(decoded);
+      final report = gameAnalysisReportFromJson(json);
       if (report == null || report.fingerprint != fingerprint) return null;
+      // Remembered even when absent, so the touch below (and later saves)
+      // never decode the row again to look for it.
+      _rememberToby(fingerprint, gameReportTobyPerformanceFromJson(json));
       // LRU touch — best effort; never fail a successful read.
       unawaited(save(report).catchError((_) {}));
       return report;
@@ -167,6 +204,86 @@ class GameAnalysisReportStore {
       debugPrint('GameAnalysisReportStore.load failed: $e\n$st');
       return null;
     }
+  }
+
+  /// Toby's estimate saved beside the report for [fingerprint] for a request
+  /// with [basis], or null. Never throws.
+  Future<TobyPerformance?> loadTobyPerformance(
+    String fingerprint, {
+    required String basis,
+  }) async {
+    if (_hotToby.containsKey(fingerprint)) {
+      final hot = _hotToby[fingerprint];
+      return hot != null && hot.basis == basis ? hot.performance : null;
+    }
+    try {
+      final json = await _readJson(cacheKeyForFingerprint(fingerprint));
+      if (json == null || json['fingerprint'] != fingerprint) return null;
+      final toby = gameReportTobyPerformanceFromJson(json);
+      _rememberToby(fingerprint, toby);
+      return toby != null && toby.basis == basis ? toby.performance : null;
+    } catch (e) {
+      debugPrint('GameAnalysisReportStore.loadTobyPerformance failed: $e');
+      return null;
+    }
+  }
+
+  /// Keeps Toby's estimate beside the report for [fingerprint], computed for
+  /// a request with [basis]. When the report is not saved yet, the estimate
+  /// joins it when it is saved in this session.
+  Future<void> saveTobyPerformance(
+    String fingerprint,
+    TobyPerformance performance, {
+    required String basis,
+  }) {
+    final previous = _hotToby[fingerprint];
+    if (previous != null &&
+        previous.basis == basis &&
+        previous.performance == performance) {
+      return Future<void>.value();
+    }
+    final stored = (basis: basis, performance: performance);
+    _rememberToby(fingerprint, stored);
+    final chain = _writeChain ?? Future<void>.value();
+    final done = chain.catchError((_) {}).then((_) async {
+      final key = cacheKeyForFingerprint(fingerprint);
+      final json = await _readJson(key);
+      if (json == null || json['fingerprint'] != fingerprint) return;
+      _writeTobyJson(json, stored);
+      final payload = jsonEncode(json);
+      final memory = _memory;
+      if (memory != null) {
+        memory[key] = _MemoryEntry(
+          value: payload,
+          cachedAt: DateTime.now().millisecondsSinceEpoch,
+          fingerprint: fingerprint,
+        );
+        return;
+      }
+      final db = _database ?? AppDatabase.instance;
+      await db.setCache(key: key, value: payload);
+    });
+    _writeChain = done;
+    return done;
+  }
+
+  void _rememberToby(String fingerprint, StoredTobyPerformance? toby) {
+    _hotToby.remove(fingerprint);
+    _hotToby[fingerprint] = toby;
+    while (_hotToby.length > maxEntries) {
+      _hotToby.remove(_hotToby.keys.first);
+    }
+  }
+
+  /// Simulates a cold start: drops the session tier, keeps durable rows.
+  @visibleForTesting
+  void clearHotCacheForTest() => _hotToby.clear();
+
+  Future<Map<String, dynamic>?> _readJson(String key) async {
+    final raw = await _readRaw(key);
+    if (raw == null) return null;
+    final decoded = jsonDecode(raw);
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
   }
 
   Future<String?> _readRaw(String key) async {
@@ -206,6 +323,7 @@ class GameAnalysisReportStore {
   /// Test helper: wipe all rows in this store.
   @visibleForTesting
   Future<void> debugClearAll() async {
+    _hotToby.clear();
     final memory = _memory;
     if (memory != null) {
       memory.clear();
@@ -250,8 +368,16 @@ class _MemoryEntry {
 /// v10: enforce three-position quality at winning boundaries and promotion roots.
 const int gameAnalysisReportSchemaVersion = 10;
 
-Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
-  return <String, dynamic>{
+/// Toby's estimate kept beside a report, with the
+/// [TobyPerformanceRequest.basis] of the request it was computed for.
+typedef StoredTobyPerformance = ({String basis, TobyPerformance performance});
+
+/// [toby] is written beside the report when known.
+Map<String, dynamic> gameAnalysisReportToJson(
+  GameAnalysisReport report, {
+  StoredTobyPerformance? toby,
+}) {
+  final json = <String, dynamic>{
     'v': gameAnalysisReportSchemaVersion,
     'fingerprint': report.fingerprint,
     'whiteAccuracy': report.whiteAccuracy,
@@ -262,6 +388,31 @@ Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
     'positions': report.positions.map(_positionToJson).toList(growable: false),
     'moves': report.moves.map(_moveToJson).toList(growable: false),
   };
+  if (toby != null) _writeTobyJson(json, toby);
+  return json;
+}
+
+void _writeTobyJson(Map<String, dynamic> json, StoredTobyPerformance toby) {
+  json['tobyPerformance'] = toby.performance.toJson();
+  json['tobyPerformanceBasis'] = toby.basis;
+}
+
+/// Toby's estimate saved beside a report, or null when there is none (a row
+/// from before Toby ratings), it has no basis, or it is from a model other
+/// than [kTobyPerformanceModel]. Independent of the report's schema version:
+/// the estimate depends on the game, not on how the report classified it.
+StoredTobyPerformance? gameReportTobyPerformanceFromJson(
+  Map<String, dynamic> json,
+) {
+  final basis = json['tobyPerformanceBasis'];
+  final performance = TobyPerformance.fromJson(json['tobyPerformance']);
+  if (basis is! String ||
+      basis.isEmpty ||
+      performance == null ||
+      performance.model != kTobyPerformanceModel) {
+    return null;
+  }
+  return (basis: basis, performance: performance);
 }
 
 GameAnalysisReport? gameAnalysisReportFromJson(Map<String, dynamic> json) {

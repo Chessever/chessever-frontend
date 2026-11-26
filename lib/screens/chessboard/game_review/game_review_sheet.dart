@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/evaluation_graph_markers.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
@@ -10,6 +11,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/services/toby/toby_performance.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/text_scale.dart';
@@ -534,6 +536,7 @@ class _GameReviewSurface extends StatelessWidget {
           return _CompletedReview(
             report: report,
             game: game,
+            chessGame: controller.game,
             activePly: activePly,
             onJumpToPly: onJumpToPly,
             onRevealBoard: onRevealBoard,
@@ -747,6 +750,7 @@ class _CompletedReview extends StatefulWidget {
   const _CompletedReview({
     required this.report,
     required this.game,
+    required this.chessGame,
     required this.activePly,
     required this.onJumpToPly,
     required this.onRevealBoard,
@@ -754,6 +758,10 @@ class _CompletedReview extends StatefulWidget {
 
   final GameAnalysisReport report;
   final GamesTourModel game;
+
+  /// The board's game (mainline and PGN headers) the report was made for.
+  /// Null hides the Toby rating row.
+  final ChessGame? chessGame;
   final int activePly;
   final ValueChanged<int> onJumpToPly;
   final VoidCallback onRevealBoard;
@@ -764,6 +772,35 @@ class _CompletedReview extends StatefulWidget {
 
 class _CompletedReviewState extends State<_CompletedReview> {
   final Map<String, int> _recapCycle = <String, int>{};
+
+  /// The Toby rating query, rebuilt only when the report or the game changes:
+  /// the sheet rebuilds on every board move, and the query derives a value
+  /// for every move of the game.
+  TobyPerformanceQuery? _tobyQuery;
+  Object? _tobyQueryInputs;
+
+  TobyPerformanceQuery? _tobyPerformanceQuery() {
+    final chessGame = widget.chessGame;
+    final game = widget.game;
+    final inputs = (
+      widget.report,
+      chessGame,
+      game.whitePlayer.rating,
+      game.blackPlayer.rating,
+      game.timeControl,
+    );
+    if (_tobyQueryInputs == inputs) return _tobyQuery;
+    _tobyQueryInputs = inputs;
+    return _tobyQuery = chessGame == null
+        ? null
+        : tobyPerformanceQueryForReport(
+            widget.report,
+            chessGame,
+            whiteRating: game.whitePlayer.rating,
+            blackRating: game.blackPlayer.rating,
+            category: game.timeControl,
+          );
+  }
 
   /// The board owns the cursor. The graph marker is derived from it rather
   /// than held locally, so a move played on the board (arrows, notation, a
@@ -817,7 +854,11 @@ class _CompletedReviewState extends State<_CompletedReview> {
           ),
           const SizedBox(height: 20),
         ],
-        _PlayerSummary(report: widget.report, game: widget.game),
+        _PlayerSummary(
+          report: widget.report,
+          game: widget.game,
+          tobyQuery: _tobyPerformanceQuery(),
+        ),
         const SizedBox(height: 24),
         _ClassificationRecap(
           report: widget.report,
@@ -829,10 +870,17 @@ class _CompletedReviewState extends State<_CompletedReview> {
 }
 
 class _PlayerSummary extends StatelessWidget {
-  const _PlayerSummary({required this.report, required this.game});
+  const _PlayerSummary({
+    required this.report,
+    required this.game,
+    required this.tobyQuery,
+  });
 
   final GameAnalysisReport report;
   final GamesTourModel game;
+
+  /// Null when Toby has nothing to read for this report: no row.
+  final TobyPerformanceQuery? tobyQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -860,6 +908,78 @@ class _PlayerSummary extends StatelessWidget {
           left: report.whiteEstimatedRating?.toString() ?? '—',
           right: report.blackEstimatedRating?.toString() ?? '—',
         ),
+        if (tobyQuery case final query?)
+          _TobyRatingRow(
+            query: query,
+            white: game.whitePlayer.name,
+            black: game.blackPlayer.name,
+          ),
+      ],
+    );
+  }
+}
+
+/// Toby's estimate of the level each side played at, under Game Rating.
+///
+/// Watching the estimate only while the completed report is on screen means
+/// closing the sheet cancels the request (the provider is auto-disposed).
+class _TobyRatingRow extends ConsumerWidget {
+  const _TobyRatingRow({
+    required this.query,
+    required this.white,
+    required this.black,
+  });
+
+  final TobyPerformanceQuery query;
+  final String white;
+  final String black;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(tobyPerformanceProvider(query));
+    final cells = tobyRatingCells(state);
+    if (cells == null) return const SizedBox.shrink();
+    final row = Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Semantics(
+        container: true,
+        label: tobyRatingSemanticsLabel(state, white: white, black: black),
+        child: ExcludeSemantics(
+          child: _SummaryMetricRow(
+            label: kTobyPerformanceLabel,
+            left: cells.white,
+            right: cells.black,
+            muted: cells.loading,
+            labelTooltip:
+                '$kTobyPerformanceDescription\n$kTobyPerformanceAttribution',
+          ),
+        ),
+      ),
+    );
+    // The credit is owed wherever a Toby result is shown, and a tap on the
+    // label is not something a reader discovers: it sits in plain sight,
+    // quietly, under the row (screen readers hear it in the row's label).
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: ExcludeSemantics(
+            child: Text(
+              kTobyPerformanceAttribution,
+              key: const ValueKey('toby-rating-attribution'),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: TextStyle(
+                color: context.colors.textPrimaryMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -880,6 +1000,8 @@ class _SummaryMetricRow extends StatelessWidget {
     required this.right,
     this.suffix = '',
     this.cardValues = false,
+    this.muted = false,
+    this.labelTooltip,
   });
 
   final String label;
@@ -888,6 +1010,12 @@ class _SummaryMetricRow extends StatelessWidget {
   final String suffix;
   final bool cardValues;
 
+  /// Values still on their way: drawn in the muted ink.
+  final bool muted;
+
+  /// What the label means, shown on a tap of the label.
+  final String? labelTooltip;
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -895,20 +1023,34 @@ class _SummaryMetricRow extends StatelessWidget {
         Expanded(
           child: _metricValue(context, left, lightBackground: cardValues),
         ),
-        SizedBox(
-          width: _kMetricLabelColumnWidth,
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: context.colors.textPrimaryMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
+        SizedBox(width: _kMetricLabelColumnWidth, child: _label(context)),
         Expanded(child: _metricValue(context, right, lightBackground: false)),
       ],
+    );
+  }
+
+  Widget _label(BuildContext context) {
+    final text = Text(
+      label,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: context.colors.textPrimaryMuted,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+    final tooltip = labelTooltip;
+    if (tooltip == null) return text;
+    return Tooltip(
+      message: tooltip,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 4),
+      // The whole label column answers the tap, not just the glyphs.
+      child: SizedBox(
+        width: double.infinity,
+        height: context.textExtent(24),
+        child: Center(child: text),
+      ),
     );
   }
 
@@ -936,10 +1078,9 @@ class _SummaryMetricRow extends StatelessWidget {
       ),
       textAlign: TextAlign.center,
       style: TextStyle(
-        color:
-            lightBackground
-                ? context.colors.textPrimary
-                : context.colors.textPrimary,
+        color: muted
+            ? context.colors.textPrimaryMuted
+            : context.colors.textPrimary,
         fontSize: cardValues ? 24 : 17,
         fontWeight: FontWeight.w800,
       ),

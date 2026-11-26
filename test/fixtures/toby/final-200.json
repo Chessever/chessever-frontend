@@ -1,0 +1,62 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "private, no-store"
+  },
+  "body": {
+    "stage": "final",
+    "sideToMove": "white",
+    "moves": [
+      {
+        "uci": "e2e4",
+        "san": "e4",
+        "probability": 0.45,
+        "prior": 0.41,
+        "wdl": {
+          "white": 0.31,
+          "draw": 0.46,
+          "black": 0.23
+        }
+      },
+      {
+        "uci": "d2d4",
+        "san": "d4",
+        "probability": 0.38,
+        "prior": 0.35,
+        "wdl": {
+          "white": 0.3,
+          "draw": 0.47,
+          "black": 0.23
+        }
+      },
+      {
+        "uci": "g1f3",
+        "san": "Nf3",
+        "probability": 0.0005,
+        "prior": 0.002,
+        "wdl": {
+          "white": 0.29,
+          "draw": 0.47,
+          "black": 0.24
+        }
+      }
+    ],
+    "positionWdl": {
+      "white": 0.305,
+      "draw": 0.465,
+      "black": 0.23
+    },
+    "otherProbability": 0.1695,
+    "otherMoveCount": 17,
+    "inputs": {
+      "whiteRating": 2650,
+      "blackRating": 2610,
+      "ratingsKnown": true,
+      "timeControl": "classical",
+      "ratingSource": "FIDE",
+      "baseTimeSeconds": 5400,
+      "incrementSeconds": 30
+    }
+  }
+}

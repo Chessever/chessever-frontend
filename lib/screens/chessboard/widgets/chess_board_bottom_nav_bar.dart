@@ -403,6 +403,10 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     // Check if user wants to see depth overlay
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final showDepthOverlay = engineSettings?.showDepthOverlay ?? true;
+    // Toby has no search depth and never reports one. With Toby chosen the
+    // overlay shows only when Stockfish is actually searching (threats mode,
+    // or a position Toby cannot read), never the loading dots for a Toby read.
+    final usesToby = engineSettings?.usesToby ?? false;
 
     // Format depth text like "D:12"; show "..." while loading if overlay is enabled
     String? depthText;
@@ -410,7 +414,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
       if (gaugeProgress != null) {
         depthText =
             'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}';
-      } else {
+      } else if (!usesToby) {
         depthText = '...';
       }
     }
