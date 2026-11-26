@@ -2682,14 +2682,16 @@ class StoryPlayerRow extends StatelessWidget {
 class StoryActions extends StatelessWidget {
   const StoryActions({
     super.key,
+    this.gameLabel = 'Open game',
     required this.collectionLabel,
     required this.onOpenGame,
     required this.onOpenCollection,
   });
 
+  final String gameLabel;
   final String collectionLabel;
-  final VoidCallback onOpenGame;
-  final VoidCallback onOpenCollection;
+  final VoidCallback? onOpenGame;
+  final VoidCallback? onOpenCollection;
 
   /// The actions' line at the reader's text size, never under 48pt.
   static double heightOf(BuildContext context) =>
@@ -2706,7 +2708,7 @@ class StoryActions extends StatelessWidget {
         Expanded(
           child: _StoryAction(
             key: const ValueKey('story_open_game'),
-            label: 'Open game',
+            label: gameLabel,
             hint: 'On the board, at this position',
             // The Feed rail's Analyze: the game on the board.
             glyph: FeedGlyph(
@@ -2748,19 +2750,23 @@ class _StoryAction extends StatelessWidget {
   final String label;
   final String? hint;
   final Widget glyph;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final ink = onTap == null
+        ? colors.textPrimary.withValues(alpha: 0.5)
+        : colors.textPrimary;
     final style = AppTypography.textSmBold.copyWith(
       fontSize: 15,
       height: 1.2,
       fontWeight: FontWeight.w600,
-      color: colors.textPrimary,
+      color: ink,
     );
     return Semantics(
       button: true,
+      enabled: onTap != null,
       label: label,
       hint: hint,
       onTap: onTap,

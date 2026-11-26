@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:chessever2/config/feature_flags.dart';
+import 'package:chessever2/localization/locale_provider.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -16,7 +18,11 @@ import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
 import 'package:chessever2/screens/feed/logic/feed_report.dart';
 import 'package:chessever2/screens/feed/logic/feed_taste.dart';
+import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_repository.dart';
+import 'package:chessever2/screens/feed/providers/board_feed_client.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
@@ -288,6 +294,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   bool _shownLoaded = false;
 
   final Map<String, _FeedCandidate> _pool = <String, _FeedCandidate>{};
+  BoardFeedClient? _boardServer;
+  final _boardPositions = <String, BoardFeedPosition>{};
+  final _newsPositions = <int, BoardFeedPosition>{};
+  final _newsImpressions = <int>{};
+  final _shortPositions = <String, BoardFeedPosition>{};
+  final _shortImpressions = <String>{};
+  List<FeedEntry> _serverEntries = const [];
+  List<FeedEntry> get serverEntries => _serverEntries;
+  String? _boardCursor;
+  bool get usesServerBoardFeed => _boardServer != null;
+
   bool _loadingMore = false;
 
   /// The [loadMore] running now, handed to every caller that asks meanwhile.
@@ -349,6 +366,35 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       });
     }
 
+    if (BoardFeedClient.enabled) {
+      ref.watch(currentUserProvider.select((user) => user?.id));
+      _closeVisit();
+      _visitId = null;
+      final previous = _boardServer;
+      final current = BoardFeedClient.forCurrentUser();
+      _boardServer = previous != null && previous.userId == current?.userId
+          ? previous
+          : current;
+      _boardPositions.clear();
+      _newsPositions.clear();
+      _newsImpressions.clear();
+      _shortPositions.clear();
+      _shortImpressions.clear();
+      _serverEntries = const [];
+      _boardCursor = null;
+      final server = _boardServer;
+      if (server != null) {
+        try {
+          return _boardItems(
+            await _readServerEntries(server, generation, refresh: true),
+          );
+        } on BoardFeedUnavailable catch (error) {
+          if (error.status != 404 || generation != _generation) rethrow;
+          _boardServer = null;
+        }
+      }
+    }
+
     // The sources start now, alongside the disk reads, not after them.
     final sources = _refillAll(generation);
     final (cachedRaw, _, _) = await (
@@ -399,6 +445,20 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// variety after the newest unseen reports have been used.
   Future<void> refresh() async {
     final generation = ++_generation;
+    final server = _boardServer;
+    if (server != null) {
+      _closeVisit();
+      _visitId = null;
+      _loadingMore = false;
+      _moreRun = null;
+      final entries = await _readServerEntries(
+        server,
+        generation,
+        refresh: true,
+      );
+      if (generation == _generation) state = AsyncData(_boardItems(entries));
+      return;
+    }
     final showing = [
       for (final item in state.valueOrNull ?? const <FeedItem>[])
         item.game.gameId,
@@ -578,6 +638,20 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   }
 
   Future<void> _loadMore(int generation) async {
+    final server = _boardServer;
+    if (server != null) {
+      try {
+        final entries = await _readServerEntries(server, generation);
+        if (generation == _generation && entries.isNotEmpty) {
+          await _append(generation, _boardItems(entries));
+        }
+      } catch (_) {
+        if (generation == _generation) _more = FeedMore.stalled;
+      } finally {
+        if (generation == _generation) _loadingMore = false;
+      }
+      return;
+    }
     var items = <FeedItem>[];
     var failed = false;
     try {
@@ -605,6 +679,181 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }
   }
 
+  List<FeedItem> _boardItems(List<FeedEntry> entries) => [
+    for (final entry in entries.whereType<FeedGameEntry>()) entry.item,
+  ];
+
+  Future<List<FeedEntry>> _readServerEntries(
+    BoardFeedClient server,
+    int generation, {
+    bool refresh = false,
+  }) async {
+    if (!refresh && _boardCursor == null) {
+      _more = FeedMore.exhausted;
+      return const [];
+    }
+    var page = refresh
+        ? await server.start(
+            server.newRequestId(),
+            country: ref.read(countryDropdownProvider).valueOrNull?.countryCode,
+            languages: {
+              ref.read(localeProvider).languageCode,
+              for (final locale in PlatformDispatcher.instance.locales)
+                locale.languageCode,
+            }.take(8).toList(),
+          )
+        : await server.next(_boardCursor!);
+    for (var attempt = 0; ; attempt++) {
+      if (generation != _generation) return const [];
+      final items = await _hydrateServerEntries(server, page.cards);
+      if (generation != _generation) return const [];
+      final cursor = page.nextCursor;
+      if (items.isNotEmpty || cursor == null || attempt == 4) {
+        if (refresh) {
+          _boardPositions.clear();
+          _newsPositions.clear();
+          _newsImpressions.clear();
+          _shortPositions.clear();
+          _shortImpressions.clear();
+        }
+        for (final item in items) {
+          if (item is FeedGameEntry) {
+            _boardPositions[item.item.game.gameId] = page.position;
+          } else if (item is FeedNewsEntry) {
+            _newsPositions[item.news.id] = page.position;
+          } else if (item is FeedShortEntry) {
+            _shortPositions[item.short.id] = page.position;
+          }
+        }
+        _serverEntries = List.unmodifiable([
+          if (!refresh) ..._serverEntries,
+          ...items,
+        ]);
+        _boardCursor = cursor;
+        _more = cursor == null
+            ? FeedMore.exhausted
+            : items.isEmpty
+            ? FeedMore.stalled
+            : FeedMore.open;
+        return items;
+      }
+      page = await server.next(cursor);
+    }
+  }
+
+  Future<List<FeedEntry>> _hydrateServerEntries(
+    BoardFeedClient server,
+    List<BoardFeedCard> cards,
+  ) async {
+    final counts = <int, int>{
+      for (final card in cards)
+        if (card.articleCount case final int count)
+          if (int.tryParse(card.id) case final int id) id: count,
+    };
+    final (boards, news) = await (
+      _hydrateServerBoards(server, [
+        for (final card in cards)
+          if (card.articleCount == null &&
+              card.short == null &&
+              card.collection == null)
+            card.id,
+      ]),
+      _hydrateGroupedNews(counts),
+    ).wait;
+    final boardsById = {for (final board in boards) board.game.gameId: board};
+    return [
+      for (final card in cards)
+        if (card.collection case final collection?)
+          FeedCollectionEntry(collection)
+        else if (card.short case final short?)
+          FeedShortEntry(short)
+        else if (card.articleCount == null) ...[
+          if (boardsById[card.id] case final FeedItem board)
+            FeedGameEntry(board),
+        ] else if (news[int.tryParse(card.id)] case final FeedNews article)
+          FeedNewsEntry(article),
+    ];
+  }
+
+  Future<Map<int, FeedNews>> _hydrateGroupedNews(Map<int, int> counts) async {
+    if (counts.isEmpty) return const {};
+    try {
+      return await ref
+          .read(feedNewsRepositoryProvider)
+          .loadGroupedCards(counts);
+    } catch (error) {
+      debugPrint('[Feed] grouped news hydration failed: $error');
+      return const {};
+    }
+  }
+
+  void noteNewsVisible(int id) {
+    final position = _newsPositions[id];
+    if (position != null && _newsImpressions.add(id)) {
+      _boardServer?.recordNews(position, id, 'impression');
+    }
+  }
+
+  void noteNewsOpened(int id) {
+    final position = _newsPositions[id];
+    if (position != null) _boardServer?.recordNews(position, id, 'open');
+  }
+
+  void noteShortVisible(String id) {
+    final position = _shortPositions[id];
+    if (position != null && _shortImpressions.add(id)) {
+      _boardServer?.recordShort(position, id, 'impression');
+    }
+  }
+
+  void noteShortOpened(String id) {
+    final position = _shortPositions[id];
+    if (position != null) _boardServer?.recordShort(position, id, 'open');
+  }
+
+  Future<List<FeedItem>> _hydrateServerBoards(
+    BoardFeedClient server,
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return const [];
+    final repository = ref.read(gameRepositoryProvider);
+    final (rows, classifications) = await (
+      repository.getGamesByIds(ids).timeout(_pgnTimeout),
+      _loadClassifications(ids),
+    ).wait;
+    final byId = {for (final row in rows) row.id: row};
+    final candidates = <(_FeedCandidate, String)>[];
+    for (final id in ids) {
+      final row = byId[id];
+      if (row == null) continue;
+      final game = _tourModel(row);
+      final pgn = game?.pgn;
+      if (game == null || pgn == null || pgn.isEmpty) continue;
+      candidates.add((
+        _FeedCandidate(game: game, signals: _signalsOf(game, FeedPool.top)),
+        pgn,
+      ));
+    }
+    final clips = await compute(_parseFlowClips, [
+      for (final (_, pgn) in candidates) pgn,
+    ]);
+    final items = <FeedItem>[];
+    final now = DateTime.now();
+    for (var index = 0; index < candidates.length; index++) {
+      final (candidate, pgn) = candidates[index];
+      final id = candidate.game.gameId;
+      if (server.completedLocally(id)) continue;
+      final type = feedReportType(
+        classifications[id],
+        pgn,
+        _resultOf(candidate.game.gameStatus) ?? '',
+      );
+      final item = _toItem(candidate, clips[index], pgn, now, reportType: type);
+      if (item != null) items.add(item);
+    }
+    return items;
+  }
+
   /// Called when the viewer reaches [index] so the notifier can prefetch:
   /// at least [_prefetchAhead] ready clips are kept beyond it.
   ///
@@ -625,18 +874,24 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (items.length - 1 - index <= _prefetchAhead + 1) {
       unawaited(loadMore());
     }
-    _redrawStaleReserve();
+    if (!usesServerBoardFeed) _redrawStaleReserve();
   }
 
   /// How much of [gameId]'s clip has played (0..1), as the clip reports it.
   void noteProgress(String gameId, double fraction) {
     if (gameId != _visitId) return;
     if (fraction > _visitProgress) _visitProgress = fraction;
+    if (fraction >= 1 &&
+        _visitStart != null &&
+        DateTime.now().difference(_visitStart!) >= const Duration(seconds: 4)) {
+      _recordBoardEvent(gameId, 'complete');
+    }
   }
 
   /// Something the viewer did with [gameId]'s post.
   void noteAction(String gameId, FeedAction action) {
-    if (gameId == _visitId) _visitActions.add(action);
+    if (gameId != _visitId) return;
+    if (_visitActions.add(action)) _recordBoardEvent(gameId, action.name);
   }
 
   /// The viewer moved to [gameId]: what they did on the post before it is
@@ -648,6 +903,12 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _visitStart = DateTime.now();
     _visitProgress = 0;
     _visitActions.clear();
+    _recordBoardEvent(gameId, 'impression');
+  }
+
+  void _recordBoardEvent(String gameId, String kind) {
+    final position = _boardPositions[gameId];
+    if (position != null) _boardServer?.record(position, gameId, kind);
   }
 
   /// Signals for a post handed out before this feed's bookkeeping began (the
@@ -670,6 +931,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   void _closeVisit() {
     final id = _visitId;
     final start = _visitStart;
+    if (id != null && start != null && usesServerBoardFeed) {
+      final dwell = DateTime.now().difference(start);
+      if (_visitProgress >= 1 && dwell >= const Duration(seconds: 4)) {
+        _recordBoardEvent(id, 'complete');
+      } else if (_visitProgress < 0.3 &&
+          dwell < const Duration(seconds: 3) &&
+          _visitActions.isEmpty) {
+        _recordBoardEvent(id, 'skip');
+      }
+      return;
+    }
     final signals = id == null
         ? null
         : _postSignals[id] ?? _signalsOnScreen(id);

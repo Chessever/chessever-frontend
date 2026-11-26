@@ -16,11 +16,13 @@ import 'package:chessever2/screens/feed/widgets/feed_ad_page.dart';
 import 'package:chessever2/screens/feed/widgets/feed_bars_on_tap.dart';
 import 'package:chessever2/screens/feed/widgets/feed_centred_between_bars.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
+import 'package:chessever2/screens/feed/widgets/feed_collection_page.dart';
 import 'package:chessever2/screens/feed/widgets/feed_deck.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
+import 'package:chessever2/screens/feed/widgets/feed_short_page.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
@@ -558,9 +560,22 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   void _reportVisible(int index, List<FeedEntry> pages) {
     final notifier = ref.read(feedProvider.notifier);
     final entries = ref.read(feedEntriesProvider.notifier);
+    final entry = index >= 0 && index < pages.length ? pages[index] : null;
+    if (entry case FeedNewsEntry(:final news)) {
+      notifier.noteNewsVisible(news.id);
+    } else if (entry case FeedShortEntry(:final short)) {
+      notifier.noteShortVisible(short.id);
+    }
     if (_lead == null) {
       entries.markSeen(feedPostIndexAt(pages, index));
-      notifier.onVisible(math.max(0, feedGameIndexAt(pages, index)));
+      notifier.onVisible(
+        notifier.usesServerBoardFeed &&
+                (index < 0 ||
+                    index >= pages.length ||
+                    pages[index] is! FeedGameEntry)
+            ? -1
+            : math.max(0, feedGameIndexAt(pages, index)),
+      );
     } else {
       final feed = ref.read(feedPagesProvider);
       final at = _feedIndexOf(index, pages, feed);
@@ -577,7 +592,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
             after == null || after < 0 ? -1 : feedPostIndexAt(feed, after) - 1,
           ),
         );
-        notifier.onVisible(_visitIndexOf(index, pages, feed));
+        notifier.onVisible(
+          notifier.usesServerBoardFeed &&
+                  (index < 0 ||
+                      index >= pages.length ||
+                      pages[index] is! FeedGameEntry)
+              ? -1
+              : _visitIndexOf(index, pages, feed),
+        );
       }
     }
     if (index >= pages.length - 3) unawaited(_loadMore());
@@ -913,9 +935,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       FeedNewsEntry(:final news) => FeedNewsPage(
         key: ValueKey(entry.key),
         news: news,
+        onRead: () => ref.read(feedProvider.notifier).noteNewsOpened(news.id),
         isCurrent: isCurrent,
         isVisible: visible,
         onRequestNext: _goNext,
+      ),
+      FeedCollectionEntry(:final card) => FeedCollectionPage(
+        key: ValueKey(entry.key),
+        card: card,
+      ),
+      FeedShortEntry(:final short) => FeedShortPage(
+        key: ValueKey(entry.key),
+        short: short,
+        active: isCurrent && visible,
+        onOpened: () =>
+            ref.read(feedProvider.notifier).noteShortOpened(short.id),
       ),
       FeedAdEntry() => FeedAdPage(key: ValueKey(entry.key), entry: entry),
     };

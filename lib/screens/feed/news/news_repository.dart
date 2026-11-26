@@ -154,6 +154,24 @@ class FeedNewsRepository {
     }
   }
 
+  /// Hydrates the exact published articles picked by the internal feed. The
+  /// server supplies group counts from the grouped view at issuance.
+  Future<Map<int, FeedNews>> loadGroupedCards(Map<int, int> counts) async {
+    if (counts.isEmpty) return const {};
+    final rows = await Supabase.instance.client
+        .from('news')
+        .select('$_newsStampColumns,content')
+        .eq('status', 'published')
+        .inFilter('id', counts.keys.toList())
+        .timeout(const Duration(seconds: 4));
+    return {
+      for (final row in rows)
+        if (normalizeNewsRow({...row, 'group_article_count': counts[row['id']]})
+            case final FeedNews article)
+          article.id: article,
+    };
+  }
+
   /// Fetches the latest list and stores it. Null when the fetch failed; the
   /// previous list stays in place then. A missing `news` table (the test
   /// flavour) is an empty list, not a failure. Partner articles are extra:

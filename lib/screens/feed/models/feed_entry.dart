@@ -1,4 +1,6 @@
+import 'package:chessever2/screens/feed/models/feed_collection.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/models/feed_short.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:flutter/foundation.dart';
@@ -39,6 +41,24 @@ final class FeedNewsEntry extends FeedEntry {
 
   @override
   String get key => 'news:${news.key}';
+}
+
+final class FeedShortEntry extends FeedEntry {
+  const FeedShortEntry(this.short);
+
+  final FeedShort short;
+
+  @override
+  String get key => 'youtube:${short.id}';
+}
+
+final class FeedCollectionEntry extends FeedEntry {
+  const FeedCollectionEntry(this.card);
+
+  final FeedCollection card;
+
+  @override
+  String get key => 'collection:${card.collection.id}';
 }
 
 /// An ad on a page of its own, laid between posts by [withFeedAds]. Never
@@ -146,7 +166,9 @@ List<FeedEntry> composeFeedEntries({
       case FeedNewsEntry(news: final article):
         usedNews.add(article.key);
         out.add(entry);
-      // Laid over an arrangement, never part of one ([withFeedAds]).
+      // Shorts come from the server; ads are laid over the arrangement.
+      case FeedCollectionEntry():
+      case FeedShortEntry():
       case FeedAdEntry():
         break;
     }

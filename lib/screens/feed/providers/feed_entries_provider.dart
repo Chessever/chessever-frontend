@@ -37,6 +37,8 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
   @override
   List<FeedEntry> build() {
     final games = ref.watch(feedProvider).valueOrNull ?? const [];
+    final notifier = ref.read(feedProvider.notifier);
+    if (notifier.usesServerBoardFeed) return notifier.serverEntries;
     if (games.isEmpty) {
       // A refresh (or a failed load) starts the arrangement over.
       _retire();
@@ -133,10 +135,7 @@ final feedAdWithdrawnProvider = StateProvider<Set<String>>(
 /// order (newest first), so a fresh arrangement brings articles the viewer
 /// has not had yet and comes back round to the others once all are read.
 @visibleForTesting
-List<FeedNews> feedNewsUnseenFirst(
-  List<FeedNews> news,
-  Set<String> reached,
-) {
+List<FeedNews> feedNewsUnseenFirst(List<FeedNews> news, Set<String> reached) {
   if (reached.isEmpty) return news;
   return [
     for (final article in news)
