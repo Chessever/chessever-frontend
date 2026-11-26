@@ -422,14 +422,11 @@ class TobyPredictsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    // One tonal step above the notation panel it sits in: no outline, no
-    // shadow.
-    final tray = Color.alphaBlend(
-      colors.surfaceRecessed.withValues(alpha: 0.6),
-      Color.alphaBlend(
-        colors.surfaceRecessed.withValues(alpha: 0.3),
-        colors.background,
-      ),
+    // No surface of its own: it sits on the notation's background, which
+    // is what the move hues are checked against.
+    final background = Color.alphaBlend(
+      colors.surfaceRecessed.withValues(alpha: 0.3),
+      colors.background,
     );
     final labelWidth = 76.sp;
     final rowLabel = AppTypography.textXsMedium.copyWith(
@@ -462,24 +459,22 @@ class TobyPredictsPanel extends StatelessWidget {
       ],
     );
 
-    return Container(
-      width: double.infinity,
-      // Its edges on the notation's text edges.
-      margin: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 4.sp),
-      padding: EdgeInsets.fromLTRB(14.sp, 12.sp, 14.sp, 2.sp),
-      decoration: BoxDecoration(
-        color: tray,
-        borderRadius: BorderRadius.circular(16.sp),
-      ),
+    return Padding(
+      // The notation's own text edges.
+      padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 4.sp),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
           _title(context),
           SizedBox(height: 12.sp),
-          labelled('Result', _result(context, tray), top: _legendInset.sp),
+          labelled(
+            'Result',
+            _result(context, background),
+            top: _legendInset.sp,
+          ),
           SizedBox(height: 2.sp),
-          labelled('Next move', _moves(context, tray, rowLabel)),
+          labelled('Next move', _moves(context, background, rowLabel)),
         ],
       ),
     );
@@ -511,7 +506,7 @@ class TobyPredictsPanel extends StatelessWidget {
 
   /// Legend over the bar: White at the bar's left end, Draw in the middle,
   /// Black at its right end, so each number sits by its share.
-  Widget _result(BuildContext context, Color tray) {
+  Widget _result(BuildContext context, Color background) {
     final wdl = this.wdl;
     final percentages = wdl?.percentages;
     final name = AppTypography.textXsMedium.copyWith(
@@ -574,7 +569,7 @@ class TobyPredictsPanel extends StatelessWidget {
   }
 
   /// The three likeliest moves, each a full-height tap target.
-  Widget _moves(BuildContext context, Color tray, TextStyle quiet) {
+  Widget _moves(BuildContext context, Color background, TextStyle quiet) {
     if (thinking || tokens.isEmpty) {
       return SizedBox(
         height: _minTapExtent,
@@ -606,7 +601,7 @@ class TobyPredictsPanel extends StatelessWidget {
               _move(
                 context,
                 token,
-                tray: tray,
+                background: background,
                 selected: token.uci == selectedUci,
                 dimmed: hasSelection && token.uci != selectedUci,
                 // The gap to the next move belongs to this one's tap area.
@@ -621,15 +616,15 @@ class TobyPredictsPanel extends StatelessWidget {
   Widget _move(
     BuildContext context,
     TobyPredictionToken token, {
-    required Color tray,
+    required Color background,
     required bool selected,
     required bool dimmed,
     required double trailing,
   }) {
     // Selection reads through the type alone (and the arrow on the board):
     // the selected move goes heavier, the others lighter. Every ink keeps
-    // its full contrast on the tray.
-    final ink = context.accentInk(token.hue, on: tray);
+    // its full contrast on the background.
+    final ink = context.accentInk(token.hue, on: background);
     final weight = selected
         ? FontWeight.w800
         : dimmed || muted
@@ -699,7 +694,7 @@ class TobyWdlBar extends StatelessWidget {
         ? const Color(0xFFB3BEBF)
         : const Color(0xFF5C5C60);
     // One soft rim in the page's own ink, so the end share that would melt
-    // into the tray (white on paper, black on the dark panel) keeps its
+    // into the background (white on paper, black on the dark panel) keeps its
     // edge. Never a contrasting outline.
     final rim = isLight
         ? colors.textPrimary.withValues(alpha: 0.14)
