@@ -96,57 +96,6 @@ void main() {
     }
   });
 
-  group('tobyWdlSegmentWidths', () {
-    const total = 180.0;
-    double sum(List<double> w) => w.fold(0, (a, b) => a + b);
-
-    test('is proportional when every share is wide enough', () {
-      final widths = tobyWdlSegmentWidths(
-        (white: 28, draw: 57, black: 15),
-        total,
-        minSegment: 6,
-      );
-      expect(widths[0], closeTo(50.4, 1e-9));
-      expect(widths[1], closeTo(102.6, 1e-9));
-      expect(widths[2], closeTo(27.0, 1e-9));
-      expect(sum(widths), closeTo(total, 1e-9));
-    });
-
-    test('a 1% share keeps the minimum and the rest still add up', () {
-      final widths = tobyWdlSegmentWidths(
-        (white: 98, draw: 1, black: 1),
-        total,
-        minSegment: 6,
-      );
-      expect(widths[1], 6);
-      expect(widths[2], 6);
-      expect(widths[0], closeTo(168, 1e-9));
-      expect(sum(widths), closeTo(total, 1e-9));
-    });
-
-    test('a zero share draws nothing', () {
-      final widths = tobyWdlSegmentWidths(
-        (white: 0, draw: 40, black: 60),
-        total,
-        minSegment: 6,
-      );
-      expect(widths[0], 0);
-      expect(sum(widths), closeTo(total, 1e-9));
-    });
-
-    test('never overflows a tiny capsule', () {
-      final widths = tobyWdlSegmentWidths(
-        (white: 1, draw: 1, black: 98),
-        12,
-        minSegment: 6,
-      );
-      expect(sum(widths), closeTo(12, 1e-9));
-      for (final w in widths) {
-        expect(w, greaterThan(0));
-      }
-    });
-  });
-
   test('tobyWdlSemantics reads the shares in order', () {
     expect(
       tobyWdlSemantics((white: 28, draw: 57, black: 15)),
@@ -216,51 +165,33 @@ void main() {
     });
   });
 
-  group('TobyPredictsPanel', () {
+  group('TobyPredictsLine', () {
+    List<TobyPredictionToken> tokens() => tobyPredictionTokens(
+      _reading(const [
+        TobyCandidate(uci: 'c4d4', san: 'Qxd4', probability: .88),
+        TobyCandidate(uci: 'c4c2', san: 'Qxc2', probability: .11),
+        TobyCandidate(uci: 'c6c5', san: 'c5', probability: .004),
+      ]),
+      _blackToMove24,
+    );
+
     Future<void> pump(
       WidgetTester tester, {
-      List<TobyPredictionToken>? tokens,
-      bool thinking = false,
-      String? selectedUci,
+      List<TobyPredictionToken>? moves,
       ValueChanged<TobyPredictionToken>? onMoveTap,
+      // The test font draws every glyph a full em wide.
+      double width = 900,
     }) async {
       ResponsiveHelper.initFromSize(const Size(390, 844));
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.darkTheme,
           home: Scaffold(
-            body: Align(
-              alignment: Alignment.bottomCenter,
-              child: SizedBox(
-                width: 390,
-                child: TobyPredictsPanel(
-                  wdl: const TobyWdl(white: .17, draw: .76, black: .07),
-                  tokens:
-                      tokens ??
-                      tobyPredictionTokens(
-                        _reading(const [
-                          TobyCandidate(
-                            uci: 'c4d4',
-                            san: 'Qxd4',
-                            probability: .88,
-                          ),
-                          TobyCandidate(
-                            uci: 'c4c2',
-                            san: 'Qxc2',
-                            probability: .11,
-                          ),
-                          TobyCandidate(
-                            uci: 'c6c5',
-                            san: 'c5',
-                            probability: .004,
-                          ),
-                        ]),
-                        _blackToMove24,
-                      ),
-                  thinking: thinking,
-                  selectedUci: selectedUci,
-                  onMoveTap: onMoveTap,
-                ),
+            body: SizedBox(
+              width: width,
+              child: TobyPredictsLine(
+                tokens: moves ?? tokens(),
+                onMoveTap: onMoveTap,
               ),
             ),
           ),
@@ -269,73 +200,53 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('names both rows and every outcome', (tester) async {
-      await pump(tester);
-      for (final text in ['Toby predicts', 'Result', 'Next move']) {
-        expect(find.text(text), findsOneWidget);
-      }
-      for (final text in ['White 17%', 'Draw 76%', 'Black 7%']) {
-        expect(find.text(text, findRichText: true), findsOneWidget);
-      }
-      for (final text in ['Qxd4  88%', 'Qxc2  11%', 'c5  <1%']) {
-        expect(find.text(text, findRichText: true), findsOneWidget);
-      }
-    });
-
-    testWidgets('moves read left to right from the legend\'s edge', (
+    testWidgets('reads "Toby Predicts: A or B or C" on one line', (
       tester,
     ) async {
       await pump(tester);
-      double left(String t) =>
-          tester.getTopLeft(find.text(t, findRichText: true)).dx;
-      expect(left('Qxd4  88%'), moreOrLessEquals(left('White 17%')));
-      expect(left('Qxd4  88%'), lessThan(left('Qxc2  11%')));
-      expect(left('Qxc2  11%'), lessThan(left('c5  <1%')));
-      // The two row labels share one left edge.
-      expect(
-        tester.getTopLeft(find.text('Result')).dx,
-        tester.getTopLeft(find.text('Next move')).dx,
-      );
+      expect(find.text('Toby Predicts:'), findsOneWidget);
+      expect(find.text(' or'), findsNWidgets(2));
+      final first = tester.getCenter(find.text('24…Qxd4'));
+      for (final move in ['24…Qxc2', '24…c5']) {
+        expect(tester.getCenter(find.text(move)).dy, first.dy);
+      }
+      expect(find.text('Next move'), findsNothing);
     });
 
-    testWidgets('a move is a 44dp tap target that reports itself', (
-      tester,
-    ) async {
+    testWidgets('a tapped move reports itself', (tester) async {
       TobyPredictionToken? tapped;
       await pump(tester, onMoveTap: (token) => tapped = token);
-      final move = find.text('Qxc2  11%', findRichText: true);
-      final target = find.ancestor(
-        of: move,
-        matching: find.byType(GestureDetector),
-      );
-      expect(tester.getSize(target.first).height, greaterThanOrEqualTo(44));
-      await tester.tap(move);
+      await tester.tap(find.text('24…Qxc2'));
       expect(tapped?.uci, 'c4c2');
     });
 
-    testWidgets('says Toby is thinking while it reads a new position', (
+    testWidgets('says thinking while Toby reads a new position', (
       tester,
     ) async {
-      await pump(tester, tokens: const [], thinking: true);
-      expect(find.text('Toby is thinking…'), findsOneWidget);
-      expect(find.text('White 17%', findRichText: true), findsOneWidget);
+      await pump(tester, moves: const []);
+      expect(find.text(' thinking…'), findsOneWidget);
     });
 
-    testWidgets('screen readers hear the chances and Toby\'s credit', (
+    testWidgets('"Toby Predicts:" is dashed and carries the credit', (
       tester,
     ) async {
       final semantics = tester.ensureSemantics();
       await pump(tester);
+      final label = tester.widget<Text>(find.text('Toby Predicts:'));
+      expect(label.style?.decorationStyle, TextDecorationStyle.dashed);
       expect(
-        find.bySemanticsLabel('Toby predicts. $kTobyAttribution'),
+        find.bySemanticsLabel('Toby Predicts. $kTobyAttribution'),
         findsOneWidget,
       );
-      expect(
-        find.bySemanticsLabel('Result chances: White 17, draw 76, Black 7'),
-        findsOneWidget,
-      );
-      expect(find.bySemanticsLabel('24…Qxd4, 88%'), findsOneWidget);
       semantics.dispose();
     });
+  });
+
+  test('the chance explanation names every outcome and the credit', () {
+    final text = tobyChanceExplanation((white: 17, draw: 76, black: 7));
+    expect(text, contains('White wins 17%'));
+    expect(text, contains('draw 76%'));
+    expect(text, contains('Black wins 7%'));
+    expect(text, contains(kTobyAttribution));
   });
 }

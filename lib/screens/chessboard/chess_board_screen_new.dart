@@ -12210,15 +12210,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     children: rows,
                   ),
                 ),
+                // "Toby Predicts: …" right after the last move (live game
+                // only; it builds nothing otherwise). A sibling of the rows
+                // so screen readers reach it: they sit in ExcludeSemantics.
+                TobyLivePrediction(
+                  params: params,
+                  onLayoutChange: _repinAfterNotationReflow,
+                ),
               ],
             ),
-          ),
-          // "Toby predicts" at the end of the notation, above the footer
-          // buttons, scrolling with the moves (live game only; it builds
-          // nothing otherwise).
-          TobyLivePrediction(
-            params: params,
-            onLayoutChange: _repinAfterNotationReflow,
           ),
           if (footerActions.isNotEmpty)
             NotationFooterActions(children: footerActions),
