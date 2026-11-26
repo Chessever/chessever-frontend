@@ -16,11 +16,13 @@ class FeedShortPage extends StatefulWidget {
     super.key,
     required this.short,
     required this.active,
+    required this.preload,
     required this.onOpened,
   });
 
   final FeedShort short;
   final bool active;
+  final bool preload;
   final VoidCallback onOpened;
 
   @override
@@ -48,7 +50,7 @@ class _FeedShortPageState extends State<FeedShortPage> {
       color: Colors.black,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (!widget.active) return const SizedBox.expand();
+          if (!widget.active && !widget.preload) return const SizedBox.expand();
           if (!inlineSupported ||
               origin == null ||
               constraints.maxHeight < 200 ||
@@ -60,6 +62,7 @@ class _FeedShortPageState extends State<FeedShortPage> {
               key: ValueKey(short.id),
               short: short,
               origin: origin,
+              active: widget.active,
               onWatched: _reportOpened,
             ),
           );
@@ -74,11 +77,13 @@ class _InlineFeedShort extends StatefulWidget {
     super.key,
     required this.short,
     required this.origin,
+    required this.active,
     required this.onWatched,
   });
 
   final FeedShort short;
   final Uri origin;
+  final bool active;
   final VoidCallback onWatched;
 
   @override
@@ -143,7 +148,8 @@ class _InlineFeedShortState extends State<_InlineFeedShort> {
           ),
           widget.origin,
           revision: 0,
-          play: true,
+          play: false,
+          deferYouTubePlayback: true,
           muted: true,
           nativeFullscreen: false,
           showCaptionsByDefault: false,
@@ -153,6 +159,30 @@ class _InlineFeedShortState extends State<_InlineFeedShort> {
     } catch (_) {
       _fail();
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineFeedShort oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      if (!widget.active) {
+        _watchTimer?.cancel();
+        _watchTimer = null;
+      }
+      _syncPlayback();
+    }
+  }
+
+  void _syncPlayback() {
+    final player = _player;
+    if (player == null) return;
+    unawaited(
+      player
+          .runJavaScript(
+            'window.chessVideoSetActive && window.chessVideoSetActive(${widget.active})',
+          )
+          .catchError((Object _) {}),
+    );
   }
 
   void _fail() {
@@ -165,12 +195,14 @@ class _InlineFeedShortState extends State<_InlineFeedShort> {
     try {
       final data = jsonDecode(message.message);
       if (data is! Map) return;
-      if (data['type'] == 'error') {
+      if (data['type'] == 'ready') {
+        _syncPlayback();
+      } else if (data['type'] == 'error') {
         _fail();
-      } else if (data['type'] == 'playback' && !_watched) {
+      } else if (data['type'] == 'playback' && widget.active && !_watched) {
         if (data['playing'] == true) {
           _watchTimer ??= Timer(const Duration(seconds: 4), () {
-            if (!mounted) return;
+            if (!mounted || !widget.active) return;
             _watched = true;
             widget.onWatched();
           });
@@ -203,10 +235,13 @@ class _InlineFeedShortState extends State<_InlineFeedShort> {
     if (_failed) return const _ShortUnavailable();
     final player = _player;
     if (player == null) return const Center(child: CircularProgressIndicator());
-    return WebViewWidget(
-      controller: player,
-      // The vertical Feed swipe keeps ownership of vertical drags.
-      gestureRecognizers: eventVideoGestureRecognizers,
+    return IgnorePointer(
+      ignoring: !widget.active,
+      child: WebViewWidget(
+        controller: player,
+        // The vertical Feed swipe keeps ownership of vertical drags.
+        gestureRecognizers: eventVideoGestureRecognizers,
+      ),
     );
   }
 }

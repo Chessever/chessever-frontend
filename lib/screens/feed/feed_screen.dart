@@ -948,6 +948,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         key: ValueKey(entry.key),
         short: short,
         active: isCurrent && visible,
+        preload: visible && i == _index + 1,
         onOpened: () =>
             ref.read(feedProvider.notifier).noteShortOpened(short.id),
       ),

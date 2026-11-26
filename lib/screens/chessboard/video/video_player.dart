@@ -489,6 +489,7 @@ String videoPlayerHtml(
   required bool muted,
   bool nativeFullscreen = true,
   bool showCaptionsByDefault = true,
+  bool deferYouTubePlayback = false,
 }) {
   final id = jsonEncode(source.id), host = jsonEncode(origin.host);
   final youtube = source.platform == VideoPlatform.youtube
@@ -504,18 +505,39 @@ String videoPlayerHtml(
     if (showCaptionsByDefault) 'cc_load_policy': '1',
     ...?youtubeOptions,
   });
-  final youtubeRepeat = youtube?.loop == true
+  final youtubeRepeat = !deferYouTubePlayback && youtube?.loop == true
       ? 'if(e.data===0){ytPlayer.loadVideoById(${jsonEncode({'videoId': source.id, 'startSeconds': youtube!.start, if (youtube.end != null) 'endSeconds': youtube.end})});}'
       : '';
   final autoplay = play ? 'true' : 'false';
   final mutedFlag = muted ? 'true' : 'false';
   // The tap that chose the stream is the play gesture. Autoplay params alone
   // can be ignored, so each provider is also started explicitly once ready.
-  final youtubeStart = play ? 'try{ytPlayer.playVideo();}catch(e){}' : '';
+  final youtubeAutoplay = play && !deferYouTubePlayback;
+  final youtubeStart = deferYouTubePlayback
+      ? "feedPlayer=ytPlayer;if(feedActive){ytPlayer.playVideo();}else{ytPlayer.cueVideoById($id);}send('ready',{});"
+      : youtubeAutoplay
+      ? 'try{ytPlayer.playVideo();}catch(e){}'
+      : '';
+  final youtubeVisibility = deferYouTubePlayback
+      ? """
+let feedPlayer;
+let feedActive=false;
+window.chessVideoSetActive=active=>{
+  if(feedActive===active)return;
+  feedActive=active;
+  if(!feedPlayer)return;
+  if(active){feedPlayer.mute();feedPlayer.playVideo();}
+  else{feedPlayer.pauseVideo();}
+};
+"""
+      : '';
+  final youtubePauseHidden = deferYouTubePlayback
+      ? "if(!feedActive&&e.data===1){e.target.pauseVideo();return;}"
+      : '';
   final twitchStart = play ? 'try{p.play();}catch(e){}' : '';
   // Fullscreen hook used to nudge a live stream back if the HTML5 element
   // paused while the Android custom view attached.
-  final youtubePlayHook = play
+  final youtubePlayHook = youtubeAutoplay
       ? 'window.chessVideoPlay=()=>{try{ytPlayer.playVideo();}catch(e){}};'
       : '';
   final twitchPlayHook = play
@@ -525,10 +547,11 @@ String videoPlayerHtml(
     VideoPlatform.youtube =>
       '''
 <script>
+$youtubeVisibility
 function onYouTubeIframeAPIReady() {
   const ytPlayer=new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
-    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:${jsonEncode(origin.toString())}, mute:${muted ? 1 : 0}, controls:1, rel:0, ...$youtubeVars},
-    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>{send('playback',{playing:e.data===1});$youtubeRepeat}, onError:()=>send('error',{})}});
+    playerVars:{autoplay:${youtubeAutoplay ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:${jsonEncode(origin.toString())}, mute:${muted ? 1 : 0}, controls:1, rel:0, ...$youtubeVars},
+    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>{$youtubePauseHidden send('playback',{playing:e.data===1});$youtubeRepeat}, onError:()=>send('error',{})}});
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',
     VideoPlatform.twitch =>
