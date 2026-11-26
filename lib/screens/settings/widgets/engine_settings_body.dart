@@ -162,52 +162,6 @@ class EngineSettingsBody extends ConsumerWidget {
         ),
         SizedBox(height: 18.h),
         SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Engine',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                engineSourceSubtitle(settings.engineSource),
-                key: const ValueKey('engine-source-subtitle'),
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _SegmentTrack(
-                // Toby on the left, Stockfish on the right.
-                children: [
-                  _ToggleSegment(
-                    key: const ValueKey('engine-source-toby'),
-                    label: 'Toby',
-                    selected: settings.engineSource == EngineSource.toby,
-                    onTap: () => trackPersist(
-                      notifier.setEngineSource(EngineSource.toby),
-                    ),
-                  ),
-                  _ToggleSegment(
-                    key: const ValueKey('engine-source-stockfish'),
-                    label: 'Stockfish',
-                    selected: settings.engineSource == EngineSource.stockfish,
-                    onTap: () => trackPersist(
-                      notifier.setEngineSource(EngineSource.stockfish),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
           child: Row(
             children: [
               Expanded(
@@ -215,7 +169,7 @@ class EngineSettingsBody extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Toby Predicts',
+                      'Toby',
                       style: AppTypography.textMdMedium.copyWith(
                         color: context.colors.textPrimary,
                         fontSize: 13.f,
@@ -223,8 +177,9 @@ class EngineSettingsBody extends ConsumerWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Under the moves of broadcast games: the moves Toby '
-                      'expects next and each result\'s chances.',
+                      'Toby Predicts under the moves, Toby engine lines and '
+                      'the Toby rating in reports. The same on all your '
+                      'devices and chessever.com.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textSecondary,
                         fontSize: 11.f,
@@ -234,17 +189,66 @@ class EngineSettingsBody extends ConsumerWidget {
                 ),
               ),
               Switch.adaptive(
-                key: const ValueKey('toby-predicts-switch'),
-                value: settings.showTobyPredicts,
+                key: const ValueKey('toby-switch'),
+                value: settings.tobyEnabled,
                 thumbColor: settingsSwitchThumb(context),
                 trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
-                  trackPersist(notifier.setShowTobyPredicts(value));
+                  trackPersist(notifier.setTobyEnabled(value));
                 },
               ),
             ],
           ),
         ),
+        // Stockfish or Toby lines: only while Toby is on.
+        if (settings.tobyEnabled) ...[
+          SizedBox(height: 18.h),
+          SettingCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Engine',
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: context.colors.textPrimary,
+                    fontSize: 13.f,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  engineSourceSubtitle(settings.engineSource),
+                  key: const ValueKey('engine-source-subtitle'),
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                    fontSize: 11.f,
+                  ),
+                ),
+                SizedBox(height: 14.h),
+                _SegmentTrack(
+                  // Toby on the left, Stockfish on the right.
+                  children: [
+                    _ToggleSegment(
+                      key: const ValueKey('engine-source-toby'),
+                      label: 'Toby',
+                      selected: settings.engineSource == EngineSource.toby,
+                      onTap: () => trackPersist(
+                        notifier.setEngineSource(EngineSource.toby),
+                      ),
+                    ),
+                    _ToggleSegment(
+                      key: const ValueKey('engine-source-stockfish'),
+                      label: 'Stockfish',
+                      selected: settings.engineSource == EngineSource.stockfish,
+                      onTap: () => trackPersist(
+                        notifier.setEngineSource(EngineSource.stockfish),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
         SizedBox(height: 18.h),
         SettingCard(
           child: Column(

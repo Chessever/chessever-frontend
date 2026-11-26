@@ -5,7 +5,7 @@
 /// dashed: a tap explains the chances and credits Toby.
 ///
 /// Shown on any position of a broadcast game, live or finished, unless the
-/// reader turned it off (Settings → Engine → Toby Predicts). Where the game
+/// reader turned it off (Settings → Engine → Toby). Where the game
 /// is over on the board it says so, with the result. Whatever the engine
 /// source setting says: the engine lines may run Stockfish while this reads
 /// Toby.
@@ -358,7 +358,7 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
     if (liveFen == null || _refused) return _hidden();
     final showSetting = ref.watch(
       engineSettingsProviderNew.select(
-        (settings) => settings.valueOrNull?.showTobyPredicts ?? true,
+        (settings) => settings.valueOrNull?.tobyEnabled ?? true,
       ),
     );
     if (!showSetting) return _hidden();

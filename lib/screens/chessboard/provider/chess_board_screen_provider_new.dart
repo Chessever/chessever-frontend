@@ -489,7 +489,7 @@ class ChessBoardScreenNotifierNew
               prevValue.showPvArrows == nextValue.showPvArrows &&
               prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
               prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
-              prevValue.engineSource == nextValue.engineSource &&
+              prevValue.usesToby == nextValue.usesToby &&
               prevValue.showEngineAnalysis ==
                   nextValue.showEngineAnalysis; // ← same value
 
@@ -502,7 +502,7 @@ class ChessBoardScreenNotifierNew
               prevValue.showPvArrows == nextValue.showPvArrows &&
               prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
               prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
-              prevValue.engineSource == nextValue.engineSource &&
+              prevValue.usesToby == nextValue.usesToby &&
               prevValue.showEngineAnalysis != nextValue.showEngineAnalysis;
 
           if (nothingChanged || onlyVisibilityChanged) {
@@ -590,7 +590,7 @@ class ChessBoardScreenNotifierNew
         // Switched to Toby: this board's Stockfish search is no longer
         // wanted. Only this board's jobs; other owners keep theirs.
         if (prevValue != null &&
-            prevValue.engineSource != nextValue.engineSource &&
+            prevValue.usesToby != nextValue.usesToby &&
             nextValue.usesToby) {
           unawaited(
             StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),

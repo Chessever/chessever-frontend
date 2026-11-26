@@ -186,7 +186,9 @@ EngineLinesView engineLinesViewFromIndex(int? index) {
 }
 
 /// Which engine fills the board's evaluation bar, engine lines and arrows.
-/// Device-local (cache only, no Supabase column), like the gauge surfaces.
+/// On the account (`user_engine_settings.engine_source`, null read as
+/// Stockfish), cached on the device. Phone only: desktop and the site show
+/// both side by side.
 enum EngineSource {
   /// The strongest moves (local Stockfish and cached evaluations).
   stockfish,
@@ -216,7 +218,7 @@ class EngineSettings {
     this.searchTimeIndex = 0,
     this.engineLinesView = EngineLinesView.list,
     this.engineSource = EngineSource.stockfish,
-    this.showTobyPredicts = true,
+    this.tobyEnabled = true,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex = principalVariationIndex < 0
@@ -253,12 +255,14 @@ class EngineSettings {
   /// Which engine fills the board's bar, lines and arrows. Device-local.
   final EngineSource engineSource;
 
-  /// Whether Toby replaces Stockfish on the board.
-  bool get usesToby => engineSource == EngineSource.toby;
+  /// Whether Toby replaces Stockfish on the board: chosen, and Toby on.
+  bool get usesToby => tobyEnabled && engineSource == EngineSource.toby;
 
-  /// Whether the notation ends with "Toby Predicts" (the moves Toby expects
-  /// and the result chances). Device-local, like [engineSource].
-  final bool showTobyPredicts;
+  /// The reader's Toby switch (Settings, Engine, Toby), the same in every
+  /// app: off turns every Toby surface off (Toby Predicts, Toby engine
+  /// lines, the Game Report's Toby rating). On the account
+  /// (`user_engine_settings.toby_enabled`, null read as on).
+  final bool tobyEnabled;
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -381,7 +385,7 @@ class EngineSettings {
     int? searchTimeIndex,
     EngineLinesView? engineLinesView,
     EngineSource? engineSource,
-    bool? showTobyPredicts,
+    bool? tobyEnabled,
     int? principalVariationIndex,
     int? maxArrowsOnBoard,
   }) {
@@ -397,7 +401,7 @@ class EngineSettings {
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
       engineLinesView: engineLinesView ?? this.engineLinesView,
       engineSource: engineSource ?? this.engineSource,
-      showTobyPredicts: showTobyPredicts ?? this.showTobyPredicts,
+      tobyEnabled: tobyEnabled ?? this.tobyEnabled,
       principalVariationIndex:
           (principalVariationIndex ?? this.principalVariationIndex).clamp(
             0,
@@ -512,6 +516,8 @@ EngineSettings applyDeviceLocalEngineSettings(
   EngineSettings settings,
   Map<String, dynamic> cache,
 ) {
+  // Engine source and Toby are on the account; the device copy only fills
+  // in where the account has nothing (signed out, no row, never chosen).
   final cachedSearchTime = cache['searchTimeIndex'];
   return applyCachedEngineGaugeSurfaceSettings(settings, cache).copyWith(
     searchTimeIndex: resolveSearchTimeIndex(
@@ -521,9 +527,9 @@ EngineSettings applyDeviceLocalEngineSettings(
     engineSource: cache.containsKey('engineSource')
         ? engineSourceFromName(cache['engineSource'])
         : settings.engineSource,
-    showTobyPredicts: cache['showTobyPredicts'] is bool
-        ? cache['showTobyPredicts'] as bool
-        : settings.showTobyPredicts,
+    tobyEnabled: cache['tobyEnabled'] is bool
+        ? cache['tobyEnabled'] as bool
+        : settings.tobyEnabled,
   );
 }
 
@@ -615,23 +621,44 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       }
 
       final model = EngineSettingsModel.fromSupabase(response);
+      final serverSource = response['engine_source'];
+      final serverToby = response['toby_enabled'];
       // engine_lines_view_index is not part of the dart_mappable model; read it
       // directly to avoid regenerating the mapper for a single field.
-      final settings = applyDeviceLocalEngineSettings(
-        EngineSettings(
-          showEngineGauge: model.showEngineGauge,
-          showDepthOverlay: model.showDepthOverlay,
-          showPvArrows: model.showPvArrows,
-          showEngineAnalysis: model.showEngineAnalysis,
-          searchTimeIndex: model.searchTimeIndex,
-          engineLinesView: engineLinesViewFromIndex(
-            response['engine_lines_view_index'] as int?,
-          ),
-          principalVariationIndex: model.principalVariationIndex,
-          maxArrowsOnBoard: model.maxArrowsOnBoard,
-        ),
-        cachedSettings,
-      );
+      final settings =
+          applyDeviceLocalEngineSettings(
+            EngineSettings(
+              showEngineGauge: model.showEngineGauge,
+              showDepthOverlay: model.showDepthOverlay,
+              showPvArrows: model.showPvArrows,
+              showEngineAnalysis: model.showEngineAnalysis,
+              searchTimeIndex: model.searchTimeIndex,
+              engineLinesView: engineLinesViewFromIndex(
+                response['engine_lines_view_index'] as int?,
+              ),
+              principalVariationIndex: model.principalVariationIndex,
+              maxArrowsOnBoard: model.maxArrowsOnBoard,
+            ),
+            cachedSettings,
+          ).copyWith(
+            // The account's Toby choices win over the device's copy.
+            engineSource: serverSource is String
+                ? engineSourceFromName(serverSource)
+                : null,
+            tobyEnabled: serverToby is bool ? serverToby : null,
+          );
+
+      // Never chosen on the account yet: carry the device's choice up once
+      // (the engine choice was device-only before 39.7.0).
+      if ((serverSource == null &&
+              settings.engineSource != EngineSource.stockfish) ||
+          (serverToby == null && !settings.tobyEnabled)) {
+        unawaited(
+          _saveToSupabase(settings, userId).catchError((Object e) {
+            debugPrint('[EngineSettings] Toby choices upload failed: $e');
+          }),
+        );
+      }
 
       // Cache locally
       await _cacheSettings(settings);
@@ -777,9 +804,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     await _persist(newSettings);
   }
 
-  /// Choose which engine fills the board's bar, lines and arrows. The choice
-  /// is device-local: it is written to the local cache only, like the
-  /// evaluation bar surfaces, so no Supabase column is needed.
+  /// Choose which engine fills the board's bar, lines and arrows. Saved on
+  /// the account (`engine_source`) and cached on the device.
   Future<void> setEngineSource(EngineSource source) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
     if (currentState.engineSource == source) return;
@@ -791,17 +817,20 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     ref
         .read(engineDepthTrackerProvider.notifier)
         .clearAll(reason: 'engine source changed');
-    await _cacheSettings(newSettings);
+    await _persist(newSettings);
   }
 
-  /// Show or hide "Toby Predicts" under the notation. Device-local, like
-  /// [setEngineSource].
-  Future<void> setShowTobyPredicts(bool show) async {
+  /// Turn Toby on or off in every app: saved on the account
+  /// (`toby_enabled`) and cached on the device.
+  Future<void> setTobyEnabled(bool enabled) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
-    if (currentState.showTobyPredicts == show) return;
-    final newSettings = currentState.copyWith(showTobyPredicts: show);
+    if (currentState.tobyEnabled == enabled) return;
+    final newSettings = currentState.copyWith(tobyEnabled: enabled);
     state = AsyncValue.data(newSettings);
-    await _cacheSettings(newSettings);
+    ref
+        .read(engineDepthTrackerProvider.notifier)
+        .clearAll(reason: 'toby switched');
+    await _persist(newSettings);
   }
 
   /// Set max arrows on board index
@@ -870,6 +899,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           'engine_lines_view_index': settings.engineLinesView.index,
           'principal_variation_index': settings.principalVariationIndex,
           'max_arrows_on_board': settings.maxArrowsOnBoard,
+          'engine_source': settings.engineSource.name,
+          'toby_enabled': settings.tobyEnabled,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -894,7 +925,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'searchTimeIndex': settings.searchTimeIndex,
         'engineLinesView': settings.engineLinesView.index,
         'engineSource': settings.engineSource.name,
-        'showTobyPredicts': settings.showTobyPredicts,
+        'tobyEnabled': settings.tobyEnabled,
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
@@ -947,7 +978,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           map['engineLinesView'] as int?,
         ),
         engineSource: engineSourceFromName(map['engineSource']),
-        showTobyPredicts: map['showTobyPredicts'] as bool? ?? true,
+        tobyEnabled: map['tobyEnabled'] as bool? ?? true,
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
         maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );

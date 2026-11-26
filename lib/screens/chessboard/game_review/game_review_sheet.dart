@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/evaluation_graph_markers.dart';
@@ -936,6 +937,13 @@ class _TobyRatingRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Toby switched off (Settings, Engine, Toby): no row, no request.
+    final tobyOn = ref.watch(
+      engineSettingsProviderNew.select(
+        (settings) => settings.valueOrNull?.tobyEnabled ?? true,
+      ),
+    );
+    if (!tobyOn) return const SizedBox.shrink();
     final state = ref.watch(tobyPerformanceProvider(query));
     final cells = tobyRatingCells(state);
     if (cells == null) return const SizedBox.shrink();

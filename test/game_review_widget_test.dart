@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' as io;
 
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -29,6 +30,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// rest of the sheet, so the estimate is known up front to be unavailable and
 /// the row stays hidden (its own tests are in
 /// test/services/toby/toby_performance_test.dart and below).
+/// Engine settings without the cloud round trip (Toby on, the default).
+class _DefaultEngineSettings extends EngineSettingsNotifierNew {
+  @override
+  Future<EngineSettings> build() async => const EngineSettings();
+}
+
 class _NoTobyPerformance extends TobyPerformanceNotifier {
   @override
   TobyPerformanceState build(TobyPerformanceQuery query) =>
@@ -45,7 +52,10 @@ class _FixedTobyPerformance extends TobyPerformanceNotifier {
 }
 
 Widget _tobyScope(BuildContext context, Widget? child) => ProviderScope(
-  overrides: [tobyPerformanceProvider.overrideWith(_NoTobyPerformance.new)],
+  overrides: [
+    engineSettingsProviderNew.overrideWith(_DefaultEngineSettings.new),
+    tobyPerformanceProvider.overrideWith(_NoTobyPerformance.new),
+  ],
   child: child!,
 );
 
@@ -1133,6 +1143,7 @@ void main() {
           builder: (context, child) => ProviderScope(
             key: ValueKey(toby.status),
             overrides: [
+              engineSettingsProviderNew.overrideWith(_DefaultEngineSettings.new),
               tobyPerformanceProvider.overrideWith(
                 () => _FixedTobyPerformance(toby),
               ),
