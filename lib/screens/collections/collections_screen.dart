@@ -460,7 +460,13 @@ class CollectionCard extends ConsumerWidget {
 
     return CollectionPlateRow(
       stacked: stacked,
-      plate: _Cover(collection: c),
+      // Portrait jackets need their full height in the fixed landscape slot.
+      plate: isBook
+          ? ColoredBox(
+              color: context.colors.surfaceRecessed,
+              child: _Cover(collection: c, fit: BoxFit.contain),
+            )
+          : _Cover(collection: c),
       plateSize: CollectionPlateRow.eventPlate,
       compactDetails: isBook,
       detailItems: isBook
