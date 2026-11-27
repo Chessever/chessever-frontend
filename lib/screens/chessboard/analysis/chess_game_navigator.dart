@@ -449,6 +449,27 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
     }
 
+    // At the start position an alternative to the first move hangs on that
+    // move (a PGN's `92... Rb2 (92... Kf6)`): enter it rather than make a
+    // second, empty copy of the annotated line.
+    if (currentMove == null && state.game.mainline.isNotEmpty) {
+      final first = state.game.mainline.first;
+      final alternatives = first.variations ?? const <ChessLine>[];
+      for (var i = 0; i < alternatives.length; i++) {
+        final variation = alternatives[i];
+        if (isAlternativeToMove(first, variation) &&
+            variation.first.uci == uci) {
+          replaceState(
+            ChessGameNavigatorState(
+              game: state.game,
+              movePointer: [0, i, 0],
+            ),
+          );
+          return;
+        }
+      }
+    }
+
     // Check if move exists in variations
     if (currentMove?.variations != null) {
       debugPrint(
@@ -813,6 +834,49 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
 
       final promotedVariationLine = variations[variationIndex];
+
+      // A branch that replaces the junction move itself (an alternative to
+      // a line's first move) swaps places with it: the promoted line starts
+      // where the junction stood, and the junction with its continuation
+      // becomes the alternative. Appending it after the junction would have
+      // the same side move twice.
+      if (isAlternativeToMove(move, promotedVariationLine)) {
+        final alternativesToJunction = <ChessLine>[];
+        final continuationsOfJunction = <ChessLine>[];
+        for (var i = 0; i < variations.length; i++) {
+          if (i == variationIndex) continue;
+          (isAlternativeToMove(move, variations[i])
+                  ? alternativesToJunction
+                  : continuationsOfJunction)
+              .add(variations[i]);
+        }
+        final oldLine = <ChessMove>[
+          move.copyWith(
+            variations: continuationsOfJunction.isEmpty
+                ? null
+                : continuationsOfJunction,
+            overrideVariations: true,
+          ),
+          ...line.sublist(moveIndex + 1),
+        ];
+        final head = promotedVariationLine.first;
+        final newHead = head.copyWith(
+          variations: [
+            ...?head.variations,
+            oldLine,
+            ...alternativesToJunction,
+          ],
+          overrideVariations: true,
+        );
+        final pointer = List<Number>.of(parentPointer);
+        pointer[pointer.length - 1] = moveIndex;
+        promotedPointer = pointer;
+        return [
+          ...line.take(moveIndex),
+          newHead,
+          ...promotedVariationLine.skip(1),
+        ];
+      }
 
       // 1. The part of the current line that comes after the junction move
       // will now become a sub-variation.

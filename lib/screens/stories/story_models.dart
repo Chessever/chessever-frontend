@@ -651,6 +651,7 @@ StoryAnalysis _analyze(StoryAnalysisJob job) {
             story.notation.mainline[ply - 1],
             finalPly: ply == story.notation.mainline.length,
             findMove: job.editorialPuzzle,
+            leadComments: ply == 1 ? story.game.comments : const [],
           ),
     ];
     return StoryAnalysis(

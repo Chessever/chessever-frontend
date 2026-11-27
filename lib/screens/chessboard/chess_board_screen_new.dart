@@ -9808,9 +9808,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   /// The move's `[%cal]` arrows and `[%csl]` squares, in the palette every
   /// board shares ([pgnCommentShapes]; the collection stories draw them too).
   Iterable<Shape> _extractAnnotationShapes(ChessMove? move) {
-    final comments = move?.comments;
-    if (comments == null) return const [];
-    return pgnCommentShapes(comments);
+    if (move == null) return const [];
+    // A variation's lead-in (`( { [%cal Gh4h5] Instead } 93. h5 )`) draws
+    // with its move, as the collection stories draw it.
+    return pgnCommentShapes([
+      ...?move.startingComments,
+      ...?move.comments,
+    ]);
   }
 
   /// [selfContainedChild] is true when [child] already paints its own filled
@@ -11168,9 +11172,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
         : const ISet<Shape>.empty();
 
-    final annotationShapes = showLocalAnnotations
-        ? _extractAnnotationShapes(activeMove)
-        : const <Shape>[];
+    final annotationShapes = !showLocalAnnotations
+        ? const <Shape>[]
+        : activeMovePointer.isEmpty &&
+              !widget.chessBoardState.isPvPreviewActive
+        // The start position draws the game comment's arrows: a position
+        // shared from a book marks its idea before the first move.
+        ? pgnCommentShapes(analysisGame?.rootComments ?? const <String>[])
+        : _extractAnnotationShapes(activeMove);
     // The Toby move tapped in the live prediction, in its own hue. Drawn
     // whatever the engine arrow settings say: the reader asked for it.
     final tobyArrow = tobyArrowShape(
@@ -12287,6 +12296,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       autoCollapseDepth: _autoCollapseDepth,
       rawPgnMode: effectiveRawPgnMode,
       hiddenVariationIds: viewSession.hiddenVariationIds,
+      // A position or fragment (a collection game from move 92) explains
+      // itself before its first move; the analysis game carries that text.
+      rootComments: navigatorState.game.rootComments,
     );
 
     final currentNode = pointerForHighlightId != null
@@ -13335,7 +13347,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   ) {
     final fullText = token.commentText?.trim() ?? token.text.trim();
     if (fullText.isEmpty) return const SizedBox.shrink();
-    final id = token.pointerId ?? token.variation?.id;
+    final id = token.commentId ?? token.pointerId ?? token.variation?.id;
     if (id == null) return const SizedBox.shrink();
 
     final isExpanded = !_collapsedCommentIds.contains(id);
@@ -13351,6 +13363,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
 
     void openEditor() {
+      // Text written before a move has no override slot; it stays as the
+      // source wrote it.
+      if (!token.editable) return;
       HapticFeedback.mediumImpact();
       _editNotationComment(token, params, fullText);
     }

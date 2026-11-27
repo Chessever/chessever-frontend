@@ -43,6 +43,16 @@ class NotationDisplayToken {
   final String? commentText;
   final String? variationColorKey;
 
+  /// A comment's own identity when it is not the comment after a move (the
+  /// game comment before the first move, a variation's lead-in), so its
+  /// fold state never shares a key with a move's comment.
+  final String? commentId;
+
+  /// Whether a reader may rewrite this comment. Text the PGN writes before a
+  /// move has no slot in the per-move comment overrides, so it stays as the
+  /// source wrote it.
+  final bool editable;
+
   const NotationDisplayToken({
     required this.type,
     required this.text,
@@ -62,8 +72,16 @@ class NotationDisplayToken {
     this.heroineTag,
     this.commentText,
     this.variationColorKey,
+    this.commentId,
+    this.editable = true,
   });
 }
+
+/// Fold-state id of the game comment before the first move.
+const String kNotationRootCommentId = 'root-comments';
+
+/// Fold-state id of the comments written before the move at [pointerId].
+String notationStartingCommentId(String pointerId) => '$pointerId:before';
 
 // ---------------------------------------------------------------------------
 // Annotation presentation resolver
@@ -217,7 +235,11 @@ String formatMoveText(
     final bool isNullMove = node.move.san == '--';
     final bool isFirstBlackInLine =
         !node.isWhiteMove && (node.showEllipsis || suppressBlackMovePrefix);
-    if (isNullMove && !node.isWhiteMove) {
+    // A game that starts with Black to move (a position or a fragment from
+    // move 92) has no header naming its first move, unlike a variation.
+    final bool isGameOpeningBlackMove =
+        node.isMainline && node.showEllipsis && !suppressBlackMovePrefix;
+    if ((isNullMove || isGameOpeningBlackMove) && !node.isWhiteMove) {
       buffer.write('${node.moveNumber}... ');
     } else if (isFirstBlackInLine) {
       // Still suppress for regular variation heads
@@ -294,8 +316,26 @@ List<NotationDisplayToken> buildNotationTokens(
   int autoCollapseDepth = 3,
   bool rawPgnMode = false,
   Set<String> hiddenVariationIds = const <String>{},
+  List<String> rootComments = const <String>[],
 }) {
   final tokens = <NotationDisplayToken>[];
+  // The game comment before the first move: a fragment's account of how its
+  // position arose. Only the outermost call carries it.
+  if (!rawPgnMode && variationContext == null) {
+    for (var c = 0; c < rootComments.length; c++) {
+      final cleanText = cleanPgnCommentText(rootComments[c]);
+      if (cleanText.isEmpty) continue;
+      tokens.add(
+        NotationDisplayToken(
+          type: NotationTokenType.comment,
+          text: cleanText,
+          depth: depth,
+          commentId: '$kNotationRootCommentId-$c',
+          editable: false,
+        ),
+      );
+    }
+  }
   // A parsed variation belongs to the last common move in the game tree, but
   // visually it belongs after the following mainline move that it replaces.
   for (var i = 0; i < moves.length; i++) {
@@ -313,6 +353,28 @@ List<NotationDisplayToken> buildNotationTokens(
         (variationMovesList?.isNotEmpty ?? false)
             ? List<Number>.of(variationMovesList!.first.pointer)
             : null;
+
+    // Comments the PGN writes before this move (a variation's lead-in,
+    // `( { Instead } 93. h5 )`) read before it.
+    if (!rawPgnMode) {
+      final startingComments = node.move.startingComments ?? const <String>[];
+      for (var c = 0; c < startingComments.length; c++) {
+        final cleanText = cleanPgnCommentText(startingComments[c]);
+        if (cleanText.isEmpty) continue;
+        tokens.add(
+          NotationDisplayToken(
+            type: NotationTokenType.comment,
+            text: cleanText,
+            depth: depth,
+            variation: variationContext,
+            variationIndex: variationContext?.variationIndex,
+            variationColorKey: variationContext?.id,
+            commentId: '${notationStartingCommentId(pointerId)}-$c',
+            editable: false,
+          ),
+        );
+      }
+    }
     // Prefer mainline pointer index so notation keys match board badge lookup
     // (`activeMovePointer[0]`). Fall back to ply offset for safety. Variations
     // still get a ply-relative index for non-annotation consumers.
@@ -434,9 +496,16 @@ List<NotationDisplayToken> buildNotationTokens(
       );
     }
 
+    // A branch reads after the move it replaces: the previous move's
+    // branches after this one, this move's own alternatives (a line's first
+    // move, see [NotationVariationNode.replacesParent]) after it, and the
+    // last move's continuations at the end.
     final variationsToRender = <NotationVariationNode>[
-      if (!rawPgnMode && i > 0) ...moves[i - 1].variations,
-      if (!rawPgnMode && i == moves.length - 1) ...node.variations,
+      if (!rawPgnMode && i > 0)
+        ...moves[i - 1].variations.where((v) => !v.replacesParent),
+      if (!rawPgnMode) ...node.variations.where((v) => v.replacesParent),
+      if (!rawPgnMode && i == moves.length - 1)
+        ...node.variations.where((v) => !v.replacesParent),
     ];
     for (final variation in variationsToRender) {
       final forcedOpen = forcedOpenIds.contains(variation.id);

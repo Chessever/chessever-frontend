@@ -3000,6 +3000,11 @@ class ChessBoardScreenNotifierNew
       startingFen: startingPosition.fen,
       metadata: metadata,
       mainline: newMainline,
+      // The game comment describes the start position; keep it while the
+      // promoted line still starts there.
+      rootComments: existingGame.startingFen == startingPosition.fen
+          ? existingGame.rootComments
+          : const [],
     );
 
     final movePointer =

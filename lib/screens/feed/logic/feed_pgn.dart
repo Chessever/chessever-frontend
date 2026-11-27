@@ -86,11 +86,17 @@ class FeedPgnGame {
     required this.moves,
     required this.headers,
     this.result,
+    this.comments = const <String>[],
   });
 
   final Position start;
   final List<FeedPgnMove> moves;
   final Map<String, String> headers;
+
+  /// The game comment before the first move, commands included (`[%cal]`):
+  /// where a game shared from a position (a book fragment from move 92)
+  /// tells how the position arose.
+  final List<String> comments;
 
   /// Normalised `1-0`, `0-1`, `½-½`, or null while unfinished / unknown.
   final String? result;
@@ -234,5 +240,6 @@ FeedPgnGame? parseFlowPgn(String pgn, {int maxPlies = 400}) {
     moves: List.unmodifiable(moves),
     headers: Map.unmodifiable(parsed.headers),
     result: result,
+    comments: List.unmodifiable(parsed.comments),
   );
 }

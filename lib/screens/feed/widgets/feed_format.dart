@@ -96,18 +96,26 @@ String? feedMoveNumberLabel(FeedItem item, int i, {bool opensRun = false}) {
   return opensRun ? '$number...' : null;
 }
 
-/// "move 12 of 31".
+/// "move 12 of 31": the move numbers the notation prints, so a game shared
+/// from move 92 with Black to move reads "move 92 of 96", never pairing
+/// Black's first move with White's next one.
 String feedPlyText(FeedItem item, int i) {
-  final total = math.max(1, (item.plyCount + 1) ~/ 2);
-  final current = math.max(1, (math.max(i, 1) + 1) ~/ 2);
-  return 'move ${math.min(current, total)} of $total';
+  final start = _startCounters(item);
+  final offset = start.whiteFirst ? 0 : 1;
+  int numberOf(int ply) => start.fullmove + (ply - 1 + offset) ~/ 2;
+  final last = math.max(1, item.plyCount);
+  final total = numberOf(last);
+  final current = numberOf(math.min(math.max(i, 1), last));
+  return 'move $current of $total';
 }
 
 /// "12/31": the move shown at ply [i] over the game's moves, on the scrub
-/// line. "0/31" at the start, before any move.
+/// line. "0/31" at the start, before any move. Counted from the clip's own
+/// first move, so a Black-first start pairs each move with its reply.
 String feedMoveCounter(FeedItem item, int i) {
-  final total = math.max(1, (item.plyCount + 1) ~/ 2);
-  final current = (math.max(i, 0) + 1) ~/ 2;
+  final offset = _startCounters(item).whiteFirst ? 0 : 1;
+  final total = math.max(1, (item.plyCount + offset + 1) ~/ 2);
+  final current = i <= 0 ? 0 : (i - 1 + offset) ~/ 2 + 1;
   return '${math.min(current, total)}/$total';
 }
 

@@ -13,12 +13,18 @@ class NotationVariationNode {
   final int depth;
   final List<NotationMoveNode> moves;
 
+  /// The branch replaces the move at [parentPointer] itself (an alternative
+  /// to a line's first move, see [isAlternativeToMove]) rather than the move
+  /// after it.
+  final bool replacesParent;
+
   const NotationVariationNode({
     required this.id,
     required this.parentPointer,
     required this.variationIndex,
     required this.depth,
     required this.moves,
+    this.replacesParent = false,
   });
 }
 
@@ -52,7 +58,14 @@ class NotationTree {
   final List<NotationMoveNode> mainline;
   final int startingPly;
 
-  const NotationTree({required this.mainline, required this.startingPly});
+  /// The game comment before the first move ([ChessGame.rootComments]).
+  final List<String> rootComments;
+
+  const NotationTree({
+    required this.mainline,
+    required this.startingPly,
+    this.rootComments = const [],
+  });
 }
 
 class NotationTreeBuilder {
@@ -85,7 +98,11 @@ class NotationTreeBuilder {
       isMainline: true,
       depth: 0,
     );
-    return NotationTree(mainline: mainline, startingPly: startingPly);
+    return NotationTree(
+      mainline: mainline,
+      startingPly: startingPly,
+      rootComments: game.rootComments,
+    );
   }
 
   static List<NotationMoveNode> _buildLine({
@@ -110,10 +127,11 @@ class NotationTreeBuilder {
       final moveVariations = move.variations ?? const <ChessLine>[];
       for (var v = 0; v < moveVariations.length; v++) {
         final variationLine = moveVariations[v];
+        final replacesParent = isAlternativeToMove(move, variationLine);
         final variationMoves = _buildLine(
           line: variationLine,
           pointerPrefix: [...pointer, v],
-          startPly: ply + 1,
+          startPly: replacesParent ? ply : ply + 1,
           isMainline: false,
           depth: depth + 1,
         );
@@ -124,6 +142,7 @@ class NotationTreeBuilder {
             variationIndex: v,
             depth: depth + 1,
             moves: variationMoves,
+            replacesParent: replacesParent,
           ),
         );
       }
@@ -167,7 +186,9 @@ String? variationAlternativeToText(
   if (variation.parentPointer.isEmpty) return null;
 
   final alternativeToPointer = List<Number>.of(variation.parentPointer);
-  alternativeToPointer[alternativeToPointer.length - 1]++;
+  if (!variation.replacesParent) {
+    alternativeToPointer[alternativeToPointer.length - 1]++;
+  }
   final alternativeToId = NotationPointer.encode(alternativeToPointer);
   final alternativeTo = pointerMap[alternativeToId];
   if (alternativeTo == null) return null;
@@ -207,7 +228,7 @@ String exportGameToPgn(ChessGame game) {
       PgnGame<PgnNodeData>(
         headers: headers,
         moves: root,
-        comments: const [],
+        comments: game.rootComments,
       ).makePgn();
   return _withRepairedMoveNumbers(pgn);
 }
@@ -251,6 +272,13 @@ void _appendLineToPgnNode(PgnNode<PgnNodeData> parent, ChessLine line) {
   final headNode = PgnChildNode<PgnNodeData>(_toPgnNodeData(headMove));
   parent.children.add(headNode);
   _appendChildrenToPgnNode(headNode, line, moveIndex: 0);
+  // A branch that replaces the head itself is the head's sibling in PGN
+  // (`92... Rb2 (92... Kf6)`), written after the head's own continuation.
+  for (final variation in headMove.variations ?? const <ChessLine>[]) {
+    if (isAlternativeToMove(headMove, variation)) {
+      _appendLineToPgnNode(parent, variation);
+    }
+  }
 }
 
 void _appendChildrenToPgnNode(
@@ -265,6 +293,7 @@ void _appendChildrenToPgnNode(
   }
 
   for (final variation in move.variations ?? const <ChessLine>[]) {
+    if (isAlternativeToMove(move, variation)) continue;
     _appendLineToPgnNode(parent, variation);
   }
 }
@@ -290,8 +319,13 @@ PgnNodeData _toPgnNodeData(ChessMove move) {
     comments.add(comment);
   }
 
+  final startingComments = move.startingComments;
   return PgnNodeData(
     san: move.san,
+    startingComments:
+        startingComments == null || startingComments.isEmpty
+            ? null
+            : List<String>.of(startingComments),
     comments: comments.isEmpty ? null : comments,
     nags: move.nags,
   );

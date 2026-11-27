@@ -7,6 +7,26 @@ typedef ChessLine = List<ChessMove>;
 
 final RegExp _evalRegex = RegExp(r'\[%eval ([^\]]+)\]');
 
+/// Whether [variation] replaces [host] itself rather than the move after it.
+///
+/// The model hangs every branch on a move. A branch whose first move leaves
+/// the same side to move as [host] does is an alternative TO [host]; that is
+/// the only form an alternative to a line's first move can take (a PGN's
+/// `92... Rb2 (92... Kf6)` on a position start, or a reader's other first
+/// move). Every other branch is an alternative to the move after [host].
+/// Read from the FEN, never [ChessMove.turn], which PGN-parsed and
+/// navigator-made moves fill differently.
+bool isAlternativeToMove(ChessMove host, ChessLine variation) {
+  if (variation.isEmpty) return false;
+  final hostSide = _fenSideToMove(host.fen);
+  return hostSide != null && hostSide == _fenSideToMove(variation.first.fen);
+}
+
+String? _fenSideToMove(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  return parts.length > 1 ? parts[1] : null;
+}
+
 class ChessGame {
   static const String metadataIsLiveKey = 'isLiveGame';
   static const String metadataAllowMainlineExtensionKey =
@@ -17,6 +37,12 @@ class ChessGame {
   final Map<String, dynamic> metadata;
   final ChessLine mainline;
 
+  /// The PGN's game comment: text before the first move. A game shared from
+  /// a position (a book's fragment starting at move 92) explains that
+  /// position here. Same field and JSON key (`rc`) as the desktop app, so a
+  /// saved game keeps it on both.
+  final List<String> rootComments;
+
   /// Remember explicit clearing in saved games so cached reports stay opt-in.
   final bool analysisCleared;
   final ChessAnalysisBackup? analysisBackup;
@@ -26,6 +52,7 @@ class ChessGame {
     required this.startingFen,
     required this.metadata,
     required this.mainline,
+    this.rootComments = const [],
     this.analysisCleared = false,
     this.analysisBackup,
   });
@@ -35,6 +62,7 @@ class ChessGame {
       gameId: json['id'] as String,
       startingFen: json['sf'] as String,
       metadata: (json['md'] as Map).cast<String, dynamic>(),
+      rootComments: (json['rc'] as List?)?.cast<String>() ?? const [],
       analysisCleared: json['analysisCleared'] == true,
       analysisBackup:
           json['analysisBackup'] is Map
@@ -57,6 +85,7 @@ class ChessGame {
     'sf': startingFen,
     'md': metadata,
     'm': mainline.map((move) => move.toJson()).toList(),
+    if (rootComments.isNotEmpty) 'rc': rootComments,
     if (analysisCleared) 'analysisCleared': true,
     if (analysisBackup != null) 'analysisBackup': analysisBackup!.toJson(),
   };
@@ -66,6 +95,7 @@ class ChessGame {
     String? startingFen,
     Map<String, dynamic>? metadata,
     ChessLine? mainline,
+    List<String>? rootComments,
     bool? analysisCleared,
     ChessAnalysisBackup? analysisBackup,
     bool overrideAnalysisBackup = false,
@@ -75,6 +105,7 @@ class ChessGame {
       startingFen: startingFen ?? this.startingFen,
       metadata: metadata ?? this.metadata,
       mainline: mainline ?? this.mainline,
+      rootComments: rootComments ?? this.rootComments,
       analysisCleared: analysisCleared ?? this.analysisCleared,
       analysisBackup:
           overrideAnalysisBackup ? analysisBackup : this.analysisBackup,
@@ -108,6 +139,7 @@ class ChessGame {
           },
         ),
     overrideAnalysisBackup: true,
+    rootComments: const [],
     mainline: [
       for (final move in mainline)
         ChessMove(
@@ -175,16 +207,32 @@ class ChessGame {
           nags: code != null && !nags.any(_isClassificationNag)
               ? [...nags, code]
               : move.nags,
-          variations: [
-            for (var v = 0; v < (move.variations?.length ?? 0); v++)
-              _restoreClassificationLine(
-                move.variations![v],
-                codes,
-                // The model hangs an alternative on the preceding move;
-                // the header addresses it from the move it replaces.
-                prefix: '$prefix${i + 2}v${v + 1}.',
-              ),
-          ],
+          variations: () {
+            // The header addresses a branch from the move it replaces and
+            // numbers the branches of that move. A branch that replaces this
+            // move itself (an alternative to a line's first move) is
+            // numbered among those, the rest among the next move's.
+            final variations = move.variations ?? const <ChessLine>[];
+            var alternativesToThis = 0;
+            var alternativesToNext = 0;
+            return [
+              for (final variation in variations)
+                isAlternativeToMove(move, variation)
+                    ? _restoreClassificationLine(
+                        variation,
+                        codes,
+                        prefix: '$prefix${i + 1}v${++alternativesToThis}.',
+                      )
+                    : _restoreClassificationLine(
+                        variation,
+                        codes,
+                        // The model hangs an alternative on the preceding
+                        // move; the header addresses it from the move it
+                        // replaces.
+                        prefix: '$prefix${i + 2}v${++alternativesToNext}.',
+                      ),
+            ];
+          }(),
           overrideVariations: move.variations != null,
         );
       })(),
@@ -201,6 +249,7 @@ class ChessGame {
       startingFen: startingPosition.fen,
       metadata: pgnGame.headers,
       mainline: mainline,
+      rootComments: List<String>.unmodifiable(pgnGame.comments),
     )._restoreClassificationHeader();
   }
 
@@ -213,7 +262,29 @@ class ChessGame {
     final mainlineNode = siblings.first;
     if (mainlineNode is! PgnChildNode) return const [];
 
-    return _parsePgnLineFromChild(mainlineNode, position);
+    final mainline = _parsePgnLineFromChild(mainlineNode, position);
+    if (mainline.isEmpty || siblings.length < 2) return mainline;
+
+    // Alternatives to the first move (`92... Rb2 (92... Kf6 93. Rd7)`) are
+    // siblings of it in the PGN tree. The model hangs them on the first move
+    // itself, where [isAlternativeToMove] tells them from the branches that
+    // replace the second move, as the navigator does for a reader's own
+    // other first move.
+    final alternatives = <ChessLine>[
+      for (final sibling in siblings.skip(1))
+        if (sibling is PgnChildNode<PgnNodeData>)
+          _parsePgnLineFromChild(sibling, position),
+    ].where((line) => line.isNotEmpty).toList();
+    if (alternatives.isEmpty) return mainline;
+
+    final first = mainline.first;
+    return [
+      first.copyWith(
+        variations: [...?first.variations, ...alternatives],
+        overrideVariations: true,
+      ),
+      ...mainline.skip(1),
+    ];
   }
 
   static List<ChessMove> _parsePgnLineFromChild(
@@ -256,6 +327,7 @@ class ChessGame {
       turn: position.turn == Side.black ? ChessColor.black : ChessColor.white,
       clockTime: clockTime,
       eval: eval,
+      startingComments: data.startingComments,
       comments: data.comments,
       nags: data.nags,
       variations: variations.isNotEmpty ? variations : null,
@@ -326,6 +398,11 @@ class ChessMove {
   final ChessColor turn;
   final String? clockTime;
   final String? eval;
+
+  /// PGN comments written before the move: the lead-in of a variation
+  /// (`( { Instead } 93. h5 ... )`). Same field and JSON key (`sc`) as the
+  /// desktop app.
+  final List<String>? startingComments;
   final List<String>? comments;
   final List<int>? nags;
   final List<ChessLine>? variations;
@@ -338,6 +415,7 @@ class ChessMove {
     required this.turn,
     this.clockTime,
     this.eval,
+    this.startingComments,
     this.comments,
     this.nags,
     this.variations,
@@ -352,6 +430,7 @@ class ChessMove {
       turn: ChessColor.fromJson(json['t'] as String),
       clockTime: json['ct'] as String?,
       eval: json['e'] as String?,
+      startingComments: (json['sc'] as List?)?.cast<String>(),
       comments: (json['c'] as List?)?.cast<String>(),
       nags: (json['g'] as List?)?.cast<int>(),
       variations:
@@ -380,6 +459,7 @@ class ChessMove {
     't': turn.toJson(),
     'ct': clockTime,
     'e': eval,
+    if (startingComments != null) 'sc': startingComments,
     if (comments != null) 'c': comments,
     if (nags != null) 'g': nags,
     if (variations != null)
@@ -399,6 +479,7 @@ class ChessMove {
     ChessColor? turn,
     String? clockTime,
     String? eval,
+    List<String>? startingComments,
     List<String>? comments,
     List<int>? nags,
     List<ChessLine>? variations,
@@ -412,6 +493,7 @@ class ChessMove {
       turn: turn ?? this.turn,
       clockTime: clockTime ?? this.clockTime,
       eval: eval ?? this.eval,
+      startingComments: startingComments ?? this.startingComments,
       comments: comments ?? this.comments,
       nags: nags ?? this.nags,
       variations: overrideVariations ? variations : this.variations,

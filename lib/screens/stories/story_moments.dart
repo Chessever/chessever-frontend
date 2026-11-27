@@ -516,9 +516,14 @@ StorySegment storyInspectedSegment(
   StoryNotationMove notation, {
   required bool finalPly,
   bool findMove = false,
+  List<String> leadComments = const <String>[],
 }) {
   final move = notation.ply;
   final verdict = _verdictOf(move, report: move.classification != null);
+  // [leadComments]: the game comment before the first move, whose words
+  // read with that move (a fragment's account of its position). Its arrows
+  // mark the position before the move, so they are not drawn on this board.
+  final prose = pgnCommentProse([...leadComments, ...move.comments]);
   return StorySegment(
     ply: move.ply,
     fenBefore: move.before.fen,
@@ -531,7 +536,7 @@ StorySegment storyInspectedSegment(
     label: verdict?.label,
     tone: verdict?.tone ?? StoryTone.neutral,
     moveClass: verdict?.moveClass ?? move.moveClass,
-    comment: pgnCommentProse(move.comments),
+    comment: prose,
     shapes: pgnCommentShapes(move.comments).toSet(),
     finalPly: finalPly,
     evalAfter: move.hasEval ? (cp: move.cp, mate: move.mate) : null,
@@ -619,7 +624,14 @@ List<StorySegment> pickStorySegments(
   final candidates = <_Candidate>[];
   for (var i = 0; i < moves.length; i++) {
     final move = moves[i];
-    final comment = pgnCommentProse(move.comments);
+    // The game comment before the first move belongs to the first stop: a
+    // game shared from a position (a book fragment from move 92) explains
+    // that position there, and its story must open with it. Only its words:
+    // its arrows mark the position before the move, and a stop draws its
+    // shapes on the board after it.
+    final comment = pgnCommentProse(
+      i == 0 ? [...game.comments, ...move.comments] : move.comments,
+    );
     final shapes = pgnCommentShapes(move.comments);
     final verdict = _verdictOf(move, report: report);
     final moment = i < moments.length ? moments[i] : null;
