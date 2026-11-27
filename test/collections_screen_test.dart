@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
@@ -2561,6 +2562,54 @@ void main() {
       await _teardown(tester);
     },
   );
+
+  testWidgets('book list cards fit the complete cover without changing event art', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const book = Collection(
+      id: 'cover-book',
+      slug: 'cover-book',
+      kind: CollectionKind.book,
+      title: 'Portrait book cover',
+      coverUrl: 'https://example.invalid/book.jpg',
+    );
+    const event = Collection(
+      id: 'cover-event',
+      slug: 'cover-event',
+      kind: CollectionKind.event,
+      title: 'Landscape event cover',
+      coverUrl: 'https://example.invalid/event.jpg',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return const Scaffold(
+                body: Column(
+                  children: [
+                    CollectionCard(collection: book, showStar: false),
+                    CollectionCard(collection: event, showStar: false),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    CachedNetworkImage cover(Collection collection) => tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .singleWhere((image) => image.imageUrl == collection.coverUrl);
+    expect(cover(book).fit, BoxFit.contain);
+    expect(cover(event).fit, BoxFit.cover);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('holding a collection card offers Open and Add to My Space, '
       'with the collection itself as the draft', (tester) async {
