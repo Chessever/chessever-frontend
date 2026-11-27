@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
+import 'package:chessever2/services/toby/toby_board_request.dart';
 import 'package:chessever2/screens/chessboard/video/game_video_submission_screen.dart';
 import 'package:chessever2/providers/game_video_sources_provider.dart';
 import 'video/game_analysis_sources.dart';
@@ -167,8 +169,7 @@ import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.da
 import 'package:chessever2/screens/chessboard/widgets/toby_live_prediction.dart';
 import 'package:chessever2/screens/chessboard/utils/toby_palette.dart';
 import 'package:chessever2/services/toby/toby_prediction.dart'
-    show tobyReaderHasPremiumProvider;
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+    show TobyQuery, TobyStatus, tobyReadingProvider, tobyReaderHasPremiumProvider;
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
@@ -8026,15 +8027,10 @@ class _BottomNavBar extends ConsumerWidget {
         explorerPanelVisible: explorerPanelVisible,
         onFlip: () => notifier.flipBoard(),
         toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
-        onEngineSettingsLongPress: () {
-          requireFullAuthGuard(context).then((allowed) {
-            if (!allowed) return;
-            if (!context.mounted) return;
-            Navigator.of(context).push(
-              SettingsPage.route(initiallyExpanded: SettingsSection.engine),
-            );
-          });
-        },
+        onEngineSettingsLongPress: () => _openPhoneEngineSettings(
+          context,
+          bothAvailable: game.source == GameSource.supabase,
+        ),
         onRightMove: arrows.onRightMove,
         onLeftMove: arrows.onLeftMove,
         onLongPressBackwardStart: arrows.onLongPressBackwardStart,
@@ -8043,7 +8039,10 @@ class _BottomNavBar extends ConsumerWidget {
         onLongPressForwardEnd: arrows.onLongPressForwardEnd,
         canMoveForward: arrows.canMoveForward,
         canMoveBackward: arrows.canMoveBackward,
-        showEngineAnalysis: state.showEngineAnalysis,
+        showEngineAnalysis: state.showEngineAnalysis && ref.watch(
+          boardEngineLinesVisibleProvider.select((value) => value.valueOrNull ?? true),
+        ),
+        usesToby: notifier.usesTobyOnBoard,
         showUnseenMoveBadge: state.hasUnseenMoves,
         onGamebaseToggle: onGamebaseToggle,
         isGamebaseActive: isGamebaseActive,
@@ -8281,22 +8280,80 @@ class CompactBoardPinnedAnalysisLayout extends StatelessWidget {
   }
 }
 
+/// Allocate from the space that is actually left after board and player rows.
+/// Keep notation usable and allow extra engine rows to scroll without capping
+/// their saved line count or switching engines when the window resizes.
+class _BoardEngineAnalysisArea extends StatelessWidget {
+  const _BoardEngineAnalysisArea({required this.engine, required this.analysis});
+
+  final Widget engine;
+  final Widget analysis;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final notationReserve = math.min(
+        context.textExtent(96.sp), constraints.maxHeight * .44,
+      );
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: constraints.maxHeight - notationReserve),
+            child: SingleChildScrollView(
+              key: const ValueKey('board-engine-scroll'),
+              primary: false,
+              child: engine,
+            ),
+          ),
+          Expanded(child: analysis),
+        ],
+      );
+    },
+  );
+}
+
 bool _isPhoneBroadcast(GamesTourModel game) =>
     game.source == GameSource.supabase && !ResponsiveHelper.isTablet;
-
-bool _supportsPhoneEngineSwitch(BuildContext context, GamesTourModel game) =>
-    _isPhoneBroadcast(game) &&
-    MediaQuery.orientationOf(context) == Orientation.portrait &&
-    AdaptiveWindow.verticalFoldOf(context) == null;
 
 bool _showPhoneTobyStrip(ChessBoardStateNew state, bool tobySelected) =>
     tobySelected && !state.isPvPreviewActive && !state.isThreatsMode;
 
-Future<void> _openPhoneEngineSettings(BuildContext context) async {
-  if (!await requireFullAuthGuard(context) || !context.mounted) return;
-  Navigator.of(
-    context,
-  ).push(SettingsPage.route(initiallyExpanded: SettingsSection.engine));
+Future<void> _openPhoneEngineSettings(
+  BuildContext context, {
+  required bool bothAvailable,
+}) async {
+  final pending = <Future<void>>[];
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    showDragHandle: true,
+    constraints: ResponsiveHelper.bottomSheetConstraints,
+    builder: (context) => FractionallySizedBox(
+      heightFactor: .85,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text('Engine Experience', style: Theme.of(context).textTheme.titleMedium),
+            ),
+            Expanded(child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: EngineSettingsBody(
+                boardOnly: true,
+                bothAvailable: bothAvailable,
+                trackPersist: pending.add,
+              ),
+            )),
+          ],
+        ),
+      ),
+    ),
+  );
+  await Future.wait(pending);
 }
 
 /// Only a current, actually delivered set of Toby lines owns the Toby strip.
@@ -8368,9 +8425,18 @@ class _AnalysisGameBody extends ConsumerWidget {
           ),
         );
 
-    final tobySelected = ref.watch(boardUsesTobyProvider);
-    final phoneTobySelected =
-        _supportsPhoneEngineSwitch(context, game) && tobySelected;
+    final wantsBoth = ref.watch(engineSettingsProviderNew.select(
+      (value) => value.valueOrNull?.wantsBothEngines ?? false,
+    ));
+    final entitled = ref.watch(tobyReaderHasPremiumProvider);
+    final stockfishRows = ref.watch(engineSettingsProviderNew.select(
+      (settings) => settings.valueOrNull?.multiPvForLichess() ?? 3,
+    ));
+    final hideEvaluation = game.source == GameSource.supabase && ref.watch(
+      eventNoSpoilersProvider(game.tourId).select((value) => shouldHideEventEvaluation(
+        isBroadcastGame: true, spoilerState: value,
+      )),
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -8383,6 +8449,21 @@ class _AnalysisGameBody extends ConsumerWidget {
           boardChrome: 44.sp,
           verticalChrome: 144.sp,
         );
+        final supportsBoth = game.source == GameSource.supabase;
+        final both = supportsBoth && wantsBoth && entitled;
+        final rightTobyGauge =
+            both &&
+            !hideEvaluation &&
+            state.showEngineAnalysis &&
+            ref.watch(engineSettingsProviderNew.select((value) {
+              final settings = value.valueOrNull;
+              return settings != null &&
+                  settings.shouldShowEngineGaugeOnBoard &&
+                  settings.showTobyGaugeInBoth;
+            }));
+        final scrollEngine = showPv && supportsBoth && (both || stockfishRows > 3);
+        final showBothLines = both && isVisiblePage && !hideEvaluation &&
+            !expandGamesOverPv && !state.isPvPreviewActive && !state.isThreatsMode;
         final compactThreshold = 620.h;
         final useCompactLayout =
             availableHeight < compactThreshold && !isTabletLandscape;
@@ -8423,6 +8504,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                       index: index,
                       state: state,
                       game: game,
+                      both: both,
+                      showBothLines: showBothLines,
                     ),
                   ],
                 ),
@@ -8464,6 +8547,8 @@ class _AnalysisGameBody extends ConsumerWidget {
             state: state,
             game: game,
             maxSize: isTabletLandscape ? null : stackedBoardLimit,
+            stockfishPrimary: both,
+            showRightTobyGauge: rightTobyGauge,
           ),
           SizedBox(height: 1.h),
           // The Game Analysis sheet's first snap step stops right under this
@@ -8498,10 +8583,9 @@ class _AnalysisGameBody extends ConsumerWidget {
               currentPageIndex: currentPageIndex,
               state: state,
               game: game,
-              tobyInEngineStrip:
-                  showPv &&
-                  ((tobySelected && _hasTobyStrip(state)) ||
-                      _showPhoneTobyStrip(state, phoneTobySelected)),
+              // A broadcast engine choice owns predictions. Do not launch a
+              // second Toby reader from notation in Stockfish or Lines Off.
+              tobyInEngineStrip: game.source == GameSource.supabase,
             ),
           );
           // Avoid mounting the (global) Gamebase provider for offscreen pages.
@@ -8582,6 +8666,10 @@ class _AnalysisGameBody extends ConsumerWidget {
           );
         }
 
+        Widget withEngineScroll(Widget analysis) => scrollEngine
+            ? _BoardEngineAnalysisArea(engine: collapsingPv!, analysis: analysis)
+            : analysis;
+
         final video = EventVideoLayoutScope.maybeOf(context);
         if (video != null &&
             video.watches(
@@ -8610,6 +8698,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                       index: index,
                       state: state,
                       game: game,
+                      both: both,
+                      showBothLines: showBothLines,
                     )
                   : const SizedBox.shrink(),
               analysis: buildAnalysisView(),
@@ -8622,9 +8712,9 @@ class _AnalysisGameBody extends ConsumerWidget {
           // pinned games expand into PV and stop below the lower player row.
           return CompactBoardPinnedAnalysisLayout(
             boardChildren: boardHeaderChildren,
-            collapsingChrome: collapsingPv,
+            collapsingChrome: scrollEngine ? null : collapsingPv,
             expandedOverChrome: expandGamesOverPv,
-            analysis: buildAnalysisView(),
+            analysis: withEngineScroll(buildAnalysisView()),
           );
         }
 
@@ -8651,7 +8741,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           final evalBarWidth = 20.sp;
 
           final leadingPadding = 12.sp;
-          final boardChrome = evalBarWidth + 24.sp;
+          final boardChrome = evalBarWidth + 24.sp + (rightTobyGauge ? evalBarWidth : 0);
           var sectionGap = 12.sp;
           final fold = AdaptiveWindow.verticalFoldOf(context);
           final leadingExtent = fold?.leadingExtentFrom(leadingPadding);
@@ -8683,10 +8773,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                 // LEFT SECTION: Board with players and evaluation
                 // ─────────────────────────────────────────────────────────────
                 SizedBox(
-                  width:
-                      optimalBoardSize +
-                      evalBarWidth +
-                      24.sp, // board + eval + margins
+                  width: optimalBoardSize + boardChrome,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -8713,6 +8800,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         game: game,
                         boardSize: optimalBoardSize,
                         evalBarWidth: evalBarWidth,
+                        showRightTobyGauge: rightTobyGauge,
                       ),
                       SizedBox(height: verticalSpacing),
                       // Bottom player card
@@ -8744,10 +8832,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                     child: Column(
                       children: [
                         // PV collapses with bottom gap inside the slot.
-                        ...pvSection,
+                        if (!scrollEngine) ...pvSection,
                         // Moves panel with elegant container
                         Expanded(
-                          child: Container(
+                          child: withEngineScroll(Container(
                             decoration: BoxDecoration(
                               color: context.colors.surface,
                               borderRadius: BorderRadius.circular(12.sp),
@@ -8762,7 +8850,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child: buildAnalysisView(),
-                          ),
+                          )),
                         ),
                       ],
                     ),
@@ -8814,6 +8902,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                       state: state,
                       game: game,
                       maxSize: stackedBoardLimit,
+                      stockfishPrimary: both,
+            showRightTobyGauge: rightTobyGauge,
                     ),
                     SizedBox(height: 4.sp),
                     // Bottom player with padding
@@ -8835,11 +8925,11 @@ class _AnalysisGameBody extends ConsumerWidget {
                     ),
                     // PV collapses with its under-gap; keep a static gap only
                     // when engine PV is off so the moves panel still breathes.
-                    ...pvSection,
+                    if (!scrollEngine) ...pvSection,
                     if (pvSection.isEmpty) SizedBox(height: 4.sp),
                     // Moves panel with elegant container
                     Expanded(
-                      child: Container(
+                      child: withEngineScroll(Container(
                         margin: EdgeInsets.symmetric(horizontal: 16.sp),
                         decoration: BoxDecoration(
                           color: context.colors.surface,
@@ -8876,7 +8966,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         ),
                         clipBehavior: Clip.antiAlias,
                         child: buildAnalysisView(),
-                      ),
+                      )),
                     ),
                   ],
                 ),
@@ -8887,8 +8977,8 @@ class _AnalysisGameBody extends ConsumerWidget {
 
         return Column(
           children: [
-            ...headerChildren,
-            Expanded(child: buildAnalysisView()),
+            ...(scrollEngine ? boardHeaderChildren : headerChildren),
+            Expanded(child: withEngineScroll(buildAnalysisView())),
           ],
         );
       },
@@ -9057,6 +9147,50 @@ class _TabletPlayerCard extends StatelessWidget {
 
 /// Tablet landscape board with sidebar - uses pre-calculated sizes
 /// Optimized for side-by-side layout with moves panel
+/// The stack and right-side gauge share the exact per-position reader. A
+/// second listener won't start another request, and neither view retains odds
+/// across position changes, threats mode, or a line preview.
+TobyQuery? _stackedTobyQuery(WidgetRef ref, ChessBoardStateNew state, ChessBoardProviderParams params) {
+  if (state.isThreatsMode || state.isPvPreviewActive ||
+      !ref.read(gamebaseRepositoryProvider).hasApiKey) {
+    return null;
+  }
+  final position = state.isAnalysisMode ? state.analysisState.position : state.position;
+  if (position == null || position.isGameOver) return null;
+  final request = buildTobyRequestFromBoardState(state, targetFen: position.fen);
+  if (request == null || !request.isSupported) return null;
+  return TobyQuery(request: request,
+    session: ref.read(chessBoardScreenProviderNew(params).notifier).tobySession);
+}
+
+class _SecondaryTobyGauge extends ConsumerWidget {
+  const _SecondaryTobyGauge({required this.state, required this.game,
+    required this.index, required this.active, required this.height, required this.width});
+
+  final ChessBoardStateNew state;
+  final GamesTourModel game;
+  final int index;
+  final bool active;
+  final double height;
+  final double width;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final position = state.isAnalysisMode ? state.analysisState.position : state.position;
+    final eligible = active && !state.isThreatsMode && !state.isPvPreviewActive;
+    final query = eligible ? _stackedTobyQuery(ref, state, ChessBoardProviderParams(game: game, index: index)) : null;
+    final outcome = query != null
+        ? ref.watch(tobyReadingProvider(query).select((result) => result.reading?.positionWdl))
+        : eligible && position != null && position.isGameOver ? tobyOverWdl(position.fen) : null;
+    return SizedBox(
+      key: const ValueKey('board-toby-secondary-gauge'),
+      height: height,
+      width: width,
+      child: TobyOutcomeBar(outcome: outcome, axis: Axis.vertical, whiteFirst: state.isBoardFlipped),
+    );
+  }
+}
+
 class _TabletBoardWithSidebar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -9064,6 +9198,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
   final GamesTourModel game;
   final double boardSize;
   final double evalBarWidth;
+  final bool showRightTobyGauge;
 
   const _TabletBoardWithSidebar({
     required this.index,
@@ -9072,6 +9207,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
     required this.game,
     required this.boardSize,
     required this.evalBarWidth,
+    required this.showRightTobyGauge,
   });
 
   @override
@@ -9097,8 +9233,6 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
         );
     final showEngineGauge =
         engineGaugeEnabled &&
-        // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
-        // engine off in the game view hides the bar, not just the PV cards.
         state.showEngineAnalysis &&
         !hideEventEvaluation;
 
@@ -9142,6 +9276,9 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           index: index,
           game: state.game,
         ),
+        if (showRightTobyGauge && showEngineGauge)
+          _SecondaryTobyGauge(state: state, game: game, index: index,
+            active: index == currentPageIndex, height: boardSize, width: evalBarWidth),
       ],
     );
   }
@@ -9152,6 +9289,8 @@ class _BoardWithSidebar extends ConsumerStatefulWidget {
   final ChessBoardStateNew state;
   final int currentPageIndex;
   final GamesTourModel game;
+  final bool stockfishPrimary;
+  final bool showRightTobyGauge;
   final double? maxSize;
 
   const _BoardWithSidebar({
@@ -9160,6 +9299,8 @@ class _BoardWithSidebar extends ConsumerStatefulWidget {
     required this.currentPageIndex,
     required this.game,
     this.maxSize,
+    this.stockfishPrimary = false,
+    this.showRightTobyGauge = false,
   });
 
   @override
@@ -9264,11 +9405,9 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
           ),
         );
     final tobyGauge =
-        _isPhoneBroadcast(widget.game) && ref.watch(boardUsesTobyProvider);
+        _isPhoneBroadcast(widget.game) && !widget.stockfishPrimary && ref.watch(boardUsesTobyProvider);
     final showEngineGauge =
         engineGaugeEnabled &&
-        // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
-        // engine off in the game view hides the bar, not just the PV cards.
         widget.state.showEngineAnalysis &&
         !hideEventEvaluation;
 
@@ -9283,7 +9422,7 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
         final maxBoardWidth = math.max(
           1.0,
           math.min(
-            screenWidth - sideBarWidth,
+            screenWidth - sideBarWidth * (widget.showRightTobyGauge ? 2 : 1),
             widget.maxSize ?? double.infinity,
           ),
         );
@@ -9420,6 +9559,10 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
                     //   ),
                   ],
                 ),
+                if (widget.showRightTobyGauge && showEngineGauge)
+                  _SecondaryTobyGauge(state: widget.state, game: widget.game,
+                    index: widget.index, active: widget.index == widget.currentPageIndex,
+                    height: boardSize, width: sideBarWidth),
               ],
             ),
           ),
@@ -12309,14 +12452,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           child: TobyLivePrediction(
             params: params,
             onLayoutChange: _repinAfterNotationReflow,
-            onSettingsTap: () async {
-              if (!await requireFullAuthGuard(context) || !context.mounted) {
-                return;
-              }
-              Navigator.of(context).push(
-                SettingsPage.route(initiallyExpanded: SettingsSection.engine),
-              );
-            },
+            onSettingsTap: () => _openPhoneEngineSettings(
+              context,
+              bothAvailable: params.game.source == GameSource.supabase,
+            ),
           ),
         );
         final notationContent = SingleChildScrollView(
@@ -14334,75 +14473,20 @@ class _DirectCommentSheet extends ConsumerWidget {
 const int _variationCommentPreviewChars = 80;
 const int _variationCommentMaxChars = 1000;
 
-class _PhoneEngineToggle extends StatelessWidget {
-  const _PhoneEngineToggle({
-    required this.tobySelected,
-    required this.onSelected,
-    required this.onSettingsLongPress,
-  });
-
-  final bool tobySelected;
-  final ValueChanged<EngineSource> onSelected;
-  final VoidCallback onSettingsLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    Widget choice(String label, EngineSource source, bool selected) => Expanded(
-      flex: source == EngineSource.stockfish ? 3 : 2,
-      child: Semantics(
-        label: label,
-        button: true,
-        selected: selected,
-        hint: 'Long press for Engine settings',
-        child: InkWell(
-          key: ValueKey('board-engine-${source.name}'),
-          borderRadius: BorderRadius.circular(5),
-          onTap: () => onSelected(source),
-          onLongPress: onSettingsLongPress,
-          child: Center(
-            child: Container(
-              margin: const EdgeInsets.all(2),
-              alignment: Alignment.center,
-              height: 26,
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  label,
-                  style: AppTypography.textSmMedium.copyWith(
-                    fontSize: 12,
-                    color: selected ? colors.textPrimary : context.textInk(.68),
-                    decoration: selected ? TextDecoration.underline : null,
-                    decorationColor: colors.textPrimary.withValues(alpha: .45),
-                    decorationThickness: 1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    return Row(
-      children: [
-        choice('Stockfish', EngineSource.stockfish, !tobySelected),
-        choice('Toby', EngineSource.toby, tobySelected),
-      ],
-    );
-  }
-}
-
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
   final GamesTourModel game;
+  final bool both;
+  final bool showBothLines;
 
   const _PrincipalVariationList({
     super.key,
     required this.index,
     required this.state,
     required this.game,
+    required this.both,
+    required this.showBothLines,
   });
 
   @override
@@ -14633,88 +14717,96 @@ class _PrincipalVariationListState
     super.dispose();
   }
 
-  bool _requestingTobyAccess = false;
-
-  Future<void> _selectEngine(EngineSource source) async {
-    HapticFeedback.selectionClick();
-    Future<void> select() async {
-      if (!mounted) return;
-      await ref
-          .read(engineSettingsProviderNew.notifier)
-          .setEngineSource(source);
-    }
-
-    if (source != EngineSource.toby || ref.read(tobyReaderHasPremiumProvider)) {
-      await select();
-      return;
-    }
-    if (_requestingTobyAccess) return;
-    _requestingTobyAccess = true;
-    try {
-      await showPremiumPaywallSheet(
-        context: context,
-        featureId: 'toby_engine',
-        returnTo: 'broadcast/board',
-        onEntitled: select,
-      );
-    } finally {
-      _requestingTobyAccess = false;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final showSwitch = _supportsPhoneEngineSwitch(context, widget.game);
-    final tobySelected = ref.watch(boardUsesTobyProvider);
+    final tobySelected = !widget.both && ref.watch(boardUsesTobyProvider);
     final realTobyLines = tobySelected && _hasTobyStrip(widget.state);
-    final useTobyTable =
-        realTobyLines ||
-        (showSwitch && _showPhoneTobyStrip(widget.state, tobySelected));
-    final selector = showSwitch
-        ? _PhoneEngineToggle(
-            tobySelected: tobySelected,
-            onSettingsLongPress: () => _openPhoneEngineSettings(context),
-            onSelected: (source) => unawaited(_selectEngine(source)),
-          )
-        : null;
+    final stockfishFallback = !widget.state.isEvaluating &&
+        widget.state.principalVariationsBaseFen == widget.state.analysisState.position.fen &&
+        widget.state.principalVariations.any((line) => line.evalLabel == null);
+    final useTobyTable = realTobyLines || (!stockfishFallback &&
+        widget.game.source == GameSource.supabase && _showPhoneTobyStrip(widget.state, tobySelected));
     final body = _buildEngineLines(
       context,
       engineSettings: engineSettings,
-      selector: selector,
       useTobyTable: useTobyTable,
       realTobyLines: realTobyLines,
       hideTobyLines: !tobySelected,
     );
-    if (selector == null || useTobyTable) return body;
+    if (!widget.showBothLines) return body;
     return Column(
+      key: const ValueKey('board-engine-stack'),
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.sp),
-          child: LayoutBuilder(
-            builder: (context, constraints) => Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: TobyPredictsLine.engineSelectorWidth(
-                  constraints.maxWidth,
-                ),
-                height: TobyPredictsLine.engineHeaderHeight,
-                child: selector,
-              ),
-            ),
-          ),
+        Semantics(
+          key: const ValueKey('board-stacked-stockfish-lines'),
+          container: true, label: 'Stockfish lines', child: body,
         ),
-        body,
+        SizedBox(height: 4.h),
+        Semantics(
+          container: true, label: 'Toby lines',
+          child: Consumer(builder: (context, ref, _) => _buildStackedToby(context, ref, engineSettings)),
+        ),
       ],
+    );
+  }
+
+  Widget _buildStackedToby(BuildContext context, WidgetRef ref, EngineSettings? settings) {
+    final state = widget.state;
+    final position = state.analysisState.position;
+    final count = settings?.multiPvForLichess() ?? 3;
+    final params = ChessBoardProviderParams(game: widget.game, index: widget.index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final query = _stackedTobyQuery(ref, state, params);
+    final request = query?.request;
+    final result = query == null ? null : ref.watch(tobyReadingProvider(query));
+    final reading = result?.reading;
+    final candidates = reading == null ? const <TobyPredictionToken>[] :
+        tobyPredictionTokens(reading, position.fen, count: count);
+    final grades = reading == null || request == null || !reading.isFinal
+        ? const <String, Never>{}
+        : gradeTobyMoves(reading: reading, request: request, position: position,
+            visibleUcis: candidates.map((token) => token.uci));
+    Move? legalMove(TobyPredictionToken token) {
+      final current = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+      if (current == null || current.isPvPreviewActive || current.isThreatsMode ||
+          current.analysisState.position.fen != position.fen ||
+          !ref.read(tobyReaderHasPremiumProvider) || widget.game.source != GameSource.supabase ||
+          !(ref.read(engineSettingsProviderNew).valueOrNull?.wantsBothEngines ?? false)) {
+        return null;
+      }
+      final move = position.parseSan(token.san) ?? Move.parse(token.uci);
+      return move != null && position.isLegal(move) ? move : null;
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12.sp, 0, 12.sp, 4.h),
+      child: TobyPredictsLine(
+        key: const ValueKey('board-stacked-toby-lines'),
+        compactEngineStrip: true,
+        engineRowCount: count,
+        tokens: [for (final token in candidates) token.withQuality(grades[token.uci])],
+        waiting: result?.status == TobyStatus.thinking || result?.status == TobyStatus.network,
+        note: candidates.isNotEmpty ? null : position.isGameOver ? 'Game over' : '—',
+        playOnMoveTap: true,
+        onMoveTap: (token) {
+          final move = legalMove(token);
+          if (move != null) notifier.onAnalysisMove(move);
+        },
+        onMoveLongPress: (token) {
+          final move = legalMove(token);
+          if (move == null) return;
+          _showPvMoveActionSheet(context, token.san,
+            AnalysisLine(moves: [move], sanMoves: [token.san], evaluation: 0), 0, notifier);
+        },
+      ),
     );
   }
 
   Widget _buildEngineLines(
     BuildContext context, {
     required EngineSettings? engineSettings,
-    required Widget? selector,
     required bool useTobyTable,
     required bool realTobyLines,
     required bool hideTobyLines,
@@ -14733,7 +14825,7 @@ class _PrincipalVariationListState
     // Get user's PV count setting (caps at 5)
     final multiPV = engineSettings?.multiPvForLichess() ?? 3;
     final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
-    final compactList = selector != null && linesView == EngineLinesView.list;
+    final compactList = widget.game.source == GameSource.supabase;
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
         (s) =>
@@ -14743,14 +14835,13 @@ class _PrincipalVariationListState
 
     if (useTobyTable) {
       final lines = realTobyLines
-          ? widget.state.principalVariations.take(math.min(3, multiPV)).toList()
+          ? widget.state.principalVariations.take(multiPV).toList()
           : const <AnalysisLine>[];
       return Padding(
         padding: EdgeInsets.fromLTRB(12.sp, 0, 12.sp, 4.h),
         child: TobyPredictsLine(
-          engineToggle: selector,
-          outcomeLegendPieces: pieceAssets,
-          phoneRowCount: compactList ? multiPV.clamp(1, 3) : null,
+          compactEngineStrip: true,
+          engineRowCount: multiPV,
           waiting: widget.state.isEvaluating,
           note: lines.isNotEmpty
               ? null
@@ -14788,9 +14879,6 @@ class _PrincipalVariationListState
               notifier,
             );
           },
-          onSettingsTap: selector == null
-              ? () => _openPhoneEngineSettings(context)
-              : null,
         ),
       );
     }
@@ -15863,6 +15951,7 @@ class _PrincipalVariationListState
             ? multiPV
             : math.max(1, items.length),
         rowExtent: compact ? TobyPredictsLine.engineRowHeight(context) : null,
+        maxRows: compact ? 5 : 3,
         isEvaluating: isEvaluating,
         trailingDivider: false,
       ),

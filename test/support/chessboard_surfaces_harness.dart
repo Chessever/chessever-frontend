@@ -371,6 +371,9 @@ class _FakeGameStreamRepository extends GameStreamRepository {
 class _VisibleBoardLines extends BoardEngineLinesVisibleNotifier {
   @override
   Future<bool> build() async => true;
+
+  @override
+  Future<void> setVisible(bool value) async { state = AsyncData(value); }
 }
 
 class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
@@ -384,7 +387,22 @@ class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
 
   @override
   Future<void> setEngineSource(EngineSource source) async {
-    state = AsyncValue.data(state.value!.withSelectedSource(source));
+    state = AsyncValue.data(state.value!.withSelectedSource(source).copyWith(showBothEngines: false));
+  }
+
+  @override
+  Future<void> toggleTobyGaugeInBoth(bool value) async {
+    state = AsyncData(state.requireValue.copyWith(showTobyGaugeInBoth: value));
+  }
+
+  @override
+  Future<void> toggleEngineGaugeOnBoard(bool value) async {
+    state = AsyncData(state.requireValue.withGaugeVisibility(board: value));
+  }
+
+  @override
+  Future<void> selectBothEngines() async {
+    state = AsyncData(state.requireValue.copyWith(showBothEngines: true, tobyEnabled: true));
   }
 
   @override

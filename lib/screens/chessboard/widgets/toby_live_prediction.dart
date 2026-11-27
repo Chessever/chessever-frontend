@@ -155,6 +155,10 @@ class TobyPredictionToken {
   final TobyWdl? wdl;
   final GameMoveClassification? quality;
 
+  TobyPredictionToken withQuality(GameMoveClassification? grade) =>
+      TobyPredictionToken(rank: rank, uci: uci, chance: chance, san: san,
+          move: move, hue: hue, sideToMove: sideToMove, wdl: wdl, quality: grade);
+
   /// "34% 24.Nf6".
   String get text => '$chance $move';
 }
@@ -403,16 +407,13 @@ class TobyPredictsLine extends StatelessWidget {
     this.onMoveTap,
     this.onMoveLongPress,
     this.playOnMoveTap = false,
-    this.engineToggle,
-    this.outcomeLegendPieces,
-    this.phoneRowCount,
+    this.compactEngineStrip = false,
+    this.engineRowCount,
     this.onSettingsTap,
   });
 
   static const int _rowCount = 3;
   static const double engineHeaderHeight = 44;
-  static double engineSelectorWidth(double contentWidth) =>
-      math.min(136, contentWidth * .43);
   static double engineRowHeight(BuildContext context) =>
       _rowHeight(context, minimum: 28);
   static double _rowHeight(BuildContext context, {double minimum = 34}) =>
@@ -429,9 +430,8 @@ class TobyPredictsLine extends StatelessWidget {
   final ValueChanged<TobyPredictionToken>? onMoveTap;
   final ValueChanged<TobyPredictionToken>? onMoveLongPress;
   final bool playOnMoveTap;
-  final Widget? engineToggle;
-  final PieceAssets? outcomeLegendPieces;
-  final int? phoneRowCount;
+  final bool compactEngineStrip;
+  final int? engineRowCount;
   final VoidCallback? onSettingsTap;
 
   @override
@@ -451,16 +451,12 @@ class TobyPredictsLine extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final moveWidth = engineToggle == null
-            ? math.min(104.sp, constraints.maxWidth * .33)
-            : engineSelectorWidth(constraints.maxWidth);
+        final moveWidth = math.min(compactEngineStrip ? 136.0 : 104.sp,
+          constraints.maxWidth * (compactEngineStrip ? .43 : .33));
         final chanceWidth = math.min(68.sp, constraints.maxWidth * .25);
-        final chanceInset = engineToggle == null ? 0.0 : 8.0;
-        // The pinned engine rail uses the same compact rhythm as the PV
-        // strip so short phones still have room for notation.
-        final rowHeight = playOnMoveTap
-            ? engineRowHeight(context)
-            : _rowHeight(context);
+        const chanceInset = 0.0;
+        final rowHeight = compactEngineStrip ? engineRowHeight(context) : _rowHeight(context);
+
         Widget cellText(
           String text,
           TextStyle style, {
@@ -478,21 +474,11 @@ class TobyPredictsLine extends StatelessWidget {
           ),
         );
 
-        Widget king(PieceKind kind, String fallback) {
-          final image = outcomeLegendPieces?[kind];
-          if (image == null) return Text(fallback, style: quiet);
-          return Image(
-            image: image,
-            width: 16.sp,
-            height: 16.sp,
-            filterQuality: FilterQuality.high,
-          );
-        }
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!compactEngineStrip)
             SizedBox(
               height: engineHeaderHeight,
               child: Row(
@@ -500,91 +486,21 @@ class TobyPredictsLine extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: moveWidth,
-                    child:
-                        engineToggle ??
-                        _TobyTapHint(
-                          message: tobyChanceExplanation(wdl?.percentages),
-                          label: 'About Toby. $kTobyAttribution',
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 6),
-                            child: cellText(
-                              'Toby',
-                              value.copyWith(fontSize: 14.sp),
-                            ),
-                          ),
-                        ),
+                    child: _TobyTapHint(
+                      message: tobyChanceExplanation(wdl?.percentages),
+                      label: 'About Toby. $kTobyAttribution',
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: cellText('Toby', value.copyWith(fontSize: 14.sp)),
+                      ),
+                    ),
                   ),
-                  SizedBox(
-                    width: chanceWidth,
-                    child: engineToggle == null
-                        ? cellText('Chance', quiet)
-                        : _TobyTapHint(
-                            label: 'Chance',
-                            message:
-                                'How likely the player is to make this move.',
-                            child: cellText(
-                              'Chance',
-                              quiet,
-                              leftInset: chanceInset,
-                            ),
-                          ),
-                  ),
-                  Expanded(
-                    child: engineToggle == null
-                        ? Semantics(
-                            label: 'White wins, draw, Black wins',
-                            excludeSemantics: true,
-                            child: cellText('W / = / B', quiet),
-                          )
-                        : FittedBox(
-                            key: const ValueKey('toby-outcome-legend'),
-                            fit: BoxFit.scaleDown,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _TobyTapHint(
-                                  label: 'White wins',
-                                  message:
-                                      'How likely White is to win after this move.',
-                                  child: SizedBox(
-                                    width: 32,
-                                    height: engineHeaderHeight,
-                                    child: Center(
-                                      child: king(PieceKind.whiteKing, 'White'),
-                                    ),
-                                  ),
-                                ),
-                                _TobyTapHint(
-                                  label: 'Draw',
-                                  message:
-                                      'How likely the game is to end in a draw after this move.',
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      minWidth: 38,
-                                      minHeight: engineHeaderHeight,
-                                    ),
-                                    child: Center(
-                                      widthFactor: 1,
-                                      child: Text('Draw', style: quiet),
-                                    ),
-                                  ),
-                                ),
-                                _TobyTapHint(
-                                  label: 'Black wins',
-                                  message:
-                                      'How likely Black is to win after this move.',
-                                  child: SizedBox(
-                                    width: 32,
-                                    height: engineHeaderHeight,
-                                    child: Center(
-                                      child: king(PieceKind.blackKing, 'Black'),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                  ),
+                  SizedBox(width: chanceWidth, child: cellText('Chance', quiet)),
+                  Expanded(child: Semantics(
+                    label: 'White wins, draw, Black wins',
+                    excludeSemantics: true,
+                    child: cellText('W / = / B', quiet),
+                  )),
                   if (onSettingsTap != null)
                     IconButton(
                       tooltip: 'Engine settings',
@@ -603,7 +519,7 @@ class TobyPredictsLine extends StatelessWidget {
                 ],
               ),
             ),
-            for (var i = 0; i < (phoneRowCount ?? _rowCount); i++)
+            for (var i = 0; i < (engineRowCount ?? _rowCount); i++)
               SizedBox(
                 height: rowHeight,
                 child: i < tokens.length
@@ -613,7 +529,7 @@ class TobyPredictsLine extends StatelessWidget {
                           final selected = token.uci == selectedUci;
                           final fill = selected
                               ? token.hue.withValues(alpha: 0.12)
-                              : engineToggle == null && i.isOdd
+                              : !compactEngineStrip && i.isOdd
                               ? colors.textPrimary.withValues(alpha: 0.045)
                               : Colors.transparent;
                           final outcome = token.wdl;
@@ -686,16 +602,18 @@ class TobyPredictsLine extends StatelessWidget {
                                             ),
                                           ),
                                         ),
-                                        cellText(
-                                          token.chance,
-                                          value,
-                                          width: chanceWidth,
-                                          leftInset: chanceInset,
-                                        ),
+                                        if (!compactEngineStrip)
+                                          cellText(token.chance, value, width: chanceWidth),
                                       ],
                                     ),
                                   ),
                                 ),
+                                if (compactEngineStrip)
+                                  _TobyTapHint(
+                                    label: '${token.chance} chance',
+                                    message: 'How likely the player is to make this move. $kTobyAttribution',
+                                    child: cellText(token.chance, value, width: chanceWidth, leftInset: chanceInset),
+                                  ),
                                 Expanded(
                                   child: outcome == null
                                       ? cellText('—', quiet)

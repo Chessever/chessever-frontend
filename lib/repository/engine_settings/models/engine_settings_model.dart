@@ -42,7 +42,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showPvArrows: json['show_pv_arrows'] as bool? ?? true,
       showEngineAnalysis: json['show_engine_analysis'] as bool? ?? true,
       searchTimeIndex: json['search_time_index'] as int? ?? 0,
-      principalVariationIndex: json['principal_variation_index'] as int? ?? 4,
+      principalVariationIndex: json['principal_variation_index'] as int? ?? 2,
       maxArrowsOnBoard: json['max_arrows_on_board'] as int? ?? 2,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),

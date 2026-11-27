@@ -136,51 +136,30 @@ void main() {
 
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
 
-  Future<SurfacesBoard> pumpBoard(
-    WidgetTester tester,
-    Size size, {
-    bool premium = true,
-  }) => pumpSurfacesBoard(
-    tester,
-    size: size,
-    safeArea: const EdgeInsets.only(top: 30, bottom: 18),
-    wrap: (app) => RepaintBoundary(key: _captureKey, child: app),
-    extraOverrides: [
-      tobyReaderHasPremiumProvider.overrideWithValue(premium),
-      tobyReadingProvider.overrideWith(() => _FixtureReading(reading)),
-    ],
-  );
+  final engineIcon = find.byKey(e2eKey(E2eIds.boardEngineToggle)).first;
+  Future<void> openEngineSettings(WidgetTester tester) async {
+    await tester.longPress(engineIcon);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 360));
+  }
+
+  Future<void> closeEngineSettings(WidgetTester tester) async {
+    Navigator.of(tester.element(find.text('Engine Experience'))).pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 360));
+  }
 
   final panel = find.byType(TobyPredictsLine);
   final engineStrip = find.byKey(e2eKey(E2eIds.boardPvList)).first;
   final notation = find.byKey(e2eKey(E2eIds.boardNotationRoot)).first;
-  final notationScroll = find
-      .descendant(of: notation, matching: find.byType(SingleChildScrollView))
-      .first;
-
-  testWidgets('Toby fits between the board and notation when there is room', (
-    tester,
-  ) async {
-    final board = await pumpBoard(tester, const Size(393, 852));
-    expect(panel, findsOneWidget);
-    expect(
-      tester.getTopLeft(panel).dy,
-      greaterThan(tester.getBottomLeft(find.byType(Chessboard).first).dy),
-    );
-    expect(
-      tester.getBottomLeft(panel).dy,
-      lessThanOrEqualTo(tester.getTopLeft(notationScroll).dy),
-    );
-    expect(find.byTooltip('Engine settings'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await board.dispose();
-  });
 
   Future<SurfacesBoard> pumpEngineBoard(
     WidgetTester tester,
     Size size, {
     bool? premium = true,
     bool tobyEnabled = true,
+    bool both = false,
+    int lineIndex = 2,
     EngineSource source = EngineSource.toby,
     List<Override> extraOverrides = const [],
   }) => pumpSurfacesBoard(
@@ -191,6 +170,8 @@ void main() {
     engineSettings: EngineSettings(
       engineSource: source,
       tobyEnabled: tobyEnabled,
+      showBothEngines: both,
+      principalVariationIndex: lineIndex,
       showEngineGaugeOnBoard: true,
     ),
     extraOverrides: [
@@ -210,7 +191,7 @@ void main() {
       premium: false,
     );
     try {
-      expect(find.byKey(const ValueKey('board-engine-toby')), findsOneWidget);
+      expect(find.byKey(const ValueKey('engine-source-toby')), findsNothing);
       expect(panel, findsNothing);
       expect(
         find.byKey(const ValueKey('toby-position-outcomes')),
@@ -248,8 +229,8 @@ void main() {
           rewardedAccessProvider.overrideWith((ref) => reward),
         ],
       );
-      final toby = find.byKey(const ValueKey('board-engine-toby'));
-      final stockfish = find.byKey(const ValueKey('board-engine-stockfish'));
+      final toby = find.byKey(const ValueKey('engine-source-toby'));
+      final stockfish = find.byKey(const ValueKey('engine-source-stockfish'));
       final tabPanel = find.descendant(of: engineStrip, matching: panel);
       EngineSource? chosen() => board.container
           .read(engineSettingsProviderNew)
@@ -274,6 +255,7 @@ void main() {
       }
 
       try {
+        await openEngineSettings(tester);
         expect(stockfish, findsOneWidget);
         await openChoice();
         await tester.tap(find.text('Not now'));
@@ -295,6 +277,7 @@ void main() {
         }
         expect(reward.attempts, 2);
         expect(chosen(), EngineSource.toby);
+        await closeEngineSettings(tester);
         expect(tabPanel, findsOneWidget);
         expect(find.text('45%'), findsOneWidget);
         reward.expire();
@@ -338,11 +321,15 @@ void main() {
     try {
       expect(panel, findsNothing);
       expect(
-        board.container.read(engineSettingsProviderNew).requireValue.tobyEnabled,
+        board.container
+            .read(engineSettingsProviderNew)
+            .requireValue
+            .tobyEnabled,
         isFalse,
       );
-      await tester.tap(find.byKey(const ValueKey('board-engine-toby')));
-      await tester.pump();
+      await openEngineSettings(tester);
+      await tester.tap(find.byKey(const ValueKey('engine-source-toby')));
+      await closeEngineSettings(tester);
       expect(find.text('Watch ad'), findsNothing);
       expect(find.descendant(of: engineStrip, matching: panel), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -410,6 +397,33 @@ void main() {
     }
   });
 
+  testWidgets('board engine icon opens a focused Engine Experience', (
+    tester,
+  ) async {
+    final board = await pumpEngineBoard(tester, const Size(393, 852));
+    try {
+      await openEngineSettings(tester);
+      expect(find.text('Engine Experience'), findsOneWidget);
+      expect(find.text('Evaluation Bar'), findsOneWidget);
+      expect(find.text('Grid View'), findsNothing);
+      expect(find.text('Computer Analysis'), findsNothing);
+      expect(find.byKey(const ValueKey('engine-source-toby')), findsOneWidget);
+      expect(find.byKey(const ValueKey('board-engine-toby')), findsNothing);
+      expect(find.byTooltip('About Toby'), findsNothing);
+      expect(find.text('Thinking Time'), findsNothing);
+      expect(find.text('Analysis Depth Indicator'), findsNothing);
+      expect(find.text('Cards'), findsNothing);
+      expect(find.text('List'), findsNothing);
+      expect(find.text('Show Engine Lines'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Engine')).dy,
+        lessThan(tester.getTopLeft(find.text('Show Engine Lines')).dy),
+      );
+    } finally {
+      await board.dispose();
+    }
+  });
+
   testWidgets('Toby replaces the engine strip, not the notation panel', (
     tester,
   ) async {
@@ -429,29 +443,10 @@ void main() {
         containsAll(['45%', '38%', '<1%']),
       );
       expect(panel, findsOneWidget);
-      expect(find.text('Chance'), findsOneWidget);
-      final legend = find.byKey(const ValueKey('toby-outcome-legend'));
-      expect(
-        find.descendant(of: legend, matching: find.text('Draw')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: legend, matching: find.byType(Image)),
-        findsNWidgets(2),
-      );
-      final chance = tester.getTopLeft(find.text('Chance'));
-      final firstChance = tester.getTopLeft(find.text('45%'));
-      expect(firstChance.dx, closeTo(chance.dx, 0.01));
-      expect(
-        chance.dx,
-        greaterThan(
-          tester
-                  .getTopRight(find.byKey(const ValueKey('board-engine-toby')))
-                  .dx +
-              5,
-        ),
-      );
       expect(find.text('W / = / B'), findsNothing);
+      expect(find.text('Chance'), findsNothing);
+      expect(find.text('Stockfish'), findsNothing);
+      expect(find.text('Toby'), findsNothing);
       expect(
         find.descendant(
           of: engineStrip,
@@ -511,100 +506,310 @@ void main() {
     }
   });
 
-  testWidgets('one tap swaps the engine and gauge without moving the board', (
+  testWidgets(
+    'Engine Experience swaps engine and gauge without moving the board',
+    (tester) async {
+      final board = await pumpEngineBoard(tester, const Size(393, 852));
+      final params = ChessBoardProviderParams(
+        game: board.games.first,
+        index: 0,
+      );
+      final provider = chessBoardScreenProviderNew(params);
+      final positionBar = find.byKey(const ValueKey('toby-position-outcomes'));
+      final stockfishBar = find.byKey(e2eKey(E2eIds.boardEvalBar));
+      final stockfish = find.byKey(const ValueKey('engine-source-stockfish'));
+      final toby = find.byKey(const ValueKey('engine-source-toby'));
+      try {
+        final initial = board.container
+            .read(provider)
+            .value!
+            .analysisState
+            .position
+            .fen;
+        expect(positionBar, findsOneWidget);
+        expect(stockfishBar, findsNothing);
+        await openEngineSettings(tester);
+        await tester.tap(stockfish);
+        await closeEngineSettings(tester);
+        expect(positionBar, findsNothing);
+        expect(stockfishBar, findsOneWidget);
+        expect(find.descendant(of: engineStrip, matching: panel), findsNothing);
+        expect(board.container.read(provider).value!.tobyPosition, isNull);
+        expect(
+          board.container.read(provider).value!.analysisState.position.fen,
+          initial,
+        );
+        await openEngineSettings(tester);
+        await tester.tap(toby);
+        await closeEngineSettings(tester);
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 150));
+        }
+        expect(positionBar, findsOneWidget);
+        expect(stockfishBar, findsNothing);
+        expect(
+          find.descendant(of: engineStrip, matching: panel),
+          findsOneWidget,
+        );
+        expect(
+          board.container.read(provider).value!.analysisState.position.fen,
+          initial,
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await board.dispose();
+      }
+    },
+  );
+
+  testWidgets('Toby percentages and bars give tap help without a header', (
     tester,
   ) async {
-    final board = await pumpEngineBoard(tester, const Size(393, 852));
-    final params = ChessBoardProviderParams(game: board.games.first, index: 0);
-    final provider = chessBoardScreenProviderNew(params);
-    final positionBar = find.byKey(const ValueKey('toby-position-outcomes'));
-    final stockfishBar = find.byKey(e2eKey(E2eIds.boardEvalBar));
-    final stockfish = find.byKey(const ValueKey('board-engine-stockfish'));
-    final toby = find.byKey(const ValueKey('board-engine-toby'));
+    final board = await pumpEngineBoard(tester, const Size(360, 655));
     try {
-      final initial = board.container
-          .read(provider)
-          .value!
-          .analysisState
-          .position
-          .fen;
-      expect(positionBar, findsOneWidget);
-      expect(stockfishBar, findsNothing);
-      final notationTop = tester.getTopLeft(notation).dy;
-      final switchBounds = tester.getRect(stockfish);
-      await tester.tap(stockfish);
+      final stripPanel = find.descendant(of: engineStrip, matching: panel);
+      final bar = find
+          .descendant(of: stripPanel, matching: find.byType(TobyOutcomeBar))
+          .first;
+      await tester.tap(find.text('45%'));
       await tester.pump();
-      expect(tester.getTopLeft(notation).dy, closeTo(notationTop, 0.01));
-      expect(tester.getRect(stockfish), switchBounds);
+      await tester.pump(const Duration(milliseconds: 180));
       expect(
-        find.descendant(
-          of: engineStrip,
-          matching: find.byTooltip('Engine settings'),
-        ),
-        findsNothing,
+        find.textContaining('How likely the player is to make this move'),
+        findsOneWidget,
       );
-      expect(tester.widget<InkWell>(stockfish).onLongPress, isNotNull);
-      expect(positionBar, findsNothing);
-      expect(stockfishBar, findsOneWidget);
-      expect(find.descendant(of: engineStrip, matching: panel), findsNothing);
-      expect(board.container.read(provider).value!.tobyPosition, isNull);
-      expect(
-        board.container.read(provider).value!.analysisState.position.fen,
-        initial,
-      );
-      await tester.tap(toby);
-      for (var i = 0; i < 6; i++) {
-        await tester.pump(const Duration(milliseconds: 150));
-      }
-      expect(positionBar, findsOneWidget);
-      expect(stockfishBar, findsNothing);
-      expect(find.descendant(of: engineStrip, matching: panel), findsOneWidget);
-      expect(
-        board.container.read(provider).value!.analysisState.position.fen,
-        initial,
-      );
+      await tester.tap(bar);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 180));
+      expect(find.textContaining('White expected score'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pump(const Duration(milliseconds: 180));
       expect(tester.takeException(), isNull);
     } finally {
       await board.dispose();
     }
   });
 
-  testWidgets('Toby column labels explain themselves on tap', (tester) async {
-    final board = await pumpEngineBoard(tester, const Size(360, 655));
+  testWidgets('Both puts Stockfish above Toby and keeps one board gauge', (
+    tester,
+  ) async {
+    final board = await pumpEngineBoard(
+      tester,
+      const Size(393, 1100),
+      both: true,
+    );
     try {
-      final stripPanel = find.descendant(of: engineStrip, matching: panel);
-      final bars = find.descendant(
-        of: stripPanel,
-        matching: find.byType(TobyOutcomeBar),
+      final stack = find.byKey(const ValueKey('board-engine-stack'));
+      expect(stack, findsOneWidget);
+      expect(
+        find.descendant(of: stack, matching: find.text('Stockfish')),
+        findsNothing,
       );
-      final legend = find.byKey(const ValueKey('toby-outcome-legend'));
-      final white = find
-          .descendant(of: legend, matching: find.byType(Image))
-          .first;
-      final black = find
-          .descendant(of: legend, matching: find.byType(Image))
-          .last;
-      final groupCenter =
-          (tester.getCenter(white).dx + tester.getCenter(black).dx) / 2;
-      expect(groupCenter, closeTo(tester.getCenter(bars.first).dx, 4));
-      final help = <(Finder, String)>[
-        (find.text('Chance'), 'How likely the player is to make this move.'),
-        (white, 'How likely White is to win after this move.'),
-        (
-          find.text('Draw'),
-          'How likely the game is to end in a draw after this move.',
-        ),
-        (black, 'How likely Black is to win after this move.'),
-      ];
-      for (final (target, message) in help) {
-        expect(find.text(message), findsNothing);
-        await tester.tap(target);
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 180));
-        expect(find.text(message), findsOneWidget);
+      expect(
+        find.descendant(of: stack, matching: find.text('Toby')),
+        findsNothing,
+      );
+      final stockfish = find.byKey(
+        const ValueKey('board-stacked-stockfish-lines'),
+      );
+      final toby = find.byKey(const ValueKey('board-stacked-toby-lines'));
+      expect(
+        tester.getBottomLeft(stockfish).dy,
+        lessThanOrEqualTo(tester.getTopLeft(toby).dy),
+      );
+      expect(
+        find.byKey(const ValueKey('board-stacked-toby-lines')),
+        findsOneWidget,
+      );
+      expect(find.text('45%'), findsOneWidget);
+      expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('toby-position-outcomes')),
+        findsNothing,
+      );
+      expect(
+        tester.getTopLeft(notation).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(stack).dy),
+      );
+      await tester.tap(engineIcon);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(stack, findsNothing);
+      expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+      await tester.tap(engineIcon);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(stack, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await board.dispose();
+    }
+  });
+
+  testWidgets(
+    'Both offers a right-side Toby gauge independently of engine lines',
+    (tester) async {
+      final board = await pumpEngineBoard(
+        tester,
+        const Size(411, 914),
+        both: true,
+      );
+      final left = find.byKey(e2eKey(E2eIds.boardEvalBar));
+      final right = find.byKey(const ValueKey('board-toby-secondary-gauge'));
+      final toggle = find.byKey(
+        const ValueKey('evaluation-bar-toby-both-switch'),
+      );
+      try {
+        expect(right, findsNothing);
+        await openEngineSettings(tester);
+        expect(toggle, findsOneWidget);
+        expect(tester.widget<Switch>(toggle).value, isFalse);
+        await tester.tap(toggle);
+        await closeEngineSettings(tester);
+        final chessboard = tester.getRect(find.byType(Chessboard).first);
+        expect(tester.getRect(left).right, lessThanOrEqualTo(chessboard.left));
+        expect(
+          tester.getRect(right).left,
+          greaterThanOrEqualTo(chessboard.right),
+        );
+        final bar = find.descendant(
+          of: right,
+          matching: find.byType(TobyOutcomeBar),
+        );
+        expect(
+          tester.widget<TobyOutcomeBar>(bar).outcome,
+          same(reading.positionWdl),
+        );
+        await tester.tap(engineIcon);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byKey(const ValueKey('board-engine-stack')), findsNothing);
+        expect(left, findsOneWidget);
+        expect(tester.widget<TobyOutcomeBar>(bar).outcome, isNotNull);
+        await openEngineSettings(tester);
+        await tester.tap(
+          find.byKey(const ValueKey('evaluation-bar-board-switch')),
+        );
+        await closeEngineSettings(tester);
+        expect(left, findsNothing);
+        expect(right, findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await board.dispose();
       }
-      Tooltip.dismissAllToolTips();
-      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('Both stays enabled and scrolls five lines on a short phone', (
+    tester,
+  ) async {
+    final board = await pumpEngineBoard(
+      tester,
+      const Size(411, 914),
+      lineIndex: 4,
+    );
+    try {
+      final boardBefore = tester.getRect(find.byType(Chessboard).first);
+      await openEngineSettings(tester);
+      await tester.tap(find.byKey(const ValueKey('engine-source-both')));
+      await tester.pump();
+      expect(find.byType(SnackBar), findsNothing);
+      await closeEngineSettings(tester);
+      final stack = find.byKey(const ValueKey('board-engine-stack'));
+      expect(stack, findsOneWidget);
+      expect(tester.getRect(find.byType(Chessboard).first), boardBefore);
+      final scroll = find.byKey(const ValueKey('board-engine-scroll'));
+      expect(scroll, findsOneWidget);
+      final engineScrollable = find
+          .descendant(of: scroll, matching: find.byType(Scrollable))
+          .first;
+      expect(
+        tester
+            .state<ScrollableState>(engineScrollable)
+            .position
+            .maxScrollExtent,
+        greaterThan(0),
+      );
+      expect(
+        tester
+            .widget<TobyPredictsLine>(
+              find.byKey(const ValueKey('board-stacked-toby-lines')),
+            )
+            .engineRowCount,
+        5,
+      );
+      final stockfish = find.byKey(
+        const ValueKey('board-stacked-stockfish-lines'),
+      );
+      final toby = find.byKey(const ValueKey('board-stacked-toby-lines'));
+      expect(
+        tester.getBottomLeft(stockfish).dy,
+        lessThanOrEqualTo(tester.getTopLeft(toby).dy),
+      );
+      await tester.drag(scroll, const Offset(0, -320));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('45%').hitTestable(), findsOneWidget);
+      expect(tester.getSize(notation).height, greaterThan(48));
+      expect(tester.takeException(), isNull);
+    } finally {
+      await board.dispose();
+    }
+  });
+
+  testWidgets('Both is Premium and returns to Stockfish on reward expiry', (
+    tester,
+  ) async {
+    final reward = _BoardReward();
+    final board = await pumpEngineBoard(
+      tester,
+      const Size(393, 1100),
+      source: EngineSource.stockfish,
+      premium: null,
+      extraOverrides: [
+        rewardedAdsAvailableProvider.overrideWithValue(true),
+        subscriptionProvider.overrideWith((ref) => _BoardSubscription(false)),
+        rewardedAccessProvider.overrideWith((ref) => reward),
+      ],
+    );
+    try {
+      final stack = find.byKey(const ValueKey('board-engine-stack'));
+      await openEngineSettings(tester);
+      await tester.tap(find.byKey(const ValueKey('engine-source-both')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Watch ad'), findsOneWidget);
+      expect(
+        board.container
+            .read(engineSettingsProviderNew)
+            .requireValue
+            .showBothEngines,
+        isFalse,
+      );
+      reward.confirm = true;
+      await tester.tap(find.text('Watch ad'));
+      for (var i = 0; i < 9; i++) {
+        await tester.pump(const Duration(milliseconds: 170));
+      }
+      await closeEngineSettings(tester);
+      expect(stack, findsOneWidget);
+      expect(find.text('45%'), findsOneWidget);
+      final rightBar = find.byKey(const ValueKey('board-toby-secondary-gauge'));
+      await openEngineSettings(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('evaluation-bar-toby-both-switch')),
+      );
+      await closeEngineSettings(tester);
+      expect(rightBar, findsOneWidget);
+      reward.expire();
+      await tester.pump();
+      expect(stack, findsNothing);
+      expect(rightBar, findsNothing);
+      expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+      expect(
+        board.container
+            .read(engineSettingsProviderNew)
+            .requireValue
+            .showBothEngines,
+        isTrue,
+      );
       expect(tester.takeException(), isNull);
     } finally {
       await board.dispose();
@@ -625,25 +830,19 @@ void main() {
     }
   });
 
-  testWidgets('Toby scrolls with notation on a short viewport', (tester) async {
-    final board = await pumpBoard(tester, const Size(393, 655));
-    expect(panel, findsOneWidget);
-    expect(find.ancestor(of: panel, matching: notationScroll), findsOneWidget);
-    await tester.ensureVisible(panel);
-    await tester.pump();
-    expect(tester.takeException(), isNull);
-    await board.dispose();
-  });
-
-  testWidgets('Toby has no panel or reserved space without access', (
+  testWidgets('Stockfish-only mode does not request a second Toby panel', (
     tester,
   ) async {
-    final board = await pumpBoard(tester, const Size(393, 852), premium: false);
-    expect(panel, findsNothing);
-    expect(
-      tester.getTopLeft(notationScroll).dy,
-      closeTo(tester.getTopLeft(notation).dy, 1),
+    final board = await pumpEngineBoard(
+      tester,
+      const Size(393, 852),
+      source: EngineSource.stockfish,
     );
-    await board.dispose();
+    try {
+      expect(panel, findsNothing);
+      expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+    } finally {
+      await board.dispose();
+    }
   });
 }

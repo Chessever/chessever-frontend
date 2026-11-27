@@ -210,6 +210,7 @@ EngineSource engineSourceFromName(Object? name) {
 class EngineSettings {
   const EngineSettings({
     this.showEngineGauge = true,
+    this.independentGaugeControls = false,
     this.showEngineGaugeOnBoard = true,
     this.showEngineGaugeInGrid = true,
     this.showDepthOverlay = true,
@@ -218,8 +219,10 @@ class EngineSettings {
     this.searchTimeIndex = 0,
     this.engineLinesView = EngineLinesView.list,
     this.engineSource = EngineSource.stockfish,
+    this.showBothEngines = false,
+    this.showTobyGaugeInBoth = false,
     this.tobyEnabled = true,
-    int principalVariationIndex = 4, // Default to 5 lines (index 4)
+    int principalVariationIndex = defaultLineCountIndex,
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex = principalVariationIndex < 0
            ? 0
@@ -232,14 +235,23 @@ class EngineSettings {
            : (maxArrowsOnBoard > 4 ? 4 : maxArrowsOnBoard);
 
   final bool showEngineGauge;
+  final bool independentGaugeControls;
   final bool showEngineGaugeOnBoard;
   final bool showEngineGaugeInGrid;
 
   bool get shouldShowEngineGaugeOnBoard =>
-      showEngineGauge && showEngineGaugeOnBoard;
+      (showEngineGauge || independentGaugeControls) && showEngineGaugeOnBoard;
 
   bool get shouldShowEngineGaugeInGrid =>
-      showEngineGauge && showEngineGaugeInGrid;
+      (showEngineGauge || independentGaugeControls) && showEngineGaugeInGrid;
+
+  /// Adopt independent device controls without modifying the legacy synced
+  /// master. The untouched surface retains its effective visibility.
+  EngineSettings withGaugeVisibility({bool? board, bool? grid}) => copyWith(
+      independentGaugeControls: true,
+      showEngineGaugeOnBoard: board ?? shouldShowEngineGaugeOnBoard,
+      showEngineGaugeInGrid: grid ?? shouldShowEngineGaugeInGrid,
+    );
 
   final bool showDepthOverlay;
   final bool showPvArrows;
@@ -254,9 +266,14 @@ class EngineSettings {
 
   /// Which engine fills the board's bar, lines and arrows. Device-local.
   final EngineSource engineSource;
+  final bool showBothEngines;
+
+  /// Optional right-side evaluation bar when both engines are selected.
+  final bool showTobyGaugeInBoth;
 
   /// Whether Toby replaces Stockfish on the board: chosen, and Toby on.
   bool get usesToby => tobyEnabled && engineSource == EngineSource.toby;
+  bool get wantsBothEngines => tobyEnabled && showBothEngines;
 
   /// Only an explicit, entitled Toby selection may undo an older opt-out.
   /// Reading settings, or selecting Stockfish, leaves that opt-out intact.
@@ -273,6 +290,8 @@ class EngineSettings {
   /// The account's legacy Toby opt-out (`user_engine_settings.toby_enabled`,
   /// null read as on). Kept for other clients and existing saved choices.
   final bool tobyEnabled;
+
+  static const defaultLineCountIndex = 2; // Three lines.
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -387,6 +406,7 @@ class EngineSettings {
 
   EngineSettings copyWith({
     bool? showEngineGauge,
+    bool? independentGaugeControls,
     bool? showEngineGaugeOnBoard,
     bool? showEngineGaugeInGrid,
     bool? showDepthOverlay,
@@ -395,12 +415,15 @@ class EngineSettings {
     int? searchTimeIndex,
     EngineLinesView? engineLinesView,
     EngineSource? engineSource,
+    bool? showBothEngines,
+    bool? showTobyGaugeInBoth,
     bool? tobyEnabled,
     int? principalVariationIndex,
     int? maxArrowsOnBoard,
   }) {
     return EngineSettings(
       showEngineGauge: showEngineGauge ?? this.showEngineGauge,
+      independentGaugeControls: independentGaugeControls ?? this.independentGaugeControls,
       showEngineGaugeOnBoard:
           showEngineGaugeOnBoard ?? this.showEngineGaugeOnBoard,
       showEngineGaugeInGrid:
@@ -411,6 +434,8 @@ class EngineSettings {
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
       engineLinesView: engineLinesView ?? this.engineLinesView,
       engineSource: engineSource ?? this.engineSource,
+      showBothEngines: showBothEngines ?? this.showBothEngines,
+      showTobyGaugeInBoth: showTobyGaugeInBoth ?? this.showTobyGaugeInBoth,
       tobyEnabled: tobyEnabled ?? this.tobyEnabled,
       principalVariationIndex:
           (principalVariationIndex ?? this.principalVariationIndex).clamp(
@@ -530,6 +555,7 @@ EngineSettings applyDeviceLocalEngineSettings(
   // in where the account has nothing (signed out, no row, never chosen).
   final cachedSearchTime = cache['searchTimeIndex'];
   return applyCachedEngineGaugeSurfaceSettings(settings, cache).copyWith(
+    independentGaugeControls: cache['independentGaugeControls'] == true,
     searchTimeIndex: resolveSearchTimeIndex(
       cloud: settings.searchTimeIndex,
       cached: cachedSearchTime is int ? cachedSearchTime : null,
@@ -537,6 +563,8 @@ EngineSettings applyDeviceLocalEngineSettings(
     engineSource: cache.containsKey('engineSource')
         ? engineSourceFromName(cache['engineSource'])
         : settings.engineSource,
+    showBothEngines: cache['showBothEngines'] == true,
+    showTobyGaugeInBoth: cache['showTobyGaugeInBoth'] == true,
     tobyEnabled: cache['tobyEnabled'] is bool
         ? cache['tobyEnabled'] as bool
         : settings.tobyEnabled,
@@ -696,7 +724,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   /// Toggle evaluation bar visibility on opened boards.
   Future<void> toggleEngineGaugeOnBoard(bool value) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
-    final newSettings = currentState.copyWith(showEngineGaugeOnBoard: value);
+    final newSettings = currentState.withGaugeVisibility(board: value);
     state = AsyncValue.data(newSettings);
     // Surface preferences are intentionally device-local. Sending the full
     // settings object to Supabase here would update unrelated synced fields
@@ -704,10 +732,18 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     await _cacheSettings(newSettings);
   }
 
+  Future<void> toggleTobyGaugeInBoth(bool value) async {
+    final current = state.valueOrNull ?? const EngineSettings();
+    if (current.showTobyGaugeInBoth == value) return;
+    final next = current.copyWith(showTobyGaugeInBoth: value);
+    state = AsyncData(next);
+    await _cacheSettings(next);
+  }
+
   /// Toggle evaluation bar visibility in game grids.
   Future<void> toggleEngineGaugeInGrid(bool value) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
-    final newSettings = currentState.copyWith(showEngineGaugeInGrid: value);
+    final newSettings = currentState.withGaugeVisibility(grid: value);
     state = AsyncValue.data(newSettings);
     // Keep this local for the same reason as the board-surface preference.
     await _cacheSettings(newSettings);
@@ -818,7 +854,10 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   /// the account (`engine_source`) and cached on the device.
   Future<void> setEngineSource(EngineSource source) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
-    final newSettings = currentState.withSelectedSource(source);
+    final selected = currentState.withSelectedSource(source);
+    final newSettings = selected.showBothEngines
+        ? selected.copyWith(showBothEngines: false)
+        : selected;
     if (identical(currentState, newSettings)) return;
     // No global Stockfish cancel here: other owners (a local Game Review, the
     // explorer) keep their jobs. Each board cancels its own work when it
@@ -828,6 +867,19 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         .read(engineDepthTrackerProvider.notifier)
         .clearAll(reason: 'engine source changed');
     await _persist(newSettings);
+  }
+
+  /// Both is a layout choice, not another value of the synced source enum.
+  Future<void> selectBothEngines() async {
+    final current = state.valueOrNull ?? const EngineSettings();
+    if (current.showBothEngines && current.tobyEnabled) return;
+    final next = current.copyWith(showBothEngines: true, tobyEnabled: true);
+    state = AsyncData(next);
+    if (!current.tobyEnabled) {
+      await _persist(next);
+    } else {
+      await _cacheSettings(next);
+    }
   }
 
   /// Turn Toby on or off in every app: saved on the account
@@ -927,6 +979,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       final db = AppDatabase.instance;
       final json = jsonEncode({
         'showEngineGauge': settings.showEngineGauge,
+        'independentGaugeControls': settings.independentGaugeControls,
         'showEngineGaugeOnBoard': settings.showEngineGaugeOnBoard,
         'showEngineGaugeInGrid': settings.showEngineGaugeInGrid,
         'showDepthOverlay': settings.showDepthOverlay,
@@ -935,6 +988,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'searchTimeIndex': settings.searchTimeIndex,
         'engineLinesView': settings.engineLinesView.index,
         'engineSource': settings.engineSource.name,
+        'showBothEngines': settings.showBothEngines,
+        'showTobyGaugeInBoth': settings.showTobyGaugeInBoth,
         'tobyEnabled': settings.tobyEnabled,
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
@@ -978,6 +1033,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
       final settings = EngineSettings(
         showEngineGauge: map['showEngineGauge'] as bool? ?? true,
+        independentGaugeControls: map['independentGaugeControls'] == true,
         showEngineGaugeOnBoard: map['showEngineGaugeOnBoard'] as bool? ?? true,
         showEngineGaugeInGrid: map['showEngineGaugeInGrid'] as bool? ?? true,
         showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
@@ -988,8 +1044,11 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           map['engineLinesView'] as int?,
         ),
         engineSource: engineSourceFromName(map['engineSource']),
+        showBothEngines: map['showBothEngines'] == true,
+        showTobyGaugeInBoth: map['showTobyGaugeInBoth'] == true,
         tobyEnabled: map['tobyEnabled'] as bool? ?? true,
-        principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
+        principalVariationIndex: map['principalVariationIndex'] as int? ??
+            EngineSettings.defaultLineCountIndex,
         maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );
       debugPrint('[EngineSettings] Loaded settings from cache');

@@ -2,13 +2,12 @@ import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/services/toby/toby_prediction.dart'
-    show kTobyAttribution;
+    show tobyReaderHasPremiumProvider;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
-import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -18,7 +17,15 @@ typedef TrackPersist = void Function(Future<void> future);
 /// Persist futures are reported via [trackPersist] so the host can await them
 /// in a PopScope before navigation.
 class EngineSettingsBody extends ConsumerWidget {
-  const EngineSettingsBody({super.key, required this.trackPersist});
+  const EngineSettingsBody({
+    super.key,
+    required this.trackPersist,
+    this.boardOnly = false,
+    this.bothAvailable = true,
+  });
+
+  final bool boardOnly;
+  final bool bothAvailable;
 
   final TrackPersist trackPersist;
 
@@ -52,422 +59,216 @@ class EngineSettingsBody extends ConsumerWidget {
     EngineSettings settings,
   ) {
     final notifier = ref.read(engineSettingsProviderNew.notifier);
-    final effectiveSource =
-        settings.usesToby && ref.watch(premiumAccessProvider)
+    final entitled = ref.watch(tobyReaderHasPremiumProvider);
+    final both = settings.wantsBothEngines && entitled && bothAvailable;
+    final effectiveSource = settings.usesToby && entitled
         ? EngineSource.toby
         : EngineSource.stockfish;
     final linesVisible = ref.watch(boardEngineLinesVisibleProvider);
     final linesVisibility = ref.read(boardEngineLinesVisibleProvider.notifier);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SettingCard(
-          child: Column(
-            children: [
-              MergeSemantics(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Evaluation Bar',
-                            style: AppTypography.textMdMedium.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 13.f,
-                            ),
-                          ),
-                          SizedBox(height: 4.h),
-                          Text(
-                            'Display evaluation bars across game views.',
-                            style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textSecondary,
-                              fontSize: 11.f,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch.adaptive(
-                      key: const ValueKey('evaluation-bar-master-switch'),
-                      value: settings.showEngineGauge,
-                      // Dark keeps its always-cyan thumb; paper uses the
-                      // shared AA pair (white on teal ON, grey OFF).
-                      thumbColor: context.isLightTheme
-                          ? settingsSwitchThumb(context)
-                          : const WidgetStatePropertyAll(kPrimaryColor),
-                      trackColor: settingsSwitchTrack(context),
-                      onChanged: (value) {
-                        trackPersist(notifier.toggleEngineGauge(value));
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _EvaluationSurfaceSwitch(
-                switchKey: const ValueKey('evaluation-bar-board-switch'),
-                label: 'Board View',
-                value: settings.showEngineGaugeOnBoard,
-                enabled: settings.showEngineGauge,
-                onChanged: (value) {
-                  trackPersist(notifier.toggleEngineGaugeOnBoard(value));
-                },
-              ),
-              SizedBox(height: 8.h),
-              _EvaluationSurfaceSwitch(
-                switchKey: const ValueKey('evaluation-bar-grid-switch'),
-                label: 'Grid View',
-                value: settings.showEngineGaugeInGrid,
-                enabled: settings.showEngineGauge,
-                onChanged: (value) {
-                  trackPersist(notifier.toggleEngineGaugeInGrid(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Computer Analysis',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Analyze positions and suggest moves.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textSecondary,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: settings.showEngineAnalysis,
-                thumbColor: settingsSwitchThumb(context),
-                trackColor: settingsSwitchTrack(context),
-                onChanged: (value) {
-                  trackPersist(notifier.toggleEngineAnalysis(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Engine',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                engineSourceSubtitle(effectiveSource),
-                key: const ValueKey('engine-source-subtitle'),
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _SegmentTrack(
-                // Toby on the left, Stockfish on the right.
-                children: [
-                  _ToggleSegment(
-                    key: const ValueKey('engine-source-toby'),
-                    label: 'Toby',
-                    selected: effectiveSource == EngineSource.toby,
-                    onTap: () async {
-                      void selectToby() {
-                        if (context.mounted) {
-                          trackPersist(
-                            notifier.setEngineSource(EngineSource.toby),
-                          );
-                        }
-                      }
+    Future<void> selectToby({required bool both}) async {
+      void select() {
+        if (!context.mounted || !ref.read(tobyReaderHasPremiumProvider)) return;
+        trackPersist(
+          both
+              ? notifier.selectBothEngines()
+              : notifier.setEngineSource(EngineSource.toby),
+        );
+      }
 
-                      if (ref.read(premiumAccessProvider)) {
-                        selectToby();
-                        return;
-                      }
-                      await showPremiumPaywallSheet(
-                        context: context,
-                        featureId: 'toby_engine',
-                        returnTo: 'settings/engine',
-                        onEntitled: selectToby,
-                      );
-                    },
-                  ),
-                  _ToggleSegment(
-                    key: const ValueKey('engine-source-stockfish'),
-                    label: 'Stockfish',
-                    selected: effectiveSource == EngineSource.stockfish,
-                    onTap: () => trackPersist(
-                      notifier.setEngineSource(EngineSource.stockfish),
-                    ),
-                  ),
-                ],
+      if (ref.read(tobyReaderHasPremiumProvider)) {
+        select();
+      } else {
+        await showPremiumPaywallSheet(
+          context: context,
+          featureId: 'toby_engine',
+          returnTo: boardOnly ? 'broadcast/board' : 'settings/engine',
+          onEntitled: select,
+        );
+      }
+    }
+
+    final usesStockfish = both || effectiveSource == EngineSource.stockfish;
+    final showLines = linesVisible.valueOrNull ?? true;
+    final options = <Widget>[
+      _EvaluationSurfaceSwitch(
+        switchKey: const ValueKey('evaluation-bar-board-switch'),
+        label: 'Evaluation Bar',
+        subtitle: boardOnly ? null : 'Board View',
+        value: settings.shouldShowEngineGaugeOnBoard,
+        onChanged: (value) =>
+            trackPersist(notifier.toggleEngineGaugeOnBoard(value)),
+      ),
+      if (both && settings.shouldShowEngineGaugeOnBoard)
+        _EvaluationSurfaceSwitch(
+          switchKey: const ValueKey('evaluation-bar-toby-both-switch'),
+          label: 'Toby Evaluation Bar',
+          value: settings.showTobyGaugeInBoth,
+          onChanged: (value) =>
+              trackPersist(notifier.toggleTobyGaugeInBoth(value)),
+        ),
+      if (!boardOnly)
+        _EvaluationSurfaceSwitch(
+          switchKey: const ValueKey('evaluation-bar-grid-switch'),
+          label: 'Grid View',
+          value: settings.shouldShowEngineGaugeInGrid,
+          onChanged: (value) =>
+              trackPersist(notifier.toggleEngineGaugeInGrid(value)),
+        ),
+      _SettingsControl(
+        label: 'Engine',
+        child: _SegmentTrack(
+          children: [
+            _ToggleSegment(
+              key: const ValueKey('engine-source-stockfish'),
+              label: 'Stockfish',
+              selected: !both && effectiveSource == EngineSource.stockfish,
+              onTap: () => trackPersist(
+                notifier.setEngineSource(EngineSource.stockfish),
               ),
-            ],
+            ),
+            _ToggleSegment(
+              key: const ValueKey('engine-source-toby'),
+              label: 'Toby',
+              selected: !both && effectiveSource == EngineSource.toby,
+              onTap: () => selectToby(both: false),
+            ),
+            if (bothAvailable)
+              _ToggleSegment(
+                key: const ValueKey('engine-source-both'),
+                label: 'Both',
+                selected: both,
+                onTap: () => selectToby(both: true),
+              ),
+          ],
+        ),
+      ),
+      if (usesStockfish)
+        _SettingsControl(
+          label: 'Engine Lines',
+          child: _EngineLinesToggle(
+            value: settings.engineLinesView,
+            visible: showLines,
+            onOff: () => trackPersist(linesVisibility.setVisible(false)),
+            onChanged: (view) {
+              trackPersist(notifier.setEngineLinesView(view));
+              trackPersist(linesVisibility.setVisible(true));
+            },
+          ),
+        )
+      else
+        _EvaluationSurfaceSwitch(
+          switchKey: const ValueKey('toby-lines-visible-switch'),
+          label: 'Show Engine Lines',
+          value: showLines,
+          onChanged: (value) => trackPersist(linesVisibility.setVisible(value)),
+        ),
+      _EvaluationSurfaceSwitch(
+        switchKey: const ValueKey('engine-arrows-switch'),
+        label: 'Show Arrows',
+        value: settings.showPvArrows,
+        onChanged: (value) => trackPersist(notifier.togglePvArrows(value)),
+      ),
+      if (settings.showPvArrows)
+        _SettingsControl(
+          label: 'Arrow Count',
+          value: settings.maxArrowsLabel(),
+          child: _DiscreteSlider(
+            value: settings.maxArrowsOnBoard.toDouble(),
+            divisions: EngineSettings.maxArrowsLabels.length - 1,
+            labels: EngineSettings.maxArrowsLabels,
+            onChanged: (value) =>
+                trackPersist(notifier.setMaxArrowsOnBoard(value.toInt())),
           ),
         ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Engine Lines',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Off hides in-game lines only. Cards/List also sets the opening explorer style. Evaluation and arrows stay independent.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _EngineLinesToggle(
-                value: settings.engineLinesView,
-                visible: linesVisible.valueOrNull ?? true,
-                onOff: () {
-                  trackPersist(linesVisibility.setVisible(false));
-                },
-                onChanged: (view) {
-                  trackPersist(notifier.setEngineLinesView(view));
-                  trackPersist(linesVisibility.setVisible(true));
-                },
-              ),
-            ],
+      _SettingsControl(
+        label: 'Number of Lines',
+        value: settings.principalVariationLabel(),
+        child: _DiscreteSlider(
+          value: settings.principalVariationIndex.toDouble(),
+          divisions: EngineSettings.principalVariationLabels.length - 1,
+          labels: EngineSettings.principalVariationLabels,
+          onChanged: (value) =>
+              trackPersist(notifier.setPrincipalVariationIndex(value.toInt())),
+        ),
+      ),
+      if (usesStockfish) ...[
+        _SettingsControl(
+          label: 'Thinking Time',
+          value: settings.searchTimeLabel(),
+          child: _DiscreteSlider(
+            key: const ValueKey('thinking-time-slider'),
+            value: settings.searchTimeIndex.toDouble(),
+            divisions: EngineSettings.searchTimeLabels.length - 1,
+            labels: EngineSettings.searchTimeLabels,
+            onChanged: (value) =>
+                trackPersist(notifier.setSearchTimeIndex(value.toInt())),
           ),
         ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Analysis Depth Indicator',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Show how deep the engine is calculating (higher = more accurate).',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textSecondary,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                key: const ValueKey('depth-indicator-switch'),
-                value: settings.showDepthOverlay,
-                thumbColor: settingsSwitchThumb(context),
-                trackColor: settingsSwitchTrack(context),
-                // Kept live with Toby chosen: Stockfish still runs in
-                // threats mode and wherever Toby cannot read the position.
-                onChanged: (value) {
-                  trackPersist(notifier.toggleDepthOverlay(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Show Arrows',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Draw arrows on the board showing recommended moves.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textSecondary,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: settings.showPvArrows,
-                thumbColor: settingsSwitchThumb(context),
-                trackColor: settingsSwitchTrack(context),
-                onChanged: (value) {
-                  trackPersist(notifier.togglePvArrows(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Thinking Time',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'How long the engine thinks per move. Longer = stronger analysis.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _DiscreteSlider(
-                key: const ValueKey('thinking-time-slider'),
-                value: settings.searchTimeIndex.toDouble(),
-                divisions: EngineSettings.searchTimeLabels.length - 1,
-                labels: EngineSettings.searchTimeLabels,
-                // Kept live with Toby chosen: it still sets Stockfish's time
-                // in threats mode and wherever Toby cannot read the position.
-                onChanged: (value) {
-                  final index = value.toInt();
-                  trackPersist(notifier.setSearchTimeIndex(index));
-                },
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Current: ${settings.searchTimeLabel()}',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Number of Lines',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'How many alternative move sequences to show.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _DiscreteSlider(
-                value: settings.principalVariationIndex.toDouble(),
-                divisions: EngineSettings.principalVariationLabels.length - 1,
-                labels: EngineSettings.principalVariationLabels,
-                onChanged: (value) {
-                  final index = value.toInt();
-                  trackPersist(notifier.setPrincipalVariationIndex(index));
-                },
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Current: ${settings.principalVariationLabel()}',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Arrow Count',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Maximum arrows to display for suggested moves.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _DiscreteSlider(
-                value: settings.maxArrowsOnBoard.toDouble(),
-                divisions: EngineSettings.maxArrowsLabels.length - 1,
-                labels: EngineSettings.maxArrowsLabels,
-                onChanged: (value) {
-                  final index = value.toInt();
-                  trackPersist(notifier.setMaxArrowsOnBoard(index));
-                },
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Current: ${settings.maxArrowsLabel()}',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-            ],
-          ),
+        _EvaluationSurfaceSwitch(
+          switchKey: const ValueKey('depth-indicator-switch'),
+          label: 'Analysis Depth Indicator',
+          value: settings.showDepthOverlay,
+          onChanged: (value) =>
+              trackPersist(notifier.toggleDepthOverlay(value)),
         ),
       ],
+    ];
+    return SettingCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (index, option) in options.indexed) ...[
+            if (index > 0)
+              Divider(
+                height: 9.h,
+                color: context.colors.divider.withValues(alpha: .45),
+              ),
+            option,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsControl extends StatelessWidget {
+  const _SettingsControl({
+    required this.label,
+    this.value,
+    required this.child,
+  });
+
+  final String label;
+  final String? value;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTypography.textMdMedium.copyWith(
+      color: context.colors.textPrimary,
+      fontSize: 13.f,
+    );
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 3.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label, style: style)),
+              if (value != null)
+                Text(
+                  value!,
+                  style: style.copyWith(color: context.colors.textSecondary),
+                ),
+            ],
+          ),
+          if (value == null) SizedBox(height: 5.h),
+          child,
+        ],
+      ),
     );
   }
 }
@@ -569,27 +370,30 @@ class _ToggleSegment extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: EdgeInsets.symmetric(vertical: 9.h),
+          padding: EdgeInsets.symmetric(vertical: 7.h),
           decoration: BoxDecoration(
             color: selected ? kPrimaryColor : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 16.f, color: color),
-                SizedBox(width: 6.w),
-              ],
-              Text(
-                label,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: color,
-                  fontSize: 12.f,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16.f, color: color),
+                  SizedBox(width: 6.w),
+                ],
+                Text(
+                  label,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: color,
+                    fontSize: 12.f,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -597,79 +401,58 @@ class _ToggleSegment extends StatelessWidget {
   }
 }
 
-/// The subtitle of the Engine card. Toby's licence asks for its attribution
-/// wherever its readings are offered: it is here where Toby is chosen, and
-/// on the board's live prediction capsule ([kTobyAttribution]).
-@visibleForTesting
-String engineSourceSubtitle(EngineSource source) => switch (source) {
-  EngineSource.stockfish => 'The strongest moves.',
-  EngineSource.toby =>
-    'The moves a player of this level is likely to choose, with their '
-        'chances. $kTobyAttribution',
-};
-
-WidgetStateProperty<Color?> _dimmableThumb(BuildContext context) =>
-    WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.disabled)) {
-        return context.colors.textSecondary.withValues(alpha: 0.35);
-      }
-      return settingsSwitchThumb(context).resolve(states);
-    });
-
-WidgetStateProperty<Color?> _dimmableTrack(BuildContext context) =>
-    WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.disabled)) {
-        return context.colors.divider.withValues(alpha: 0.3);
-      }
-      return settingsSwitchTrack(context).resolve(states);
-    });
-
 class _EvaluationSurfaceSwitch extends StatelessWidget {
   const _EvaluationSurfaceSwitch({
     required this.switchKey,
     required this.label,
+    this.subtitle,
     required this.value,
-    required this.enabled,
     required this.onChanged,
   });
 
   final Key switchKey;
   final String label;
+  final String? subtitle;
   final bool value;
-  final bool enabled;
   final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    final textColor = enabled
-        ? context.colors.textPrimary
-        : context.colors.textSecondary.withValues(alpha: 0.6);
-    return MergeSemantics(
-      child: Padding(
-        padding: EdgeInsets.only(left: 8.sp),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
+  Widget build(BuildContext context) => MergeSemantics(
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
                 label,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: textColor,
-                  fontSize: 12.f,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  fontSize: 13.f,
                 ),
               ),
-            ),
-            Switch.adaptive(
-              key: switchKey,
-              value: value,
-              thumbColor: _dimmableThumb(context),
-              trackColor: _dimmableTrack(context),
-              onChanged: enabled ? onChanged : null,
-            ),
-          ],
+              if (subtitle != null)
+                Text(
+                  subtitle!,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                    fontSize: 11.f,
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+        Switch.adaptive(
+          key: switchKey,
+          value: value,
+          thumbColor: settingsSwitchThumb(context),
+          trackColor: settingsSwitchTrack(context),
+          onChanged: onChanged,
+        ),
+      ],
+    ),
+  );
 }
 
 class _DiscreteSlider extends StatelessWidget {
