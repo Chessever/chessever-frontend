@@ -150,7 +150,7 @@ class _InlineFeedShortState extends State<_InlineFeedShort> {
           revision: 0,
           play: false,
           deferYouTubePlayback: true,
-          muted: true,
+          muted: false,
           nativeFullscreen: false,
           showCaptionsByDefault: false,
         ),

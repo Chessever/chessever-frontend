@@ -691,20 +691,23 @@ void main() {
       }
     },
   );
-  test('Short embeds cue the next video and wait for visibility to play', () {
+  test('Short embeds cue silently and play with sound when visible', () {
     final html = videoPlayerHtml(
       VideoSource.parse('https://www.youtube.com/shorts/abcdefghijk'),
       Uri.parse('https://embed.test.example.com'),
       revision: 0,
       play: false,
-      muted: true,
+      muted: false,
       deferYouTubePlayback: true,
     );
     expect(html, contains('autoplay:0'));
     expect(html, contains('feedActive=false'));
     expect(html, contains('ytPlayer.cueVideoById("abcdefghijk")'));
     expect(html, contains('window.chessVideoSetActive=active=>'));
-    expect(html, contains('feedPlayer.mute();feedPlayer.playVideo();'));
+    expect(html, contains('mute:0'));
+    expect(html, contains('ytPlayer.unMute()'));
+    expect(html, contains('if(active){feedPlayer.playVideo();}'));
+    expect(html, isNot(contains('feedPlayer.mute()')));
     expect(html, contains('else{feedPlayer.pauseVideo();}'));
   });
   test('provider embeds apply the reported mute state on load', () {

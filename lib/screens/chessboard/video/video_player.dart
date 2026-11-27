@@ -526,7 +526,7 @@ window.chessVideoSetActive=active=>{
   if(feedActive===active)return;
   feedActive=active;
   if(!feedPlayer)return;
-  if(active){feedPlayer.mute();feedPlayer.playVideo();}
+  if(active){feedPlayer.playVideo();}
   else{feedPlayer.pauseVideo();}
 };
 """
