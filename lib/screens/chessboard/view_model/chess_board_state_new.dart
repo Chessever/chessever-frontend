@@ -1,10 +1,15 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart'
+    show GameMoveClassification;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/toby/toby_prediction.dart' show TobyWdl;
 import 'package:collection/collection.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+
+typedef TobyPositionSnapshot = ({String fen, TobyWdl outcome});
 
 enum AutoSaveStatus { idle, saving, saved }
 
@@ -21,12 +26,18 @@ class AnalysisLine {
   /// the move's chance, "34%"). [evaluation] still decides the badge colour.
   final String? evalLabel;
 
+  /// The candidate’s own outcomes, only when present in the Toby reading.
+  final TobyWdl? tobyWdl;
+  final GameMoveClassification? tobyQuality;
+
   const AnalysisLine({
     this.moves = const [],
     this.sanMoves = const [],
     this.evaluation,
     this.mate,
     this.evalLabel,
+    this.tobyWdl,
+    this.tobyQuality,
   });
 
   bool get isEmpty => moves.isEmpty;
@@ -45,6 +56,8 @@ class AnalysisLine {
     double? evaluation,
     int? mate,
     String? evalLabel,
+    TobyWdl? tobyWdl,
+    GameMoveClassification? tobyQuality,
   }) {
     return AnalysisLine(
       moves: moves ?? this.moves,
@@ -52,6 +65,8 @@ class AnalysisLine {
       evaluation: evaluation ?? this.evaluation,
       mate: mate ?? this.mate,
       evalLabel: evalLabel ?? this.evalLabel,
+      tobyWdl: tobyWdl ?? this.tobyWdl,
+      tobyQuality: tobyQuality ?? this.tobyQuality,
     );
   }
 
@@ -69,6 +84,8 @@ class AnalysisLine {
     return other.evaluation == evaluation &&
         other.mate == mate &&
         other.evalLabel == evalLabel &&
+        other.tobyWdl == tobyWdl &&
+        other.tobyQuality == tobyQuality &&
         _stringListEquality.equals(other.sanMoves, sanMoves) &&
         _stringListEquality.equals(other._uciMoves(), _uciMoves());
   }
@@ -79,6 +96,8 @@ class AnalysisLine {
       evaluation,
       mate,
       evalLabel,
+      tobyWdl,
+      tobyQuality,
       Object.hashAll(_uciMoves()),
       Object.hashAll(sanMoves),
     );
@@ -341,6 +360,7 @@ class ChessBoardStateNew {
   final int? mate;
   final List<AnalysisLine> principalVariations;
   final String? principalVariationsBaseFen;
+  final TobyPositionSnapshot? tobyPosition;
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
   final bool
@@ -437,6 +457,7 @@ class ChessBoardStateNew {
     this.mate,
     this.principalVariations = const [],
     this.principalVariationsBaseFen,
+    this.tobyPosition,
     this.selectedVariantIndex,
     this.variantMovePointer = const [],
     this.showEngineAnalysis = true, // Active by default
@@ -489,6 +510,7 @@ class ChessBoardStateNew {
     ISet<Shape>? shapes,
     List<AnalysisLine>? principalVariations,
     Object? principalVariationsBaseFen = _noChange,
+    Object? tobyPosition = _noChange,
     Object? selectedVariantIndex = _noChange,
     List<int>? variantMovePointer,
     bool? showEngineAnalysis,
@@ -551,6 +573,9 @@ class ChessBoardStateNew {
           identical(principalVariationsBaseFen, _noChange)
               ? this.principalVariationsBaseFen
               : principalVariationsBaseFen as String?,
+      tobyPosition: identical(tobyPosition, _noChange)
+          ? this.tobyPosition
+          : tobyPosition as TobyPositionSnapshot?,
       selectedVariantIndex:
           identical(selectedVariantIndex, _noChange)
               ? this.selectedVariantIndex
@@ -733,6 +758,7 @@ class ChessBoardStateNew {
           principalVariations,
         ) &&
         other.principalVariationsBaseFen == principalVariationsBaseFen &&
+        other.tobyPosition == tobyPosition &&
         _intListEquality.equals(other.variantMovePointer, variantMovePointer) &&
         other.isThreatsMode == isThreatsMode &&
         other.autoSaveStatus == autoSaveStatus;
@@ -773,6 +799,7 @@ class ChessBoardStateNew {
       Object.hashAll(moveTimes),
       Object.hashAll(principalVariations),
       principalVariationsBaseFen,
+      tobyPosition,
       Object.hashAll(variantMovePointer),
       isPvPreviewActive,
       pvPreviewVariantIndex,

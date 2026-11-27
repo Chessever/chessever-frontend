@@ -8,6 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
+  test('default line count is three and explicit five is retained', () {
+    expect(const EngineSettings().multiPvForStockfish(), 3);
+    expect(
+      const EngineSettings(principalVariationIndex: 4).multiPvForStockfish(),
+      5,
+    );
+  });
+
   testWidgets('evaluation bar settings expose board and grid controls', (
     tester,
   ) async {
@@ -37,16 +45,40 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Evaluation Bar'), findsOneWidget);
+    expect(find.byKey(const ValueKey('toby-switch')), findsNothing);
+    expect(find.byKey(const ValueKey('engine-source-toby')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('engine-source-stockfish')),
+      findsOneWidget,
+    );
     expect(find.text('Board View'), findsOneWidget);
     expect(find.text('Grid View'), findsOneWidget);
+    expect(find.text('Computer Analysis'), findsNothing);
+    expect(find.byKey(const ValueKey('engine-source-subtitle')), findsNothing);
+    expect(find.text('Both'), findsOneWidget);
+    expect(find.byTooltip('About Toby'), findsNothing);
+    expect(find.textContaining('Off hides in-game lines'), findsNothing);
+    final titles = [
+      'Evaluation Bar',
+      'Engine',
+      'Engine Lines',
+      'Show Arrows',
+      'Arrow Count',
+      'Number of Lines',
+      'Thinking Time',
+      'Analysis Depth Indicator',
+    ];
+    expect(
+      titles.map((title) => tester.getTopLeft(find.text(title)).dy),
+      orderedEquals(
+        titles.map((title) => tester.getTopLeft(find.text(title)).dy).toList()
+          ..sort(),
+      ),
+    );
 
     expect(
-      tester
-          .widget<Switch>(
-            find.byKey(const ValueKey('evaluation-bar-master-switch')),
-          )
-          .value,
-      isTrue,
+      find.byKey(const ValueKey('evaluation-bar-master-switch')),
+      findsNothing,
     );
     expect(
       tester
@@ -66,7 +98,7 @@ void main() {
     );
   });
 
-  testWidgets('master off keeps child choices on but disables their controls', (
+  testWidgets('legacy master off keeps both surfaces effectively off', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -75,7 +107,11 @@ void main() {
           boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
           engineSettingsProviderNew.overrideWith(
             () => _FakeEngineSettingsNotifier(
-              const EngineSettings(showEngineGauge: false),
+              const EngineSettings(
+                showEngineGauge: false,
+                tobyEnabled: false,
+                engineSource: EngineSource.toby,
+              ),
             ),
           ),
         ],
@@ -96,21 +132,56 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final master = tester.widget<Switch>(
-      find.byKey(const ValueKey('evaluation-bar-master-switch')),
-    );
+    expect(find.byKey(const ValueKey('engine-source-toby')), findsOneWidget);
     final board = tester.widget<Switch>(
       find.byKey(const ValueKey('evaluation-bar-board-switch')),
     );
     final grid = tester.widget<Switch>(
       find.byKey(const ValueKey('evaluation-bar-grid-switch')),
     );
-    expect(master.value, isFalse);
-    expect(board.value, isTrue);
-    expect(board.onChanged, isNull);
-    expect(grid.value, isTrue);
-    expect(grid.onChanged, isNull);
+    expect(board.value, isFalse);
+    expect(board.onChanged, isNotNull);
+    expect(grid.value, isFalse);
+    expect(grid.onChanged, isNotNull);
+    await tester.tap(find.byKey(const ValueKey('evaluation-bar-board-switch')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-board-switch')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-grid-switch')),
+          )
+          .value,
+      isFalse,
+    );
   });
+
+  test(
+    'local evaluation controls reload without overwriting the account master',
+    () {
+      final choice = const EngineSettings(
+        showEngineGauge: false,
+      ).withGaugeVisibility(board: true);
+      final reloaded = applyDeviceLocalEngineSettings(
+        const EngineSettings(showEngineGauge: false),
+        {
+          'independentGaugeControls': choice.independentGaugeControls,
+          'showEngineGaugeOnBoard': choice.showEngineGaugeOnBoard,
+          'showEngineGaugeInGrid': choice.showEngineGaugeInGrid,
+        },
+      );
+      expect(reloaded.showEngineGauge, isFalse);
+      expect(reloaded.shouldShowEngineGaugeOnBoard, isTrue);
+      expect(reloaded.shouldShowEngineGaugeInGrid, isFalse);
+    },
+  );
 
   testWidgets('board and grid switches update independently', (tester) async {
     late _FakeEngineSettingsNotifier notifier;
@@ -187,14 +258,14 @@ class _FakeEngineSettingsNotifier extends EngineSettingsNotifierNew {
   @override
   Future<void> toggleEngineGaugeOnBoard(bool value) async {
     state = AsyncValue.data(
-      state.requireValue.copyWith(showEngineGaugeOnBoard: value),
+      state.requireValue.withGaugeVisibility(board: value),
     );
   }
 
   @override
   Future<void> toggleEngineGaugeInGrid(bool value) async {
     state = AsyncValue.data(
-      state.requireValue.copyWith(showEngineGaugeInGrid: value),
+      state.requireValue.withGaugeVisibility(grid: value),
     );
   }
 }

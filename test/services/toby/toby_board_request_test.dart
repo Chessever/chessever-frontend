@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
-import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/toby/toby_board_request.dart';
 import 'package:chessever2/services/toby/toby_prediction.dart';
@@ -251,18 +250,5 @@ void main() {
       expect(engineSourceFromName('nonsense'), EngineSource.stockfish);
     });
 
-    test('the Toby subtitle carries the licence attribution', () {
-      expect(
-        engineSourceSubtitle(EngineSource.stockfish),
-        isNot(contains('Toby')),
-      );
-      expect(
-        engineSourceSubtitle(EngineSource.toby),
-        endsWith('Toby © Yosha Iglesias, toby.tribychess.org'),
-      );
-      for (final source in EngineSource.values) {
-        expect(engineSourceSubtitle(source), isNot(contains('—')));
-      }
-    });
   });
 }
