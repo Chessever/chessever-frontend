@@ -16,6 +16,7 @@ import 'package:chessever2/screens/feed/logic/feed_ranker.dart'
     show feedIsOnlineEvent;
 import 'package:chessever2/screens/feed/logic/feed_report.dart';
 import 'package:chessever2/screens/feed/logic/feed_taste.dart';
+import 'package:chessever2/screens/feed/models/feed_collection.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/news_models.dart';
@@ -280,7 +281,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           } else if (item is FeedShortEntry) {
             _shortPositions[item.short.id] = page.position;
           } else if (item is FeedCollectionEntry) {
-            _collectionPositions[item.card.collection.id] = page.position;
+            _collectionPositions[item.key] = page.position;
           }
         }
         _serverEntries = List.unmodifiable([
@@ -373,8 +374,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (position != null) _boardServer?.recordShort(position, id, 'open');
   }
 
-  void noteCollectionGameVisible(String collectionId, String gameId) {
-    final position = _collectionPositions[collectionId];
+  void noteCollectionGameVisible(FeedCollection card, String gameId) {
+    final collectionId = card.collection.id;
+    final position = _collectionPositions[card.feedKey];
     if (position != null &&
         _collectionImpressions.add((collectionId, gameId))) {
       _boardServer?.recordCollectionGame(
@@ -386,8 +388,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }
   }
 
-  void noteCollectionGameOpened(String collectionId, String gameId) {
-    final position = _collectionPositions[collectionId];
+  void noteCollectionGameOpened(FeedCollection card, String gameId) {
+    final collectionId = card.collection.id;
+    final position = _collectionPositions[card.feedKey];
     if (position != null) {
       _boardServer?.recordCollectionGame(
         position,

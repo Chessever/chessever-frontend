@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
 import 'package:chessever2/screens/feed/models/feed_collection.dart';
@@ -9,7 +11,6 @@ import 'package:chessever2/screens/stories/story_viewer.dart'
     show ensureStoryCollectionAccess, storyCollectionPageProvider;
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart'
     show premiumAccessProvider;
-import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -20,37 +21,83 @@ final _collectionStoryGamesProvider = FutureProvider.autoDispose
       return repository.fetchStoryGames(slug, day: day);
     });
 
+// An ordered roster is reused by the separate cards from one collection.
+final _collectionRosterProvider = FutureProvider.autoDispose
+    .family<List<CollectionGame>, ({String slug, int seed})>((ref, key) {
+      final link = ref.keepAlive();
+      Timer? idle;
+      ref.onCancel(() => idle = Timer(const Duration(minutes: 5), link.close));
+      ref.onResume(() => idle?.cancel());
+      ref.onDispose(() => idle?.cancel());
+      return ref.watch(collectionsRepositoryProvider).fetchGames(key.slug);
+    });
+
 final _featuredFrameProvider = FutureProvider.autoDispose
     .family<
       StoryFrame?,
-      ({String slug, String? gameId, List<CollectionGame>? games})
+      ({
+        String slug,
+        String? gameId,
+        int? gameIndex,
+        int seed,
+        String? anchorGameId,
+      })
     >((ref, key) async {
       final repository = ref.watch(collectionsRepositoryProvider);
       final analyze = ref.watch(storyAnalyzerProvider);
       final storyGames = ref.watch(
         _collectionStoryGamesProvider(key.slug).future,
       );
+      final roster = key.gameIndex == null
+          ? null
+          : ref.watch(
+              _collectionRosterProvider((
+                slug: key.slug,
+                seed: key.seed,
+              )).future,
+            );
+
+      List<CollectionGame>? games;
       CollectionGame? game;
+      if (roster != null) {
+        games = await roster;
+        final index = key.gameIndex!;
+        if (index >= games.length) return null;
+        final anchor = games
+            .where((game) => game.id == key.anchorGameId)
+            .firstOrNull;
+        if (anchor != null && index == 0) {
+          game = anchor;
+        } else if (anchor != null) {
+          final remaining = games
+              .where((game) => game.id != anchor.id)
+              .toList();
+          game = remaining[(key.seed + index - 1) % remaining.length];
+        } else {
+          game = games[(key.seed + index) % games.length];
+        }
+      }
+
       String? pgn;
+      final gameId = game?.id ?? key.gameId;
       try {
         final stories = await storyGames;
         for (final card in stories ?? const []) {
-          if (key.gameId != null && card.id != key.gameId) continue;
-          game = CollectionGame.fromPreviewCard(card);
+          if (gameId != null && card.id != gameId) continue;
+          game ??= CollectionGame.fromPreviewCard(card);
           if (game != null) {
             pgn = card.pgn;
             break;
           }
         }
       } on CollectionsRequestException {
-        // Fall back to the collection's browse previews.
+        // Fall back to the collection's browse preview.
       }
-      if (game == null) {
-        final games = key.games ?? await repository.fetchGames(key.slug);
-        game = games.where((game) => game.id == key.gameId).firstOrNull;
-        if (key.gameId == null || key.games == null) {
-          game ??= latestStoryGame(games);
-        }
+      if (pgn == null) {
+        games ??= await repository.fetchGames(key.slug);
+        game ??=
+            games.where((game) => game.id == gameId).firstOrNull ??
+            latestStoryGame(games);
         if (game == null) return null;
         try {
           final detail = await repository.fetchCollection(key.slug);
@@ -66,6 +113,7 @@ final _featuredFrameProvider = FutureProvider.autoDispose
           // Keep the board preview when its annotated moves are unavailable.
         }
       }
+      if (game == null) return null;
       final segments = pgn == null
           ? null
           : (await analyze([
@@ -104,35 +152,8 @@ class FeedCollectionPage extends ConsumerStatefulWidget {
 
 class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
   bool _opening = false;
-  bool _browsing = false;
-  String? _selectedGameId;
-  List<CollectionGame>? _games;
   String? _reportedGameId;
   CollectionCheckpoint? _latest;
-
-  Future<void> _browse(String visibleGameId, int direction) async {
-    if (_opening || _browsing) return;
-    setState(() => _browsing = true);
-    try {
-      final games =
-          _games ??
-          await ref
-              .read(collectionsRepositoryProvider)
-              .fetchGames(widget.card.collection.slug);
-      if (!mounted) return;
-      _games = games;
-      if (games.length < 2) return;
-      final current = games.indexWhere((game) => game.id == visibleGameId);
-      final index = current < 0 ? 0 : (current + direction) % games.length;
-      _selectedGameId = games[index].id;
-    } catch (_) {
-      if (mounted) {
-        showAppSnack(context, 'Could not load collection games.');
-      }
-    } finally {
-      if (mounted) setState(() => _browsing = false);
-    }
-  }
 
   Future<void> _open(String gameId, CollectionCheckpoint? checkpoint) async {
     if (_opening) return;
@@ -178,12 +199,12 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
     final checkpoint = _latest ?? widget.card.resume;
     final provider = _featuredFrameProvider((
       slug: collection.slug,
-      gameId:
-          _selectedGameId ?? checkpoint?.gameId ?? widget.card.featuredGameId,
-      games: _games,
+      gameId: widget.card.featuredGameId ?? widget.card.resume?.gameId,
+      gameIndex: widget.card.gameIndex,
+      seed: widget.card.gameOrderSeed,
+      anchorGameId: widget.card.anchorGameId ?? widget.card.featuredGameId,
     ));
     final read = ref.watch(provider);
-    final games = _games;
     final frame = read.valueOrNull;
     final gameId = frame?.game.id;
     if (widget.active && gameId != null && gameId != _reportedGameId) {
@@ -198,10 +219,6 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
         widget.onGameVisible?.call(gameId);
       });
     }
-    final gameCount = games?.length ?? collection.gameCount;
-    final gameIndex = games?.indexWhere((game) => game.id == gameId) ?? -1;
-    final browseGameId = gameId ?? _selectedGameId;
-    final canBrowse = browseGameId != null && !_browsing && !_opening;
     final needsUpgrade =
         collection.isPremium && !ref.watch(premiumAccessProvider);
     final gameLabel = needsUpgrade
@@ -210,7 +227,7 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
         ? 'Continue'
         : 'Open game';
     VoidCallback? openGame;
-    if (!_opening && !_browsing) {
+    if (!_opening) {
       if (gameId != null) {
         openGame = () => _open(gameId, checkpoint);
       } else if (needsUpgrade) {
@@ -245,6 +262,12 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
                         ref.invalidate(
                           _collectionStoryGamesProvider(collection.slug),
                         );
+                        ref.invalidate(
+                          _collectionRosterProvider((
+                            slug: collection.slug,
+                            seed: widget.card.gameOrderSeed,
+                          )),
+                        );
                         ref.invalidate(provider);
                       },
                       child: const Text('Retry game preview'),
@@ -254,32 +277,11 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
                   : const Text('No game preview available.'),
             ),
           ),
-          if (gameCount > 1)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: 'Previous collection game',
-                  onPressed: canBrowse ? () => _browse(browseGameId, -1) : null,
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Text(
-                  gameIndex >= 0
-                      ? 'Game ${gameIndex + 1} of $gameCount'
-                      : '$gameCount games',
-                ),
-                IconButton(
-                  tooltip: 'Next collection game',
-                  onPressed: canBrowse ? () => _browse(browseGameId, 1) : null,
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
           StoryActions(
             gameLabel: gameLabel,
             collectionLabel: storyCollectionAction(collection),
             onOpenGame: openGame,
-            onOpenCollection: _opening || _browsing ? null : _openCollection,
+            onOpenCollection: _opening ? null : _openCollection,
           ),
         ],
       ),

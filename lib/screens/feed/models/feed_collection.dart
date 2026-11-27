@@ -12,11 +12,25 @@ CollectionCheckpoint? collectionCheckpointFromJson(Object? json) {
 }
 
 class FeedCollection {
-  const FeedCollection(this.collection, this.resume, {this.featuredGameId});
+  const FeedCollection(
+    this.collection,
+    this.resume, {
+    this.featuredGameId,
+    this.gameIndex,
+    this.gameOrderSeed = 0,
+    this.anchorGameId,
+  });
 
   final Collection collection;
   final CollectionCheckpoint? resume;
   final String? featuredGameId;
+  final int? gameIndex;
+  final int gameOrderSeed;
+  final String? anchorGameId;
+
+  String get feedKey => gameIndex == null
+      ? 'collection:${collection.id}'
+      : 'collection-game:${collection.id}:$gameOrderSeed:$gameIndex';
 
   static FeedCollection? fromJson(Object? json) {
     if (json case {
@@ -30,14 +44,23 @@ class FeedCollection {
       return FeedCollection(
         Collection.fromJson(row),
         collectionCheckpointFromJson(row['resume']),
-        featuredGameId: switch (row['featuredGameId']) {
-          final String id
-              when RegExp(r'^[A-Za-z0-9_.:-]{1,128}$').hasMatch(id) =>
-            id,
+        featuredGameId: _gameId(row['featuredGameId']),
+        gameIndex: switch (row['gameIndex']) {
+          final int index when index >= 0 => index,
           _ => null,
         },
+        gameOrderSeed: switch (row['gameOrderSeed']) {
+          final int seed when seed >= 0 => seed,
+          _ => 0,
+        },
+        anchorGameId: _gameId(row['anchorGameId']),
       );
     }
     return null;
   }
+
+  static String? _gameId(Object? value) =>
+      value is String && RegExp(r'^[A-Za-z0-9_.:-]{1,128}$').hasMatch(value)
+      ? value
+      : null;
 }

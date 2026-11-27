@@ -107,7 +107,7 @@ void main() {
     expect(cards[1].collection?.resume, (gameId: 'game-2', moveIndex: 12));
   });
 
-  testWidgets('browse all collection games on one Feed card', (tester) async {
+  testWidgets('collection games have separate vertical cards', (tester) async {
     final collection = Collection(
       id: 'collection',
       slug: 'collection',
@@ -119,6 +119,19 @@ void main() {
     );
     final server = _FeedCollectionServer(collection);
     final impressions = <String>[];
+    final pages = PageController();
+    addTearDown(pages.dispose);
+    final cards = [
+      FeedCollection(
+        collection,
+        (gameId: 'game-17', moveIndex: 2),
+        gameIndex: 0,
+        anchorGameId: 'game-17',
+      ),
+      FeedCollection(collection, null, gameIndex: 1, anchorGameId: 'game-17'),
+    ];
+    expect(cards[0].feedKey, isNot(cards[1].feedKey));
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -132,14 +145,16 @@ void main() {
             builder: (context) {
               ResponsiveHelper.init(context);
               return Scaffold(
-                body: FeedCollectionPage(
-                  card: FeedCollection(
-                    collection,
-                    null,
-                    featuredGameId: 'game-17',
+                body: PageView.builder(
+                  controller: pages,
+                  scrollDirection: Axis.vertical,
+                  itemCount: cards.length,
+                  itemBuilder: (context, index) => FeedCollectionPage(
+                    key: ValueKey(cards[index].feedKey),
+                    card: cards[index],
+                    active: true,
+                    onGameVisible: impressions.add,
                   ),
-                  active: true,
-                  onGameVisible: impressions.add,
                 ),
               );
             },
@@ -154,25 +169,17 @@ void main() {
         .game
         .id;
     expect(visibleGame(), 'game-17');
-    for (var step = 1; step < 20; step++) {
-      final number = (16 + step) % 20 + 1;
-      await tester.tap(find.byTooltip('Next collection game'));
-      await tester.pumpAndSettle();
-      expect(visibleGame(), 'game-$number');
-      expect(find.text('Game $number of 20'), findsOneWidget);
-    }
-    await tester.tap(find.byTooltip('Next collection game'));
-    await tester.pumpAndSettle();
-    expect(visibleGame(), 'game-17');
-    await tester.tap(find.byTooltip('Previous collection game'));
-    await tester.pumpAndSettle();
-    expect(visibleGame(), 'game-16');
-    expect(server.browseReads, 2);
-    expect(server.playableReads, 0);
-    expect(impressions.take(20), [
-      for (var step = 0; step < 20; step++) 'game-${(16 + step) % 20 + 1}',
-    ]);
+    expect(find.byTooltip('Next collection game'), findsNothing);
+    expect(find.byTooltip('Previous collection game'), findsNothing);
     expect(find.text('Upgrade'), findsOneWidget);
+    expect(find.text('View collection'), findsOneWidget);
+
+    pages.jumpToPage(1);
+    await tester.pumpAndSettle();
+    expect(visibleGame(), 'game-1');
+    expect(impressions, ['game-17', 'game-1']);
+    expect(server.browseReads, 1);
+    expect(server.playableReads, 0);
   });
 
   test(

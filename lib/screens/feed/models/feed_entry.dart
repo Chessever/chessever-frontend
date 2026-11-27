@@ -58,7 +58,7 @@ final class FeedCollectionEntry extends FeedEntry {
   final FeedCollection card;
 
   @override
-  String get key => 'collection:${card.collection.id}';
+  String get key => card.feedKey;
 }
 
 /// An ad page issued by the backend or inserted into a legacy feed.

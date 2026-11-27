@@ -343,7 +343,7 @@ class BoardFeedClient {
     final uri = base.replace(path: path, queryParameters: query);
     final headers = {
       'authorization': 'Bearer ${session!.accessToken}',
-      'x-feed-format': 'full',
+      'x-feed-format': 'collection-games',
       if (body != null) 'content-type': 'application/json',
     };
     final request = http.Request(body == null ? 'GET' : 'POST', uri)
