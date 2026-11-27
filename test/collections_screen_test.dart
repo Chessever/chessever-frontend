@@ -1,4 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
@@ -378,6 +383,11 @@ class _UnreadableCollection extends _FakeCollections {
   }
 }
 
+class _NoFavoriteEvents extends FavoriteEventsNotifier {
+  @override
+  Future<List<FavoriteEvent>> build() async => const [];
+}
+
 class _NoShortcuts extends SpaceShortcutsNotifier {
   @override
   Future<List<SpaceShortcut>> build() async => const [];
@@ -489,6 +499,72 @@ Future<void> _openSearch(WidgetTester tester) async {
 }
 
 void main() {
+  group('collection preview player access', () {
+    setUpAll(() async {
+      SharedPreferences.setMockInitialValues({});
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('com.llfbandit.app_links/events'),
+            (_) async => null,
+          );
+      await Supabase.initialize(
+        url: 'https://fixture.invalid',
+        publishableKey: 'fixture-publishable-key',
+      );
+    });
+    tearDownAll(() => Supabase.instance.dispose());
+
+    testWidgets('a Premium book preview guards the player name', (
+      tester,
+    ) async {
+      final repo = _FakeCollections(
+        detail: const Collection(
+          id: 'locked-book',
+          slug: 'locked-book',
+          kind: CollectionKind.book,
+          title: 'Locked book',
+          access: CollectionAccess.premium,
+          contentLocked: true,
+        ),
+        games: [_game('preview')],
+      );
+      await _pump(
+        tester,
+        repo,
+        premium: false,
+        overrides: [favoriteEventsProvider.overrideWith(_NoFavoriteEvents.new)],
+        onGenerateRoute: (settings) => MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => const Scaffold(body: Text('Scorecard destination')),
+        ),
+      );
+      await tester.tap(find.text('Games').hitTestable());
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel(BoardViewToggleButton.label));
+      await tester.pumpAndSettle();
+      final name = find
+          .descendant(
+            of: find.byType(PlayerFirstRowDetailWidget),
+            matching: _rich('Nimzowitsch'),
+          )
+          .hitTestable()
+          .first;
+      await tester.tap(name);
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      expect(find.text('Scorecard destination'), findsNothing);
+      final prompt = find.text('Sign in to get Premium');
+      expect(prompt, findsOneWidget);
+      Navigator.of(tester.element(prompt)).pop();
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      expect(find.byType(CollectionScreen), findsOneWidget);
+      await _teardown(tester);
+    });
+  });
+
   _FakeCollections duoRepository() => _FakeCollections(
     detail: const Collection(
       id: 'duo-book',

@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/widgets/star_notifications.dart';
@@ -647,7 +648,8 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     );
   }
 
-  void _navigateToPlayerDetail(PlayerStandingModel player) {
+  Future<void> _navigateToPlayerDetail(PlayerStandingModel player) async {
+    if (!await ensureCountrymenGameAccess(context) || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(

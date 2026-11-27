@@ -3,6 +3,28 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Applies a collection's existing open check to nested player-name targets.
+/// These targets handle their own gestures, independently of the game card.
+class PremiumCollectionPlayerAccess extends InheritedWidget {
+  const PremiumCollectionPlayerAccess({
+    super.key,
+    required this.ensureAccess,
+    required super.child,
+  });
+
+  final Future<bool> Function(BuildContext context) ensureAccess;
+
+  static Future<bool> Function(BuildContext context)? maybeOf(
+    BuildContext context,
+  ) => context
+      .getInheritedWidgetOfExactType<PremiumCollectionPlayerAccess>()
+      ?.ensureAccess;
+
+  @override
+  bool updateShouldNotify(PremiumCollectionPlayerAccess oldWidget) =>
+      oldWidget.ensureAccess != ensureAccess;
+}
+
 /// Browse freely, but require paid/rewarded access before opening the game.
 Future<bool> ensurePremiumGameAccess(
   BuildContext context, {

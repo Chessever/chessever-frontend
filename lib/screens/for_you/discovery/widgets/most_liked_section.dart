@@ -382,20 +382,15 @@ class _PageBody extends ConsumerWidget {
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
 
-  Future<bool> _access(BuildContext context) async =>
-      ensurePremiumGameAccess(
-        context,
-        featureId: 'most_liked_rankings',
-        returnTo: discoveryReturnTo('most_liked'),
-      );
-
   Future<void> _openRankedGame(
     BuildContext context,
     WidgetRef ref,
     List<GamesTourModel> games,
     int index,
   ) async {
-    if (!await _access(context) || !context.mounted) return;
+    if (!await ensureMostLikedContentAccess(context) || !context.mounted) {
+      return;
+    }
     openDiscoveryGame(context, ref, games, index, teachDiscoveryLikes: true);
   }
 
@@ -420,7 +415,10 @@ class _PageBody extends ConsumerWidget {
         icon: Icons.ios_share_rounded,
         label: 'Share',
         onSelected: () async {
-          if (!await _access(context) || !context.mounted) return;
+          if (!await ensureMostLikedContentAccess(context) ||
+              !context.mounted) {
+            return;
+          }
           await showGameShareOverlay(context, ref, game);
         },
       ),
@@ -431,7 +429,10 @@ class _PageBody extends ConsumerWidget {
           enabled: space.enabled,
           visible: space.visible,
           onSelected: () async {
-            if (!await _access(context) || !context.mounted) return;
+            if (!await ensureMostLikedContentAccess(context) ||
+                !context.mounted) {
+              return;
+            }
             await space.onSelected();
           },
         ),
@@ -522,6 +523,10 @@ class _PageBody extends ConsumerWidget {
           // PGN share lookup or shortcut write.
           menuActionsFor: (menuContext, index) =>
               _gameMenu(context, ref, games, index),
+          wrapCard: (_, card) => PremiumCollectionPlayerAccess(
+            ensureAccess: ensureMostLikedContentAccess,
+            child: card,
+          ),
           badgeFor: (i, boardSize) => _heart(visible[i], boardSize),
           rowLabelFor: (i) => _likesMeta(visible[i]),
           streamEnabled: isCurrent,

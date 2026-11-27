@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/screens/tour_detail/combined/combined_category.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -560,6 +561,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
 
     Future<void> openPlayerScoreCard() async {
+      // Only the source bound to this card may require payment. The global
+      // last-opened board source can be stale after returning to a broadcast.
+      final ensureAccess =
+          PremiumCollectionPlayerAccess.maybeOf(context) ??
+          switch (scoreCardViewSource) {
+            ChessboardView.favorites => ensureFavoritesGameAccess,
+            ChessboardView.countryman => ensureCountrymenGameAccess,
+            ChessboardView.smartEvent => ensureSmartEventGameAccess,
+            _ => null,
+          };
+      if (ensureAccess != null && !await ensureAccess(context)) return;
+      if (!context.mounted) return;
       final standingsAsync = ref.read(playerTourScreenProvider);
 
       // Create fallback player model from game data - always has fideId if available

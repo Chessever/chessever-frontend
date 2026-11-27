@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -19,6 +20,13 @@ import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+Future<bool> ensureMostLikedContentAccess(BuildContext context) =>
+    ensurePremiumGameAccess(
+      context,
+      featureId: 'most_liked_rankings',
+      returnTo: discoveryReturnTo('most_liked'),
+    );
 
 /// Long-press menu for a ranking section or its selected date.
 Future<void> showMostLikedShareMenu(
@@ -183,8 +191,11 @@ class _PlayerRow extends ConsumerWidget {
     _open(context);
   }
 
-  void _open(BuildContext context) {
+  Future<void> _open(BuildContext context) async {
     HapticFeedbackService.cardTap();
+    if (!await ensureMostLikedContentAccess(context) || !context.mounted) {
+      return;
+    }
     final p = row.player;
     Navigator.of(context).push(
       MaterialPageRoute<void>(

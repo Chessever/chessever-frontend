@@ -1,7 +1,6 @@
 import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 
-
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
@@ -259,15 +258,18 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
 
   bool _openingAnalysis = false;
 
-  Future<void> _openAnalysis(SavedAnalysis analysis) async {
-    if (_openingAnalysis) return;
-    _openingAnalysis = true;
-    try {
-      final allowed = await ensurePremiumGameAccess(
+  static Future<bool> _ensureAccess(BuildContext context) =>
+      ensurePremiumGameAccess(
         context,
         featureId: kMyLikesHistoryFeatureId,
         returnTo: kMyLikesReturnTo,
       );
+
+  Future<void> _openAnalysis(SavedAnalysis analysis) async {
+    if (_openingAnalysis) return;
+    _openingAnalysis = true;
+    try {
+      final allowed = await _ensureAccess(context);
       if (!allowed || !mounted) return;
       // The guard has granted access, so the board swipes through every listed
       // like in page order. Not `openableAnalyses`: it leaves out the likes
@@ -703,11 +705,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
             key: ValueKey('mylikes_${entry.analysis.id}'),
             analysis: entry.analysis,
             game: entry.game,
-            beforeContentAction: () => ensurePremiumGameAccess(
-              context,
-              featureId: kMyLikesHistoryFeatureId,
-              returnTo: kMyLikesReturnTo,
-            ),
+            beforeContentAction: () => _ensureAccess(context),
             tagCounts: tagCounts,
             onOpen: () => _openAnalysis(entry.analysis),
             onRemove: () => _removeAnalysis(entry.analysis),
@@ -783,11 +781,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           // A moved or edited game is redrawn, or leaves, at once: a card left
           // behind after "Move to database" would point at the database copy.
           onChanged: () => refreshMyLikes(container),
-          beforeContentAction: () => ensurePremiumGameAccess(
-            context,
-            featureId: kMyLikesHistoryFeatureId,
-            returnTo: kMyLikesReturnTo,
-          ),
+          beforeContentAction: () => _ensureAccess(context),
           showSpaceAction: false,
           showShareAction: false,
         );
@@ -803,7 +797,10 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
               : kRedColor,
           behavior: SwipeActionBehavior.dismiss,
           onAction: () => _removeAnalysis(analysis),
-          child: card,
+          child: PremiumCollectionPlayerAccess(
+            ensureAccess: _ensureAccess,
+            child: card,
+          ),
         );
       },
     );

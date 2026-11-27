@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'dart:async';
 
 import 'package:chessever2/widgets/star_notifications.dart';
@@ -732,7 +733,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     );
   }
 
-  void _navigateToPlayerDetail(PlayerStandingModel player) {
+  Future<void> _navigateToPlayerDetail(PlayerStandingModel player) async {
+    if (!await ensureFavoritesGameAccess(context) || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
