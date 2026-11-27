@@ -1,112 +1,32 @@
-import 'dart:math' as math;
-
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
-import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/services/feed_ads_config.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The Feed tab as pages: [feedProvider]'s games with a ChessEver News
-/// article after every [kFeedNewsEvery], once one has loaded. Puzzles live
-/// in their own tab ([puzzleTabProvider]).
-///
-/// Games never wait on news: the first page is exactly the games' first
-/// page, and articles slot in behind the viewer as they arrive. Pages the
-/// viewer has reached are frozen ([markSeen]) so a late article can never
-/// shift the page under their thumb. After a refresh the news slots open
-/// with the articles the viewer has not reached yet.
-///
-/// Loading, errors and paging stay on [feedProvider]; this provider only
-/// arranges what it has.
+/// The Feed tab renders the backend's order.
 final feedEntriesProvider =
     NotifierProvider<FeedEntriesNotifier, List<FeedEntry>>(
       FeedEntriesNotifier.new,
     );
 
 class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
-  List<FeedEntry> _last = const [];
-  int _frozenThrough = -1;
-  bool _usesServerFeed = false;
-
-  bool get usesServerFeed => _usesServerFeed;
-
-  /// Articles the viewer reached in an arrangement a refresh has replaced.
-  /// The next arrangement opens its news slots with the ones not reached
-  /// yet ([feedNewsUnseenFirst]), so a refresh is new past its games too.
-  final Set<String> _newsReached = <String>{};
-
   @override
   List<FeedEntry> build() {
-    final games = ref.watch(feedProvider).valueOrNull ?? const [];
-    final notifier = ref.read(feedProvider.notifier);
-    _usesServerFeed = notifier.usesServerBoardFeed;
-    if (_usesServerFeed) return notifier.serverEntries;
-    if (games.isEmpty) {
-      // A refresh (or a failed load) starts the arrangement over.
-      _retire();
-      return _last;
-    }
-    // A refresh landed: a new first game.
-    final first = _last.isEmpty ? null : _last.first;
-    if (first is FeedGameEntry &&
-        first.item.game.gameId != games.first.game.gameId) {
-      _retire();
-    }
-    final news = feedNewsUnseenFirst(
-      ref.watch(feedNewsProvider).valueOrNull ?? const [],
-      _newsReached,
-    );
-    final next = composeFeedEntries(
-      games: games,
-      news: news,
-      previous: _last,
-      frozenThrough: _frozenThrough,
-    );
-    // A prefix that no longer matches the games was dropped: nothing frozen.
-    if (next.isEmpty || _last.isEmpty || next.first.key != _last.first.key) {
-      _frozenThrough = -1;
-    }
-    _last = next;
-    return next;
-  }
-
-  /// The viewer reached page [index]. It and the page after it (already
-  /// built, and visible mid-swipe) keep their places from now on.
-  void markSeen(int index) {
-    final through = index + 1;
-    if (through > _frozenThrough) _frozenThrough = through;
-  }
-
-  /// Ends the current arrangement, noting the articles the viewer reached
-  /// in it.
-  void _retire() {
-    final reached = math.min(_frozenThrough, _last.length);
-    for (var i = 0; i < reached; i++) {
-      final entry = _last[i];
-      if (entry is FeedNewsEntry) _newsReached.add(entry.news.key);
-    }
-    _last = const [];
-    _frozenThrough = -1;
+    final items = ref.watch(feedProvider).valueOrNull ?? const [];
+    final entries = ref.read(feedProvider.notifier).serverEntries;
+    return entries ?? [for (final item in items) FeedGameEntry(item)];
   }
 }
 
-/// Use the backend's slots for the server feed and the existing local ad
-/// cadence for the legacy feed. Both honor subscription and ad availability.
-final feedPagesProvider = Provider<List<FeedEntry>>((ref) {
-  final entries = ref.watch(feedEntriesProvider);
-  final adsVisible = ref.watch(feedAdsVisibleProvider);
-  final withdrawn = ref.watch(feedAdWithdrawnProvider);
-  if (ref.read(feedEntriesProvider.notifier).usesServerFeed) {
-    return serverFeedPages(
-      entries,
-      adsVisible: adsVisible,
-      withdrawn: withdrawn,
-    );
-  }
-  return adsVisible ? withFeedAds(entries, withdrawn: withdrawn) : entries;
-});
+/// Honor the backend's ad placements and the app's subscription and ad checks.
+final feedPagesProvider = Provider<List<FeedEntry>>(
+  (ref) => serverFeedPages(
+    ref.watch(feedEntriesProvider),
+    adsVisible: ref.watch(feedAdsVisibleProvider),
+    withdrawn: ref.watch(feedAdWithdrawnProvider),
+  ),
+);
 
 /// Platform/configuration availability, separate from subscriber eligibility.
 final feedAdsAvailableProvider = Provider<bool>(
@@ -141,17 +61,3 @@ class FeedAdsVisibleNotifier extends Notifier<bool> {
 final feedAdWithdrawnProvider = StateProvider<Set<String>>(
   (ref) => const <String>{},
 );
-
-/// [news] with the articles not in [reached] first, each group in its own
-/// order (newest first), so a fresh arrangement brings articles the viewer
-/// has not had yet and comes back round to the others once all are read.
-@visibleForTesting
-List<FeedNews> feedNewsUnseenFirst(List<FeedNews> news, Set<String> reached) {
-  if (reached.isEmpty) return news;
-  return [
-    for (final article in news)
-      if (!reached.contains(article.key)) article,
-    for (final article in news)
-      if (reached.contains(article.key)) article,
-  ];
-}

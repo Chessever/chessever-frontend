@@ -31,6 +31,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show PageBackButton;
@@ -300,17 +301,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   String _pageKeyOf(FeedEntry page) =>
       identical(page, _lead) ? 'watch:${page.key}' : page.key;
 
-  /// Page [index] of [pages] as a page of Feed's own [feed], found by key:
-  /// -1 for the lead (above Feed's first page), past the last page for the
-  /// tail, null for a page Feed no longer has.
-  int? _feedIndexOf(int index, List<FeedEntry> pages, List<FeedEntry> feed) {
-    if (index >= pages.length) return feed.length + index - pages.length;
-    final page = pages[index];
-    if (identical(page, _lead)) return -1;
-    final found = feed.indexWhere((other) => other.key == page.key);
-    return found < 0 ? null : found;
-  }
-
   /// The game of Feed's own the viewer has last reached at page [index] of
   /// [pages], as an index into [feed]'s games: the nearest game at or before
   /// it on screen. -1 when that is the lead, or there is none. Feed's own
@@ -541,60 +531,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     ref.read(feedCurrentEntryKeyProvider.notifier).state = page.key;
   }
 
-  /// Freezes the pages the viewer has reached and keeps games coming: the
-  /// arrangement freezes by post and the games notifier pages by game, so
-  /// the page index is translated for each. On the tail, that is the last
-  /// post's game, and the next page is asked for.
-  ///
-  /// Under a lead the pages are not Feed's own: the page is found among
-  /// Feed's by key ([_feedIndexOf]) to hold its place, and the game reached
-  /// is the nearest one on screen ([_visitIndexOf]). The lead is the page
-  /// above Feed's first: the page after it holds its place, and no visit is
-  /// counted for it.
+  /// Record the visible card and prefetch as the viewer approaches the tail.
   void _reportVisible(int index, List<FeedEntry> pages) {
     final notifier = ref.read(feedProvider.notifier);
-    final entries = ref.read(feedEntriesProvider.notifier);
     final entry = index >= 0 && index < pages.length ? pages[index] : null;
     if (entry case FeedNewsEntry(:final news)) {
       notifier.noteNewsVisible(news.id);
     } else if (entry case FeedShortEntry(:final short)) {
       notifier.noteShortVisible(short.id);
     }
-    if (_lead == null) {
-      entries.markSeen(feedPostIndexAt(pages, index));
-      notifier.onVisible(
-        notifier.usesServerBoardFeed &&
-                (index < 0 ||
-                    index >= pages.length ||
-                    pages[index] is! FeedGameEntry)
-            ? -1
-            : math.max(0, feedGameIndexAt(pages, index)),
-      );
+    if (entry is! FeedGameEntry || identical(entry, _lead)) {
+      notifier.onVisible(-1);
+    } else if (_lead == null) {
+      notifier.onVisible(feedGameIndexAt(pages, index));
     } else {
-      final feed = ref.read(feedPagesProvider);
-      final at = _feedIndexOf(index, pages, feed);
-      if (at != null) {
-        // The page after this one here (built, and seen mid-swipe) holds its
-        // place too, though Feed's hidden copy of the lead may stand between
-        // them in Feed's own order.
-        final after = index + 1 < pages.length
-            ? _feedIndexOf(index + 1, pages, feed)
-            : null;
-        entries.markSeen(
-          math.max(
-            feedPostIndexAt(feed, at),
-            after == null || after < 0 ? -1 : feedPostIndexAt(feed, after) - 1,
-          ),
-        );
-        notifier.onVisible(
-          notifier.usesServerBoardFeed &&
-                  (index < 0 ||
-                      index >= pages.length ||
-                      pages[index] is! FeedGameEntry)
-              ? -1
-              : _visitIndexOf(index, pages, feed),
-        );
-      }
+      notifier.onVisible(
+        _visitIndexOf(index, pages, ref.read(feedPagesProvider)),
+      );
     }
     if (index >= pages.length - 3) unawaited(_loadMore());
   }
@@ -1088,6 +1041,18 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               _page(i, entries: entries, more: more, visible: visible),
             ),
           ),
+        ),
+      );
+    } else if (feed.error is BoardFeedSignInRequired && !feed.isLoading) {
+      body = clearOfBars(
+        FeedMessage(
+          title: 'Sign in to open Feed',
+          body: 'See boards, news, Shorts, and collections.',
+          actionLabel: 'Sign in',
+          onAction: () async {
+            final signedIn = await showAuthUpgradeSheet(context: context);
+            if (mounted && signedIn) ref.invalidate(feedProvider);
+          },
         ),
       );
     } else if (feed.hasError && !feed.isLoading) {

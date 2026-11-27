@@ -34,7 +34,6 @@ bool _isLocal(String value, int port) {
 
 Future<void> main() async {
   if (!kDebugMode ||
-      !BoardFeedClient.enabled ||
       !_isLocal(_supabaseUrl, 55321) ||
       !_isLocal(BoardFeedClient.endpoint, 8789) ||
       !_isLocal(_gamebaseUrl, 8790) ||

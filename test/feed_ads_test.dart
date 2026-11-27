@@ -154,9 +154,6 @@ class _ServerEntries extends FeedEntriesNotifier {
   final List<FeedEntry> entries;
 
   @override
-  bool get usesServerFeed => true;
-
-  @override
   List<FeedEntry> build() => entries;
 }
 

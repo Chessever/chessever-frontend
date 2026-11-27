@@ -43,6 +43,8 @@ run in parallel, each on its own free runner. Independent setup steps also use
 GitHub's native `background: true` with `wait-all` barriers before consuming
 their tools or environment changes. Failures at a barrier stop the build.
 The release commands explicitly select the production flavor and `lib/main.dart`.
+Set the repository variable `BOARD_FEED_URL` to the HTTPS origin of the deployed
+feed Worker before building new mobile releases.
 Build-only runs retain the AAB and IPA for seven days. The remaining commands run
 in the same order:
 

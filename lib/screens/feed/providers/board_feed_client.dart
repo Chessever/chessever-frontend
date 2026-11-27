@@ -109,8 +109,10 @@ class BoardFeedPage {
 class BoardFeedClient {
   BoardFeedClient(this.base, this.userId, this.auth);
 
-  static const enabled = bool.fromEnvironment('INTERNAL_BOARD_FEED');
-  static const endpoint = String.fromEnvironment('INTERNAL_BOARD_FEED_URL');
+  static const endpoint = String.fromEnvironment(
+    'BOARD_FEED_URL',
+    defaultValue: String.fromEnvironment('INTERNAL_BOARD_FEED_URL'),
+  );
   static final _random = Random.secure();
 
   final Uri base;
@@ -127,7 +129,7 @@ class BoardFeedClient {
   bool completedLocally(String id) => _pendingCompletions.contains(id);
 
   static BoardFeedClient? forCurrentUser() {
-    if (!enabled || endpoint.isEmpty) return null;
+    if (endpoint.isEmpty) return null;
     final base = Uri.tryParse(endpoint);
     if (base == null || !base.hasAuthority || base.userInfo.isNotEmpty) {
       return null;
