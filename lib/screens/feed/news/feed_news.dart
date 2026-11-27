@@ -219,12 +219,14 @@ class FeedNewsPage extends ConsumerStatefulWidget {
     required this.isCurrent,
     required this.isVisible,
     required this.onRequestNext,
+    this.onRead,
   });
 
   final FeedNews news;
   final bool isCurrent;
   final bool isVisible;
   final VoidCallback onRequestNext;
+  final VoidCallback? onRead;
 
   static const double _gutter = 16;
 
@@ -237,6 +239,11 @@ class _FeedNewsPageState extends ConsumerState<FeedNewsPage> {
   @override
   Widget build(BuildContext context) {
     final news = widget.news;
+    void openArticle() {
+      widget.onRead?.call();
+      NewsReaderScreen.open(context, news);
+    }
+
     final colors = context.colors;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final settled = reduceMotion || (widget.isCurrent && widget.isVisible);
@@ -245,9 +252,10 @@ class _FeedNewsPageState extends ConsumerState<FeedNewsPage> {
       return GestureDetector(
         key: ValueKey('feed_news_${news.key}'),
         behavior: HitTestBehavior.opaque,
-        onTap: () => NewsReaderScreen.open(context, news),
+        onTap: openArticle,
         child: _PartnerNewsLayout(
           news: news,
+          onRead: openArticle,
           settled: settled,
           reduceMotion: reduceMotion,
         ),
@@ -257,7 +265,7 @@ class _FeedNewsPageState extends ConsumerState<FeedNewsPage> {
     return GestureDetector(
       key: ValueKey('feed_news_${news.key}'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => NewsReaderScreen.open(context, news),
+      onTap: openArticle,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
@@ -307,6 +315,7 @@ class _FeedNewsPageState extends ConsumerState<FeedNewsPage> {
                         width: math.max(0, width - 2 * _gutter),
                         child: _Headline(
                           news: news,
+                          onRead: openArticle,
                           summaryLines: height < 520 ? 2 : 3,
                           shadowColor: colors.background,
                         ),
@@ -328,11 +337,13 @@ class _Headline extends StatelessWidget {
     required this.news,
     required this.summaryLines,
     required this.shadowColor,
+    required this.onRead,
   });
 
   final FeedNews news;
   final int summaryLines;
   final Color shadowColor;
+  final VoidCallback onRead;
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +409,7 @@ class _Headline extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 18),
-        _NewsActions(news: news),
+        _NewsActions(news: news, onRead: onRead),
       ],
     );
   }
@@ -406,16 +417,17 @@ class _Headline extends StatelessWidget {
 
 /// Read and Share, at the foot of every article page.
 class _NewsActions extends StatelessWidget {
-  const _NewsActions({required this.news});
+  const _NewsActions({required this.news, required this.onRead});
 
   final FeedNews news;
+  final VoidCallback onRead;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     return Row(
       children: [
-        _ReadButton(onTap: () => NewsReaderScreen.open(context, news)),
+        _ReadButton(onTap: onRead),
         const SizedBox(width: 6),
         Builder(
           builder: (buttonContext) => Semantics(
@@ -456,11 +468,13 @@ class _NewsActions extends StatelessWidget {
 class _PartnerNewsLayout extends StatelessWidget {
   const _PartnerNewsLayout({
     required this.news,
+    required this.onRead,
     required this.settled,
     required this.reduceMotion,
   });
 
   final FeedNews news;
+  final VoidCallback onRead;
   final bool settled;
   final bool reduceMotion;
 
@@ -562,7 +576,7 @@ class _PartnerNewsLayout extends StatelessWidget {
                   const SizedBox(height: 12),
                   Expanded(child: _PartnerExcerpt(news: news)),
                   const SizedBox(height: 18),
-                  _NewsActions(news: news),
+                  _NewsActions(news: news, onRead: onRead),
                 ],
               ),
             ),

@@ -1168,6 +1168,7 @@ class StoryFrameView extends ConsumerStatefulWidget {
     required this.frame,
     required this.progress,
     this.active = true,
+    this.showPuzzle = true,
     this.puzzles,
   });
 
@@ -1176,6 +1177,7 @@ class StoryFrameView extends ConsumerStatefulWidget {
 
   /// The face in view: only it takes a move.
   final bool active;
+  final bool showPuzzle;
   final StoryPuzzleHost? puzzles;
 
   @override
@@ -1240,7 +1242,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   bool _linePending = false;
 
   StorySegment get _segment => widget.frame.position;
-  StoryPuzzle? get _puzzle => _segment.puzzle;
+  StoryPuzzle? get _puzzle => widget.showPuzzle ? _segment.puzzle : null;
 
   bool _reading = false;
 
@@ -1786,6 +1788,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
         segment: segment,
         caption: widget.frame.game.caption,
         puzzleState: _puzzleState,
+        showPuzzle: widget.showPuzzle,
         misses: _misses,
         missedPlayed: _missedPlayed,
         onShow: _waiting ? _show : null,
@@ -2051,6 +2054,7 @@ class StoryMomentText extends StatelessWidget {
     super.key,
     required this.segment,
     this.caption,
+    this.showPuzzle = true,
     this.puzzleState,
     this.misses = 0,
     this.missedPlayed = false,
@@ -2065,6 +2069,7 @@ class StoryMomentText extends StatelessWidget {
   final VoidCallback? onRead;
   final VoidCallback? onResume;
   final ValueChanged<int>? onWordsTouch;
+  final bool showPuzzle;
 
   /// Where the position's question stands; null reads as the question on a
   /// position that asks one.
@@ -2085,7 +2090,7 @@ class StoryMomentText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = StoryTextMetrics.of(context);
-    final puzzle = segment.puzzle;
+    final puzzle = showPuzzle ? segment.puzzle : null;
     final state = puzzle == null
         ? null
         : (puzzleState ?? StoryPuzzleState.prompt);
@@ -2094,8 +2099,8 @@ class StoryMomentText extends StatelessWidget {
     final moveLine = puzzle != null && asking
         ? _askLine(context, text, puzzle, state!)
         : _moveLine(context, text, puzzle, state);
-    final label = asking ? null : _labelOf(segment, state);
-    final comment = asking ? null : _commentOf(segment);
+    final label = asking ? null : _labelOf(segment, state, puzzle);
+    final comment = asking ? null : _commentOf(segment, puzzle);
     final labelLine = label == null
         ? null
         : Text(
@@ -2324,8 +2329,11 @@ class StoryMomentText extends StatelessWidget {
 
   /// Why it matters; for a question once answered, what the game did (a
   /// missed win's move) or what the move is ("Brilliant").
-  static String? _labelOf(StorySegment s, StoryPuzzleState? state) {
-    final puzzle = s.puzzle;
+  static String? _labelOf(
+    StorySegment s,
+    StoryPuzzleState? state,
+    StoryPuzzle? puzzle,
+  ) {
     if (puzzle == null) return s.label;
     final san = s.san;
     if (puzzle.kind == StoryPuzzleKind.findMissed) {
@@ -2342,8 +2350,8 @@ class StoryMomentText extends StatelessWidget {
   /// The words under the label: the book's, and for a missed win how the
   /// win goes on past the move the headline already shows ("Then 61… Re8
   /// 62. Kc5"), as the board plays it.
-  static String? _commentOf(StorySegment s) {
-    final rest = s.puzzle?.continuation?.trim();
+  static String? _commentOf(StorySegment s, StoryPuzzle? puzzle) {
+    final rest = puzzle?.continuation?.trim();
     final words = s.comment;
     if (rest == null || rest.isEmpty) return words;
     final shown = 'Then $rest';
@@ -2822,13 +2830,15 @@ class StoryPlayerRow extends StatelessWidget {
 class StoryActions extends StatelessWidget {
   const StoryActions({
     super.key,
+    this.gameLabel = 'Open game',
     required this.collectionLabel,
     required this.onOpenGame,
     required this.onOpenCollection,
   });
 
+  final String gameLabel;
   final String collectionLabel;
-  final VoidCallback onOpenGame;
+  final VoidCallback? onOpenGame;
   final VoidCallback? onOpenCollection;
 
   /// The actions' line at the reader's text size, never under 48pt.
@@ -2846,7 +2856,7 @@ class StoryActions extends StatelessWidget {
         Expanded(
           child: _StoryAction(
             key: const ValueKey('story_open_game'),
-            label: 'Open game',
+            label: gameLabel,
             hint: 'On the board, at this position',
             // The Feed rail's Analyze: the game on the board.
             glyph: FeedGlyph(
@@ -2890,19 +2900,23 @@ class _StoryAction extends StatelessWidget {
   final String label;
   final String? hint;
   final Widget glyph;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final ink = onTap == null
+        ? colors.textPrimary.withValues(alpha: 0.5)
+        : colors.textPrimary;
     final style = AppTypography.textSmBold.copyWith(
       fontSize: 15,
       height: 1.2,
       fontWeight: FontWeight.w600,
-      color: colors.textPrimary,
+      color: ink,
     );
     return Semantics(
       button: true,
+      enabled: onTap != null,
       label: label,
       hint: hint,
       onTap: onTap,

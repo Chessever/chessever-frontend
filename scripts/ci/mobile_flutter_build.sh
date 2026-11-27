@@ -31,6 +31,7 @@ defines=(
   APPSFLYER_DEV_KEY=APPSFLYER_DEV_KEY
   CHESSEVER_CLOUDFLARE_API_BASE=CHESSEVER_CLOUDFLARE_API_BASE
   ANALYSIS_API_BASE=ANALYSIS_API_BASE
+  BOARD_FEED_URL=BOARD_FEED_URL
 )
 
 args=()
@@ -50,6 +51,10 @@ for entry in "${defines[@]}"; do
   args+=("--dart-define=$key=$value")
 done
 [ "$missing" -eq 0 ] || exit 1
+if [[ "$BOARD_FEED_URL" != https://* ]]; then
+  echo '::error::BOARD_FEED_URL must use HTTPS for mobile releases.'
+  exit 1
+fi
 python3 scripts/ci/validate_client_config.py --mobile
 
 flutter build "$target" --release --flavor production --target lib/main.dart "$@" "${args[@]}"

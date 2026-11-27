@@ -5,7 +5,6 @@ import 'package:chessever2/screens/feed/news/news_models.dart';
 import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/news/news_rich_blocks.dart';
-import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -205,11 +204,6 @@ void main() {
       expect(partner.key, 'rookreview:7');
       expect(FeedNewsEntry(own).key, 'news:7');
       expect(FeedNewsEntry(partner).key, 'news:rookreview:7');
-
-      expect(
-        feedNewsUnseenFirst([own, partner], const {'7'}).map((n) => n.key),
-        ['rookreview:7', '7'],
-      );
     });
   });
 

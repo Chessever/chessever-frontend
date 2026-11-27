@@ -1257,6 +1257,10 @@ class _FakeFeed extends FeedNotifier {
   final List<FeedItem> _items;
 
   @override
+  List<FeedEntry> get serverEntries =>
+      withFeedAds([for (final item in _items) FeedGameEntry(item)]);
+
+  @override
   Future<List<FeedItem>> build() async => _items;
 
   @override

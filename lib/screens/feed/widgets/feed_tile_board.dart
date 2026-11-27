@@ -23,13 +23,12 @@ const Duration _kFeedTileKeepWarm = Duration(minutes: 5);
 ///
 /// - While Feed has already loaded this session, the page it would put the
 ///   viewer back on (a game), else its first game.
-/// - Otherwise the first game of the page Feed cached on disk, which is
-///   exactly the page it paints first on its next open.
+/// - Otherwise the first game of the last backend page cached on disk.
 /// - Null when neither exists (a first launch): the tile shows its pixel
 ///   object and "Games and news".
 ///
 /// It never builds [feedProvider], so Discovery never starts the Feed's
-/// five-source load; it only reads what Feed left. It reads again whenever
+/// backend session; it only reads what Feed left. It reads again whenever
 /// Feed closes ([feedScreenOpenProvider]), since that is when Feed has
 /// cached a new first page.
 final feedTilePreviewProvider = FutureProvider.autoDispose<FeedItem?>((

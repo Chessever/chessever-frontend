@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:chessever2/config/feature_flags.dart';
+import 'package:chessever2/localization/locale_provider.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -13,50 +12,34 @@ import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/logic/feed_codec.dart';
 import 'package:chessever2/screens/feed/logic/feed_moments.dart';
 import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
-import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
+import 'package:chessever2/screens/feed/logic/feed_ranker.dart'
+    show feedIsOnlineEvent;
 import 'package:chessever2/screens/feed/logic/feed_report.dart';
 import 'package:chessever2/screens/feed/logic/feed_taste.dart';
+import 'package:chessever2/screens/feed/models/feed_collection.dart';
+import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
-import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
-import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/feed/news/news_models.dart';
+import 'package:chessever2/screens/feed/news/news_repository.dart';
+import 'package:chessever2/screens/feed/providers/board_feed_client.dart';
 import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/utils/country_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// The Feed: interesting finished games, fully parsed into plies with
-/// critical moments, drawn from a pool by [FeedRanker] so every session is
-/// its own mix.
-///
-/// Sources, all read in parallel into one pool (listing columns only, so a
-/// read is a few kilobytes):
-/// 1. games of the events running now (`group_broadcasts_current`), the
-///    strongest events first by weight;
-/// 2. strong decisive-leaning games from anywhere this week;
-/// 3. games of the players the user follows;
-/// 4. today's most liked games;
-/// Only Supabase games with the same saved-report evidence as Reports can play.
-///
-/// A wider shortlist is fetched in one batch and parsed in an isolate.
-/// Only report-backed clips compete for the final draw, with bonuses for
-/// actual brilliance, turning points and concise decisive games.
-///
-/// How it starts fast:
-/// - **Warm launch.** The last first page lives in SQLite, already parsed.
-///   `build` paints it straight from disk and ranks fresh games behind it.
-/// - **Cold launch.** The first page is cut at [_firstPageSize] games as
-///   soon as the two public sources answer (followed players get a short
-///   grace); the rest of the opening pages follow behind it.
-///
-/// Games shown in earlier sessions are remembered and demoted, so the feed
-/// is new every time it opens. [refresh] re-rolls it with a new seed, and
-/// its first page is never one the viewer has seen: nothing that was on
-/// screen, and nothing shown before while anything unseen is left.
+/// The backend orders the feed. The app hydrates cards and sends feedback.
+final boardFeedClientProvider = Provider<BoardFeedClient?>(
+  (ref) => BoardFeedClient.forCurrentUser(),
+);
+
+class BoardFeedSignInRequired implements Exception {
+  const BoardFeedSignInRequired();
+}
+
 final feedProvider = AsyncNotifierProvider<FeedNotifier, List<FeedItem>>(
   FeedNotifier.new,
 );
@@ -76,74 +59,6 @@ enum FeedMore {
   exhausted,
 }
 
-/// One game waiting to become a [FeedItem].
-class _FeedCandidate {
-  const _FeedCandidate({
-    required this.game,
-    required this.signals,
-    this.pgn,
-    this.hint,
-  });
-
-  final GamesTourModel game;
-  final FeedSignals signals;
-
-  /// PGN already downloaded with the listing, when the source includes it.
-  final String? pgn;
-
-  /// Caption input: the followed player's display name.
-  final String? hint;
-
-  bool get hasInlinePgn => pgn != null && pgn!.trim().isNotEmpty;
-
-  FeedPool get pool => signals.pool;
-
-  /// What the caption code calls this source.
-  FeedSource get source => switch (pool) {
-    FeedPool.favorite => FeedSource.favorite,
-    _ => FeedSource.decisive,
-  };
-}
-
-/// The next refresh, already done: parsed games drawn by their own ranker
-/// from a slice of the week the current feed has not touched, plus what
-/// that slice had left for the pages after them.
-class _FeedReserve {
-  const _FeedReserve({
-    required this.items,
-    required this.ranker,
-    required this.leftovers,
-    required this.drawnAt,
-  });
-
-  final List<FeedItem> items;
-  final FeedRanker ranker;
-  final Map<String, _FeedCandidate> leftovers;
-
-  /// When it was drawn: see [feedReserveLanding].
-  final DateTime drawnAt;
-}
-
-/// The games of a ready reserve that a refresh may land on at [now]: the
-/// ones not in [exclude] (what is on screen, what was shown before), and
-/// only while the reserve is younger than [maxAge], since a feed that sat
-/// open for a while has had new games finish. Empty when the refresh must
-/// draw from the sources instead.
-@visibleForTesting
-List<FeedItem> feedReserveLanding({
-  required List<FeedItem> items,
-  required DateTime drawnAt,
-  required DateTime now,
-  required Set<String> exclude,
-  Duration maxAge = FeedNotifier.reserveMaxAge,
-}) {
-  if (now.difference(drawnAt) > maxAge) return const [];
-  return [
-    for (final item in items)
-      if (!exclude.contains(item.game.gameId)) item,
-  ];
-}
-
 /// The account the Feed's disk cache is kept under: the signed-in user, or
 /// null for a guest (and wherever Supabase is not set up).
 String? feedCacheUserId() {
@@ -155,7 +70,7 @@ String? feedCacheUserId() {
 }
 
 /// The first page Feed last cached for [userId], parsed and ready to play:
-/// exactly the page [FeedNotifier.build] paints on its next open. Empty when
+/// used by the Discovery tile. Empty when
 /// nothing is cached, the cache is older than its max age, or it cannot be
 /// read. Reads SQLite only, never the network, and never builds
 /// [feedProvider].
@@ -176,98 +91,14 @@ Future<List<FeedItem>> readFeedFirstPageCache({String? userId}) async {
 
 class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Where the first page is kept on disk ([readFeedFirstPageCache]).
-  static const String cacheKey = 'flow_feed_first_page_v1';
-  static const String _shownKey = 'flow_feed_shown_v1';
+  static const String cacheKey = 'backend_feed_first_page_v1';
   static const Duration _cacheMaxAge = Duration(minutes: 30);
-
-  /// Games in the page `build` returns: two, so the first board plays as
-  /// soon as one small batch is parsed. The opening pages follow behind.
-  static const int _firstPageSize = 2;
-  static const int _openingTopUp = 4;
-  static const int _pageSize = 5;
-
-  /// Items kept ready beyond the one on screen.
-  static const int _prefetchAhead = 2;
-
-  /// Below this many candidates in the pool, sources are read again.
-  static const int _poolLow = 14;
-
-  /// Below this many distinct events in the pool, sources are read again
-  /// even when it holds plenty of games: on an evening of online events the
-  /// newest pages are one or two events deep, and the ranker's quotas can
-  /// only hold when it has other events to turn to.
-  static const int _poolMinEvents = 8;
-
-  /// Extra pages a page load may read looking for those events.
-  static const int _varietyReads = 3;
-
-  /// Below this many distinct over-the-board events in the pool, the
-  /// over-the-board backfill is read: on a week of online series the 2550+
-  /// listing can hold only three or four, too few for the online quota.
-  static const int _poolMinOtbEvents = 5;
-  static const int _backfillMinRating = 2450;
-  static const int _backfillLimit = 40;
-
-  /// Shown game ids remembered across launches (newest kept).
-  static const int _shownMemory = 400;
-
-  /// Candidates one event may hold in the pool at a time; the best are
-  /// kept. Online events finish hundreds of games an evening, and a pool
-  /// full of one of them leaves the ranker nothing else to draw.
-  static const int _poolPerEvent = 6;
-
-  static const int _currentMinEventElo = 2300;
-  static const int _currentMinRating = 2300;
-  static const int _currentLimit = 60;
-  static const int _topMinRating = 2550;
-  static const int _topLimit = 40;
-
-  /// Games in a reserve: the page a refresh lands on, before any request.
-  static const int _reserveSize = 3;
-
-  /// A reserve older than this is drawn again rather than landed on.
-  static const Duration reserveMaxAge = Duration(minutes: 10);
-
-  /// Refresh draws explore the week in slices of [_topLimit] rows, up to
-  /// this many slices back from the newest.
-  static const int _sliceCount = 24;
-  static const int _favoriteLimit = 16;
-  static const int _likedLimit = 20;
-
-  static const Duration _currentAge = Duration(days: 4);
-  static const Duration _topAge = Duration(days: 7);
-
-  /// How far back the strong listing and the backfill read. Each widens
-  /// once the window before it is read to its end, so the Feed never runs
-  /// out: this week first, then the month, the season, the year.
-  static const List<Duration> _horizons = [
-    _topAge,
-    Duration(days: 30),
-    Duration(days: 120),
-    Duration(days: 365),
-  ];
-  static const Duration _favoriteAge = Duration(days: 14);
-  static const Duration _favoriteGrace = Duration(milliseconds: 400);
-  static const Duration _sourceTimeout = Duration(seconds: 6);
   static const Duration _pgnTimeout = Duration(seconds: 8);
-  static const Duration _refreshTimeout = Duration(seconds: 15);
-
+  static const int _prefetchAhead = 2;
   static const int _minPlies = 10;
   static const int _minDrawPlies = 30;
 
   int _generation = 0;
-  FeedRanker _ranker = FeedRanker(0);
-
-  /// What this viewer enjoys, learned from every visit and kept across
-  /// sessions and refreshes (see [FeedTaste]).
-  final FeedTaste _taste = FeedTaste();
-  static const String _tasteKey = 'flow_feed_taste_v1';
-  bool _tasteLoaded = false;
-  Timer? _tasteWrite;
-
-  /// Signals of every game handed to the screen, for learning from its
-  /// visit.
-  final Map<String, FeedSignals> _postSignals = {};
 
   /// The post on screen and what has happened on it so far.
   String? _visitId;
@@ -275,19 +106,18 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   double _visitProgress = 0;
   final Set<FeedAction> _visitActions = {};
 
-  int _topHorizon = 0;
-  int _backfillHorizon = 0;
+  BoardFeedClient? _boardServer;
+  final _boardPositions = <String, BoardFeedPosition>{};
+  final _newsPositions = <int, BoardFeedPosition>{};
+  final _newsImpressions = <int>{};
+  final _shortPositions = <String, BoardFeedPosition>{};
+  final _shortImpressions = <String>{};
+  final _collectionPositions = <String, BoardFeedPosition>{};
+  final _collectionImpressions = <(String, String)>{};
+  List<FeedEntry>? _serverEntries;
+  List<FeedEntry>? get serverEntries => _serverEntries;
+  String? _boardCursor;
 
-  /// Every game already in the list (or picked for it) this generation.
-  final Set<String> _seen = <String>{};
-
-  /// Games shown in earlier sessions or before a refresh; demoted, not
-  /// excluded, so a quiet day still has a feed.
-  final Set<String> _shownBefore = <String>{};
-  final List<String> _shownOrder = <String>[];
-  bool _shownLoaded = false;
-
-  final Map<String, _FeedCandidate> _pool = <String, _FeedCandidate>{};
   bool _loadingMore = false;
 
   /// The [loadMore] running now, handed to every caller that asks meanwhile.
@@ -298,41 +128,18 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// awaited completes, and at every build.
   FeedMore get more => _more;
 
-  /// The source reads running now; a second refill joins them instead of
-  /// asking every source again.
-  ({Future<void> all, Future<void> public, Future<void> favorites})? _inFlight;
-
-  Map<String, int>? _currentTours;
-  int _currentOffset = 0;
-  bool _currentExhausted = false;
-  int _topOffset = 0;
-  bool _topExhausted = false;
-  int _favoriteOffset = 0;
-  bool _favoritesExhausted = false;
-  bool _likedExhausted = false;
-  int _backfillOffset = 0;
-  bool _backfillExhausted = false;
-
-  /// Ready for the next pull; see [_prepareReserve].
-  _FeedReserve? _reserve;
-
-  /// The generation a reserve is being drawn for, if any. Per generation: a
-  /// draw still running for a feed that has since been refreshed must not
-  /// stop the new feed from drawing its own.
-  int? _preparingReserveFor;
-  final math.Random _slices = math.Random();
-
-  /// Failed requests to the sources every user has. When they all fail and
-  /// nothing is cached, the feed reports an error instead of an empty page,
-  /// so the screen can offer a retry.
-  int _publicSourceFailures = 0;
-  Object? _lastFailure;
-
   @override
   Future<List<FeedItem>> build() async {
     final generation = ++_generation;
-    _resetPaging();
-    _ranker = _newRanker();
+    _loadingMore = false;
+    _moreRun = null;
+    _more = FeedMore.open;
+    final viewer = ref.watch(
+      currentUserProvider.select(
+        (user) => (id: user?.id, isAnonymous: user?.isAnonymous ?? true),
+      ),
+    );
+    final current = ref.read(boardFeedClientProvider);
     _bindBoardSound();
 
     // Warm the streak wall so winners on a run can say so in their caption.
@@ -349,215 +156,45 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       });
     }
 
-    // The sources start now, alongside the disk reads, not after them.
-    final sources = _refillAll(generation);
-    final (cachedRaw, _, _) = await (
-      _readCache(),
-      _loadShown(),
-      _loadTaste(),
-    ).wait;
-    if (generation != _generation) return const [];
-    final cached = cachedRaw.map(_withStreakReason).toList();
-    if (cached.isNotEmpty) {
-      for (final item in cached) {
-        _seen.add(item.game.gameId);
-      }
-      unawaited(
-        _refreshBehindCache(
-          generation,
-          sources,
-        ).then((_) => _prepareReserve(generation)),
-      );
-      return cached;
-    }
-    final first = await _loadFirstPage(generation, sources);
-    if (generation == _generation && first.isNotEmpty) {
-      unawaited(
-        _topUp(
-          generation,
-          _openingTopUp,
-          cacheFirst: first,
-        ).then((_) => _prepareReserve(generation)),
-      );
-    }
-    return first;
-  }
+    _closeVisit();
+    _visitId = null;
+    _visitStart = null;
+    final previous = _boardServer;
+    _boardServer = previous != null && previous.userId == current?.userId
+        ? previous
+        : current;
+    _clearFeedbackPositions();
+    _serverEntries = const [];
+    _boardCursor = null;
 
-  /// Pull-to-refresh: a new draw over fresh sources.
-  ///
-  /// With a reserve ready (the usual case) the new page lands in the same
-  /// frame, no request in the way, and fresh sources are read behind it; but
-  /// only a recent reserve, and only its games the viewer has not seen
-  /// ([feedReserveLanding]). Otherwise the current page stays on screen
-  /// while the fetch runs and is swapped only when the fresh page is ready,
-  /// so a failed refresh keeps the old content (and rethrows, for the screen
-  /// to say so).
-  ///
-  /// Either way the new first page is new: none of the games the feed held
-  /// (on screen or loaded behind it), and none shown before while anything
-  /// unseen is left. Fresh reports lead each refresh; older slices provide
-  /// variety after the newest unseen reports have been used.
-  Future<void> refresh() async {
-    final generation = ++_generation;
-    final showing = [
-      for (final item in state.valueOrNull ?? const <FeedItem>[])
-        item.game.gameId,
-    ];
-    showing.forEach(_remember);
-    final reserve = _reserve;
-    _reserve = null;
-    _resetPaging();
-    // What is on screen stays out of the new draw, and out of any page
-    // appended to the old list should this refresh fail.
-    _seen.addAll(showing);
-
-    final landing = reserve == null
-        ? const <FeedItem>[]
-        : feedReserveLanding(
-            items: reserve.items,
-            drawnAt: reserve.drawnAt,
-            now: now(),
-            exclude: {...showing, ..._shownBefore},
-          );
-    if (reserve != null && landing.isNotEmpty) {
-      _ranker = reserve.ranker;
-      for (final item in reserve.items) {
-        _seen.add(item.game.gameId);
+    final server = _boardServer;
+    if (server == null) {
+      if (viewer.id == null || viewer.isAnonymous) {
+        throw const BoardFeedSignInRequired();
       }
-      for (final candidate in reserve.leftovers.values) {
-        _offer(candidate);
-      }
-      state = AsyncData(List.unmodifiable(landing));
-      _recaption();
-      unawaited(_afterInstantRefresh(generation, landing));
-      return;
+      throw const BoardFeedUnavailable(503);
     }
-
-    _ranker = _newRanker();
-    final first = await _loadFirstPage(generation, _refillAll(generation))
-        .timeout(
-          _refreshTimeout,
-          onTimeout: () {
-            // Abandoned: a late answer must not replace the page the viewer
-            // has since moved on from.
-            if (generation == _generation) {
-              _generation++;
-              _loadingMore = false;
-            }
-            throw TimeoutException('Feed refresh', _refreshTimeout);
-          },
-        );
-    if (generation != _generation) return;
-    if (first.isEmpty) throw StateError('Feed refresh found nothing new');
-    state = AsyncData(List.unmodifiable(first));
-    _recaption();
-    unawaited(
-      _topUp(
-        generation,
-        _openingTopUp,
-        cacheFirst: first,
-      ).then((_) => _prepareReserve(generation)),
+    return _boardItems(
+      await _readServerEntries(server, generation, refresh: true),
     );
   }
 
-  /// Behind an instant refresh: every source again, the pages after the
-  /// reserve, then the reserve for the pull after this one.
-  Future<void> _afterInstantRefresh(
-    int generation,
-    List<FeedItem> first,
-  ) async {
-    try {
-      final sources = _refillAll(generation);
-      // The reserve's leftovers usually cover the next pages already.
-      if (_pool.length < _openingTopUp) await sources.all;
-      if (generation != _generation) return;
-      await _topUp(generation, _openingTopUp, cacheFirst: first);
-      await sources.all;
-      await _prepareReserve(generation);
-    } catch (error, stack) {
-      debugPrint('[Feed] after refresh failed: $error\n$stack');
+  /// Keep the current page on screen while asking the backend for a fresh
+  /// session. Failures propagate so the screen can offer a retry.
+  Future<void> refresh() async {
+    final generation = ++_generation;
+    final server = _boardServer;
+    if (server == null) {
+      if (state.error case final Object error) throw error;
+      throw const BoardFeedUnavailable(503);
     }
-  }
-
-  int _randomSlice() => _slices.nextInt(_sliceCount) * _topLimit;
-
-  /// Parses the next refresh ahead of time: [_reserveSize] games drawn by a
-  /// fresh ranker from the newest unseen reports, joined by
-  /// a share of what the running events and the viewer's own sources have
-  /// in the pool. Its games leave this feed's draw, so the refresh is new.
-  Future<void> _prepareReserve(int generation) async {
-    if (generation != _generation) return;
-    if (_reserve != null || _preparingReserveFor == generation) return;
-    _preparingReserveFor = generation;
-    try {
-      final slice = <String, _FeedCandidate>{};
-      final repository = ref.read(gameRepositoryProvider);
-      final since = DateTime.now().subtract(_topAge);
-      // A slice this feed has already used up is no draw: another one.
-      for (var attempt = 0; attempt < 3 && slice.isEmpty; attempt++) {
-        var rows = await repository.getFeedCandidateGames(
-          since: since,
-          minRating: _topMinRating,
-          limit: _topLimit,
-          offset: attempt == 0 ? 0 : _randomSlice(),
-        );
-        if (rows.isEmpty) {
-          rows = await repository.getFeedCandidateGames(
-            since: since,
-            minRating: _topMinRating,
-            limit: _topLimit,
-          );
-        }
-        if (generation != _generation) return;
-        for (final row in rows) {
-          final game = _tourModel(row);
-          if (game == null ||
-              _seen.contains(game.gameId) ||
-              _shownBefore.contains(game.gameId)) {
-            continue;
-          }
-          if (!game.gameStatus.isFinished) continue;
-          final signals = _signalsOf(game, FeedPool.top);
-          if (!feedMeetsQualityFloor(signals)) continue;
-          slice[game.gameId] = _FeedCandidate(game: game, signals: signals);
-          _capEvent(slice, signals.eventKey, _poolPerEvent);
-        }
-      }
-      // Some of the pool's own flavour: current events, followed players,
-      // likes, a few each, taken out of this feed's draw.
-      final byPool = <FeedPool, int>{};
-      for (final candidate in _pool.values.toList()..shuffle(_slices)) {
-        if (candidate.pool == FeedPool.top) continue;
-        final taken = byPool[candidate.pool] ?? 0;
-        if (taken >= 3) continue;
-        byPool[candidate.pool] = taken + 1;
-        slice[candidate.game.gameId] = candidate;
-        _pool.remove(candidate.game.gameId);
-      }
-      if (slice.isEmpty) return;
-
-      final ranker = _newRanker();
-      final items = await _materialize(
-        generation,
-        _reserveSize,
-        from: slice,
-        ranker: ranker,
-        unseenFirst: true,
-      );
-      if (generation != _generation || items.isEmpty) return;
-      // The whole slice stays out of this feed: it is the next one's.
-      _seen.addAll(slice.keys);
-      _reserve = _FeedReserve(
-        items: items,
-        ranker: ranker,
-        leftovers: slice,
-        drawnAt: now(),
-      );
-    } catch (error) {
-      debugPrint('[Feed] reserve failed: $error');
-    } finally {
-      if (_preparingReserveFor == generation) _preparingReserveFor = null;
-    }
+    _closeVisit();
+    _visitId = null;
+    _visitStart = null;
+    _loadingMore = false;
+    _moreRun = null;
+    final items = await _readServerEntries(server, generation, refresh: true);
+    if (generation == _generation) state = AsyncData(_boardItems(items));
   }
 
   /// Appends the next page. Safe to call repeatedly: while a page is
@@ -578,31 +215,230 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   }
 
   Future<void> _loadMore(int generation) async {
-    var items = <FeedItem>[];
-    var failed = false;
+    final server = _boardServer;
     try {
-      // Two rounds: filters (short draws, unparsable PGNs) can empty a batch.
-      for (var round = 0; round < 2 && items.isEmpty; round++) {
-        await _refillForVariety(generation);
-        if (generation != _generation) return;
-        items = await _materialize(generation, _pageSize);
-        if (generation != _generation) return;
-        if (items.isEmpty && _allSourcesExhausted && _pool.isEmpty) break;
+      if (server == null) return;
+      final entries = await _readServerEntries(server, generation);
+      if (generation == _generation && entries.isNotEmpty) {
+        await _append(generation, _boardItems(entries));
       }
-      if (items.isNotEmpty) await _append(generation, items);
-    } catch (error, stack) {
-      failed = true;
-      debugPrint('[Feed] loadMore failed: $error\n$stack');
+    } catch (_) {
+      if (generation == _generation) _more = FeedMore.stalled;
     } finally {
-      if (generation == _generation) {
-        _loadingMore = false;
-        _more = items.isNotEmpty && !failed
-            ? FeedMore.open
-            : !failed && _allSourcesExhausted && _pool.isEmpty
-            ? FeedMore.exhausted
-            : FeedMore.stalled;
-      }
+      if (generation == _generation) _loadingMore = false;
     }
+  }
+
+  void _clearFeedbackPositions() {
+    _boardPositions.clear();
+    _newsPositions.clear();
+    _newsImpressions.clear();
+    _shortPositions.clear();
+    _shortImpressions.clear();
+    _collectionPositions.clear();
+    _collectionImpressions.clear();
+  }
+
+  List<FeedItem> _boardItems(List<FeedEntry> entries) => [
+    for (final entry in entries.whereType<FeedGameEntry>()) entry.item,
+  ];
+
+  Future<List<FeedEntry>> _readServerEntries(
+    BoardFeedClient server,
+    int generation, {
+    bool refresh = false,
+  }) async {
+    if (!refresh && _boardCursor == null) {
+      _more = FeedMore.exhausted;
+      return const [];
+    }
+    var page = refresh
+        ? await server.start(
+            server.newRequestId(),
+            country: ref.read(countryDropdownProvider).valueOrNull?.countryCode,
+            languages: {
+              ref.read(localeProvider).languageCode,
+              for (final locale in PlatformDispatcher.instance.locales)
+                locale.languageCode,
+            }.take(8).toList(),
+          )
+        : await server.next(_boardCursor!);
+    for (var attempt = 0; ; attempt++) {
+      if (generation != _generation) return const [];
+      final hydrated = await _hydrateServerEntries(server, page.cards);
+      final items = hydrated.any((item) => item is! FeedAdEntry)
+          ? hydrated
+          : const <FeedEntry>[];
+      if (generation != _generation) return const [];
+      final cursor = page.nextCursor;
+      if (items.isNotEmpty || cursor == null || attempt == 4) {
+        if (refresh) _clearFeedbackPositions();
+        for (final item in items) {
+          if (item is FeedGameEntry) {
+            _boardPositions[item.item.game.gameId] = page.position;
+          } else if (item is FeedNewsEntry) {
+            _newsPositions[item.news.id] = page.position;
+          } else if (item is FeedShortEntry) {
+            _shortPositions[item.short.id] = page.position;
+          } else if (item is FeedCollectionEntry) {
+            _collectionPositions[item.key] = page.position;
+          }
+        }
+        _serverEntries = List.unmodifiable([
+          if (!refresh) ...?_serverEntries,
+          ...items,
+        ]);
+        if (refresh) unawaited(_writeCache(_boardItems(items), server.userId));
+        _boardCursor = cursor;
+        _more = cursor == null
+            ? FeedMore.exhausted
+            : items.isEmpty
+            ? FeedMore.stalled
+            : FeedMore.open;
+        return items;
+      }
+      page = await server.next(cursor);
+    }
+  }
+
+  Future<List<FeedEntry>> _hydrateServerEntries(
+    BoardFeedClient server,
+    List<BoardFeedCard> cards,
+  ) async {
+    final counts = <int, int>{
+      for (final card in cards)
+        if (card.articleCount case final int count)
+          if (int.tryParse(card.id) case final int id) id: count,
+    };
+    final (boards, news) = await (
+      _hydrateServerBoards(server, [
+        for (final card in cards)
+          if (!card.isAd &&
+              card.articleCount == null &&
+              card.short == null &&
+              card.collection == null)
+            card.id,
+      ]),
+      _hydrateGroupedNews(counts),
+    ).wait;
+    final boardsById = {for (final board in boards) board.game.gameId: board};
+    return [
+      for (final card in cards)
+        if (card.isAd)
+          FeedAdEntry.server(card.id)
+        else if (card.collection case final collection?)
+          FeedCollectionEntry(collection)
+        else if (card.short case final short?)
+          FeedShortEntry(short)
+        else if (card.articleCount == null) ...[
+          if (boardsById[card.id] case final FeedItem board)
+            FeedGameEntry(board),
+        ] else if (news[int.tryParse(card.id)] case final FeedNews article)
+          FeedNewsEntry(article),
+    ];
+  }
+
+  Future<Map<int, FeedNews>> _hydrateGroupedNews(Map<int, int> counts) async {
+    if (counts.isEmpty) return const {};
+    try {
+      return await ref
+          .read(feedNewsRepositoryProvider)
+          .loadGroupedCards(counts);
+    } catch (error) {
+      debugPrint('[Feed] grouped news hydration failed: $error');
+      return const {};
+    }
+  }
+
+  void noteNewsVisible(int id) {
+    final position = _newsPositions[id];
+    if (position != null && _newsImpressions.add(id)) {
+      _boardServer?.recordNews(position, id, 'impression');
+    }
+  }
+
+  void noteNewsOpened(int id) {
+    final position = _newsPositions[id];
+    if (position != null) _boardServer?.recordNews(position, id, 'open');
+  }
+
+  void noteShortVisible(String id) {
+    final position = _shortPositions[id];
+    if (position != null && _shortImpressions.add(id)) {
+      _boardServer?.recordShort(position, id, 'impression');
+    }
+  }
+
+  void noteShortOpened(String id) {
+    final position = _shortPositions[id];
+    if (position != null) _boardServer?.recordShort(position, id, 'open');
+  }
+
+  void noteCollectionGameVisible(FeedCollection card, String gameId) {
+    final collectionId = card.collection.id;
+    final position = _collectionPositions[card.feedKey];
+    if (position != null &&
+        _collectionImpressions.add((collectionId, gameId))) {
+      _boardServer?.recordCollectionGame(
+        position,
+        collectionId,
+        gameId,
+        'impression',
+      );
+    }
+  }
+
+  void noteCollectionGameOpened(FeedCollection card, String gameId) {
+    final collectionId = card.collection.id;
+    final position = _collectionPositions[card.feedKey];
+    if (position != null) {
+      _boardServer?.recordCollectionGame(
+        position,
+        collectionId,
+        gameId,
+        'open',
+      );
+    }
+  }
+
+  Future<List<FeedItem>> _hydrateServerBoards(
+    BoardFeedClient server,
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return const [];
+    final repository = ref.read(gameRepositoryProvider);
+    final (rows, classifications) = await (
+      repository.getGamesByIds(ids).timeout(_pgnTimeout),
+      _loadClassifications(ids),
+    ).wait;
+    final byId = {for (final row in rows) row.id: row};
+    final candidates = <(GamesTourModel, String)>[];
+    for (final id in ids) {
+      final row = byId[id];
+      if (row == null) continue;
+      final game = _tourModel(row);
+      final pgn = game?.pgn;
+      if (game == null || pgn == null || pgn.isEmpty) continue;
+      candidates.add((game, pgn));
+    }
+    final clips = await compute(_parseFlowClips, [
+      for (final (_, pgn) in candidates) pgn,
+    ]);
+    final items = <FeedItem>[];
+    final now = DateTime.now();
+    for (var index = 0; index < candidates.length; index++) {
+      final (game, pgn) = candidates[index];
+      final id = game.gameId;
+      if (server.completedLocally(id)) continue;
+      final type = feedReportType(
+        classifications[id],
+        pgn,
+        _resultOf(game.gameStatus) ?? '',
+      );
+      final item = _toItem(game, clips[index], pgn, now, reportType: type);
+      if (item != null) items.add(item);
+    }
+    return items;
   }
 
   /// Called when the viewer reaches [index] so the notifier can prefetch:
@@ -615,7 +451,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     final items = state.valueOrNull;
     if (items == null) return;
     if (index >= 0 && index < items.length) {
-      _remember(items[index].game.gameId);
       _visit(items[index].game.gameId);
     } else if (index < 0) {
       _closeVisit();
@@ -625,18 +460,23 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (items.length - 1 - index <= _prefetchAhead + 1) {
       unawaited(loadMore());
     }
-    _redrawStaleReserve();
   }
 
   /// How much of [gameId]'s clip has played (0..1), as the clip reports it.
   void noteProgress(String gameId, double fraction) {
     if (gameId != _visitId) return;
     if (fraction > _visitProgress) _visitProgress = fraction;
+    if (fraction >= 1 &&
+        _visitStart != null &&
+        DateTime.now().difference(_visitStart!) >= const Duration(seconds: 4)) {
+      _recordBoardEvent(gameId, 'complete');
+    }
   }
 
   /// Something the viewer did with [gameId]'s post.
   void noteAction(String gameId, FeedAction action) {
-    if (gameId == _visitId) _visitActions.add(action);
+    if (gameId != _visitId) return;
+    if (_visitActions.add(action)) _recordBoardEvent(gameId, action.name);
   }
 
   /// The viewer moved to [gameId]: what they did on the post before it is
@@ -648,660 +488,25 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _visitStart = DateTime.now();
     _visitProgress = 0;
     _visitActions.clear();
+    _recordBoardEvent(gameId, 'impression');
   }
 
-  /// Signals for a post handed out before this feed's bookkeeping began (the
-  /// cached first page, a refresh's reserve): read off the post itself.
-  FeedSignals? _signalsOnScreen(String id) {
-    for (final item in state.valueOrNull ?? const <FeedItem>[]) {
-      if (item.game.gameId != id) continue;
-      final base = _signalsOf(item.game, FeedPool.top);
-      final pgn = item.game.pgn ?? '';
-      return base.withSeenBefore(
-        false,
-        reportType: item.reportType,
-        freestyle: base.freestyle || feedPgnIsFreestyle(pgn),
-        online: base.online || feedPgnIsOnline(pgn),
-      );
-    }
-    return null;
+  void _recordBoardEvent(String gameId, String kind) {
+    final position = _boardPositions[gameId];
+    if (position != null) _boardServer?.record(position, gameId, kind);
   }
 
   void _closeVisit() {
     final id = _visitId;
     final start = _visitStart;
-    final signals = id == null
-        ? null
-        : _postSignals[id] ?? _signalsOnScreen(id);
-    if (signals == null || start == null) return;
-    _taste.learn(
-      signals,
-      FeedVisit(
-        dwell: DateTime.now().difference(start),
-        progress: _visitProgress,
-        actions: {..._visitActions},
-      ),
-    );
-    _scheduleTasteWrite();
-  }
-
-  /// A reserve the viewer has scrolled past [reserveMaxAge] with is drawn
-  /// again behind them, so the next pull still lands at once, on games that
-  /// finished since.
-  void _redrawStaleReserve() {
-    final reserve = _reserve;
-    if (reserve == null || _preparingReserveFor == _generation) return;
-    if (now().difference(reserve.drawnAt) <= reserveMaxAge) return;
-    _reserve = null;
-    // Nothing of it was shown: its games go back to this feed's draw.
-    for (final item in reserve.items) {
-      _seen.remove(item.game.gameId);
-    }
-    for (final candidate in reserve.leftovers.values) {
-      _seen.remove(candidate.game.gameId);
-      _offer(candidate);
-    }
-    unawaited(_prepareReserve(_generation));
-  }
-
-  /// The time, for the reserve's age. A seam for tests.
-  @protected
-  @visibleForTesting
-  DateTime now() => DateTime.now();
-
-  /// What the feed has learned about the viewer.
-  @visibleForTesting
-  FeedTaste get taste => _taste;
-
-  /// The games of the ready reserve, if there is one.
-  @visibleForTesting
-  List<String>? get reserveIds =>
-      _reserve?.items.map((item) => item.game.gameId).toList(growable: false);
-
-  // ---------------------------------------------------------------------------
-  // First page
-  // ---------------------------------------------------------------------------
-
-  Future<List<FeedItem>> _loadFirstPage(
-    int generation,
-    ({Future<void> all, Future<void> public, Future<void> favorites}) sources,
-  ) async {
-    // The two public sources decide the first pick; a followed player's game
-    // gets a short grace to compete for it.
-    await Future.wait([
-      sources.public,
-      sources.favorites.timeout(_favoriteGrace, onTimeout: () {}),
-    ]).timeout(_sourceTimeout, onTimeout: () => const []);
-    if (generation != _generation) return const [];
-    if (_pool.isEmpty) {
-      await sources.all.timeout(_sourceTimeout, onTimeout: () {});
-      if (generation != _generation) return const [];
-    }
-
-    // The first page is games the viewer has not seen, while any are left.
-    var items = <FeedItem>[];
-    for (var attempt = 0; attempt < 3 && items.isEmpty; attempt++) {
-      if (attempt > 0) {
-        await sources.all.timeout(_sourceTimeout, onTimeout: () {});
-        if (generation != _generation) return const [];
-        if (_pool.isEmpty && !_allSourcesExhausted) {
-          await _refillAll(generation).all;
-        }
-      }
-      if (generation != _generation) return const [];
-      items = await _materialize(generation, _firstPageSize, unseenFirst: true);
-      if (_allSourcesExhausted && _pool.isEmpty) break;
-    }
-    if (generation != _generation) return const [];
-    if (items.isEmpty && _publicSourceFailures > 0 && _pool.isEmpty) {
-      throw StateError('Feed unavailable: $_lastFailure');
-    }
-    return items;
-  }
-
-  /// The opening pages behind the first one, then the cache for next launch.
-  Future<void> _topUp(
-    int generation,
-    int count, {
-    required List<FeedItem> cacheFirst,
-  }) async {
-    try {
-      await _refillForVariety(generation);
-      if (generation != _generation) return;
-      final more = await _materialize(generation, count);
-      if (generation != _generation) return;
-      if (more.isNotEmpty) await _append(generation, more);
-      unawaited(_writeCache([...cacheFirst, ...more]));
-    } catch (error, stack) {
-      debugPrint('[Feed] opening top-up failed: $error\n$stack');
-    }
-  }
-
-  /// Warm launch: the cached page is on screen; rank fresh games behind it.
-  Future<void> _refreshBehindCache(
-    int generation,
-    ({Future<void> all, Future<void> public, Future<void> favorites}) sources,
-  ) async {
-    try {
-      await sources.all;
-      if (generation != _generation) return;
-      await _refillForVariety(generation);
-      if (generation != _generation) return;
-      final fresh = await _materialize(generation, _pageSize);
-      if (generation != _generation || fresh.isEmpty) return;
-      await _append(generation, fresh);
-      // Next launch opens on these, not on what the viewer just saw.
-      unawaited(_writeCache(fresh));
-    } catch (error, stack) {
-      debugPrint('[Feed] background refresh failed: $error\n$stack');
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Sources
-  // ---------------------------------------------------------------------------
-
-  /// Reads every source that still has games, in parallel. [public] settles
-  /// with the two sources every viewer has; [favorites] with the followed
-  /// players; [all] with everything.
-  ({Future<void> all, Future<void> public, Future<void> favorites}) _refillAll(
-    int generation,
-  ) {
-    final running = _inFlight;
-    if (running != null) return running;
-    Future<void> guard(Future<void> Function() run) =>
-        run().timeout(_sourceTimeout, onTimeout: () {});
-    // Each is a real Future<void>, not a Future<List<void>> typed as one:
-    // `.timeout(onTimeout: () {})` on the latter throws a TypeError, which
-    // failed the Feed's first load whenever its pool was still empty.
-    final Future<void> public = Future.wait([
-      if (!_currentExhausted) guard(() => _fetchCurrent(generation)),
-      if (!_topExhausted) guard(() => _fetchTop(generation)),
-    ]).then<void>((_) {});
-    final favorites = _favoritesExhausted
-        ? Future<void>.value()
-        : guard(() => _fetchFavorites(generation));
-    final Future<void> others = Future.wait([
-      if (!_likedExhausted) guard(() => _fetchLiked(generation)),
-    ]).then<void>((_) {});
-    final Future<void> all = Future.wait([
-      public,
-      favorites,
-      others,
-    ]).then<void>((_) {});
-    final reads = (all: all, public: public, favorites: favorites);
-    _inFlight = reads;
-    all.whenComplete(() {
-      if (identical(_inFlight, reads)) _inFlight = null;
-    }).ignore();
-    return reads;
-  }
-
-  /// Reads the sources again while the pool is short of games or of
-  /// distinct events, up to [_varietyReads] times, and while any source has
-  /// more.
-  ///
-  /// Short of over-the-board events, it reads the over-the-board backfill
-  /// ([_fetchBackfill]) instead: more pages of the same online evening would
-  /// not help.
-  Future<void> _refillForVariety(int generation) async {
-    for (var read = 0; read < _varietyReads; read++) {
-      if (generation != _generation) return;
-      final events = <String?>{};
-      final otbEvents = <String?>{};
-      for (final c in _pool.values) {
-        events.add(c.signals.eventKey);
-        if (!c.signals.online) otbEvents.add(c.signals.eventKey);
-      }
-      final short = _pool.length < _poolLow || events.length < _poolMinEvents;
-      final fewOtb = otbEvents.length < _poolMinOtbEvents;
-      if (fewOtb && !_backfillExhausted) {
-        await _fetchBackfill(
-          generation,
-        ).timeout(_sourceTimeout, onTimeout: () {});
-      } else if (short && !_allSourcesExhausted) {
-        await _refillAll(generation).all;
-      } else {
-        return;
-      }
-    }
-  }
-
-  /// Over-the-board games from this week a step below [_topMinRating], the
-  /// floor of [feedMeetsQualityFloor] still applying: the supply of other
-  /// events when the strong listing is one online series deep.
-  Future<void> _fetchBackfill(int generation) async {
-    final offset = _backfillOffset;
-    _backfillOffset += _backfillLimit;
-    try {
-      final rows = await ref
-          .read(gameRepositoryProvider)
-          .getFeedCandidateGames(
-            since: DateTime.now().subtract(_horizons[_backfillHorizon]),
-            minRating: _backfillMinRating,
-            limit: _backfillLimit,
-            offset: offset,
-            overTheBoardOnly: true,
-          );
-      if (generation != _generation) return;
-      if (rows.length < _backfillLimit) {
-        if (_backfillHorizon < _horizons.length - 1) {
-          _backfillHorizon++;
-        } else {
-          _backfillExhausted = true;
-        }
-      }
-      for (final row in rows) {
-        final game = _tourModel(row);
-        if (game == null || feedIsOnlineEvent(game.tourSlug)) continue;
-        _offer(
-          _FeedCandidate(game: game, signals: _signalsOf(game, FeedPool.top)),
-        );
-      }
-    } catch (error) {
-      if (generation != _generation) return;
-      debugPrint('[Feed] over-the-board backfill failed: $error');
-      _backfillExhausted = true;
-    }
-  }
-
-  bool get _allSourcesExhausted =>
-      _currentExhausted &&
-      _topExhausted &&
-      _favoritesExhausted &&
-      _likedExhausted;
-
-  /// Games of the events running now. The tour roster is read once per
-  /// generation; the games page by offset.
-  Future<void> _fetchCurrent(int generation) async {
-    final repository = ref.read(gameRepositoryProvider);
-    try {
-      final tours = _currentTours ??= await repository.getCurrentEventTourElos(
-        minEventElo: _currentMinEventElo,
-      );
-      if (generation != _generation) return;
-      if (tours.isEmpty) {
-        _currentExhausted = true;
-        return;
-      }
-      final offset = _currentOffset;
-      _currentOffset += _currentLimit;
-      final rows = await repository.getFeedCandidateGames(
-        since: DateTime.now().subtract(_currentAge),
-        tourIds: tours.keys.toList(growable: false),
-        minRating: _currentMinRating,
-        limit: _currentLimit,
-        offset: offset,
-      );
-      if (generation != _generation) return;
-      if (rows.length < _currentLimit) _currentExhausted = true;
-      for (final row in rows) {
-        final game = _tourModel(row);
-        if (game == null) continue;
-        _offer(
-          _FeedCandidate(
-            game: game,
-            signals: _signalsOf(
-              game,
-              FeedPool.current,
-              eventElo: tours[row.tourId] ?? 0,
-            ),
-          ),
-        );
-      }
-    } catch (error) {
-      if (generation != _generation) return;
-      debugPrint('[Feed] current events failed: $error');
-      _publicSourceFailures++;
-      _lastFailure = error;
-      _currentExhausted = true;
-    }
-  }
-
-  /// Strong games from anywhere this week.
-  Future<void> _fetchTop(int generation) async {
-    final offset = _topOffset;
-    _topOffset += _topLimit;
-    try {
-      final rows = await ref
-          .read(gameRepositoryProvider)
-          .getFeedCandidateGames(
-            since: DateTime.now().subtract(_horizons[_topHorizon]),
-            minRating: _topMinRating,
-            limit: _topLimit,
-            offset: offset,
-          );
-      if (generation != _generation) return;
-      // Newest first either way, so the same offset carries on into a
-      // wider window where this one ended.
-      if (rows.length < _topLimit) {
-        if (_topHorizon < _horizons.length - 1) {
-          _topHorizon++;
-        } else {
-          _topExhausted = true;
-        }
-      }
-      for (final row in rows) {
-        final game = _tourModel(row);
-        if (game == null) continue;
-        _offer(
-          _FeedCandidate(game: game, signals: _signalsOf(game, FeedPool.top)),
-        );
-      }
-    } catch (error) {
-      if (generation != _generation) return;
-      debugPrint('[Feed] top games failed: $error');
-      _publicSourceFailures++;
-      _lastFailure = error;
-      _topExhausted = true;
-    }
-  }
-
-  Future<void> _fetchFavorites(int generation) async {
-    try {
-      final favorites = await ref
-          .read(favoritePlayersProviderNew.future)
-          .timeout(const Duration(seconds: 4));
-      final fideIds = <String>{
-        for (final favorite in favorites)
-          if ((favorite.fideId ?? '').trim().isNotEmpty)
-            favorite.fideId!.trim(),
-      };
-      _taste.seed(players: fideIds, country: _viewerFed());
-      if (fideIds.isEmpty) {
-        _favoritesExhausted = true;
-        return;
-      }
-      final offset = _favoriteOffset;
-      _favoriteOffset += _favoriteLimit;
-      final games = await ref
-          .read(gameRepositoryProvider)
-          .getGamesByMultipleFideIds(
-            fideIds: fideIds.toList(growable: false),
-            limit: _favoriteLimit,
-            offset: offset,
-          );
-      if (generation != _generation) return;
-      if (games.length < _favoriteLimit) _favoritesExhausted = true;
-
-      final followed = fideIds.map(int.tryParse).whereType<int>().toSet();
-      var inWindow = 0;
-      for (final row in games) {
-        final game = _tourModel(row);
-        if (game == null || !_isRecent(game, _favoriteAge)) continue;
-        inWindow++;
-        if (!game.gameStatus.isFinished) continue;
-        final player = followed.contains(game.whitePlayer.fideId)
-            ? game.whitePlayer
-            : followed.contains(game.blackPlayer.fideId)
-            ? game.blackPlayer
-            : null;
-        if (player == null) continue;
-        _offer(
-          _FeedCandidate(
-            game: game,
-            signals: _signalsOf(game, FeedPool.favorite),
-            pgn: row.isPgnDeferred ? null : row.pgn,
-            hint: formatPlayerDisplayName(player.name),
-          ),
-        );
-      }
-      if (games.isNotEmpty && inWindow == 0) _favoritesExhausted = true;
-    } catch (error) {
-      if (generation != _generation) return;
-      debugPrint('[Feed] favorites failed: $error');
-      _favoritesExhausted = true;
-    }
-  }
-
-  /// Today's most liked games: the one Most Liked window every viewer may
-  /// read. Read once per generation.
-  Future<void> _fetchLiked(int generation) async {
-    _likedExhausted = true;
-    try {
-      final result = await ref
-          .read(discoveryRepositoryProvider)
-          .fetchMostLiked(
-            MostLikedQuery(MostLikedPeriod.today, DateTime.now()),
-            limit: _likedLimit,
-          );
-      if (generation != _generation) return;
-      for (final entry in result.entries) {
-        final game = entry.game;
-        if (!game.gameStatus.isFinished || game.source != GameSource.supabase) {
-          continue;
-        }
-        _offer(
-          _FeedCandidate(
-            game: game,
-            signals: _signalsOf(game, FeedPool.liked, likes: entry.likes),
-          ),
-        );
-      }
-    } catch (error) {
-      debugPrint('[Feed] most liked failed: $error');
-    }
-  }
-
-  FeedSignals _signalsOf(
-    GamesTourModel game,
-    FeedPool pool, {
-    int likes = 0,
-    int eventElo = 0,
-  }) {
-    final finished = game.lastMoveTime ?? game.bucketDate;
-    String key(PlayerCard p) => p.fideId?.toString() ?? p.name.trim();
-    return FeedSignals(
-      id: game.gameId,
-      pool: pool,
-      whiteElo: game.whitePlayer.rating,
-      blackElo: game.blackPlayer.rating,
-      result: _resultOf(game.gameStatus) ?? '',
-      age: finished == null
-          ? const Duration(days: 30)
-          : DateTime.now().difference(finished),
-      likes: likes,
-      eventElo: eventElo,
-      eventKey: game.tourId,
-      playerKeys: {
-        for (final player in [game.whitePlayer, game.blackPlayer])
-          if (key(player).isNotEmpty) key(player),
-      },
-      openingKey: game.eco?.trim().isNotEmpty == true ? game.eco!.trim() : null,
-      freestyle: feedIsFreestyleEvent(game.tourSlug),
-      online: feedIsOnlineEvent(game.tourSlug),
-      countries: {
-        for (final player in [game.whitePlayer, game.blackPlayer])
-          if (player.countryCode.trim().isNotEmpty)
-            player.countryCode.trim().toUpperCase(),
-      },
-      timeClass: game.timeControl?.trim().toLowerCase(),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Pool → items
-  // ---------------------------------------------------------------------------
-
-  /// Adds [candidate] to the pool. A game several sources offer keeps the
-  /// version that ranks higher, and any PGN either one carried.
-  void _offer(_FeedCandidate candidate) {
-    final id = candidate.game.gameId;
-    if (candidate.game.source != GameSource.supabase) return;
-    if (_seen.contains(id) || !candidate.game.gameStatus.isFinished) return;
-    if (!feedMeetsQualityFloor(candidate.signals)) return;
-    final existing = _pool[id];
-    if (existing == null) {
-      _pool[id] = candidate;
-      _capEvent(_pool, candidate.signals.eventKey, _poolPerEvent);
-      return;
-    }
-    final keep =
-        feedInterest(candidate.signals) > feedInterest(existing.signals)
-        ? candidate
-        : existing;
-    final other = identical(keep, candidate) ? existing : candidate;
-    _pool[id] = keep.hasInlinePgn || !other.hasInlinePgn
-        ? keep
-        : _FeedCandidate(
-            game: keep.game,
-            signals: keep.signals,
-            pgn: other.pgn,
-            hint: keep.hint,
-          );
-  }
-
-  /// Keeps at most [limit] candidates of [event] in [pool], dropping the
-  /// least interesting.
-  static void _capEvent(
-    Map<String, _FeedCandidate> pool,
-    String? event,
-    int limit,
-  ) {
-    if (event == null) return;
-    final same = [
-      for (final c in pool.values)
-        if (c.signals.eventKey == event) c,
-    ];
-    if (same.length <= limit) return;
-    same.sort(
-      (a, b) => feedInterest(b.signals).compareTo(feedInterest(a.signals)),
-    );
-    for (final c in same.skip(limit)) {
-      pool.remove(c.game.gameId);
-    }
-  }
-
-  /// Previews up to three times [count] games, fetches the PGNs they still
-  /// need in one batched read, then parses them in one background isolate.
-  ///
-  /// [unseenFirst]: games shown before are not drawn at all while any other
-  /// is left (elsewhere they are only demoted). For a first page, which is
-  /// what a new session or a refresh opens on.
-  Future<List<FeedItem>> _materialize(
-    int generation,
-    int count, {
-    Map<String, _FeedCandidate>? from,
-    FeedRanker? ranker,
-    bool unseenFirst = false,
-  }) async {
-    final pool = from ?? _pool;
-    final draw = ranker ?? _ranker;
-    // Preview a wider shortlist without committing rejected games to history.
-    // It follows the feed's recent picks, so it does not fill up with the
-    // kind of game the feed's quotas will not take next.
-    final shortlist = FeedRanker.following(draw, _newSeed());
-    // History may have loaded after a candidate was offered; read it now.
-    final signals = [
-      for (final c in pool.values)
-        c.signals.withSeenBefore(_shownBefore.contains(c.game.gameId)),
-    ];
-    final picked = <_FeedCandidate>[];
-    var unseenOnly = unseenFirst;
-    while (picked.length < count * 3) {
-      final next = shortlist.next(
-        signals,
-        eligible: unseenOnly ? (s) => !s.seenBefore : null,
-      );
-      if (next == null) {
-        if (!unseenOnly) break;
-        unseenOnly = false;
-        continue;
-      }
-      final candidate = pool.remove(next.id);
-      if (candidate == null || !_seen.add(next.id)) continue;
-      picked.add(candidate);
-    }
-    if (picked.isEmpty) return const [];
-
-    final batchIds = [
-      for (final c in picked)
-        if (!c.hasInlinePgn) c.game.gameId,
-    ];
-    final (batch, classifications) = await (
-      _batchPgns(batchIds),
-      _loadClassifications([for (final c in picked) c.game.gameId]),
-    ).wait;
-    if (generation != _generation) return const [];
-
-    final ready = <(_FeedCandidate, String)>[];
-    for (var i = 0; i < picked.length; i++) {
-      final pgn = picked[i].pgn ?? batch[picked[i].game.gameId];
-      if (pgn != null && pgn.trim().isNotEmpty) ready.add((picked[i], pgn));
-    }
-    if (ready.isEmpty) return const [];
-
-    final clips = await compute(_parseFlowClips, [
-      for (final (_, pgn) in ready) pgn,
-    ]);
-
-    if (generation != _generation) return const [];
-    final now = DateTime.now();
-    final playable = <String, FeedItem>{};
-    final ranked = <FeedSignals>[];
-    for (var i = 0; i < ready.length; i++) {
-      final (candidate, pgn) = ready[i];
-      final clip = clips[i];
-      final type = feedReportType(
-        classifications[candidate.game.gameId],
-        pgn,
-        _resultOf(candidate.game.gameStatus) ?? '',
-      );
-      final item = _toItem(candidate, clip, pgn, now, reportType: type);
-      if (item == null) continue;
-      playable[candidate.game.gameId] = item;
-      ranked.add(
-        candidate.signals.withSeenBefore(
-          _shownBefore.contains(candidate.game.gameId),
-          reportInterest: feedReportInterest(clip!, type: type),
-          reportType: type,
-          // The moves settle it where the event name did not.
-          freestyle: candidate.signals.freestyle || feedPgnIsFreestyle(pgn),
-          online:
-              candidate.signals.online ||
-              feedIsOnlineEvent(null, clip.event) ||
-              feedPgnIsOnline(pgn),
-        ),
-      );
-      // Keep eligible runners-up ready for the next page, with their PGNs.
-      _seen.remove(candidate.game.gameId);
-      pool[candidate.game.gameId] = _FeedCandidate(
-        game: candidate.game,
-        signals: ranked.last,
-        pgn: pgn,
-        hint: candidate.hint,
-      );
-    }
-    final items = <FeedItem>[];
-    unseenOnly = unseenFirst;
-    while (items.length < count) {
-      final next = draw.next(
-        ranked,
-        eligible: unseenOnly ? (s) => !s.seenBefore : null,
-      );
-      if (next == null) {
-        if (!unseenOnly) break;
-        unseenOnly = false;
-        continue;
-      }
-      pool.remove(next.id);
-      _seen.add(next.id);
-      _postSignals[next.id] = next;
-      items.add(playable[next.id]!);
-    }
-    return items;
-  }
-
-  Future<Map<String, String>> _batchPgns(List<String> ids) async {
-    if (ids.isEmpty) return const {};
-    try {
-      return await ref
-          .read(gameRepositoryProvider)
-          .getGamePgns(ids)
-          .timeout(_pgnTimeout);
-    } catch (error) {
-      debugPrint('[Feed] PGN batch failed: $error');
-      return const {};
+    if (id == null || start == null) return;
+    final dwell = DateTime.now().difference(start);
+    if (_visitProgress >= 1 && dwell >= const Duration(seconds: 4)) {
+      _recordBoardEvent(id, 'complete');
+    } else if (_visitProgress < 0.3 &&
+        dwell < const Duration(seconds: 3) &&
+        _visitActions.isEmpty) {
+      _recordBoardEvent(id, 'skip');
     }
   }
 
@@ -1319,17 +524,15 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   }
 
   FeedItem? _toItem(
-    _FeedCandidate candidate,
+    GamesTourModel game,
     FeedClip? clip,
     String pgn,
     DateTime now, {
     ReportGameType? reportType,
   }) {
     if (clip == null || clip.plyCount < _minPlies) return null;
-    // The Feed is a report feed: a game without a ChessEver Game Report has
-    // nothing to rank it by, so it never becomes a post.
+    // Feed replays need both a saved report and evaluations.
     if (!clip.hasReport || !clip.hasEvals) return null;
-    final game = candidate.game;
     if (game.source != GameSource.supabase || !game.gameStatus.isFinished) {
       return null;
     }
@@ -1346,8 +549,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       reason:
           streak?.reason ??
           feedReasonFor(
-            source: candidate.source,
-            hint: candidate.hint,
+            source: FeedSource.decisive,
+            hint: null,
             game: game,
             plies: clip.plies,
             result: result,
@@ -1356,27 +559,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       eventLabel: clip.event ?? _prettySlug(game.tourSlug),
       result: result,
       hasEvals: clip.hasEvals,
-      signal: streak?.signal ?? _signalFor(candidate),
-      likes: candidate.signals.likes,
+      signal: streak?.signal,
       reportType: reportType,
     );
-  }
-
-  /// The header mark a source earns on its own, strongest first: the
-  /// followed player and today's likes. Top boards of a
-  /// running event earn none: the event label already says where it is.
-  static FeedSignal? _signalFor(_FeedCandidate candidate) {
-    final s = candidate.signals;
-    if (s.pool == FeedPool.favorite) {
-      final name = candidate.hint?.trim() ?? '';
-      if (name.isNotEmpty) {
-        return FeedSignal(FeedSignalKind.favorite, name: name);
-      }
-    }
-    if (s.pool == FeedPool.liked && s.likes > 1) {
-      return FeedSignal(FeedSignalKind.liked, count: s.likes);
-    }
-    return null;
   }
 
   static DateTime? _dayOf(String? raw) {
@@ -1486,7 +671,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       if (identical(item, items[i])) continue;
       (next ??= List.of(items))[i] = item;
     }
-    if (next != null) state = AsyncData(List.unmodifiable(next));
+    if (next != null) {
+      final byId = {for (final item in next) item.game.gameId: item};
+      _serverEntries = [
+        for (final entry in _serverEntries ?? const [])
+          if (entry case FeedGameEntry(:final item))
+            FeedGameEntry(byId[item.game.gameId] ?? item)
+          else
+            entry,
+      ];
+      state = AsyncData(List.unmodifiable(next));
+    }
   }
 
   Future<void> _append(int generation, List<FeedItem> items) async {
@@ -1505,141 +700,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     state = AsyncData(List.unmodifiable([...current, ...items]));
   }
 
-  // ---------------------------------------------------------------------------
-  // Plumbing
-  // ---------------------------------------------------------------------------
-
-  void _resetPaging() {
-    _seen.clear();
-    _pool.clear();
-    _loadingMore = false;
-    _moreRun = null;
-    _more = FeedMore.open;
-    _inFlight = null;
-    _reserve = null;
-    _currentTours = null;
-    _currentOffset = 0;
-    _currentExhausted = false;
-    _topOffset = 0;
-    _topExhausted = false;
-    _favoriteOffset = 0;
-    _favoritesExhausted = false;
-    _likedExhausted = false;
-    _backfillOffset = 0;
-    _backfillExhausted = false;
-    _topHorizon = 0;
-    _backfillHorizon = 0;
-    _postSignals.clear();
-    _publicSourceFailures = 0;
-    _lastFailure = null;
-  }
-
-  static int _newSeed() => math.Random().nextInt(1 << 31);
-
-  FeedRanker _newRanker() => FeedRanker(_newSeed(), taste: _taste);
-
-  /// The viewer's taste from earlier sessions, and what the app knows about
-  /// them: their country now, their followed players when that source reads.
-  Future<void> _loadTaste() async {
-    if (_tasteLoaded) return;
-    try {
-      _taste.seed(country: _viewerFed());
-      final entry = await AppDatabase.instance.getCache(
-        key: _tasteKey,
-        userId: _userId,
-        maxAge: const Duration(days: 180),
-      );
-      if (entry != null) _taste.restore(entry.value, DateTime.now());
-    } catch (error) {
-      debugPrint('[Feed] taste unreadable: $error');
-    } finally {
-      _tasteLoaded = true;
-    }
-  }
-
-  /// The viewer's federation (FIDE code, as games carry it), once known.
-  String? _viewerFed() {
-    final iso = ref.read(countryDropdownProvider).valueOrNull?.countryCode;
-    return iso == null || iso.isEmpty ? null : CountryUtils.toFideCode(iso);
-  }
-
-  /// Coalesces a run of swipes into one small write.
-  void _scheduleTasteWrite() {
-    if (!_tasteLoaded) return;
-    _tasteWrite?.cancel();
-    _tasteWrite = Timer(const Duration(seconds: 5), () async {
-      try {
-        await AppDatabase.instance.setCache(
-          key: _tasteKey,
-          userId: _userId,
-          value: _taste.encode(DateTime.now()),
-        );
-      } catch (error) {
-        debugPrint('[Feed] taste write failed: $error');
-      }
-    });
-  }
-
-  /// Notes [id] as shown to this viewer, for this and later sessions.
-  void _remember(String id) {
-    if (!_shownBefore.add(id)) return;
-    _shownOrder.add(id);
-    if (_shownOrder.length > _shownMemory) {
-      _shownBefore.remove(_shownOrder.removeAt(0));
-    }
-    _scheduleShownWrite();
-  }
-
-  Timer? _shownWrite;
-
-  /// Coalesces a burst of swipes into one small write.
-  void _scheduleShownWrite() {
-    if (!_shownLoaded) return;
-    _shownWrite?.cancel();
-    _shownWrite = Timer(const Duration(seconds: 3), () {
-      unawaited(_writeShown());
-    });
-  }
-
-  Future<void> _loadShown() async {
-    if (_shownLoaded) return;
-    try {
-      final entry = await AppDatabase.instance.getCache(
-        key: _shownKey,
-        userId: _userId,
-        maxAge: const Duration(days: 30),
-      );
-      final ids = entry == null
-          ? const <Object?>[]
-          : (jsonDecode(entry.value) as List<Object?>);
-      // Stored oldest first; anything noted this session stays newest.
-      final stored = [
-        for (final id in ids.whereType<String>())
-          if (_shownBefore.add(id)) id,
-      ];
-      _shownOrder.insertAll(0, stored);
-      while (_shownOrder.length > _shownMemory) {
-        _shownBefore.remove(_shownOrder.removeAt(0));
-      }
-    } catch (error) {
-      debugPrint('[Feed] shown history unreadable: $error');
-    } finally {
-      _shownLoaded = true;
-    }
-  }
-
-  Future<void> _writeShown() async {
-    try {
-      await AppDatabase.instance.setCache(
-        key: _shownKey,
-        userId: _userId,
-        value: jsonEncode(_shownOrder),
-      );
-    } catch (error) {
-      debugPrint('[Feed] shown history write failed: $error');
-    }
-  }
-
   /// Keeps [FeedSfx] in step with the board's Sound setting, read the same
   /// way `FeedMoveSound` and the board read it: loading or failed is off.
   void _bindBoardSound() {
@@ -1652,16 +712,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }, fireImmediately: true);
   }
 
-  String? get _userId => feedCacheUserId();
-
-  Future<List<FeedItem>> _readCache() =>
-      readFeedFirstPageCache(userId: _userId);
-
-  Future<void> _writeCache(List<FeedItem> items) async {
+  Future<void> _writeCache(List<FeedItem> items, String userId) async {
     try {
       await AppDatabase.instance.setCache(
         key: cacheKey,
-        userId: _userId,
+        userId: userId,
         value: encodeFlowFeedCache(items),
       );
     } catch (error) {
@@ -1743,13 +798,6 @@ GamesTourModel? _tourModel(Games row) {
   } catch (_) {
     return null; // missing players / names: not showable anyway
   }
-}
-
-bool _isRecent(GamesTourModel game, Duration maxAge) {
-  final played = game.bucketDate;
-  if (played == null) return false;
-  final age = DateTime.now().difference(played);
-  return !age.isNegative && age <= maxAge;
 }
 
 String? _resultOf(GameStatus status) => switch (status) {

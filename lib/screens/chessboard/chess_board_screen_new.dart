@@ -1241,6 +1241,9 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// immediate list instead of replacing it and jumping the visible page.
   final ValueChanged<String>? onVisibleGameChanged;
 
+  /// The last visible mainline position, used by collection readers.
+  final void Function(String gameId, int moveIndex)? onStudyPositionChanged;
+
   const ChessBoardScreenNew({
     this.swipeCoachingVisit,
     required this.currentIndex,
@@ -1258,6 +1261,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.initialFen,
     this.initialMoveIndexByGameId,
     this.onVisibleGameChanged,
+    this.onStudyPositionChanged,
     this.allowGameExport = true,
     super.key,
   });
@@ -2117,13 +2121,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (pageIndex != _currentPageIndex) return;
     if (state.isLoadingMoves) return;
 
+    final initialMove = widget.initialMoveIndexByGameId?[state.game.gameId];
+    final studyMove = widget.onStudyPositionChanged == null ? null : initialMove;
     // When opened from the opening explorer's games sheet, every page's
     // provider already navigates to the move matching widget.initialFen.
     // Skipping the default-position override preserves that target position
     // when the user swipes between games.
-    if (widget.initialFen != null ||
-        (widget.initialMoveIndexByGameId?.containsKey(state.game.gameId) ??
-            false)) {
+    if (widget.initialFen != null || (initialMove != null && studyMove == null)) {
       _syncedLatestPositions.add(state.game.gameId);
       return;
     }
@@ -2155,7 +2159,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // - Finished games: starting position (-1)
     final isFinished = state.game.gameStatus.isFinished;
     final int targetMoveIndex;
-    if (isFinished && !widget.startAtLastMove) {
+    if (studyMove != null) {
+      targetMoveIndex = studyMove.clamp(-1, totalMoves - 1);
+    } else if (isFinished && !widget.startAtLastMove) {
       targetMoveIndex = -1;
     } else {
       targetMoveIndex = totalMoves - 1;
@@ -2163,7 +2169,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentIndex = state.analysisState.currentMoveIndex;
 
     // Check if we're already at the target position
-    if (targetMoveIndex == -1) {
+    if (studyMove != null) {
+      if (currentIndex == targetMoveIndex &&
+          state.analysisState.movePointer.length <= 1) {
+        _syncedLatestPositions.add(gameId);
+        return;
+      }
+    } else if (targetMoveIndex == -1) {
       if (currentIndex == -1) {
         _syncedLatestPositions.add(gameId);
         return;
@@ -2508,6 +2520,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       _audioSub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
         chessBoardScreenProviderNew(params),
         (prev, next) {
+          _reportStudyPosition(next.valueOrNull);
           if (prev == null) return;
           _handleAudioProviderChange(prev, next);
         },
@@ -2520,6 +2533,33 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         _warmUpClassificationSounds();
       }
     });
+  }
+
+  ({String gameId, int moveIndex})? _lastStudyPosition;
+
+  void _reportStudyPosition(ChessBoardStateNew? state) {
+    final report = widget.onStudyPositionChanged;
+    if (report == null ||
+        state == null ||
+        state.isLoadingMoves ||
+        state.isPvPreviewActive ||
+        _route?.isCurrent != true ||
+        widget.games.isEmpty ||
+        _resolveGameForIndex(_currentPageIndex).gameId != state.game.gameId) {
+      return;
+    }
+    if ((widget.initialMoveIndexByGameId?.containsKey(state.game.gameId) ?? false) &&
+        !_syncedLatestPositions.contains(state.game.gameId)) {
+      return;
+    }
+    final pointer = state.analysisState.movePointer;
+    final moveIndex = state.isAnalysisMode
+        ? (pointer.isEmpty ? -1 : pointer.first.toInt())
+        : state.currentMoveIndex;
+    final position = (gameId: state.game.gameId, moveIndex: moveIndex);
+    if (position == _lastStudyPosition) return;
+    _lastStudyPosition = position;
+    report(position.gameId, position.moveIndex);
   }
 
   /// Loads the classified-move sounds before the first classified move needs

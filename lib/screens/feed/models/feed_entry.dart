@@ -1,4 +1,6 @@
+import 'package:chessever2/screens/feed/models/feed_collection.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/models/feed_short.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:flutter/foundation.dart';
@@ -41,17 +43,31 @@ final class FeedNewsEntry extends FeedEntry {
   String get key => 'news:${news.key}';
 }
 
-/// An ad on a page of its own, laid between posts by [withFeedAds]. Never
-/// part of [composeFeedEntries]'s arrangement.
-final class FeedAdEntry extends FeedEntry {
-  const FeedAdEntry(this.after);
+final class FeedShortEntry extends FeedEntry {
+  const FeedShortEntry(this.short);
 
-  /// The key of the post it follows: unique in an arrangement, and gone with
-  /// it when a refresh draws new posts.
-  final String after;
+  final FeedShort short;
 
   @override
-  String get key => 'ad:$after';
+  String get key => 'youtube:${short.id}';
+}
+
+final class FeedCollectionEntry extends FeedEntry {
+  const FeedCollectionEntry(this.card);
+
+  final FeedCollection card;
+
+  @override
+  String get key => card.feedKey;
+}
+
+/// An ad page issued by the backend or inserted into a legacy feed.
+final class FeedAdEntry extends FeedEntry {
+  const FeedAdEntry(String after) : key = 'ad:$after';
+  const FeedAdEntry.server(this.key);
+
+  @override
+  final String key;
 }
 
 /// Distance between planned ad pages, counting ads as pages.
@@ -79,6 +95,29 @@ List<FeedEntry> withFeedAds(
     }
   }
   return List.unmodifiable(out);
+}
+
+/// Retain the backend's positions, hiding slots without a post on both sides.
+List<FeedEntry> serverFeedPages(
+  List<FeedEntry> entries, {
+  required bool adsVisible,
+  required Set<String> withdrawn,
+}) {
+  final lastPost = entries.lastIndexWhere((entry) => entry is! FeedAdEntry);
+  final pages = <FeedEntry>[];
+  for (var index = 0; index < entries.length; index++) {
+    final entry = entries[index];
+    if (entry is FeedAdEntry &&
+        (!adsVisible ||
+            withdrawn.contains(entry.key) ||
+            pages.isEmpty ||
+            pages.last is FeedAdEntry ||
+            index > lastPost)) {
+      continue;
+    }
+    pages.add(entry);
+  }
+  return List.unmodifiable(pages);
 }
 
 /// Page [index] of [pages] as an index into the posts under them: a post's
@@ -146,7 +185,9 @@ List<FeedEntry> composeFeedEntries({
       case FeedNewsEntry(news: final article):
         usedNews.add(article.key);
         out.add(entry);
-      // Laid over an arrangement, never part of one ([withFeedAds]).
+      // Shorts come from the server; ads are laid over the arrangement.
+      case FeedCollectionEntry():
+      case FeedShortEntry():
       case FeedAdEntry():
         break;
     }

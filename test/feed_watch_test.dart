@@ -12,6 +12,7 @@ import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
+import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
@@ -309,20 +310,21 @@ void main() {
     await _tearDown(tester);
   });
 
-  testWidgets('the tail under the lead visits the last game on screen, never '
-      "Feed's hidden copy of the lead", (tester) async {
+  testWidgets('the tail under the lead closes the current backend visit', (
+    tester,
+  ) async {
     final feed = _FakeFeed(() async => [_post('g0'), _post('g1')]);
     await _pump(tester, feed, lead: _post('g1'));
     await _fling(tester, up: true);
     expect(feed.visible.last, 0);
-    // The tail: g1 is Feed's last game, but it is the lead's copy and not on
-    // screen; g0 is the last game the viewer reached.
+    // The tail closes the visit without recording another board impression.
+    // Returning to Feed still restores the last visible game, g0.
     await _fling(tester, up: true);
     expect(
       find.text('No more games for now.', skipOffstage: false),
       findsOneWidget,
     );
-    expect(feed.visible.last, 0);
+    expect(feed.visible.last, -1);
     expect(_currentKey(tester), 'game:g0');
     await _tearDown(tester);
   });
@@ -677,6 +679,12 @@ class _FakeFeed extends FeedNotifier {
   final List<int> visible = [];
   int refreshes = 0;
   int loadMores = 0;
+
+  @override
+  List<FeedEntry> get serverEntries => withFeedAds([
+    for (final item in state.valueOrNull ?? const <FeedItem>[])
+      FeedGameEntry(item),
+  ]);
 
   @override
   Future<List<FeedItem>> build() => _load();
