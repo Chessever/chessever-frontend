@@ -535,13 +535,17 @@ void main() {
     expect(platform.controllers, hasLength(1));
     h.session.toggle();
     await _flushPlayer(tester);
-    // Showing restores the selected player paused, including reselecting it,
-    // in a fresh WebView.
+    // Showing autoplays the selected YouTube stream in a fresh WebView.
     h.session.select('english-main');
     await _flushPlayer(tester);
     expect(platform.controllers, hasLength(2));
     final shown = platform.controllers.last;
-    expect(shown.documents.last, contains('autoplay:0'));
+    expect(shown.documents.last, contains('autoplay:1'));
+    expect(shown.documents.last, contains('onAutoplayBlocked:'));
+    expect(
+      shown.documents.last,
+      contains('ytPlayer.mute();ytPlayer.playVideo();'),
+    );
     expect(controller.documents.last, isNot(contains('ChessVideo')));
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

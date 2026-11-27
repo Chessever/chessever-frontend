@@ -347,6 +347,8 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
                   defaultTargetPlatform != TargetPlatform.iOS,
               showCaptionsByDefault: !selected.isAnalysis,
               reportTiming: onInlineTiming != null,
+              retryMutedAutoplay:
+                  !selected.isAnalysis && onInlineTiming == null,
             ),
             baseUrl: '${embedOrigin.toString()}/',
           );
@@ -526,6 +528,7 @@ String videoPlayerHtml(
   bool showCaptionsByDefault = true,
   bool reportTiming = false,
   bool deferYouTubePlayback = false,
+  bool retryMutedAutoplay = false,
 }) {
   final id = jsonEncode(source.id), host = jsonEncode(origin.host);
   final youtube = source.platform == VideoPlatform.youtube
@@ -549,6 +552,13 @@ String videoPlayerHtml(
   // The tap that chose the stream is the play gesture. Autoplay params alone
   // can be ignored, so each provider is also started explicitly once ready.
   final youtubeAutoplay = play && !deferYouTubePlayback;
+  final retryMuted = youtubeAutoplay && retryMutedAutoplay && !muted;
+  final youtubeMutedRetry = retryMuted
+      ? 'onAutoplayBlocked:()=>{if(!retriedMuted){retriedMuted=true;ytPlayer.mute();ytPlayer.playVideo();}},'
+      : '';
+  final youtubeSound = retryMuted
+      ? 'if(!retriedMuted)ytPlayer.unMute();'
+      : "ytPlayer.${muted ? 'mute' : 'unMute'}();";
   final youtubeStart = deferYouTubePlayback
       ? "feedPlayer=ytPlayer;if(feedActive){ytPlayer.playVideo();}else{ytPlayer.cueVideoById($id);}send('ready',{});"
       : reportTiming
@@ -600,9 +610,10 @@ function publishTiming() {
 <script>
 $youtubeVisibility
 function onYouTubeIframeAPIReady() {
+  ${retryMuted ? 'let retriedMuted=false;' : ''}
   const ytPlayer=new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
     playerVars:{autoplay:${youtubeAutoplay ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:${jsonEncode(origin.toString())}, mute:${muted ? 1 : 0}, controls:1, rel:0, ...$youtubeVars},
-    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>{$youtubePauseHidden send('playback',{playing:e.data===1});${reportTiming ? 'publishTiming();' : ''}$youtubeRepeat}, onError:()=>send('error',{})}});
+    events:{$youtubeMutedRetry onReady:()=>{try{$youtubeSound}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>{$youtubePauseHidden send('playback',{playing:e.data===1});${reportTiming ? 'publishTiming();' : ''}$youtubeRepeat}, onError:()=>send('error',{})}});
   $timing
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',

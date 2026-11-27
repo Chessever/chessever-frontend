@@ -69,6 +69,7 @@ class EventVideoSession extends ChangeNotifier {
       if (selected?.identity != next.identity) {
         selected = next;
         stopPlayback(notify: false);
+        playRequested = _shouldAutoplay(next);
       }
     }
     notifyListeners();
@@ -122,6 +123,13 @@ class EventVideoSession extends ChangeNotifier {
   bool get showVideo => hasVideo && visible;
   bool isActive(String id) => gameId == id;
 
+  bool _shouldAutoplay(EventVideoStream? stream) =>
+      visible &&
+      foreground &&
+      stream != null &&
+      !stream.isAnalysis &&
+      stream.source.platform == VideoPlatform.youtube;
+
   /// Selected-chip dismissals, not camera toggles or metadata changes.
   int get chipDismissals => _chipDismissals;
   int _chipDismissals = 0;
@@ -148,7 +156,6 @@ class EventVideoSession extends ChangeNotifier {
       }
       _chipDismissals++;
       // Keep the exact selection, mute/language/country and visibility storage.
-      // Restoring retains the existing paused-player policy.
       toggle();
     } else {
       if (showVideo) _chipSwitchedAt = DateTime.now();
@@ -185,7 +192,11 @@ class EventVideoSession extends ChangeNotifier {
     _analysisStreams = values;
     _orderSources();
     final previous = selected;
-    selected = preferAnalysis && !_selectionLocked && !playing && !playRequested
+    selected =
+        preferAnalysis &&
+            !_selectionLocked &&
+            !playing &&
+            !(previous?.isAnalysis == true && playRequested)
         ? streams.firstOrNull
         : streams.where((s) => s.identity == previous?.identity).firstOrNull ??
               streams.firstOrNull;
@@ -254,8 +265,7 @@ class EventVideoSession extends ChangeNotifier {
       streams = const [];
       _broadcastStreams = const [];
       selected = null;
-      // New events load their preferred stream paused. Same-event rounds
-      // retain the existing player.
+      // Same-event rounds retain the existing player.
       flagsVisible = false;
     }
     this.gameId = gameId;
@@ -355,8 +365,9 @@ class EventVideoSession extends ChangeNotifier {
       selected = match ?? (streams.isEmpty ? null : streams.first);
       if (previous?.identity != selected?.identity) {
         stopPlayback(notify: false);
-        // The stream the reader was watching no longer exists in this scope:
-        // keep the replacement paused and wait for a deliberate video tap.
+        // Start the first broadcast. An automatic replacement for a stream
+        // that disappeared during a refresh waits for the viewer.
+        if (previous == null) playRequested = _shouldAutoplay(selected);
         if (selected != null) revealFlags(notify: false);
       }
     }
@@ -373,7 +384,7 @@ class EventVideoSession extends ChangeNotifier {
       final continuePlaying = playing;
       selected = next;
       playing = false;
-      playRequested = continuePlaying;
+      playRequested = continuePlaying || _shouldAutoplay(next);
       playerRevision++;
     }
     if (next.isAnalysis) {
@@ -406,6 +417,7 @@ class EventVideoSession extends ChangeNotifier {
 
   void reportPlayback(bool value, int revision) {
     if (_disposed || revision != playerRevision) return;
+    if (playing && !value) playRequested = false;
     playing = value && foreground && showVideo;
     if (playing) _selectionLocked = true;
     // No rebuild: provider state events must not recreate platform views.
@@ -425,6 +437,7 @@ class EventVideoSession extends ChangeNotifier {
     }
     stopPlayback(notify: false);
     if (visible) {
+      playRequested = _shouldAutoplay(selected);
       revealFlags(notify: false);
     }
     notifyListeners();

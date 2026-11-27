@@ -1,4 +1,4 @@
-// Language mapping mirrored from web video-language.ts.
+// Commentary languages recognized by the mobile event player.
 class VideoLanguage {
   const VideoLanguage(this.code, this.names, this.label, this.country);
   final String code, label, country;
@@ -26,6 +26,17 @@ const videoLanguages = <VideoLanguage>[
   VideoLanguage("ko", ["korean", "한국어"], "Korean", "KR"),
   VideoLanguage("ms", ["malay"], "Malay", "MY"),
   VideoLanguage("ar", ["arabic", "العربية"], "Arabic", "SA"),
+  VideoLanguage(
+    "az",
+    ["azerbaijani", "azeri", "azərbaycan dili"],
+    "Azerbaijani",
+    "AZ",
+  ),
+  VideoLanguage("bn", ["bengali", "bangla", "বাংলা"], "Bengali", "BD"),
+  VideoLanguage("el", ["greek", "ελληνικά"], "Greek", "GR"),
+  VideoLanguage("nl", ["dutch", "nederlands", "flemish"], "Dutch", "NL"),
+  VideoLanguage("ro", ["romanian", "română"], "Romanian", "RO"),
+  VideoLanguage("ta", ["tamil", "தமிழ்"], "Tamil", "IN"),
 ];
 
 const videoCountryNames = <String, String>{

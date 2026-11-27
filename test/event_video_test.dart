@@ -36,7 +36,7 @@ class FakeVideoRepository implements EventVideoRepository {
 }
 
 void main() {
-  test('video visibility is saved across events and restored paused', () async {
+  test('showing a hidden YouTube stream autoplays', () async {
     bool? stored;
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
@@ -65,10 +65,11 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(restored.hasVideo, isTrue);
     expect(restored.showVideo, isFalse);
+    expect(restored.playRequested, isFalse);
     restored.toggle();
     expect(stored, isTrue);
     expect(restored.showVideo, isTrue);
-    expect(restored.playRequested, isFalse);
+    expect(restored.playRequested, isTrue);
   });
 
   test(
@@ -220,7 +221,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(next.selected!.id, 'english-main');
       expect(next.streams.first.flagCode, 'GB');
-      expect(next.playRequested, isFalse);
+      expect(next.playRequested, isTrue);
     },
   );
 
@@ -250,6 +251,18 @@ void main() {
       ('GH', 'GB', 'en'),
       ('GN', 'FR', 'fr'),
       ('TD', 'SA', 'ar'),
+      ('AZ', 'GE', 'az'),
+      ('AZ', 'IR', 'az'),
+      ('BD', 'IN', 'bn'),
+      ('CY', 'GR', 'el'),
+      ('FI', 'SE', 'fi'),
+      ('IN', 'GB', 'hi'),
+      ('IN', 'GB', 'hinglish'),
+      ('BE', 'NL', 'nl'),
+      ('MD', 'RO', 'ro'),
+      ('SG', 'LK', 'ta'),
+      ('UA', 'PL', 'uk'),
+      ('VN', 'US', 'vi'),
     ];
     for (final (country, flag, language) in fallbackCases) {
       final streams = EventVideoStream.readList([
@@ -520,7 +533,10 @@ void main() {
         contains('youtube-quTNRNvL-rA'),
       );
       expect(session.showVideo, isTrue);
-      expect(session.playRequested, isFalse);
+      expect(
+        session.playRequested,
+        session.selected!.source.platform == VideoPlatform.youtube,
+      );
     },
   );
 
@@ -580,7 +596,7 @@ void main() {
     },
   );
   test(
-    'initial pause, country memory, same-event playback, hide and lifecycle',
+    'YouTube autoplays on stream changes and respects visibility and lifecycle',
     () async {
       final repo = FakeVideoRepository(fixtureVideos());
       final session = EventVideoSession(repository: repo, savedCountry: 'ES');
@@ -591,7 +607,7 @@ void main() {
       expect(session.playRequested, isFalse);
       expect(session.showVideo, isTrue);
       session.select('english-main');
-      expect(session.playRequested, isFalse);
+      expect(session.playRequested, isTrue);
       session.reportPlayback(true, session.playerRevision);
       final revision = session.playerRevision;
       session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round');
@@ -604,7 +620,7 @@ void main() {
       session.toggle();
       expect(session.playRequested, isFalse);
       session.toggle();
-      expect(session.playRequested, isFalse);
+      expect(session.playRequested, isTrue);
       session.reportPlayback(true, session.playerRevision);
       session.setForeground(false);
       expect(session.playing, isFalse);
@@ -829,7 +845,7 @@ void main() {
       expect(session.muted, isFalse);
     },
   );
-  test('selection stays across games and showing video stays paused', () async {
+  test('selection stays across games and showing YouTube autoplays', () async {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
@@ -851,6 +867,12 @@ void main() {
     session.select('english-main');
     session.toggle();
     session.toggle();
+    expect(session.playRequested, isTrue);
+    session.reportPlayback(true, session.playerRevision);
+    session.reportPlayback(false, session.playerRevision);
+    final nudges = session.playNudge;
+    session.openGame(gameId: 'g5', tourId: 'other', roundId: 'round');
+    expect(session.playNudge, nudges);
   });
   test('a sibling category of the same event keeps the running stream', () async {
     final session = EventVideoSession(

@@ -215,9 +215,7 @@ void main() {
     },
   );
 
-  testWidgets('flags stay above paused video while browsing games', (
-    tester,
-  ) async {
+  testWidgets('flags stay above video while browsing games', (tester) async {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
@@ -225,7 +223,7 @@ void main() {
     await tester.pumpWidget(harness(session, player));
     await tester.pump();
     expect(find.text('Player'), findsOneWidget);
-    expect(session.playRequested, isFalse);
+    expect(session.playRequested, isTrue);
     final flags = find.byKey(const ValueKey('event_video_flags')).hitTestable();
     expect(
       tester.getBottomLeft(flags).dy,
@@ -235,7 +233,7 @@ void main() {
     );
     final order = session.streams.map((s) => s.id).toList();
     await chooseStream(tester, 'english-second');
-    expect(session.playRequested, isFalse);
+    expect(session.playRequested, isTrue);
     expect(session.streams.map((s) => s.id), order);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
@@ -380,7 +378,7 @@ void main() {
     );
     await tester.pump();
     expect(session.playing, isFalse);
-    expect(session.playRequested, isFalse);
+    expect(session.playRequested, isTrue);
     expect(find.byKey(const ValueKey('event_video_flags')), findsOneWidget);
     expect(find.text('Player'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
