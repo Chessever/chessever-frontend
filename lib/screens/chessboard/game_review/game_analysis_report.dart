@@ -8,8 +8,12 @@ import 'package:chessever2/screens/chessboard/game_review/game_report_from_pgn.d
 import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/services/toby/toby_prediction.dart'
+    show TobyReading, TobyRequest, TobyWdl;
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
+
+part 'toby_move_quality.dart';
 
 enum GameReportStatus { idle, running, completed, cancelled, failed }
 

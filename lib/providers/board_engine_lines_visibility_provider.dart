@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -30,9 +31,11 @@ class BoardEngineLinesVisibleNotifier extends AsyncNotifier<bool> {
   @override
   Future<bool> build() async {
     try {
-      // Missing on existing installs: preserve their current Cards/List view.
-      return await ref.read(boardEngineLinesVisibilityStoreProvider).load() ??
-          true;
+      final saved = await ref.read(boardEngineLinesVisibilityStoreProvider).load();
+      if (saved != null) return saved;
+      // An older install could hide lines through the legacy analysis master.
+      // Use that intent until the user makes an explicit local Lines choice.
+      return (await ref.read(engineSettingsProviderNew.future)).showEngineAnalysis;
     } catch (_) {
       debugPrint('[BoardEngineLines] Could not load device preference');
       return true;

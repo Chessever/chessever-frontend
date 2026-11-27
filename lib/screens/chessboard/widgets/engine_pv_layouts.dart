@@ -46,7 +46,7 @@ class EnginePvItem {
 /// the Library opening-explorer look (eval badge + move text).
 ///
 /// The layout is STABLE: it always reserves exactly [slotCount] fixed-height
-/// rows (capped at 3), so rows never appear/disappear or resize as the engine
+/// rows (three by default), so rows never appear/disappear or resize as the engine
 /// streams results — missing lines render as placeholders holding their space.
 class EnginePvListView extends StatelessWidget {
   const EnginePvListView({
@@ -55,34 +55,42 @@ class EnginePvListView extends StatelessWidget {
     this.slotCount = 3,
     this.isEvaluating = false,
     this.trailingDivider = true,
+    this.rowExtent,
+    this.maxRows = 3,
   });
 
   final List<EnginePvItem> items;
 
-  /// Number of fixed-height rows to always reserve (hard-capped at 3).
+  /// Number of fixed-height rows to reserve, bounded by the host.
   final int slotCount;
   final bool isEvaluating;
   final bool trailingDivider;
+
+  /// Exact row height, including its divider, for the phone engine switcher.
+  final double? rowExtent;
+  final int maxRows;
 
   /// Fixed height per row so text updates never shift the layout vertically.
   static double get rowHeight => 30.h.clamp(30.0, double.infinity);
 
   @override
   Widget build(BuildContext context) {
-    final rows = slotCount.clamp(1, 3);
+    final rows = slotCount.clamp(1, maxRows);
+    Widget separator() => Divider(
+      height: 1,
+      color: context.colors.divider.withValues(alpha: 0.3),
+      indent: 12.sp,
+      endIndent: 12.sp,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < rows; i++) ...[
-          if (i > 0)
-            Divider(
-              height: 1,
-              color: context.colors.divider.withValues(alpha: 0.3),
-              indent: 12.sp,
-              endIndent: 12.sp,
-            ),
+          if (i > 0) separator(),
           SizedBox(
-            height: context.textExtent(rowHeight),
+            height: rowExtent == null
+                ? context.textExtent(rowHeight)
+                : rowExtent! - (i > 0 ? 1 : 0),
             child: i < items.length
                 ? _PvRow(item: items[i])
                 : _PvRowPlaceholder(

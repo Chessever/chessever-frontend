@@ -1,37 +1,7 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/utils/pgn_game_splitter.dart';
 
-/// Splits a text blob that may contain one or more PGN games into individual
-/// PGN strings (trimmed, without trailing whitespace).
-///
-/// Uses the `[Event` tag as a game boundary: each PGN must start with at least
-/// one `[Event ...]` header (per the spec), so consecutive games in a
-/// concatenated blob always have one. If no `[Event` headers are found, the
-/// whole blob is returned as a single game (best-effort — `ChessGame.fromPgn`
-/// can still parse header-less movetext).
-List<String> splitPgnGames(String text) {
-  final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-  final trimmed = normalized.trim();
-  if (trimmed.isEmpty) return const [];
-
-  // Find all `[Event ...]` header positions that appear at the start of a line
-  // (ignoring indentation). These mark the start of each game.
-  final eventPattern = RegExp(r'^\[Event\s', multiLine: true);
-  final matches = eventPattern.allMatches(trimmed).toList();
-
-  if (matches.length <= 1) {
-    return [trimmed];
-  }
-
-  final games = <String>[];
-  for (var i = 0; i < matches.length; i++) {
-    final start = matches[i].start;
-    final end = (i + 1 < matches.length) ? matches[i + 1].start : trimmed.length;
-    final game = trimmed.substring(start, end).trim();
-    if (game.isNotEmpty) games.add(game);
-  }
-
-  return games;
-}
+export 'package:chessever2/utils/pgn_game_splitter.dart' show splitPgnGames;
 
 /// Parsed PGN result, bundling the `ChessGame` alongside its raw PGN text.
 class ParsedPgnEntry {

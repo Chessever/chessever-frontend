@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
@@ -23,6 +24,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/tour_game_sn
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/services/toby/toby_board_request.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart'
+    show gradeTobyMoves;
 import 'package:chessever2/services/toby/toby_prediction.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
@@ -385,11 +388,6 @@ class ChessBoardScreenNotifierNew
   void _initializeState() {
     // Start with an initial data state to ensure proper initialization
     // The loading flag is handled by isLoadingMoves
-    // Load showEngineAnalysis from persisted settings
-    final engineSettingsAsync = ref.read(engineSettingsProviderNew);
-    final engineSettings = engineSettingsAsync.valueOrNull;
-    final showEngineAnalysis = engineSettings?.showEngineAnalysis ?? true;
-
     // Check if we're restoring from saved analysis
     // Priority: Saved analysis preference > Global session preference
     final bool isBoardFlipped =
@@ -406,9 +404,6 @@ class ChessBoardScreenNotifierNew
       }
     });
 
-    debugPrint(
-      '🎯 ChessBoard[$index]: Initializing with showEngineAnalysis=$showEngineAnalysis (from settings: ${engineSettings?.showEngineAnalysis})',
-    );
 
     if (savedAnalysisData != null) {
       debugPrint(
@@ -441,9 +436,6 @@ class ChessBoardScreenNotifierNew
         evaluation: null,
         isEvaluating: false,
         isAnalysisMode: true,
-        showEngineAnalysis: showEngineAnalysis, // Load from settings
-        showPrincipalVariations:
-            showEngineAnalysis, // Keep PV visibility in sync with engine toggle
         isBoardFlipped: isBoardFlipped, // Restore from saved analysis
         variationComments: Map<String, String>.from(
           variationComments,
@@ -464,6 +456,13 @@ class ChessBoardScreenNotifierNew
       unawaited(parseMoves());
     });
 
+    ref.listen<bool>(tobyReaderHasPremiumProvider, (previous, next) {
+      final settings = ref.read(engineSettingsProviderNew).valueOrNull;
+      if (_usesToby(settings, previous ?? false) != _usesToby(settings, next)) {
+        _onPrimaryEngineChanged();
+      }
+    });
+
     // Listen for engine settings changes and clear cache to force re-evaluation
     ref.listen<AsyncValue<EngineSettings>>(engineSettingsProviderNew, (
       previous,
@@ -477,56 +476,17 @@ class ChessBoardScreenNotifierNew
       final nextValue = next.value;
 
       if (prevValue != nextValue && nextValue != null) {
-        // GUARD: Skip re-eval if ONLY showEngineAnalysis changed.
-        // toggleEngineVisibility() already handles its own eval trigger,
-        // so firing again here causes duplicate 5000ms Stockfish jobs.
-        if (prevValue != null) {
-          final nothingChanged =
-              prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
-              prevValue.principalVariationIndex ==
-                  nextValue.principalVariationIndex &&
-              prevValue.showEngineGauge == nextValue.showEngineGauge &&
-              prevValue.showPvArrows == nextValue.showPvArrows &&
-              prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
-              prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
-              prevValue.usesToby == nextValue.usesToby &&
-              prevValue.showEngineAnalysis ==
-                  nextValue.showEngineAnalysis; // ← same value
-
-          // Skip if only visibility changed (toggle handles its own eval)
-          final onlyVisibilityChanged =
-              prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
-              prevValue.principalVariationIndex ==
-                  nextValue.principalVariationIndex &&
-              prevValue.showEngineGauge == nextValue.showEngineGauge &&
-              prevValue.showPvArrows == nextValue.showPvArrows &&
-              prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
-              prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
-              prevValue.usesToby == nextValue.usesToby &&
-              prevValue.showEngineAnalysis != nextValue.showEngineAnalysis;
-
-          if (nothingChanged || onlyVisibilityChanged) {
-            debugPrint(
-              '⏭️ [SETTINGS] skipped re-eval '
-              '(${nothingChanged ? "no change" : "visibility-only change"})',
-            );
-            // Engine analysis turned off in Settings: stop asking Toby too.
-            if (!nextValue.showEngineAnalysis) _stopToby();
-            // Still sync visibility state if needed
-            final currentState = state.valueOrNull;
-            if (currentState != null &&
-                currentState.showEngineAnalysis !=
-                    nextValue.showEngineAnalysis) {
-              state = AsyncValue.data(
-                currentState.copyWith(
-                  showEngineAnalysis: nextValue.showEngineAnalysis,
-                  showPrincipalVariations: nextValue.showEngineAnalysis,
-                ),
-              );
-            }
-            return;
-          }
+        final entitled = ref.read(tobyReaderHasPremiumProvider);
+        final engineChanged = _usesToby(prevValue, entitled) != _usesToby(nextValue, entitled);
+        if (engineChanged) {
+          _onPrimaryEngineChanged();
+          return;
         }
+        final searchChanged = prevValue == null ||
+            prevValue.searchTimeIndex != nextValue.searchTimeIndex ||
+            prevValue.principalVariationIndex != nextValue.principalVariationIndex ||
+            prevValue.maxArrowsOnBoard != nextValue.maxArrowsOnBoard;
+        if (!searchChanged) return;
         _releaseLog('');
         _releaseLog('🔄 ═══ ENGINE SETTINGS CHANGED ═══');
         _releaseLog('   Previous:');
@@ -555,46 +515,15 @@ class ChessBoardScreenNotifierNew
         );
         _releaseLog('');
 
-        // Sync engine analysis visibility from settings
         final currentState = state.valueOrNull;
-        if (currentState != null &&
-            currentState.showEngineAnalysis != nextValue.showEngineAnalysis) {
-          _releaseLog(
-            '   🔄 Syncing engine visibility: ${currentState.showEngineAnalysis} → ${nextValue.showEngineAnalysis}',
-          );
-          state = AsyncValue.data(
-            currentState.copyWith(
-              showEngineAnalysis: nextValue.showEngineAnalysis,
-              showPrincipalVariations: nextValue.showEngineAnalysis,
-            ),
-          );
-        }
-
-        // Clear state's PVs immediately to show loading state
-        if (currentState != null &&
-            currentState.principalVariations.isNotEmpty) {
-          _releaseLog(
-            '   🗑️  Clearing ${currentState.principalVariations.length} cached PVs from state',
-          );
-          state = AsyncValue.data(
-            currentState.copyWith(
-              principalVariations: const [],
-              principalVariationsBaseFen: null,
-              selectedVariantIndex: null,
-              variantBaseFen: null,
-              variantMovePointer: const [],
-            ),
-          );
-        }
-
-        // Switched to Toby: this board's Stockfish search is no longer
-        // wanted. Only this board's jobs; other owners keep theirs.
-        if (prevValue != null &&
-            prevValue.usesToby != nextValue.usesToby &&
-            nextValue.usesToby) {
-          unawaited(
-            StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
-          );
+        if (currentState != null && currentState.principalVariations.isNotEmpty) {
+          state = AsyncData(currentState.copyWith(
+            principalVariations: const [],
+            principalVariationsBaseFen: null,
+            selectedVariantIndex: null,
+            variantBaseFen: null,
+            variantMovePointer: const [],
+          ));
         }
 
         // Check if PV setting specifically changed (not just search time)
@@ -957,10 +886,7 @@ class ChessBoardScreenNotifierNew
 
     // Toby and Stockfish answer the same position differently: a switch of
     // source must never coalesce with, or count as, the other's result.
-    final source =
-        ref.read(engineSettingsProviderNew).valueOrNull?.usesToby ?? false
-        ? '_toby'
-        : '';
+    final source = usesTobyOnBoard ? '_toby' : '';
 
     // Include multiPV count in cache key to prevent wrong PV count being returned
     // e.g., cached 3-PV result shouldn't be returned when user wants 5 PVs
@@ -1802,21 +1728,8 @@ class ChessBoardScreenNotifierNew
                 evaluation: null,
                 isEvaluating: true,
                 isAnalysisMode: true,
-                // Preserve engine visibility when building fresh state
-                showEngineAnalysis:
-                    currentState?.showEngineAnalysis ??
-                    ref
-                        .read(engineSettingsProviderNew)
-                        .valueOrNull
-                        ?.showEngineAnalysis ??
-                    true,
-                showPrincipalVariations:
-                    currentState?.showPrincipalVariations ??
-                    ref
-                        .read(engineSettingsProviderNew)
-                        .valueOrNull
-                        ?.showEngineAnalysis ??
-                    true,
+                showEngineAnalysis: currentState?.showEngineAnalysis ?? true,
+                showPrincipalVariations: currentState?.showPrincipalVariations ?? true,
                 analysisState: AnalysisBoardState(
                   startingPosition: startingPos,
                   currentMoveIndex: newMoveIndex,
@@ -5042,34 +4955,46 @@ class ChessBoardScreenNotifierNew
   }
 
   void toggleEngineVisibility() {
-    final currentState = state.value;
-    if (currentState == null) return;
+    final lines = ref.read(boardEngineLinesVisibleProvider);
+    if (!lines.hasValue) return;
+    unawaited(ref.read(boardEngineLinesVisibleProvider.notifier)
+        .setVisible(!lines.requireValue));
+  }
 
-    final newValue = !currentState.showEngineAnalysis;
-    debugPrint(
-      '⏱️ [TOGGLE] engine ON=$newValue at ${DateTime.now().millisecondsSinceEpoch}',
-    );
+  bool _usesToby(EngineSettings? settings, bool entitled) =>
+      entitled && (settings?.usesToby ?? false) &&
+      !(game.source == GameSource.supabase && (settings?.wantsBothEngines ?? false));
 
-    state = AsyncValue.data(
-      currentState.copyWith(
-        showEngineAnalysis: newValue,
-        showPrincipalVariations: newValue,
-      ),
-    );
+  bool get usesTobyOnBoard => _usesToby(
+    ref.read(engineSettingsProviderNew).valueOrNull,
+    ref.read(tobyReaderHasPremiumProvider),
+  );
 
-    unawaited(
-      ref
-          .read(engineSettingsProviderNew.notifier)
-          .toggleEngineAnalysis(newValue),
-    );
+  void _onPrimaryEngineChanged() {
+    _clearPrimaryEngineResults();
+    if (index == ref.read(currentlyVisiblePageIndexProvider)) {
+      _evaluationTimer?.cancel();
+      _cancelEvaluation = false;
+      unawaited(_evaluatePosition(force: true, forceRestart: true));
+    }
+  }
 
-    if (!newValue) _stopToby();
-
-    // When turning ON, cancel stale jobs and trigger fresh eval with the
-    // full user search budget (no short first-eval window).
-    if (newValue) {
-      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
-      _updateEvaluation(force: true);
+  void _clearPrimaryEngineResults() {
+    _tobyCompleteKey = null;
+    // Invalidate in-flight work before clearing the displayed snapshot.
+    _clearActiveEvalState();
+    _activeEvalRequestId = ++_evalRequestCounter;
+    if (state.valueOrNull?.lockedPvLine?.evalLabel != null) _exitPvPreviewIfActive();
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncData(current.copyWith(
+      principalVariations: const [], principalVariationsBaseFen: null,
+      tobyPosition: null, evaluation: null, mate: null,
+      shapes: const ISet<Shape>.empty(), selectedVariantIndex: null,
+      variantBaseFen: null, variantMovePointer: const [],
+    ));
+    if (usesTobyOnBoard) {
+      unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
     }
   }
 
@@ -6225,6 +6150,7 @@ class ChessBoardScreenNotifierNew
           baselineState.copyWith(
             shapes: const ISet.empty(),
             isEvaluating: true,
+            tobyPosition: null,
             principalVariations: const [],
             principalVariationsBaseFen: null,
             analysisState: baselineState.analysisState.copyWith(
@@ -6243,7 +6169,7 @@ class ChessBoardScreenNotifierNew
       // evaluation cascade, never persists, and never touches Stockfish. When
       // Toby cannot read this position (threats mode, another variant, a
       // refusal, an empty busy answer), the Stockfish path below runs.
-      if (effectiveEngineSettings.usesToby && !isThreatsMode) {
+      if (usesTobyOnBoard && !isThreatsMode) {
         final tobyRequest = buildTobyRequestFromBoardState(
           state.value ?? baselineState,
           targetFen: fen,
@@ -6263,6 +6189,10 @@ class ChessBoardScreenNotifierNew
             expectedBoardFen: fen,
           )) {
             return;
+          }
+          final current = state.valueOrNull;
+          if (current?.tobyPosition != null) {
+            state = AsyncValue.data(current!.copyWith(tobyPosition: null));
           }
           _releaseLog('🎯 EVAL: Toby unavailable here, using Stockfish');
           _registerPendingEvaluation(fen);
@@ -7401,6 +7331,7 @@ class ChessBoardScreenNotifierNew
             unawaited(
               _applyTobyReading(
                 reading,
+                request: request,
                 isFinal: false,
                 currentRequestId: currentRequestId,
                 fen: fen,
@@ -7441,6 +7372,7 @@ class ChessBoardScreenNotifierNew
     }
     await _applyTobyReading(
       reading,
+      request: request,
       isFinal: true,
       currentRequestId: currentRequestId,
       fen: fen,
@@ -7458,11 +7390,12 @@ class ChessBoardScreenNotifierNew
   }
 
   /// Writes one Toby [reading] to the board in the same shape a Stockfish
-  /// result takes, so the same widgets render it: one-move lines whose badge
-  /// shows the move's chance, a pseudo evaluation whose bar fill is White's
+  /// result takes: one-move lines carry Toby’s chance and its own outcomes,
+  /// plus a pseudo evaluation whose bar fill is White’s
   /// expected score, and the usual best-move arrows. Never persisted.
   Future<void> _applyTobyReading(
     TobyReading reading, {
+    required TobyRequest request,
     required bool isFinal,
     required int currentRequestId,
     required String fen,
@@ -7477,7 +7410,9 @@ class ChessBoardScreenNotifierNew
         Pv(moves: line.uci, cp: line.whiteCp, whitePerspective: true),
     ];
     var pvLines = await _buildPrincipalVariations(fen, pvs);
-    if (generation != _tobyApplyGeneration ||
+    if (!mounted ||
+        generation != _tobyApplyGeneration ||
+        !usesTobyOnBoard ||
         !_evalApplyStillValid(
           currentRequestId: currentRequestId,
           expectedBoardFen: fen,
@@ -7487,17 +7422,28 @@ class ChessBoardScreenNotifierNew
     final labels = <String, String>{
       for (final line in lines) line.uci: line.label,
     };
+    final grades = isFinal ? gradeTobyMoves(
+      reading: reading,
+      request: request,
+      position: position,
+      visibleUcis: lines.map((line) => line.uci),
+    ) : const <String, Never>{};
     pvLines = [
       for (final line in pvLines)
         if (line.moves.isEmpty)
           line
-        else
+        else if (tobyStyleUci(position, line.moves.first) case final uci)
           line.copyWith(
-            evalLabel: labels[tobyStyleUci(position, line.moves.first)],
+            evalLabel: labels[uci],
+            tobyWdl: reading.candidate(uci)?.wdl,
+            tobyQuality: grades[uci],
           ),
     ];
 
     final positionWdl = reading.positionWdl;
+    final TobyPositionSnapshot? tobyPosition = positionWdl == null
+        ? null
+        : (fen: fen, outcome: positionWdl);
     final evaluation = positionWdl != null
         ? tobyPseudoEvaluation(positionWdl)
         : (pvs.isNotEmpty ? pvs.first.cp / 100.0 : 0.0);
@@ -7541,6 +7487,7 @@ class ChessBoardScreenNotifierNew
           evaluation: evaluation,
           mate: null,
           isEvaluating: !isFinal,
+          tobyPosition: tobyPosition,
           shapes: overlayShapes,
         ),
       );
@@ -7551,6 +7498,7 @@ class ChessBoardScreenNotifierNew
       evaluation: evaluation,
       mate: null,
       isEvaluating: !isFinal,
+      tobyPosition: tobyPosition,
       shapes: overlayShapes,
       principalVariations: pvLines,
       principalVariationsBaseFen: fen,
@@ -8218,6 +8166,17 @@ class SavedAnalysisData {
     this.tags = const <String>[],
   });
 }
+
+/// The saved engine preference is not an entitlement. On expiry the board
+/// uses Stockfish without overwriting the user's synced Toby preference.
+final boardUsesTobyProvider = Provider<bool>((ref) {
+  final preferred = ref.watch(
+    engineSettingsProviderNew.select(
+      (settings) => settings.valueOrNull?.usesToby ?? false,
+    ),
+  );
+  return preferred && ref.watch(tobyReaderHasPremiumProvider);
+});
 
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifierNew,

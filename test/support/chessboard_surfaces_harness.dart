@@ -91,6 +91,11 @@ Future<SurfacesBoard> pumpSurfacesBoard(
   int plies = 60,
   Widget Function(Widget board)? wrap,
   List<ProviderObserver> observers = const [],
+  List<Override> extraOverrides = const [],
+  EngineSettings engineSettings = const EngineSettings(
+    showEngineAnalysis: false,
+    showEngineGauge: false,
+  ),
 }) async {
   tester.view.devicePixelRatio = dpr;
   tester.view.physicalSize = size * dpr;
@@ -135,7 +140,9 @@ Future<SurfacesBoard> pumpSurfacesBoard(
       ),
       dateTimeProvider.overrideWith((ref) => clock.stream),
       localEvalCacheProvider.overrideWith(_FakeLocalEvalCache.new),
-      engineSettingsProviderNew.overrideWith(_FakeEngineSettingsNotifier.new),
+      engineSettingsProviderNew.overrideWith(
+        () => _FakeEngineSettingsNotifier(engineSettings),
+      ),
       boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
       gamebaseOverlayEnabledProvider.overrideWith(
         _FakeGamebaseOverlayNotifier.new,
@@ -146,6 +153,7 @@ Future<SurfacesBoard> pumpSurfacesBoard(
       ),
       chessBoardPersistenceEnabledProvider.overrideWithValue(false),
       spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
+      ...extraOverrides,
     ],
   );
 
@@ -363,13 +371,39 @@ class _FakeGameStreamRepository extends GameStreamRepository {
 class _VisibleBoardLines extends BoardEngineLinesVisibleNotifier {
   @override
   Future<bool> build() async => true;
+
+  @override
+  Future<void> setVisible(bool value) async { state = AsyncData(value); }
 }
 
 class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
     implements EngineSettingsNotifierNew {
+  _FakeEngineSettingsNotifier(this.settings);
+
+  final EngineSettings settings;
+
   @override
-  Future<EngineSettings> build() async =>
-      const EngineSettings(showEngineAnalysis: false, showEngineGauge: false);
+  Future<EngineSettings> build() async => settings;
+
+  @override
+  Future<void> setEngineSource(EngineSource source) async {
+    state = AsyncValue.data(state.value!.withSelectedSource(source).copyWith(showBothEngines: false));
+  }
+
+  @override
+  Future<void> toggleTobyGaugeInBoth(bool value) async {
+    state = AsyncData(state.requireValue.copyWith(showTobyGaugeInBoth: value));
+  }
+
+  @override
+  Future<void> toggleEngineGaugeOnBoard(bool value) async {
+    state = AsyncData(state.requireValue.withGaugeVisibility(board: value));
+  }
+
+  @override
+  Future<void> selectBothEngines() async {
+    state = AsyncData(state.requireValue.copyWith(showBothEngines: true, tobyEnabled: true));
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

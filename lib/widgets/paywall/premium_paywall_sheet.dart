@@ -111,8 +111,11 @@ Future<bool> showPremiumPaywallSheet({
   bool allowRewarded = true,
   PaywallTrigger trigger = PaywallTrigger.settings,
 }) async {
-  if (allowRewarded && RewardedAdsConfig.available) {
-    final container = ProviderScope.containerOf(context, listen: false);
+  final rewardedContainer = allowRewarded
+      ? ProviderScope.containerOf(context, listen: false)
+      : null;
+  if (rewardedContainer?.read(rewardedAdsAvailableProvider) ?? false) {
+    final container = rewardedContainer!;
     if (container.read(subscriptionProvider).isLoading) {
       await container.read(subscriptionProvider.notifier).refresh();
       if (!context.mounted) return false;
