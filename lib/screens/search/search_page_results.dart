@@ -38,7 +38,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// How many players lead the results as player cards; the rest follow as
 /// Rankings rows.
-const int searchResultPlayerCards = 4;
+const int searchResultPlayerCards = _searchResultBatchSize;
+const int _searchResultBatchSize = 4;
 
 /// Rows of opening cards a search shows before Show all when openings are
 /// all it found: six half cards on a phone.
@@ -188,6 +189,7 @@ class SearchPageResultsLoader extends HookConsumerWidget {
 /// * Coming up and Events: the events the search found, and the landing's
 ///   own upcoming events that the words name ([searchEventGroups]). There
 ///   is no Live now group: an event in play leads Events, LIVE on its card.
+///   Players, Coming up and Events each reveal results in batches of four.
 /// * Openings: as their smart events ([searchResultOpenings]: one row
 ///   beside players or events, the rest a Show all away).
 /// * Smart events: the built-in ones the words name (a level, a time
@@ -195,7 +197,7 @@ class SearchPageResultsLoader extends HookConsumerWidget {
 /// * News: the stories the landing has read that the words name.
 /// * Collections: the catalog's own search, last, as it lands a moment
 ///   later and so moves nothing above it.
-class SearchPageResults extends ConsumerWidget {
+class SearchPageResults extends ConsumerStatefulWidget {
   const SearchPageResults({
     super.key,
     required this.snapshot,
@@ -206,11 +208,35 @@ class SearchPageResults extends ConsumerWidget {
   final SearchPicks picks;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SearchPageResults> createState() => _SearchPageResultsState();
+}
+
+class _SearchPageResultsState extends ConsumerState<SearchPageResults> {
+  int _playerLimit = _searchResultBatchSize;
+  int _upcomingLimit = _searchResultBatchSize;
+  int _eventLimit = _searchResultBatchSize;
+
+  @override
+  void didUpdateWidget(covariant SearchPageResults oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The loader keeps the last snapshot visible until new results arrive.
+    // Keep its expansion too, but start the new snapshot at four again.
+    if (widget.snapshot.query != oldWidget.snapshot.query) {
+      _playerLimit = _upcomingLimit = _eventLimit = _searchResultBatchSize;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = widget.snapshot;
+    final picks = widget.picks;
     final query = snapshot.query;
     final players = topSearchedPlayers(snapshot.result, limit: 1 << 20);
     final cards = players.take(searchResultPlayerCards).toList();
-    final rows = players.skip(searchResultPlayerCards).toList();
+    final rows = players
+        .take(_playerLimit)
+        .skip(searchResultPlayerCards)
+        .toList();
     final liveKey = ref.watch(searchLiveIdsKeyProvider);
     final events = searchEventGroups(
       query,
@@ -260,16 +286,27 @@ class SearchPageResults extends ConsumerWidget {
       );
     }
     final openPlayer = picks.player;
-    SearchSection eventSection(String title, List<GroupEventCardModel> list) =>
-        SearchSection(
-          title: title,
-          count: list.length,
-          body: SearchEventCards(
-            events: list,
+    SearchSection eventSection({
+      required String title,
+      required String section,
+      required List<GroupEventCardModel> matches,
+      required int limit,
+      required VoidCallback onMore,
+    }) => SearchSection(
+      title: title,
+      count: matches.length,
+      body: SliverMainAxisGroup(
+        slivers: [
+          SearchEventCards(
+            events: matches.take(limit).toList(),
             keyPrefix: 'search-event',
             onOpen: picks.event,
           ),
-        );
+          if (matches.length > limit)
+            _SearchShowMore(section: section, onTap: onMore),
+        ],
+      ),
+    );
     final list = CustomScrollView(
       key: const ValueKey('search_results'),
       // The Search tab's controller: a re-tap of the tab takes it to its top.
@@ -303,6 +340,12 @@ class SearchPageResults extends ConsumerWidget {
                     );
                   },
                 ),
+                if (players.length > _playerLimit)
+                  _SearchShowMore(
+                    section: 'players',
+                    onTap: () =>
+                        setState(() => _playerLimit += _searchResultBatchSize),
+                  ),
               ],
             ),
           ),
@@ -333,8 +376,22 @@ class SearchPageResults extends ConsumerWidget {
             ),
           ),
         if (events.upcoming.isNotEmpty)
-          eventSection(SearchSectionId.comingUp.title, events.upcoming),
-        if (events.events.isNotEmpty) eventSection('Events', events.events),
+          eventSection(
+            title: SearchSectionId.comingUp.title,
+            section: 'upcoming',
+            matches: events.upcoming,
+            limit: _upcomingLimit,
+            onMore: () =>
+                setState(() => _upcomingLimit += _searchResultBatchSize),
+          ),
+        if (events.events.isNotEmpty)
+          eventSection(
+            title: 'Events',
+            section: 'events',
+            matches: events.events,
+            limit: _eventLimit,
+            onMore: () => setState(() => _eventLimit += _searchResultBatchSize),
+          ),
         if (players.isEmpty && events.isEmpty && snapshot.remoteLoading)
           const SliverToBoxAdapter(child: SearchPageSpinner(top: 0)),
         if (players.isEmpty && events.isEmpty && snapshot.remoteMessage != null)
@@ -382,6 +439,27 @@ class SearchPageResults extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _SearchShowMore extends StatelessWidget {
+  const _SearchShowMore({required this.section, required this.onTap});
+
+  final String section;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => SliverToBoxAdapter(
+    child: Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: DiscoveryAction(
+        key: ValueKey('search-$section-more'),
+        label: 'Show more',
+        semanticsLabel:
+            'Show more ${section == 'upcoming' ? 'upcoming events' : section}',
+        onTap: onTap,
+      ),
+    ),
+  );
 }
 
 /// Asks [query] of the app-wide search and the catalog again (a pull on the
