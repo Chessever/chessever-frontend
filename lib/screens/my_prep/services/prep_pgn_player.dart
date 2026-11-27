@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:chessever2/screens/my_prep/services/prep_repository.dart'
     show PrepException;
 import 'package:chessever2/services/game_tree/game_tree_codec.dart';
+import 'package:chessever2/utils/pgn_game_splitter.dart' as pgn;
 
 /// A name a PGN could belong to, with the playable games it plays.
 class PrepPgnCandidate {
@@ -245,53 +246,13 @@ String? _signature(String raw) {
   return '$f|${String.fromCharCode(g.runes.first)}';
 }
 
-final _tagLine = RegExp(r'^\s*\[[A-Za-z0-9_]+\s+"');
 final _eventTag = RegExp(r'^\s*\[Event\s', multiLine: true);
 
-/// Splits a PGN database into games as the standard reads it: a game is a
-/// tag section and the movetext after it, so a new one starts at the first
-/// tag line once movetext has begun. Brace comments may run over lines and
-/// `;` comments to the end of one; neither starts a game. `%` lines are
-/// escapes. Each game is given an `[Event]` tag when it lacks one, so the
-/// stored file splits the same way.
-List<String> splitPgnGames(String text) {
-  final games = <String>[];
-  final current = StringBuffer();
-  var moves = false;
-  var inComment = false;
-
-  void close() {
-    final game = current.toString().trim();
-    current.clear();
-    moves = false;
-    if (game.isEmpty) return;
-    games.add(_eventTag.hasMatch(game) ? game : '[Event "?"]\n$game');
-  }
-
-  final source = text.startsWith('﻿') ? text.substring(1) : text;
-  for (final line in source.replaceAll('\r\n', '\n').split('\n')) {
-    if (!inComment) {
-      if (line.startsWith('%')) continue;
-      if (_tagLine.hasMatch(line)) {
-        if (moves) close();
-        current.writeln(line);
-        continue;
-      }
-    }
-    for (var i = 0; i < line.length; i++) {
-      final c = line[i];
-      if (inComment) {
-        if (c == '}') inComment = false;
-      } else if (c == '{') {
-        inComment = true;
-      } else if (c == ';') {
-        break;
-      } else if (c.trim().isNotEmpty) {
-        moves = true;
-      }
-    }
-    current.writeln(line);
-  }
-  close();
-  return games;
-}
+/// Splits a PGN database into games as the standard reads it (the app's one
+/// splitter, `pgn_game_splitter.dart`). Each game is given an `[Event]` tag
+/// when it lacks one, so the stored file, which the index splits at `[Event`,
+/// splits the same way.
+List<String> splitPgnGames(String text) => [
+  for (final game in pgn.splitPgnGames(text))
+    _eventTag.hasMatch(game) ? game : '[Event "?"]\n$game',
+];
