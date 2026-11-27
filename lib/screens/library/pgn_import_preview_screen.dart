@@ -52,6 +52,18 @@ bool _pgnImportGameMatches(ChessGame game, String query) {
   return fields.any((field) => field.toLowerCase().contains(query));
 }
 
+/// The event line of an import card: the game's `Event`, else its `Site`.
+/// `?` and `-` are PGN's "unknown", written for a tag the file never had,
+/// and are not names.
+@visibleForTesting
+String pgnImportEventName(Map<String, dynamic> metadata) {
+  for (final key in const ['Event', 'Site']) {
+    final value = metadata[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty && value != '?' && value != '-') return value;
+  }
+  return 'Imported';
+}
+
 @visibleForTesting
 List<ChessGame> filterPgnImportGames(List<ChessGame> games, String rawQuery) {
   final query = rawQuery.trim().toLowerCase();
@@ -386,7 +398,7 @@ class _PgnImportPreviewScreenState
         final game = filtered[index];
         final tourModel = chessGameToImportedGamesTourModel(game);
         final md = game.metadata;
-        final eventName = _eventNameFromMetadata(md);
+        final eventName = pgnImportEventName(md);
 
         return Padding(
           padding: EdgeInsets.only(bottom: 12.h),
@@ -398,13 +410,5 @@ class _PgnImportPreviewScreenState
         ).animate().fadeIn(duration: 150.ms);
       },
     );
-  }
-
-  String _eventNameFromMetadata(Map<String, dynamic> md) {
-    final raw = md['Event']?.toString().trim() ?? '';
-    if (raw.isNotEmpty) return raw;
-    final site = md['Site']?.toString().trim() ?? '';
-    if (site.isNotEmpty) return site;
-    return 'Imported';
   }
 }
