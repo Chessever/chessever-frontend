@@ -79,7 +79,7 @@ import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_request_card.dart';
-import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/media_card.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/scroll_chrome.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
@@ -1396,6 +1396,112 @@ void main() {
   });
 
   group('the results (typing)', () {
+    testWidgets(
+      'Show more reveals batches independently and resets for a new query',
+      (tester) async {
+        final players = _najdorfResults(playerCount: 9).playerResults;
+        final upcoming = [for (var i = 0; i < 6; i++) _upcomingNumbered(i)];
+        final completed = [
+          for (var i = 0; i < 7; i++)
+            GroupEventCardModel(
+              id: 'completed-$i',
+              title: 'Completed Open $i',
+              dates: '',
+              maxAvgElo: 2700 - i,
+              timeUntilStart: '',
+              tourEventCategory: TourEventCategory.completed,
+              timeControl: 'Classical',
+              startDate: DateTime.utc(2024, 1, 1),
+              endDate: DateTime.utc(2024, 1, 2),
+            ),
+        ];
+        final result = EnhancedSearchResult(
+          tournamentResults: _eventResults([
+            ...upcoming,
+            ...completed,
+          ]).tournamentResults,
+          playerResults: players,
+        );
+        final app = await _pump(
+          tester,
+          size: const Size(393, 4000),
+          answer: (_) async => result,
+        );
+        const field = ValueKey('search_tab_field');
+        await _type(tester, field, 'mamed');
+
+        Finder more(String section) =>
+            find.byKey(ValueKey('search-$section-more'));
+        Finder event(String id) => find.byKey(ValueKey('search-event-$id'));
+        Finder count(String title, int total) => find.descendant(
+          of: find
+              .ancestor(of: find.text(title), matching: find.byType(Row))
+              .first,
+          matching: find.text('$total'),
+        );
+        final rows = find.byType(SearchPlayerRow);
+        expect(
+          tester
+              .widget<PlayerSearchCards>(find.byType(PlayerSearchCards))
+              .players,
+          hasLength(4),
+        );
+        expect(rows, findsNothing);
+        expect(count('Players', 9), findsOneWidget);
+        expect(count('Coming up', 6), findsOneWidget);
+        expect(count('Events', 7), findsOneWidget);
+        expect(event('up-n3'), findsOneWidget);
+        expect(event('up-n4'), findsNothing);
+        expect(event('completed-3'), findsOneWidget);
+        expect(event('completed-4'), findsNothing);
+        for (final section in ['players', 'upcoming', 'events']) {
+          expect(more(section), findsOneWidget);
+          expect(
+            find.descendant(
+              of: more(section),
+              matching: find.text('Show more'),
+            ),
+            findsOneWidget,
+          );
+        }
+        expect(
+          tester.getTopLeft(more('upcoming')).dy,
+          greaterThanOrEqualTo(tester.getBottomLeft(event('up-n3')).dy),
+        );
+        expect(
+          tester.getTopLeft(more('events')).dy,
+          greaterThanOrEqualTo(tester.getBottomLeft(event('completed-3')).dy),
+        );
+
+        await tester.tap(more('players'));
+        await tester.pump();
+        expect(rows, findsNWidgets(4));
+        expect(event('up-n4'), findsNothing);
+        expect(event('completed-4'), findsNothing);
+        await tester.tap(more('players'));
+        await tester.pump();
+        expect(rows, findsNWidgets(5));
+        expect(more('players'), findsNothing);
+
+        await tester.tap(more('events'));
+        await tester.pump();
+        expect(event('completed-6'), findsOneWidget);
+        expect(more('events'), findsNothing);
+        expect(event('up-n4'), findsNothing);
+        await tester.tap(more('upcoming'));
+        await tester.pump();
+        expect(event('up-n5'), findsOneWidget);
+        expect(more('upcoming'), findsNothing);
+
+        await _type(tester, field, 'alireza');
+        expect(rows, findsNothing);
+        expect(event('up-n4'), findsNothing);
+        expect(event('completed-4'), findsNothing);
+        expect(count('Players', 9), findsOneWidget);
+        await app.dispose();
+      },
+    );
+
     testWidgets('an event in play is found under Events, at its head and '
         'LIVE on its card, with no Live now heading; one coming up under '
         'Coming up, from the landing\'s own list', (tester) async {
@@ -1597,8 +1703,16 @@ void main() {
       expect(cards.players.map((p) => p.name), [
         for (var i = 0; i < 4; i++) 'Najdorf $i',
       ]);
-      // ...the rest as Rankings rows.
-      expect(find.byType(FigmaPlayerCard), findsNWidgets(2));
+      // The rest are hidden until requested, then shown as Rankings rows.
+      expect(
+        find.descendant(
+          of: find.byWidget(cards),
+          matching: find.byType(MediaCardName),
+        ),
+        findsNWidgets(4),
+      );
+      expect(find.byType(SearchPlayerRow), findsNothing);
+      await _showMorePlayers(tester);
       expect(find.byType(SearchPlayerRow), findsNWidgets(2));
 
       // Openings: one smart event per ECO code, never the same one twice;
@@ -1696,6 +1810,7 @@ void main() {
       await _type(tester, const ValueKey('search_tab_field'), 'najdorf');
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
+      await _showMorePlayers(tester);
       haptics.calls.clear();
       await tester.tap(find.byKey(const ValueKey('search-player-100005')));
       await tester.pump();
@@ -1713,6 +1828,7 @@ void main() {
         observer: observer,
       );
       await _type(tester, const ValueKey('search_tab_field'), 'najdorf');
+      await _showMorePlayers(tester);
       final row = find.byKey(const ValueKey('search-player-100005'));
       expect(row, findsOneWidget);
 
@@ -2531,6 +2647,7 @@ void main() {
       await _type(tester, const ValueKey('search_tab_field'), 'najdorf');
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
+      await _showMorePlayers(tester);
       for (final (card, labels) in <(Finder, Set<String>)>[
         (find.byKey(ValueKey('search-event-${_event.id}')), eventMenu),
         (
@@ -2936,6 +3053,11 @@ bool _fieldHasFocus(WidgetTester tester) => tester
     .focusNode
     .hasFocus;
 
+Future<void> _showMorePlayers(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('search-players-more')));
+  await tester.pump();
+}
+
 /// Types into the search field, then waits out every debounce on the path
 /// (the bar's 300ms, the Events tab's 300ms, the dropdown's 400ms).
 Future<void> _type(WidgetTester tester, Key fieldKey, String text) async {
@@ -3175,8 +3297,8 @@ EnhancedSearchResult _playerResults(String name, int fideId) {
   );
 }
 
-/// Six players (four cards, two rows) and one event.
-EnhancedSearchResult _najdorfResults() {
+/// One event and enough players to exercise both cards and Rankings rows.
+EnhancedSearchResult _najdorfResults({int playerCount = 6}) {
   return EnhancedSearchResult(
     tournamentResults: [
       SearchResult(
@@ -3187,7 +3309,7 @@ EnhancedSearchResult _najdorfResults() {
       ),
     ],
     playerResults: [
-      for (var i = 0; i < 6; i++)
+      for (var i = 0; i < playerCount; i++)
         SearchResult(
           tournament: _event,
           score: 1,
