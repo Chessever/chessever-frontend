@@ -14,6 +14,47 @@ import 'package:chessever2/widgets/paywall/past_game_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+bool _collectionNeedsPremium(Collection collection) =>
+    collection.isPremium && collection.contentLocked != false;
+
+Future<bool> _requestCollectionPremium(
+  BuildContext context,
+  Collection collection,
+) => ensurePremiumGameAccess(
+  context,
+  featureId: collectionPaywallFeatureId(collection.kind),
+  returnTo: kCollectionPaywallReturnTo,
+);
+
+/// Check the same entitlement as the game opener for player-name taps on a
+/// published preview, without requesting playable games or their PGNs.
+Future<bool> ensureCollectionPreviewPlayerAccess(
+  BuildContext context,
+  WidgetRef ref,
+  Collection preview,
+) async {
+  if (!context.mounted) return false;
+  if (!preview.isPremium) return true;
+  final repository = ref.read(collectionsRepositoryProvider);
+  final owner = ref.read(currentUserProvider)?.id;
+  bool stillCurrent() =>
+      context.mounted && ref.read(currentUserProvider)?.id == owner;
+  final release = repository.holdFreshAccess(preview.slug);
+  try {
+    final detail = await repository.fetchCollection(preview.slug);
+    if (!context.mounted || !stillCurrent()) return false;
+    if (!_collectionNeedsPremium(detail)) return true;
+    return await _requestCollectionPremium(context, detail) && stillCurrent();
+  } catch (_) {
+    if (context.mounted && stillCurrent()) {
+      showAppSnack(context, 'Could not check collection access. Try again.');
+    }
+    return false;
+  } finally {
+    release();
+  }
+}
+
 /// A preview is never board input. Resolve protected content through the
 /// collection endpoint, after the current server verdict / shared access gate.
 /// Apply the visible ID sequence to the authorized response so board swiping
@@ -30,7 +71,7 @@ Future<List<GamesTourModel>?> resolvePlayableCollectionGames({
   try {
     final detail = await repository.fetchCollection(slug);
     if (!stillCurrent()) return null;
-    if (detail.isPremium && detail.contentLocked != false) {
+    if (_collectionNeedsPremium(detail)) {
       if (!await requestAccess(detail) || !stillCurrent()) return null;
     }
     // The server authenticates this separately, including stale local Premium
@@ -121,11 +162,8 @@ Future<CollectionCheckpoint?> _openCollection(
           ? null
           : [for (final game in previews) game.gameId],
       onResolved: (resolved) => detail = resolved,
-      requestAccess: (collection) => ensurePremiumGameAccess(
-        context,
-        featureId: collectionPaywallFeatureId(collection.kind),
-        returnTo: kCollectionPaywallReturnTo,
-      ),
+      requestAccess: (collection) =>
+          _requestCollectionPremium(context, collection),
       stillCurrent: current,
     );
     if (games == null || !context.mounted || !current()) return null;

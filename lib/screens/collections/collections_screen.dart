@@ -59,7 +59,8 @@ import 'package:chessever2/widgets/star_notifications.dart';
 import 'package:chessever2/widgets/quick_list_toggles.dart';
 // import 'package:chessever2/screens/library/game_tree/library_game_tree_targets.dart';
 // import 'package:chessever2/widgets/game_tree/build_tree_button.dart';
-// import 'package:chessever2/widgets/paywall/premium_game_access.dart';
+import 'package:chessever2/widgets/paywall/premium_game_access.dart'
+    show PremiumCollectionPlayerAccess;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -1145,6 +1146,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             skipLoadingOnReload: true,
             data: (data) => _GamesPage(
               slug: slug,
+              collection: c,
               searchState: _gameSearch,
               contents: data,
               showSelector: c.kind != CollectionKind.book,
@@ -1985,6 +1987,7 @@ class _CollectionScopedGamesScreenState
     actions: [_CollectionViewToggle(onTap: _toggleView)],
     pageBuilder: (_, _) => _GamesPage(
       slug: widget.collection.slug,
+      collection: widget.collection,
       searchState: _search,
       contents: const CollectionContents(sections: [], games: []),
       player: widget.player,
@@ -2243,12 +2246,14 @@ class _GamesPage extends ConsumerStatefulWidget {
     this.opening,
     this.onClearOpening,
     required this.slug,
+    required this.collection,
     this.groupByDate = false,
     this.flatList = false,
     required this.searchState,
     this.onOpeningMatch,
   });
   final String slug;
+  final Collection collection;
   final bool groupByDate;
   final bool flatList;
 
@@ -2361,7 +2366,7 @@ class _GamesPageState extends ConsumerState<_GamesPage>
     // line along its top says so. Only a first load has nothing to keep.
     final last = _shown;
     if (last == null) return const _CardsSkeleton();
-    return EventViewSearchList(busy: true, child: _body(last));
+    return EventViewSearchList(busy: true, child: _withPlayerAccess(last));
   }
 
   /// [contents], the answer to the query asked: drawn, kept for the next
@@ -2369,8 +2374,19 @@ class _GamesPageState extends ConsumerState<_GamesPage>
   Widget _show(CollectionContents contents) {
     _shown = contents;
     _place.settle(context);
-    return EventViewSearchList(busy: false, child: _body(contents));
+    return EventViewSearchList(busy: false, child: _withPlayerAccess(contents));
   }
+
+  Widget _withPlayerAccess(CollectionContents contents) =>
+      PremiumCollectionPlayerAccess(
+        ensureAccess: (nameContext) => ensureCollectionPreviewPlayerAccess(
+          nameContext,
+          ref,
+          ref.read(collectionDetailProvider(widget.slug)).valueOrNull ??
+              widget.collection,
+        ),
+        child: _body(contents),
+      );
 
   /// The book's openings the words name, for the head of the hits; null
   /// when this list is not a book's or no words are searched.

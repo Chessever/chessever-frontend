@@ -268,8 +268,9 @@ class _MiniaturePlayerScorecardScreenState
     );
   }
 
-  void _openFullProfile() {
+  Future<void> _openFullProfile() async {
     HapticFeedbackService.buttonPress();
+    if (!await ensureMiniaturesContentAccess(context) || !mounted) return;
     final player = widget.player;
     Navigator.of(context).push(
       MaterialPageRoute(

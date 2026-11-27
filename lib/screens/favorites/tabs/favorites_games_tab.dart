@@ -1618,7 +1618,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
   }
 
-  void _openPlayer(PlayerStandingModel player) {
+  Future<void> _openPlayer(PlayerStandingModel player) async {
+    if (!await ensureFavoritesGameAccess(context) || !mounted) return;
     // The search field is the screen's; drop its keyboard on the way out.
     FocusManager.instance.primaryFocus?.unfocus();
     Navigator.push(

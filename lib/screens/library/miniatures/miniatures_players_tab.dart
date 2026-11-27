@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_player_scorecard_screen.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
@@ -418,6 +419,9 @@ class _MiniaturePlayerRow extends ConsumerWidget {
   /// silently sending the player to the other screen.
   Future<void> _open(BuildContext context, WidgetRef ref) async {
     HapticFeedbackService.cardTap();
+    if (!await ensureMiniaturesContentAccess(context) || !context.mounted) {
+      return;
+    }
 
     final key = _recordKey;
     var miniature = key == null
@@ -501,7 +505,13 @@ class _MiniaturePlayerRow extends ConsumerWidget {
             LibraryMenuAction(
               icon: Icons.person_outline_rounded,
               label: 'Open profile',
-              onSelected: () => openPlayerProfileFor(context, player),
+              onSelected: () async {
+                if (!await ensureMiniaturesContentAccess(context) ||
+                    !context.mounted) {
+                  return;
+                }
+                openPlayerProfileFor(context, player);
+              },
             ),
         ],
       ),

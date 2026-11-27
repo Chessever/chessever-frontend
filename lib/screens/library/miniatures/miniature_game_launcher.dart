@@ -19,6 +19,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 bool _openingMiniature = false;
 
+Future<bool> ensureMiniaturesContentAccess(
+  BuildContext context, {
+  String returnTo = kMiniaturesReturnTo,
+}) => ensurePremiumGameAccess(
+  context,
+  featureId: kMiniaturesArchiveFeatureId,
+  returnTo: returnTo,
+);
+
 /// Opens a miniature on the board.
 ///
 /// Miniature rows carry only a header-only PGN, so the real movetext has to be
@@ -41,9 +50,8 @@ Future<void> openMiniatureGame({
   if (_openingMiniature || !context.mounted) return;
   _openingMiniature = true;
   try {
-    final allowed = await ensurePremiumGameAccess(
+    final allowed = await ensureMiniaturesContentAccess(
       context,
-      featureId: kMiniaturesArchiveFeatureId,
       returnTo: returnTo,
     );
     if (!allowed || !context.mounted) return;

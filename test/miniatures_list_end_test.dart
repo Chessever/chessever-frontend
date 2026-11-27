@@ -1,8 +1,16 @@
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_game.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
     show playerPhotoProvider;
@@ -59,6 +67,9 @@ class _Repo extends GamebaseRepository {
   static List<GamebaseMiniature> page(int offset) => [
     for (var i = offset; i < (offset == 0 ? 12 : 15); i++) _miniature('m$i'),
   ];
+
+  @override
+  Future<GamebaseGameWithPgn?> getGameWithPgn(String id) async => null;
 
   @override
   Future<GamebaseMiniaturesPage> getMiniatures({
@@ -150,6 +161,7 @@ Future<ProviderContainer> _pump(
   _Repo repo, {
   MiniaturesScreenMode mode = MiniaturesScreenMode.games,
   _Players? players,
+  GamesListViewMode viewMode = GamesListViewMode.gamesCard,
 }) async {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1;
@@ -158,7 +170,16 @@ Future<ProviderContainer> _pump(
     overrides: [
       gamebaseRepositoryProvider.overrideWithValue(repo),
       selectedMiniaturesModeProvider.overrideWith((ref) => mode),
-      gamesListViewModeProvider.overrideWithValue(GamesListViewMode.gamesCard),
+      gamesListViewModeProvider.overrideWithValue(viewMode),
+      premiumAccessProvider.overrideWithValue(false),
+      gameCardEvalWithStockfishFallbackProvider.overrideWith(
+        (_, fen) async =>
+            CloudEval(fen: fen, knodes: 0, depth: 0, pvs: const []),
+      ),
+      gameCardEvalCacheOnlyProvider.overrideWith(
+        (_, fen) async =>
+            CloudEval(fen: fen, knodes: 0, depth: 0, pvs: const []),
+      ),
       miniaturePlayersPaginatedProvider.overrideWith(
         (ref) => players ?? _Players(),
       ),
@@ -177,6 +198,10 @@ Future<ProviderContainer> _pump(
       container: container,
       child: MaterialApp(
         theme: AppTheme.darkTheme,
+        routes: {
+          '/scorecard_screen': (_) =>
+              const Scaffold(body: Text('Scorecard destination')),
+        },
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
@@ -217,6 +242,47 @@ Future<void> _dispose(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.llfbandit.app_links/events'),
+          (_) async => null,
+        );
+    await Supabase.initialize(
+      url: 'https://fixture.invalid',
+      publishableKey: 'fixture-publishable-key',
+    );
+  });
+
+  testWidgets('Miniatures grid player name uses the game paywall', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      _Repo(),
+      viewMode: GamesListViewMode.chessBoardGrid,
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final card = find.byType(GridGameCardWrapperWidget).hitTestable().first;
+    final name = find.descendant(
+      of: card,
+      matching: find.textContaining('White', findRichText: true),
+    );
+    expect(name, findsOneWidget);
+    await tester.tap(name);
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('Scorecard destination'), findsNothing);
+    final prompt = find.text('Sign in to get Premium');
+    expect(prompt, findsOneWidget);
+    Navigator.of(tester.element(prompt)).pop();
+    await _dispose(tester, container);
+  });
   testWidgets('Games: the header folding away with no scroll brings the '
       'end in reach and asks for the next page, and the end slot keeps one '
       'height from room to the spinner to the end', (tester) async {

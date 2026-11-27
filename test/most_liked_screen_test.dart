@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
@@ -283,6 +284,10 @@ Future<void> _mount(
       container: container,
       child: MaterialApp(
         theme: theme ?? AppTheme.darkTheme,
+        routes: {
+          '/scorecard_screen': (_) =>
+              const Scaffold(body: Text('Scorecard destination')),
+        },
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -1012,6 +1017,92 @@ void main() {
     await tester.tap(find.text('Players'));
     await _settle(tester);
     expect(find.text('See everyone in this ranking'), findsNothing);
+    expect(find.byType(MostLikedPlayersList), findsOneWidget);
+    await _teardown(tester, container);
+  });
+
+  testWidgets('My Likes grid player name uses the game paywall', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      subscribed: false,
+      home: const Scaffold(body: MyLikesGamesPage()),
+      extra: [
+        myLikesViewProvider.overrideWith(
+          (ref) async => buildMyLikesData(
+            matches: [_savedLike],
+            totalLiked: 1,
+            window: null,
+          ),
+        ),
+      ],
+    );
+    final card = find.byType(GridGameCardWrapperWidget).hitTestable().first;
+    final name = find.descendant(
+      of: card,
+      matching: find.textContaining('White0', findRichText: true),
+    );
+    expect(name, findsOneWidget);
+    await tester.tap(name);
+    await _settle(tester);
+    expect(find.text('Scorecard destination'), findsNothing);
+    final prompt = find.text('Sign in to get Premium');
+    expect(prompt, findsOneWidget);
+    Navigator.of(tester.element(prompt)).pop();
+    await _settle(tester);
+    expect(find.byType(MyLikesGamesPage), findsOneWidget);
+    await _teardown(tester, container);
+  });
+
+  testWidgets('Most Liked grid player name uses the game paywall', (
+    tester,
+  ) async {
+    final container = await _pump(tester, subscribed: false);
+    final card = find.byType(GridGameCardWrapperWidget).hitTestable().first;
+    final name = find.descendant(
+      of: card,
+      matching: find.textContaining('White0', findRichText: true),
+    );
+    expect(name, findsOneWidget);
+    await tester.tap(name);
+    await _settle(tester);
+    expect(find.text('Scorecard destination'), findsNothing);
+    final prompt = find.text('Sign in to get Premium');
+    expect(prompt, findsOneWidget);
+    Navigator.of(tester.element(prompt)).pop();
+    await _settle(tester);
+    expect(find.byType(MostLikedScreen), findsOneWidget);
+    await _teardown(tester, container);
+  });
+
+  testWidgets('Most Liked player menu opens its profile behind the paywall', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      subscribed: false,
+      extra: [spaceShortcutExistsProvider.overrideWith((_, _) => false)],
+    );
+    await tester.tap(find.text('Players'));
+    await _settle(tester);
+    final row = find
+        .descendant(
+          of: find.byType(MostLikedPlayersList),
+          matching: find.byType(FigmaPlayerCard),
+        )
+        .hitTestable()
+        .first;
+    await tester.longPress(row);
+    await _settle(tester);
+    final open = find.text('Open profile').hitTestable();
+    expect(open, findsOneWidget);
+    await tester.tap(open);
+    await _settle(tester);
+    final prompt = find.text('Sign in to get Premium');
+    expect(prompt, findsOneWidget);
+    Navigator.of(tester.element(prompt)).pop();
+    await _settle(tester);
     expect(find.byType(MostLikedPlayersList), findsOneWidget);
     await _teardown(tester, container);
   });

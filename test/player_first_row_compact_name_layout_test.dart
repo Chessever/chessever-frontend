@@ -1,5 +1,9 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -22,6 +26,16 @@ void main() {
       font.addFont(rootBundle.load('assets/fonts/Inter-$weight.otf'));
     }
     await font.load();
+    SharedPreferences.setMockInitialValues({});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.llfbandit.app_links/events'),
+          (_) async => null,
+        );
+    await Supabase.initialize(
+      url: 'https://fixture.invalid',
+      publishableKey: 'fixture-publishable-key',
+    );
   });
 
   Future<void> pumpCompactRow(
@@ -43,6 +57,9 @@ void main() {
     GameSource source = GameSource.gamebase,
     bool hasStarted = false,
     String? clock,
+    ChessboardView? scoreCardViewSource,
+    bool hasPremium = false,
+    ChessboardView? lastBoardSource,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);
@@ -71,6 +88,9 @@ void main() {
       ProviderScope(
         key: UniqueKey(),
         overrides: [
+          premiumAccessProvider.overrideWithValue(hasPremium),
+          if (lastBoardSource != null)
+            chessboardViewFromProviderNew.overrideWith((_) => lastBoardSource),
           engineSettingsProviderNew.overrideWith(
             () => _TestEngineSettingsNotifier(engineSettings),
           ),
@@ -83,6 +103,10 @@ void main() {
           ),
         ],
         child: MaterialApp(
+          routes: {
+            '/scorecard_screen': (_) =>
+                const Scaffold(body: Text('Scorecard destination')),
+          },
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(context).copyWith(textScaler: textScaler),
             child: child!,
@@ -104,6 +128,10 @@ void main() {
                       showSubSecondClock: playerView == PlayerView.boardView,
                       replayMoveTimes: showClock ? const [] : null,
                       compactName: compactName,
+                      scoreCardViewSource: scoreCardViewSource,
+                      scoreCardGamesContext: scoreCardViewSource == null
+                          ? const []
+                          : [game],
                     ),
                   ),
                 ),
@@ -117,6 +145,75 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
+
+  for (final source in [
+    ChessboardView.favorites,
+    ChessboardView.countryman,
+    ChessboardView.smartEvent,
+  ]) {
+    testWidgets('$source player name gates before scorecard navigation', (
+      tester,
+    ) async {
+      await pumpCompactRow(
+        tester,
+        whiteName: 'TestPlayer',
+        blackName: 'Other',
+        maxWidth: 320,
+        scoreCardViewSource: source,
+      );
+      await tester.tap(find.textContaining('TestPlayer', findRichText: true));
+      for (var i = 0; i < 6; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 25)),
+        );
+        await tester.pump(const Duration(milliseconds: 160));
+      }
+      expect(find.text('Scorecard destination'), findsNothing);
+      final prompt = find.text('Sign in to get Premium');
+      expect(prompt, findsOneWidget);
+      Navigator.of(tester.element(prompt)).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Scorecard destination'), findsNothing);
+      expect(
+        find.textContaining('TestPlayer', findRichText: true),
+        findsOneWidget,
+      );
+    });
+  }
+
+  testWidgets('Premium opens a Favorites scorecard without a prompt', (
+    tester,
+  ) async {
+    await pumpCompactRow(
+      tester,
+      whiteName: 'TestPlayer',
+      blackName: 'Other',
+      maxWidth: 320,
+      scoreCardViewSource: ChessboardView.favorites,
+      hasPremium: true,
+    );
+    await tester.tap(find.textContaining('TestPlayer', findRichText: true));
+    await tester.pumpAndSettle();
+    expect(find.text('Scorecard destination'), findsOneWidget);
+    expect(find.text('Sign in to get Premium'), findsNothing);
+  });
+
+  testWidgets('broadcast scorecard stays free after browsing Favorites', (
+    tester,
+  ) async {
+    await pumpCompactRow(
+      tester,
+      whiteName: 'TestPlayer',
+      blackName: 'Other',
+      maxWidth: 320,
+      scoreCardViewSource: ChessboardView.tour,
+      lastBoardSource: ChessboardView.favorites,
+    );
+    await tester.tap(find.textContaining('TestPlayer', findRichText: true));
+    await tester.pumpAndSettle();
+    expect(find.text('Scorecard destination'), findsOneWidget);
+    expect(find.text('Sign in to get Premium'), findsNothing);
+  });
 
   testWidgets(
     'grid rating stays whole beside the clock; the name fades at its size',

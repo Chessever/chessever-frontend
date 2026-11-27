@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/paywall/premium_game_access.dart';
 import 'package:chessever2/screens/favorites/widgets/games_list_refetch_line.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_share.dart';
 
@@ -610,6 +611,13 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
         },
       );
 
+      if (entry.isBoard) {
+        card = PremiumCollectionPlayerAccess(
+          ensureAccess: ensureMiniaturesContentAccess,
+          child: card,
+        );
+      }
+
       // Swipe-to-add stays on the card rows only; board rows are already a
       // full-width interactive board with no room for a drag affordance.
       if (!entry.isBoard) {
@@ -674,16 +682,19 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     // Same GridChessBoardFromFENNew path as For You / tournament grid. Eval
     // bar geometry is reserved on first paint for finished archive games even
     // before fen/lastMove hydration (see _shouldShowEvalBarForGame).
-    return GridGameCardWrapperWidget(
-      key: ValueKey('mini_grid_${game.gameId}'),
-      game: game,
-      orderedGames: allGames,
-      gameIndex: gameIndex,
-      streamEnabled: false,
-      playerProfileDataSource: PlayerProfileDataSource.twic,
-      pinnedIds: const [],
-      onPinToggle: (_) {},
-      onChangedWithLiveGames: (_) => _openGame(allGames, gameIndex),
+    return PremiumCollectionPlayerAccess(
+      ensureAccess: ensureMiniaturesContentAccess,
+      child: GridGameCardWrapperWidget(
+        key: ValueKey('mini_grid_${game.gameId}'),
+        game: game,
+        orderedGames: allGames,
+        gameIndex: gameIndex,
+        streamEnabled: false,
+        playerProfileDataSource: PlayerProfileDataSource.twic,
+        pinnedIds: const [],
+        onPinToggle: (_) {},
+        onChangedWithLiveGames: (_) => _openGame(allGames, gameIndex),
+      ),
     );
   }
 
