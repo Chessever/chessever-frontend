@@ -7,6 +7,8 @@ import 'package:chessever2/screens/chessboard/game_review/classification_style.d
 import 'package:chessever2/screens/chessboard/game_review/evaluation_graph_markers.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_version.dart';
 import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
@@ -554,7 +556,10 @@ class _GameReviewSurface extends StatelessWidget {
               (context) => _ReviewMessage(
                 icon: Icons.error_outline_rounded,
                 title: 'Analysis could not finish',
-                body: state.message ?? 'Stockfish could not analyze this game.',
+                body:
+                    state.message ??
+                    '${stockfishShortLabel(StockfishSingleton().engineVersion.value)} '
+                        'could not analyze this game.',
                 actionLabel: 'Retry',
                 onAction: () => controller.retry(context),
               ),

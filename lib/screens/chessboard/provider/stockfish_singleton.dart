@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
 import 'package:dartchess/dartchess.dart' as chess;
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_version.dart';
 
 /// Debug-only kill switch for the local Stockfish engine.
 ///
@@ -317,6 +318,14 @@ class StockfishSingleton {
   /// Bumped whenever a long-running borrower (the whole-game report) hands the
   /// engine back, so the board can resume deepening the position on screen.
   final ValueNotifier<int> engineReleasedGeneration = ValueNotifier<int>(0);
+
+  /// Version of the Stockfish actually running, read from its UCI
+  /// `id name` reply (`19`, `17.1`, `dev`). Holds [kBundledStockfishVersion]
+  /// until an engine has answered. Labels show it as `SF <version>` through
+  /// [stockfishShortLabel].
+  final ValueNotifier<String> engineVersion = ValueNotifier<String>(
+    kBundledStockfishVersion,
+  );
 
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
@@ -808,6 +817,13 @@ class StockfishSingleton {
   }
 
   void _onEngineMonitorLine(String line) {
+    // `id name` arrives once per engine, in reply to the `uci` sent by
+    // _configureEngineForAnalysis. startsWith allocates nothing.
+    if (line.startsWith('id name')) {
+      final version = stockfishVersionFromUciLine(line);
+      if (version != null) engineVersion.value = version;
+      return;
+    }
     if (!_isBestmoveLine(line)) return;
     _searchInFlight = false;
     _completeSearchIdleWaiter();
@@ -1920,6 +1936,10 @@ class StockfishSingleton {
     // CRITICAL: Configure Stockfish for analysis (not tablebase lookup)
     // Disable tablebase probing to force actual search with depth progression
     try {
+      // Ask the engine to name itself so labels show the version actually
+      // running. The monitor above reads the `id name` reply; the option list
+      // and `uciok` that follow are ignored by every listener.
+      _engine!.stdin = 'uci';
       _engine!.stdin = 'setoption name SyzygyProbeLimit value 0';
       _engine!.stdin = 'setoption name UCI_AnalyseMode value true';
       // Castling in PVs must use the king-to-rook (Chess960) encoding. dartchess

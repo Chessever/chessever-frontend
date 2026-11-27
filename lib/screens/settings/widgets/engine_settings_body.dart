@@ -1,5 +1,7 @@
 import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_version.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/services/toby/toby_prediction.dart'
     show kTobyAttribution;
@@ -235,12 +237,18 @@ class EngineSettingsBody extends ConsumerWidget {
                         notifier.setEngineSource(EngineSource.toby),
                       ),
                     ),
-                    _ToggleSegment(
-                      key: const ValueKey('engine-source-stockfish'),
-                      label: 'Stockfish',
-                      selected: settings.engineSource == EngineSource.stockfish,
-                      onTap: () => trackPersist(
-                        notifier.setEngineSource(EngineSource.stockfish),
+                    // Named the way Lichess names it, with the version the
+                    // running engine reported: `SF 19`.
+                    ValueListenableBuilder<String>(
+                      valueListenable: StockfishSingleton().engineVersion,
+                      builder: (context, version, _) => _ToggleSegment(
+                        key: const ValueKey('engine-source-stockfish'),
+                        label: stockfishShortLabel(version),
+                        selected:
+                            settings.engineSource == EngineSource.stockfish,
+                        onTap: () => trackPersist(
+                          notifier.setEngineSource(EngineSource.stockfish),
+                        ),
                       ),
                     ),
                   ],
