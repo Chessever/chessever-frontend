@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_report_from_pgn.d
 import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_version.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
@@ -295,6 +296,9 @@ class GameAnalysisReportController extends ChangeNotifier {
   static const Duration _mobileSearchYield = Duration(milliseconds: 12);
 
   final StockfishSingleton _stockfish;
+
+  /// The engine as Lichess names it, with the version it reported: `SF 19`.
+  String _engineLabel() => stockfishShortLabel(_stockfish.engineVersion.value);
   final GameReportEvaluator? _evaluator;
   final GameReportConfirmationEvaluator? _confirmationEvaluator;
 
@@ -757,7 +761,7 @@ class GameAnalysisReportController extends ChangeNotifier {
         progress: 0,
         completedPositions: 0,
         totalPositions: totalWorkUnits,
-        message: 'Preparing Stockfish…',
+        message: 'Preparing ${_engineLabel()}…',
         force: true,
       );
 
@@ -1247,7 +1251,7 @@ class GameAnalysisReportController extends ChangeNotifier {
           progress: _state.progress,
           completedPositions: completedWorkUnits,
           totalPositions: totalWorkUnits,
-          message: 'Stockfish is warming up…',
+          message: '${_engineLabel()} is warming up…',
           force: true,
         );
         await Future<void>.delayed(unavailableRetryDelay);
@@ -1439,7 +1443,9 @@ class _ReportPositionUnavailable implements Exception {
   const _ReportPositionUnavailable();
 
   @override
-  String toString() => 'Stockfish returned no principal variation';
+  String toString() =>
+      '${stockfishShortLabel(StockfishSingleton().engineVersion.value)} '
+      'returned no principal variation';
 }
 
 String gameReportFingerprint(ChessGame game) =>

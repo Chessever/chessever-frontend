@@ -6,6 +6,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_version.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -298,7 +299,7 @@ void main() {
       await controller.analyze(ChessGame.fromPgn('warm-up', '1. e4 *'));
 
       expect(calls, greaterThanOrEqualTo(4));
-      expect(messages, contains('Stockfish is warming up…'));
+      expect(messages, contains('SF $kBundledStockfishVersion is warming up…'));
       expect(controller.state.status, GameReportStatus.completed);
       expect(controller.state.report, isNotNull);
     });
