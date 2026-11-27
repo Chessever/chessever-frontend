@@ -40,6 +40,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool showEngineAnalysis;
+  final bool usesToby;
   final bool showUnseenMoveBadge;
   final VoidCallback? onGamebaseToggle;
   final bool isGamebaseActive;
@@ -66,6 +67,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
     required this.canMoveForward,
     required this.canMoveBackward,
     required this.showEngineAnalysis,
+    this.usesToby = false,
     required this.showUnseenMoveBadge,
     this.toggleEngineVisibility,
     this.onEngineSettingsLongPress,
@@ -406,7 +408,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     // Toby has no search depth and never reports one. With Toby chosen the
     // overlay shows only when Stockfish is actually searching (threats mode,
     // or a position Toby cannot read), never the loading dots for a Toby read.
-    final usesToby = engineSettings?.usesToby ?? false;
+    final usesToby = widget.usesToby;
 
     // Format depth text like "D:12"; show "..." while loading if overlay is enabled
     String? depthText;
