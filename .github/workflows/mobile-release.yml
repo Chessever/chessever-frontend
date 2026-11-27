@@ -74,7 +74,8 @@ env:
   GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
   GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
   ANALYSIS_API_BASE: https://chessever-analysis.young-sun-69a8.workers.dev
-  BOARD_FEED_URL: ${{ vars.BOARD_FEED_URL }}
+  # Org secret, with the old repo variable as a fallback.
+  BOARD_FEED_URL: ${{ secrets.BOARD_FEED_URL || vars.BOARD_FEED_URL }}
 
 jobs:
   preflight:
