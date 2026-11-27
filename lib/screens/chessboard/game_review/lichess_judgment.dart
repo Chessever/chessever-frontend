@@ -159,9 +159,14 @@ LichessJudgement? _cpAdvice(
       lichessWinningChances(previous.centipawns);
   // `info.color.fold(-d, d)`: a positive delta is winning chances *lost* by
   // whoever moved.
-  final delta = moverIsWhite ? -change : change;
+  return lichessJudgementForWinningChanceLoss(moverIsWhite ? -change : change);
+}
+
+/// Verdict for a loss of winning chances on the [-1, +1] scale.
+LichessJudgement? lichessJudgementForWinningChanceLoss(double loss) {
+  if (!loss.isFinite) return null;
   for (final (threshold, judgement) in _winningChanceJudgements) {
-    if (threshold <= delta) return judgement;
+    if (threshold <= loss) return judgement;
   }
   return null;
 }

@@ -37,6 +37,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Evaluation Bar'), findsOneWidget);
+    expect(find.byKey(const ValueKey('toby-switch')), findsNothing);
+    expect(find.byKey(const ValueKey('engine-source-toby')), findsOneWidget);
+    expect(find.byKey(const ValueKey('engine-source-stockfish')), findsOneWidget);
     expect(find.text('Board View'), findsOneWidget);
     expect(find.text('Grid View'), findsOneWidget);
 
@@ -75,7 +78,11 @@ void main() {
           boardEngineLinesVisibleProvider.overrideWith(_VisibleBoardLines.new),
           engineSettingsProviderNew.overrideWith(
             () => _FakeEngineSettingsNotifier(
-              const EngineSettings(showEngineGauge: false),
+              const EngineSettings(
+                showEngineGauge: false,
+                tobyEnabled: false,
+                engineSource: EngineSource.toby,
+              ),
             ),
           ),
         ],
@@ -96,6 +103,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('engine-source-toby')), findsOneWidget);
+    expect(find.text('The strongest moves.'), findsOneWidget);
     final master = tester.widget<Switch>(
       find.byKey(const ValueKey('evaluation-bar-master-switch')),
     );

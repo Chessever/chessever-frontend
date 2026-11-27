@@ -1,8 +1,6 @@
-/// "Toby Predicts" at the end of the notation: the moves Toby expects at the
-/// board's position, each in its own hue with its chance (tapping one draws
-/// its arrow on the board in that hue), and under them the result chances
-/// by player, "Gukesh 17%   Draw 76%   Sindarov 7%". "Toby Predicts:" is
-/// dashed: a tap explains the chances and credits Toby.
+/// Toby's most likely moves at the broadcast board's position, with their
+/// likelihood and outcome bars. Tapping a move toggles its arrow; tapping
+/// a bar reveals its exact split and expected score.
 ///
 /// Shown on any position of a broadcast game, live or finished, unless the
 /// reader turned it off (Settings → Engine → Toby). Where the game
@@ -16,6 +14,9 @@ import 'dart:math' as math;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart'
+    show GameMoveClassification;
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/toby_palette.dart';
@@ -30,6 +31,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // ---------------------------------------------------------------------------
@@ -131,6 +133,9 @@ class TobyPredictionToken {
     required this.san,
     required this.move,
     required this.hue,
+    required this.sideToMove,
+    this.wdl,
+    this.quality,
   });
 
   /// 0 for the likeliest move.
@@ -140,12 +145,15 @@ class TobyPredictionToken {
   /// "34%", or "<1%".
   final String chance;
 
-  /// "Nf6", as the panel shows it (the move number is the game's next).
+  /// Unnumbered move notation, e.g. "Nf6".
   final String san;
 
-  /// "24.Nf6" / "24…Nf6", as screen readers hear it.
+  /// Numbered move shown in the table, e.g. "24.Nf6" / "24…Nf6".
   final String move;
   final Color hue;
+  final Side sideToMove;
+  final TobyWdl? wdl;
+  final GameMoveClassification? quality;
 
   /// "34% 24.Nf6".
   String get text => '$chance $move';
@@ -175,32 +183,15 @@ List<TobyPredictionToken> tobyPredictionTokens(
         san: san.trim(),
         move: tobyNumberedMove(fen, san.trim()),
         hue: tobyCandidateHue(rank),
+        sideToMove: reading.sideToMove,
+        wdl: candidate.wdl,
       ),
     );
   }
   return tokens;
 }
 
-/// A side as the chances line names it: the surname ("Carlsen" from
-/// "Carlsen, Magnus"), else [fallback] ("White" / "Black") for a blank name.
-String tobySideName(String? name, String fallback) {
-  final surname = (name ?? '').split(',').first.trim();
-  return surname.isEmpty ? fallback : surname;
-}
-
-/// A player as the chances line shows it: the surname.
-typedef TobySide = ({String name});
-
-/// "White 28, draw 57, Black 15".
-String tobyWdlSemantics(({int white, int draw, int black}) percentages) =>
-    'White ${percentages.white}, draw ${percentages.draw}, '
-    'Black ${percentages.black}';
-
-// ---------------------------------------------------------------------------
-// Dashed hint
-// ---------------------------------------------------------------------------
-
-/// What a tap on "Toby Predicts:" explains, with the chances when known.
+/// What a tap on the Toby title explains, with the current position chances.
 String tobyChanceExplanation(({int white, int draw, int black})? p) => [
   if (p != null)
     'White wins ${p.white}%, draw ${p.draw}%, Black wins ${p.black}%: '
@@ -209,62 +200,14 @@ String tobyChanceExplanation(({int white, int draw, int black})? p) => [
   kTobyAttribution,
 ].join('\n');
 
-/// A short tappable text with a dashed underline (it explains itself on a
-/// tap), as desktop and chessever.com mark Toby's tappable labels.
-class TobyDashedHint extends StatelessWidget {
-  const TobyDashedHint({
-    super.key,
-    required this.text,
-    required this.style,
-    required this.message,
-    required this.semanticsLabel,
-  });
-
-  final String text;
-  final TextStyle style;
-  final String message;
-  final String semanticsLabel;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: semanticsLabel,
-    hint: 'Shows what it means',
-    child: ExcludeSemantics(
-      child: Tooltip(
-        message: message,
-        triggerMode: TooltipTriggerMode.tap,
-        showDuration: const Duration(seconds: 6),
-        excludeFromSemantics: true,
-        child: Text(
-          text,
-          maxLines: 1,
-          softWrap: false,
-          style: style.copyWith(
-            decoration: TextDecoration.underline,
-            decorationStyle: TextDecorationStyle.dashed,
-            decorationColor: (style.color ?? context.colors.textPrimary)
-                .withValues(alpha: 0.7),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Widget
-// ---------------------------------------------------------------------------
-
-/// "Toby Predicts: 16…Qxd4 or 16…Qxc2 or 16…c5" after the last move, with
-/// the result chances under it. Builds nothing when the board is not live at its last move, when
-/// Toby cannot read the position, or when the reader is refused (no paywall
-/// in the notation).
+/// Broadcast-only Toby panel. Builds nothing for unsupported positions or
+/// readers without access; it does not change the board's engine settings.
 class TobyLivePrediction extends ConsumerStatefulWidget {
   const TobyLivePrediction({
     super.key,
     required this.params,
     this.onLayoutChange,
+    this.onSettingsTap,
   });
 
   final ChessBoardProviderParams params;
@@ -272,6 +215,7 @@ class TobyLivePrediction extends ConsumerStatefulWidget {
   /// Called during build, before layout, whenever the line appears or
   /// disappears, so the notation can hold its scroll anchor.
   final VoidCallback? onLayoutChange;
+  final VoidCallback? onSettingsTap;
 
   @override
   ConsumerState<TobyLivePrediction> createState() => _TobyLivePredictionState();
@@ -291,9 +235,6 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
 
   String? _requestFen;
   TobyRequest? _request;
-
-  /// The last position chances shown, held while the next reading comes.
-  TobyWdl? _heldWdl;
 
   /// Clears a tapped move's arrow on its own after [_arrowLife].
   Timer? _arrowTimer;
@@ -352,9 +293,7 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
 
     // The block's room is decided before Toby answers and then held: a
     // reader the app believes is Premium, in a build that can reach Toby,
-    // gets both lines at a fixed height from the first frame (placeholders
-    // until the reading lands). Everyone else never gets the block, so it
-    // never appears and then vanishes.
+    // gets a fixed-height table while the reading loads.
     if (liveFen == null || _refused) return _hidden();
     final showSetting = ref.watch(
       engineSettingsProviderNew.select(
@@ -366,20 +305,15 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
         !ref.read(gamebaseRepositoryProvider).hasApiKey) {
       return _hidden();
     }
-    final game = widget.params.game;
-    final white = (name: tobySideName(game.whitePlayer.name, 'White'));
-    final black = (name: tobySideName(game.blackPlayer.name, 'Black'));
-
-    // Game over on the board: the result, in the same two lines.
+    // A terminal position has a result but no candidate moves.
     final over = tobyOverWdl(liveFen);
     if (over != null) {
       _setVisible(true);
       return TobyPredictsLine(
-        white: white,
-        black: black,
         wdl: over,
         tokens: const [],
-        note: 'game over',
+        note: 'Game over',
+        onSettingsTap: widget.onSettingsTap,
       );
     }
 
@@ -415,7 +349,6 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
         return _hidden();
     }
 
-    if (shown?.positionWdl != null) _heldWdl = shown!.positionWdl;
     _setVisible(true);
 
     final tokens = shown == null
@@ -427,14 +360,13 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
         : null;
 
     return TobyPredictsLine(
-      white: white,
-      black: black,
-      wdl: _heldWdl,
+      wdl: shown?.positionWdl,
       tokens: tokens,
       waiting: waiting,
       muted: shown != null && !shown.isFinal,
       selectedUci: selectedUci,
       onMoveTap: (token) => _toggle(token, liveFen),
+      onSettingsTap: widget.onSettingsTap,
     );
   }
 
@@ -457,15 +389,11 @@ class _TobyLivePredictionState extends ConsumerState<TobyLivePrediction> {
   }
 }
 
-/// Free of providers: "Toby Predicts:" (dashed, a tap explains it), then
-/// the likeliest moves joined by "or", each in its arrow hue and tappable
-/// with its chance (no tokens: "thinking…"); under it the result chances
-/// by player, "Gukesh 17%   Draw 76%   Sindarov 7%".
+/// Compact Toby table for the broadcast board. Move taps still select an
+/// arrow; the separate outcome bar reveals the candidate's result chances.
 class TobyPredictsLine extends StatelessWidget {
   const TobyPredictsLine({
     super.key,
-    this.white = (name: 'White'),
-    this.black = (name: 'Black'),
     this.wdl,
     required this.tokens,
     this.waiting = true,
@@ -473,221 +401,532 @@ class TobyPredictsLine extends StatelessWidget {
     this.muted = false,
     this.selectedUci,
     this.onMoveTap,
+    this.onMoveLongPress,
+    this.playOnMoveTap = false,
+    this.engineToggle,
+    this.outcomeLegendPieces,
+    this.phoneRowCount,
+    this.onSettingsTap,
   });
 
-  final TobySide white;
-  final TobySide black;
+  static const int _rowCount = 3;
+  static const double engineHeaderHeight = 44;
+  static double engineSelectorWidth(double contentWidth) =>
+      math.min(136, contentWidth * .43);
+  static double engineRowHeight(BuildContext context) =>
+      _rowHeight(context, minimum: 28);
+  static double _rowHeight(BuildContext context, {double minimum = 34}) =>
+      math.max(minimum, MediaQuery.textScalerOf(context).scale(15.sp) + 12);
+  static double panelHeight(BuildContext context) =>
+      engineHeaderHeight + _rowCount * _rowHeight(context);
+
   final TobyWdl? wdl;
   final List<TobyPredictionToken> tokens;
-
-  /// No moves yet: true while Toby is reading ("thinking…"), false when it
-  /// gave up on this position ("not available").
   final bool waiting;
-
-  /// Said in place of the moves when there are none to predict
-  /// ("game over"); overrides [waiting].
   final String? note;
-
-  /// The two lines' fixed heights: the block never changes height between
-  /// readings, placeholders, longer names or larger text (a line too wide
-  /// shrinks to fit rather than wrap).
-  static double get movesLineHeight => 34.sp;
-  static double get chancesLineHeight => 24.sp;
-
-  /// A first, quicker reading: the moves are set lighter, never fainter.
   final bool muted;
   final String? selectedUci;
   final ValueChanged<TobyPredictionToken>? onMoveTap;
+  final ValueChanged<TobyPredictionToken>? onMoveLongPress;
+  final bool playOnMoveTap;
+  final Widget? engineToggle;
+  final PieceAssets? outcomeLegendPieces;
+  final int? phoneRowCount;
+  final VoidCallback? onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final shares = wdl?.percentages;
-    // The notation's background, which the move hues are checked against.
-    final background = Color.alphaBlend(
-      colors.surfaceRecessed.withValues(alpha: 0.3),
-      colors.background,
-    );
     final quiet = AppTypography.textSmMedium.copyWith(
-      color: context.textInk(0.6),
-      fontSize: 14.sp,
-      fontWeight: FontWeight.w500,
-      height: 1.3,
+      color: context.textInk(0.65),
+      fontSize: 11.sp,
     );
-    final hasSelection =
-        selectedUci != null && tokens.any((token) => token.uci == selectedUci);
-    // Every piece fills the line's height, so the moves are tall taps.
-    final line = movesLineHeight;
-
-    Widget fixedLine(double height, Widget child) => SizedBox(
-      height: height,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: child,
-      ),
-    );
-
-    final moves = fixedLine(
-      line,
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: line,
-            child: Center(
-              child: TobyDashedHint(
-                text: 'Toby Predicts:',
-                style: quiet,
-                message: tobyChanceExplanation(shares),
-                semanticsLabel: 'Toby Predicts. $kTobyAttribution',
-              ),
-            ),
-          ),
-          if (tokens.isEmpty)
-            Text(
-              ' ${note ?? (waiting ? 'thinking…' : 'not available')}',
-              style: quiet,
-            ),
-          for (var i = 0; i < tokens.length && i < 3; i++) ...[
-            _move(
-              context,
-              tokens[i],
-              background: background,
-              height: line,
-              selected: tokens[i].uci == selectedUci,
-              dimmed: hasSelection && tokens[i].uci != selectedUci,
-            ),
-          ],
-        ],
-      ),
-    );
-
-    final value = quiet.copyWith(
+    final value = AppTypography.textSmMedium.copyWith(
       color: colors.textPrimary,
+      fontSize: 13.sp,
       fontWeight: FontWeight.w700,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
-    // Before the first reading the numbers wait as "…", names in place.
-    String percentText(int? percent) => percent == null ? '…' : '$percent%';
+    final arrowSelected = tokens.any((token) => token.uci == selectedUci);
 
-    // A player's share: surname and chance.
-    Widget side(TobySide side, int? percent) => Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: '${side.name} ', style: quiet),
-          TextSpan(text: percentText(percent), style: value),
-        ],
-      ),
-      maxLines: 1,
-      softWrap: false,
-    );
-
-    // Space alone parts the three: no glyph between them.
-    final gap = SizedBox(width: 14.sp);
-
-    return Padding(
-      padding: EdgeInsets.only(top: 2.sp, bottom: 4.sp),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          moves,
-          Semantics(
-            label: shares == null
-                ? 'Result chances loading'
-                : 'Result chances: ${white.name} ${shares.white}, '
-                      'draw ${shares.draw}, ${black.name} ${shares.black}',
-            child: ExcludeSemantics(
-              child: fixedLine(
-                chancesLineHeight,
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    side(white, shares?.white),
-                    gap,
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(text: 'Draw ', style: quiet),
-                          TextSpan(
-                            text: percentText(shares?.draw),
-                            style: value,
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      softWrap: false,
-                    ),
-                    gap,
-                    side(black, shares?.black),
-                  ],
-                ),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final moveWidth = engineToggle == null
+            ? math.min(104.sp, constraints.maxWidth * .33)
+            : engineSelectorWidth(constraints.maxWidth);
+        final chanceWidth = math.min(68.sp, constraints.maxWidth * .25);
+        final chanceInset = engineToggle == null ? 0.0 : 8.0;
+        // The pinned engine rail uses the same compact rhythm as the PV
+        // strip so short phones still have room for notation.
+        final rowHeight = playOnMoveTap
+            ? engineRowHeight(context)
+            : _rowHeight(context);
+        Widget cellText(
+          String text,
+          TextStyle style, {
+          double? width,
+          double leftInset = 0,
+        }) => SizedBox(
+          width: width,
+          child: Padding(
+            padding: EdgeInsets.only(left: leftInset),
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text(text, maxLines: 1, style: style),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        );
 
-  Widget _move(
-    BuildContext context,
-    TobyPredictionToken token, {
-    required Color background,
-    required double height,
-    required bool selected,
-    required bool dimmed,
-  }) {
-    // Selection reads through the type alone (and the arrow on the board).
-    final weight = selected
-        ? FontWeight.w800
-        : dimmed || muted
-        ? FontWeight.w500
-        : FontWeight.w700;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: '${token.move}, ${token.chance}',
-      hint: selected ? 'Hide arrow' : 'Show arrow on the board',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onMoveTap == null ? null : () => onMoveTap!(token),
-          child: Container(
-            height: height,
-            // Space alone parts the moves: no "or", no glyph.
-            padding: EdgeInsets.only(left: 12.sp),
-            alignment: Alignment.center,
-            child: Text.rich(
-              TextSpan(
+        Widget king(PieceKind kind, String fallback) {
+          final image = outcomeLegendPieces?[kind];
+          if (image == null) return Text(fallback, style: quiet);
+          return Image(
+            image: image,
+            width: 16.sp,
+            height: 16.sp,
+            filterQuality: FilterQuality.high,
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: engineHeaderHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextSpan(
-                    text: token.move,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.accentInk(token.hue, on: background),
-                      fontSize: 14.sp,
-                      fontWeight: weight,
-                      height: 1.3,
-                    ),
+                  SizedBox(
+                    width: moveWidth,
+                    child:
+                        engineToggle ??
+                        _TobyTapHint(
+                          message: tobyChanceExplanation(wdl?.percentages),
+                          label: 'About Toby. $kTobyAttribution',
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: cellText(
+                              'Toby',
+                              value.copyWith(fontSize: 14.sp),
+                            ),
+                          ),
+                        ),
                   ),
-                  TextSpan(
-                    text: ' ${token.chance}',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.accentInk(token.hue, on: background),
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      height: 1.3,
-                    ),
+                  SizedBox(
+                    width: chanceWidth,
+                    child: engineToggle == null
+                        ? cellText('Chance', quiet)
+                        : _TobyTapHint(
+                            label: 'Chance',
+                            message:
+                                'How likely the player is to make this move.',
+                            child: cellText(
+                              'Chance',
+                              quiet,
+                              leftInset: chanceInset,
+                            ),
+                          ),
                   ),
+                  Expanded(
+                    child: engineToggle == null
+                        ? Semantics(
+                            label: 'White wins, draw, Black wins',
+                            excludeSemantics: true,
+                            child: cellText('W / = / B', quiet),
+                          )
+                        : FittedBox(
+                            key: const ValueKey('toby-outcome-legend'),
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _TobyTapHint(
+                                  label: 'White wins',
+                                  message:
+                                      'How likely White is to win after this move.',
+                                  child: SizedBox(
+                                    width: 32,
+                                    height: engineHeaderHeight,
+                                    child: Center(
+                                      child: king(PieceKind.whiteKing, 'White'),
+                                    ),
+                                  ),
+                                ),
+                                _TobyTapHint(
+                                  label: 'Draw',
+                                  message:
+                                      'How likely the game is to end in a draw after this move.',
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      minWidth: 38,
+                                      minHeight: engineHeaderHeight,
+                                    ),
+                                    child: Center(
+                                      widthFactor: 1,
+                                      child: Text('Draw', style: quiet),
+                                    ),
+                                  ),
+                                ),
+                                _TobyTapHint(
+                                  label: 'Black wins',
+                                  message:
+                                      'How likely Black is to win after this move.',
+                                  child: SizedBox(
+                                    width: 32,
+                                    height: engineHeaderHeight,
+                                    child: Center(
+                                      child: king(PieceKind.blackKing, 'Black'),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                  if (onSettingsTap != null)
+                    IconButton(
+                      tooltip: 'Engine settings',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 44,
+                        height: 44,
+                      ),
+                      icon: Icon(
+                        Icons.settings_outlined,
+                        size: 17.sp,
+                        color: colors.iconPrimary,
+                      ),
+                      onPressed: onSettingsTap,
+                    ),
                 ],
               ),
-              maxLines: 1,
-              softWrap: false,
             ),
-          ),
-        ),
+            for (var i = 0; i < (phoneRowCount ?? _rowCount); i++)
+              SizedBox(
+                height: rowHeight,
+                child: i < tokens.length
+                    ? Builder(
+                        builder: (context) {
+                          final token = tokens[i];
+                          final selected = token.uci == selectedUci;
+                          final fill = selected
+                              ? token.hue.withValues(alpha: 0.12)
+                              : engineToggle == null && i.isOdd
+                              ? colors.textPrimary.withValues(alpha: 0.045)
+                              : Colors.transparent;
+                          final outcome = token.wdl;
+                          final quality = token.quality;
+                          final canTapMove = onMoveTap != null;
+                          void tapMove() => onMoveTap?.call(token);
+                          return ColoredBox(
+                            color: fill,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Semantics(
+                                  button: canTapMove,
+                                  selected: selected,
+                                  label:
+                                      '${token.move}, ${token.chance} chance of being played'
+                                      '${quality == null ? '' : ', ${quality.label}'}',
+                                  hint: canTapMove
+                                      ? (playOnMoveTap
+                                            ? 'Play move'
+                                            : selected
+                                            ? 'Hide board arrow'
+                                            : 'Show board arrow')
+                                      : null,
+                                  onTap: canTapMove ? tapMove : null,
+                                  excludeSemantics: true,
+                                  child: InkWell(
+                                    onTap: canTapMove ? tapMove : null,
+                                    onLongPress: onMoveLongPress == null
+                                        ? null
+                                        : () => onMoveLongPress!(token),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 6,
+                                            right: 7,
+                                          ),
+                                          child: SizedBox(
+                                            width: math.max(0, moveWidth - 13),
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(token.move, maxLines: 1, style: value.copyWith(
+                                                      fontWeight: selected
+                                                          ? FontWeight.w800
+                                                          : (muted || arrowSelected)
+                                                          ? FontWeight.w500
+                                                          : FontWeight.w700,
+                                                    )),
+                                                    if (quality != null) ...[
+                                                      const SizedBox(width: 4),
+                                                      SvgPicture.asset(
+                                                        classificationIconAsset(quality),
+                                                        key: ValueKey('toby-quality-${token.uci}'),
+                                                        width: 14,
+                                                        height: 14,
+                                                        excludeFromSemantics: true,
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        cellText(
+                                          token.chance,
+                                          value,
+                                          width: chanceWidth,
+                                          leftInset: chanceInset,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: outcome == null
+                                      ? cellText('—', quiet)
+                                      : _TobyTapHint(
+                                          message: _candidateOutcomeMessage(
+                                            outcome,
+                                            token.sideToMove,
+                                          ),
+                                          label: 'Outcomes for ${token.move}',
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              right: 6,
+                                            ),
+                                            child: Center(
+                                              child: TobyOutcomeBar(
+                                                outcome: outcome,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      )
+                    : i == 0
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: cellText(
+                                note ?? (waiting ? 'Thinking…' : 'Unavailable'),
+                                quiet,
+                              ),
+                            ),
+                            if (note != null && wdl != null)
+                              Expanded(
+                                child: _TobyTapHint(
+                                  message: tobyChanceExplanation(
+                                    wdl!.percentages,
+                                  ),
+                                  label: 'Game result',
+                                  child: Center(
+                                    child: TobyOutcomeBar(outcome: wdl!),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      )
+                    : null,
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+String _candidateOutcomeMessage(TobyWdl outcome, Side mover) {
+  // Format the model's numbers directly, not the rounded shares used for
+  // position summaries. Expected score is for the player making this move.
+  String percent(double p) =>
+      tobyPercentage(p).replaceFirst(RegExp(r'\.0%$'), '%');
+  final isWhite = mover == Side.white;
+  final score = (isWhite ? outcome.white : outcome.black) + outcome.draw / 2;
+  return 'White wins ${percent(outcome.white)} · Draw ${percent(outcome.draw)} · '
+      'Black wins ${percent(outcome.black)}\n'
+      '${isWhite ? 'White' : 'Black'} expected score ${percent(score)}';
+}
+
+/// A shared position/candidate palette. The vertical position gauge never
+/// prints a pawn score; candidate labels are shown only when they can fit.
+class TobyOutcomeBar extends StatelessWidget {
+  const TobyOutcomeBar({
+    super.key,
+    required this.outcome,
+    this.axis = Axis.horizontal,
+    this.whiteFirst = true,
+  });
+
+  final TobyWdl? outcome;
+  final Axis axis;
+  final bool whiteFirst;
+
+  @override
+  Widget build(BuildContext context) {
+    final vertical = axis == Axis.vertical;
+    final split = outcome;
+    final border = Border.all(color: context.textInk(0.38));
+    final radius = BorderRadius.circular(vertical ? 2 : 3);
+    final percentages = split?.percentages;
+    final pieces = split == null
+        ? const <({double share, Color fill, Color ink, int label})>[]
+        : [
+            (
+              share: split.white,
+              fill: const Color(0xFFE9E9E9),
+              ink: const Color(0xFF171719),
+              label: percentages!.white,
+            ),
+            (
+              share: split.draw,
+              fill: const Color(0xFF4D6694),
+              ink: const Color(0xFFFFFFFF),
+              label: percentages.draw,
+            ),
+            (
+              share: split.black,
+              fill: const Color(0xFF151619),
+              ink: const Color(0xFFF4F4F4),
+              label: percentages.black,
+            ),
+          ];
+    final ordered = whiteFirst ? pieces : pieces.reversed;
+    final bar = Container(
+      height: vertical ? null : 17,
+      clipBehavior: Clip.antiAlias,
+      foregroundDecoration: BoxDecoration(border: border, borderRadius: radius),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: radius,
+      ),
+      child: split == null
+          ? Center(
+              child: Text(
+                '—',
+                style: TextStyle(fontSize: 11, color: context.textInk(0.65)),
+              ),
+            )
+          : Flex(
+              direction: axis,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final piece in ordered)
+                  if (piece.share > 0)
+                    Expanded(
+                      flex: math.max(1, (piece.share * 10000).round()),
+                      child: ColoredBox(
+                        color: piece.fill,
+                        child: vertical
+                            ? null
+                            : _TobySegmentValue(
+                                percent: piece.label,
+                                color: piece.ink,
+                              ),
+                      ),
+                    ),
+              ],
+            ),
+    );
+    if (!vertical) return bar;
+    return Semantics(
+      container: true,
+      label: percentages == null
+          ? 'Toby position: outcome unavailable'
+          : 'Toby position: White wins ${percentages.white}%, draw ${percentages.draw}%, Black wins ${percentages.black}%',
+      excludeSemantics: true,
+      child: bar,
+    );
+  }
+}
+
+class _TobySegmentValue extends StatelessWidget {
+  const _TobySegmentValue({required this.percent, required this.color});
+
+  final int percent;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (percent == 0) return const SizedBox.shrink();
+    final value = '$percent%';
+    final style = AppTypography.textXsMedium.copyWith(
+      color: color,
+      fontSize: 10,
+      height: 1,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: value, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        final fits =
+            painter.width + 6 <= constraints.maxWidth &&
+            painter.height + 2 <= constraints.maxHeight;
+        painter.dispose();
+        return fits
+            ? Center(child: Text(value, style: style, maxLines: 1))
+            : const SizedBox.shrink();
+      },
+    );
+  }
+}
+
+class _TobyTapHint extends StatelessWidget {
+  const _TobyTapHint({
+    required this.message,
+    required this.label,
+    required this.child,
+  });
+
+  final String message;
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = GlobalKey<TooltipState>();
+    void reveal() {
+      Tooltip.dismissAllToolTips();
+      hint.currentState?.ensureTooltipVisible();
+    }
+
+    return Semantics(
+      button: true,
+      label: '$label. $message',
+      onTap: reveal,
+      excludeSemantics: true,
+      child: Tooltip(
+        key: hint,
+        message: message,
+        triggerMode: TooltipTriggerMode.manual,
+        excludeFromSemantics: true,
+        child: InkWell(onTap: reveal, child: child),
       ),
     );
   }

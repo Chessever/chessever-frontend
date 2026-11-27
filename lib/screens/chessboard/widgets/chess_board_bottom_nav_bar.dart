@@ -4,6 +4,8 @@ import 'board_feature_teaching_host.dart';
 import 'package:chessever2/screens/chessboard/utils/stream_scroll_coaching.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
+    show boardUsesTobyProvider;
 import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
@@ -406,7 +408,7 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
     // Toby has no search depth and never reports one. With Toby chosen the
     // overlay shows only when Stockfish is actually searching (threats mode,
     // or a position Toby cannot read), never the loading dots for a Toby read.
-    final usesToby = engineSettings?.usesToby ?? false;
+    final usesToby = ref.watch(boardUsesTobyProvider);
 
     // Format depth text like "D:12"; show "..." while loading if overlay is enabled
     String? depthText;

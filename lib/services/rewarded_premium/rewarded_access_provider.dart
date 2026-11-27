@@ -36,10 +36,15 @@ final rewardedAccessProvider =
       return notifier;
     });
 
+// Availability is shared by the entitlement and the purchase chooser.
+final rewardedAdsAvailableProvider = Provider<bool>(
+  (ref) => RewardedAdsConfig.available,
+);
+
 final premiumAccessProvider = Provider<bool>(
   (ref) =>
       ref.watch(subscriptionProvider.select((s) => s.isSubscribed)) ||
-      (RewardedAdsConfig.available &&
+      (ref.watch(rewardedAdsAvailableProvider) &&
           ref.watch(rewardedAccessProvider.select((s) => s.active))),
 );
 

@@ -258,10 +258,20 @@ class EngineSettings {
   /// Whether Toby replaces Stockfish on the board: chosen, and Toby on.
   bool get usesToby => tobyEnabled && engineSource == EngineSource.toby;
 
-  /// The reader's Toby switch (Settings, Engine, Toby), the same in every
-  /// app: off turns every Toby surface off (Toby Predicts, Toby engine
-  /// lines, the Game Report's Toby rating). On the account
-  /// (`user_engine_settings.toby_enabled`, null read as on).
+  /// Only an explicit, entitled Toby selection may undo an older opt-out.
+  /// Reading settings, or selecting Stockfish, leaves that opt-out intact.
+  EngineSettings withSelectedSource(EngineSource source) {
+    if (engineSource == source && (source != EngineSource.toby || tobyEnabled)) {
+      return this;
+    }
+    return copyWith(
+      engineSource: source,
+      tobyEnabled: source == EngineSource.toby ? true : null,
+    );
+  }
+
+  /// The account's legacy Toby opt-out (`user_engine_settings.toby_enabled`,
+  /// null read as on). Kept for other clients and existing saved choices.
   final bool tobyEnabled;
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
@@ -808,8 +818,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   /// the account (`engine_source`) and cached on the device.
   Future<void> setEngineSource(EngineSource source) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
-    if (currentState.engineSource == source) return;
-    final newSettings = currentState.copyWith(engineSource: source);
+    final newSettings = currentState.withSelectedSource(source);
+    if (identical(currentState, newSettings)) return;
     // No global Stockfish cancel here: other owners (a local Game Review, the
     // explorer) keep their jobs. Each board cancels its own work when it
     // sees the switch.

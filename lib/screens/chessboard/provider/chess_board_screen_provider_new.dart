@@ -23,6 +23,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/tour_game_sn
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/services/toby/toby_board_request.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart'
+    show gradeTobyMoves;
 import 'package:chessever2/services/toby/toby_prediction.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
@@ -464,6 +466,38 @@ class ChessBoardScreenNotifierNew
       unawaited(parseMoves());
     });
 
+    ref.listen<bool>(tobyReaderHasPremiumProvider, (previous, next) {
+      if (previous == next ||
+          !(ref.read(engineSettingsProviderNew).valueOrNull?.usesToby ??
+              false)) {
+        return;
+      }
+      _stopToby();
+      _tobyCompleteKey = null;
+      if (!next && state.valueOrNull?.lockedPvLine?.evalLabel != null) {
+        _exitPvPreviewIfActive();
+      }
+      final current = state.valueOrNull;
+      if (current == null) return;
+      state = AsyncValue.data(
+        current.copyWith(
+          principalVariations: const [],
+          principalVariationsBaseFen: null,
+          tobyPosition: null,
+          evaluation: null,
+          mate: null,
+          shapes: const ISet<Shape>.empty(),
+          selectedVariantIndex: null,
+          variantBaseFen: null,
+          variantMovePointer: const [],
+        ),
+      );
+      if (current.showEngineAnalysis &&
+          index == ref.read(currentlyVisiblePageIndexProvider)) {
+        unawaited(_evaluatePosition(force: true, forceRestart: true));
+      }
+    });
+
     // Listen for engine settings changes and clear cache to force re-evaluation
     ref.listen<AsyncValue<EngineSettings>>(engineSettingsProviderNew, (
       previous,
@@ -570,19 +604,25 @@ class ChessBoardScreenNotifierNew
           );
         }
 
-        // Clear state's PVs immediately to show loading state
+        // Never label the previous engine's score as the newly selected one.
+        final engineChanged = prevValue != null &&
+            prevValue.usesToby != nextValue.usesToby;
         if (currentState != null &&
-            currentState.principalVariations.isNotEmpty) {
+            (currentState.principalVariations.isNotEmpty || engineChanged)) {
           _releaseLog(
             '   🗑️  Clearing ${currentState.principalVariations.length} cached PVs from state',
           );
           state = AsyncValue.data(
-            currentState.copyWith(
+            (state.valueOrNull ?? currentState).copyWith(
               principalVariations: const [],
               principalVariationsBaseFen: null,
               selectedVariantIndex: null,
               variantBaseFen: null,
               variantMovePointer: const [],
+              tobyPosition: engineChanged ? null : currentState.tobyPosition,
+              evaluation: engineChanged ? null : currentState.evaluation,
+              mate: engineChanged ? null : currentState.mate,
+              shapes: engineChanged ? const ISet<Shape>.empty() : currentState.shapes,
             ),
           );
         }
@@ -957,10 +997,7 @@ class ChessBoardScreenNotifierNew
 
     // Toby and Stockfish answer the same position differently: a switch of
     // source must never coalesce with, or count as, the other's result.
-    final source =
-        ref.read(engineSettingsProviderNew).valueOrNull?.usesToby ?? false
-        ? '_toby'
-        : '';
+    final source = ref.read(boardUsesTobyProvider) ? '_toby' : '';
 
     // Include multiPV count in cache key to prevent wrong PV count being returned
     // e.g., cached 3-PV result shouldn't be returned when user wants 5 PVs
@@ -6225,6 +6262,7 @@ class ChessBoardScreenNotifierNew
           baselineState.copyWith(
             shapes: const ISet.empty(),
             isEvaluating: true,
+            tobyPosition: null,
             principalVariations: const [],
             principalVariationsBaseFen: null,
             analysisState: baselineState.analysisState.copyWith(
@@ -6243,7 +6281,7 @@ class ChessBoardScreenNotifierNew
       // evaluation cascade, never persists, and never touches Stockfish. When
       // Toby cannot read this position (threats mode, another variant, a
       // refusal, an empty busy answer), the Stockfish path below runs.
-      if (effectiveEngineSettings.usesToby && !isThreatsMode) {
+      if (ref.read(boardUsesTobyProvider) && !isThreatsMode) {
         final tobyRequest = buildTobyRequestFromBoardState(
           state.value ?? baselineState,
           targetFen: fen,
@@ -6263,6 +6301,10 @@ class ChessBoardScreenNotifierNew
             expectedBoardFen: fen,
           )) {
             return;
+          }
+          final current = state.valueOrNull;
+          if (current?.tobyPosition != null) {
+            state = AsyncValue.data(current!.copyWith(tobyPosition: null));
           }
           _releaseLog('🎯 EVAL: Toby unavailable here, using Stockfish');
           _registerPendingEvaluation(fen);
@@ -7401,6 +7443,7 @@ class ChessBoardScreenNotifierNew
             unawaited(
               _applyTobyReading(
                 reading,
+                request: request,
                 isFinal: false,
                 currentRequestId: currentRequestId,
                 fen: fen,
@@ -7441,6 +7484,7 @@ class ChessBoardScreenNotifierNew
     }
     await _applyTobyReading(
       reading,
+      request: request,
       isFinal: true,
       currentRequestId: currentRequestId,
       fen: fen,
@@ -7458,11 +7502,12 @@ class ChessBoardScreenNotifierNew
   }
 
   /// Writes one Toby [reading] to the board in the same shape a Stockfish
-  /// result takes, so the same widgets render it: one-move lines whose badge
-  /// shows the move's chance, a pseudo evaluation whose bar fill is White's
+  /// result takes: one-move lines carry Toby’s chance and its own outcomes,
+  /// plus a pseudo evaluation whose bar fill is White’s
   /// expected score, and the usual best-move arrows. Never persisted.
   Future<void> _applyTobyReading(
     TobyReading reading, {
+    required TobyRequest request,
     required bool isFinal,
     required int currentRequestId,
     required String fen,
@@ -7477,7 +7522,9 @@ class ChessBoardScreenNotifierNew
         Pv(moves: line.uci, cp: line.whiteCp, whitePerspective: true),
     ];
     var pvLines = await _buildPrincipalVariations(fen, pvs);
-    if (generation != _tobyApplyGeneration ||
+    if (!mounted ||
+        generation != _tobyApplyGeneration ||
+        !ref.read(boardUsesTobyProvider) ||
         !_evalApplyStillValid(
           currentRequestId: currentRequestId,
           expectedBoardFen: fen,
@@ -7487,17 +7534,28 @@ class ChessBoardScreenNotifierNew
     final labels = <String, String>{
       for (final line in lines) line.uci: line.label,
     };
+    final grades = isFinal ? gradeTobyMoves(
+      reading: reading,
+      request: request,
+      position: position,
+      visibleUcis: lines.take(3).map((line) => line.uci),
+    ) : const <String, Never>{};
     pvLines = [
       for (final line in pvLines)
         if (line.moves.isEmpty)
           line
-        else
+        else if (tobyStyleUci(position, line.moves.first) case final uci)
           line.copyWith(
-            evalLabel: labels[tobyStyleUci(position, line.moves.first)],
+            evalLabel: labels[uci],
+            tobyWdl: reading.candidate(uci)?.wdl,
+            tobyQuality: grades[uci],
           ),
     ];
 
     final positionWdl = reading.positionWdl;
+    final TobyPositionSnapshot? tobyPosition = positionWdl == null
+        ? null
+        : (fen: fen, outcome: positionWdl);
     final evaluation = positionWdl != null
         ? tobyPseudoEvaluation(positionWdl)
         : (pvs.isNotEmpty ? pvs.first.cp / 100.0 : 0.0);
@@ -7541,6 +7599,7 @@ class ChessBoardScreenNotifierNew
           evaluation: evaluation,
           mate: null,
           isEvaluating: !isFinal,
+          tobyPosition: tobyPosition,
           shapes: overlayShapes,
         ),
       );
@@ -7551,6 +7610,7 @@ class ChessBoardScreenNotifierNew
       evaluation: evaluation,
       mate: null,
       isEvaluating: !isFinal,
+      tobyPosition: tobyPosition,
       shapes: overlayShapes,
       principalVariations: pvLines,
       principalVariationsBaseFen: fen,
@@ -8218,6 +8278,17 @@ class SavedAnalysisData {
     this.tags = const <String>[],
   });
 }
+
+/// The saved engine preference is not an entitlement. On expiry the board
+/// uses Stockfish without overwriting the user's synced Toby preference.
+final boardUsesTobyProvider = Provider<bool>((ref) {
+  final preferred = ref.watch(
+    engineSettingsProviderNew.select(
+      (settings) => settings.valueOrNull?.usesToby ?? false,
+    ),
+  );
+  return preferred && ref.watch(tobyReaderHasPremiumProvider);
+});
 
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifierNew,

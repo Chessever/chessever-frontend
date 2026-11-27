@@ -55,6 +55,7 @@ class EnginePvListView extends StatelessWidget {
     this.slotCount = 3,
     this.isEvaluating = false,
     this.trailingDivider = true,
+    this.rowExtent,
   });
 
   final List<EnginePvItem> items;
@@ -64,25 +65,30 @@ class EnginePvListView extends StatelessWidget {
   final bool isEvaluating;
   final bool trailingDivider;
 
+  /// Exact row height, including its divider, for the phone engine switcher.
+  final double? rowExtent;
+
   /// Fixed height per row so text updates never shift the layout vertically.
   static double get rowHeight => 30.h.clamp(30.0, double.infinity);
 
   @override
   Widget build(BuildContext context) {
     final rows = slotCount.clamp(1, 3);
+    Widget separator() => Divider(
+      height: 1,
+      color: context.colors.divider.withValues(alpha: 0.3),
+      indent: 12.sp,
+      endIndent: 12.sp,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < rows; i++) ...[
-          if (i > 0)
-            Divider(
-              height: 1,
-              color: context.colors.divider.withValues(alpha: 0.3),
-              indent: 12.sp,
-              endIndent: 12.sp,
-            ),
+          if (i > 0) separator(),
           SizedBox(
-            height: context.textExtent(rowHeight),
+            height: rowExtent == null
+                ? context.textExtent(rowHeight)
+                : rowExtent! - (i > 0 ? 1 : 0),
             child: i < items.length
                 ? _PvRow(item: items[i])
                 : _PvRowPlaceholder(

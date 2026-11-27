@@ -165,6 +165,10 @@ import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_nudge.dart';
 import 'package:chessever2/screens/chessboard/widgets/notation_footer_actions.dart';
 import 'package:chessever2/screens/chessboard/widgets/toby_live_prediction.dart';
+import 'package:chessever2/screens/chessboard/utils/toby_palette.dart';
+import 'package:chessever2/services/toby/toby_prediction.dart'
+    show tobyReaderHasPremiumProvider;
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
@@ -4667,6 +4671,7 @@ bool _sameNotation(_MovesDisplay a, _MovesDisplay b) {
   return a.index == b.index &&
       a.currentPageIndex == b.currentPageIndex &&
       identical(a.game, b.game) &&
+      a.tobyInEngineStrip == b.tobyInEngineStrip &&
       x.isLoadingMoves == y.isLoadingMoves &&
       identical(x.analysisState.game, y.analysisState.game) &&
       x.analysisState.currentMoveIndex == y.analysisState.currentMoveIndex &&
@@ -8276,6 +8281,42 @@ class CompactBoardPinnedAnalysisLayout extends StatelessWidget {
   }
 }
 
+bool _isPhoneBroadcast(GamesTourModel game) =>
+    game.source == GameSource.supabase && !ResponsiveHelper.isTablet;
+
+bool _supportsPhoneEngineSwitch(BuildContext context, GamesTourModel game) =>
+    _isPhoneBroadcast(game) &&
+    MediaQuery.orientationOf(context) == Orientation.portrait &&
+    AdaptiveWindow.verticalFoldOf(context) == null;
+
+bool _showPhoneTobyStrip(ChessBoardStateNew state, bool tobySelected) =>
+    tobySelected && !state.isPvPreviewActive && !state.isThreatsMode;
+
+Future<void> _openPhoneEngineSettings(BuildContext context) async {
+  if (!await requireFullAuthGuard(context) || !context.mounted) return;
+  Navigator.of(
+    context,
+  ).push(SettingsPage.route(initiallyExpanded: SettingsSection.engine));
+}
+
+/// Only a current, actually delivered set of Toby lines owns the Toby strip.
+/// A Stockfish fallback, stale position or PV preview keeps the normal strip.
+bool _hasTobyStrip(ChessBoardStateNew state) {
+  if (state.isPvPreviewActive || state.isThreatsMode) return false;
+  final position = state.isAnalysisMode
+      ? state.analysisState.position
+      : state.position;
+  return position != null &&
+      state.principalVariationsBaseFen == position.fen &&
+      state.principalVariations.isNotEmpty &&
+      state.principalVariations.every(
+        (line) =>
+            line.evalLabel != null &&
+            line.moves.isNotEmpty &&
+            line.sanMoves.isNotEmpty,
+      );
+}
+
 class _AnalysisGameBody extends ConsumerWidget {
   final int index;
   final int currentPageIndex;
@@ -8326,6 +8367,10 @@ class _AnalysisGameBody extends ConsumerWidget {
             (value) => value.valueOrNull ?? true,
           ),
         );
+
+    final tobySelected = ref.watch(boardUsesTobyProvider);
+    final phoneTobySelected =
+        _supportsPhoneEngineSwitch(context, game) && tobySelected;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -8453,9 +8498,12 @@ class _AnalysisGameBody extends ConsumerWidget {
               currentPageIndex: currentPageIndex,
               state: state,
               game: game,
+              tobyInEngineStrip:
+                  showPv &&
+                  ((tobySelected && _hasTobyStrip(state)) ||
+                      _showPhoneTobyStrip(state, phoneTobySelected)),
             ),
           );
-
           // Avoid mounting the (global) Gamebase provider for offscreen pages.
           // This prevents multiple PageView children from racing to set the
           // Gamebase FEN, which breaks lookups for real game positions.
@@ -9215,6 +9263,8 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
             ),
           ),
         );
+    final tobyGauge =
+        _isPhoneBroadcast(widget.game) && ref.watch(boardUsesTobyProvider);
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
@@ -9314,9 +9364,24 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
                         final activePosition = widget.state.isAnalysisMode
                             ? widget.state.analysisState.position
                             : widget.state.position;
+                        if (tobyGauge) {
+                          final reading = widget.state.tobyPosition;
+                          final outcome =
+                              reading != null &&
+                                  reading.fen == activePosition?.fen &&
+                                  !widget.state.isThreatsMode &&
+                                  !widget.state.isPvPreviewActive
+                              ? reading.outcome
+                              : null;
+                          return TobyOutcomeBar(
+                            key: const ValueKey('toby-position-outcomes'),
+                            outcome: outcome,
+                            axis: Axis.vertical,
+                            whiteFirst: widget.state.isBoardFlipped,
+                          );
+                        }
                         final bool isWhiteToMove =
                             activePosition?.turn != Side.black;
-
                         return EvaluationBarWidget(
                           key: e2eKey(E2eIds.boardEvalBar),
                           width: sideBarWidth,
@@ -11749,12 +11814,14 @@ class _PvPreviewVeil extends StatelessWidget {
 }
 
 class _MovesDisplay extends ConsumerStatefulWidget {
+  final bool tobyInEngineStrip;
   final int index;
   final ChessBoardStateNew state;
   final GamesTourModel game;
   final int currentPageIndex;
 
   const _MovesDisplay({
+    required this.tobyInEngineStrip,
     required this.state,
     required this.index,
     required this.game,
@@ -12229,214 +12296,237 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return content;
     }
 
-    final notationContent = SingleChildScrollView(
-      controller: _scrollController,
-      padding: EdgeInsets.only(bottom: _kNotationBottomSlack.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            alignment: Alignment.centerLeft,
-            padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 20.sp),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ExcludeSemantics(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: rows,
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Keep predictions directly above notation when the engine/board
+        // leave room. On short windows the same table scrolls with notation
+        // instead of covering the board or consuming the remaining viewport.
+        final pinToby =
+            constraints.maxHeight >=
+            TobyPredictsLine.panelHeight(context) + context.textExtent(64.sp);
+        final toby = Padding(
+          padding: EdgeInsets.symmetric(horizontal: pinToby ? 16.sp : 0),
+          child: TobyLivePrediction(
+            params: params,
+            onLayoutChange: _repinAfterNotationReflow,
+            onSettingsTap: () async {
+              if (!await requireFullAuthGuard(context) || !context.mounted) {
+                return;
+              }
+              Navigator.of(context).push(
+                SettingsPage.route(initiallyExpanded: SettingsSection.engine),
+              );
+            },
+          ),
+        );
+        final notationContent = SingleChildScrollView(
+          controller: _scrollController,
+          padding: EdgeInsets.only(bottom: _kNotationBottomSlack.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                alignment: Alignment.centerLeft,
+                padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 20.sp),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ExcludeSemantics(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: rows,
+                      ),
+                    ),
+                    if (!pinToby && !widget.tobyInEngineStrip) toby,
+                  ],
                 ),
-                // "Toby Predicts: …" right after the last move (live game
-                // only; it builds nothing otherwise). A sibling of the rows
-                // so screen readers reach it: they sit in ExcludeSemantics.
-                TobyLivePrediction(
-                  params: params,
-                  onLayoutChange: _repinAfterNotationReflow,
-                ),
-              ],
+              ),
+              if (footerActions.isNotEmpty)
+                NotationFooterActions(children: footerActions),
+            ],
+          ),
+        );
+
+        return Container(
+          key: e2eKey(E2eIds.boardNotationRoot),
+          decoration: BoxDecoration(
+            color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(12.sp),
+              topRight: Radius.circular(12.sp),
             ),
           ),
-          if (footerActions.isNotEmpty)
-            NotationFooterActions(children: footerActions),
-        ],
-      ),
-    );
-
-    Widget content = Container(
-      key: e2eKey(E2eIds.boardNotationRoot),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(12.sp),
-          topRight: Radius.circular(12.sp),
-        ),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(child: notationContent),
-                // Subtle overlay when preview is active - only covers main variant area
-                if (widget.state.isPvPreviewActive)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0, // Will be covered by PV cards naturally
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        // Tap anywhere on overlay to exit preview
-                        ref
-                            .read(chessBoardScreenProviderNew(params).notifier)
-                            .clearPvPreview();
-                      },
-                      child: _PvPreviewVeil(
-                        radius: 12.sp,
-                        // Scrolls only when larger text outgrows a short
-                        // notation panel.
-                        child: SingleChildScrollView(
-                          primary: false,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 18.sp,
-                            vertical: 16.sp,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.visibility_outlined,
-                                color: context.isLightTheme
-                                    ? context.colors.iconPrimary
-                                    : Colors.white.withValues(alpha: 0.95),
-                                size: 20.sp,
+          child: Column(
+            children: [
+              if (pinToby && !widget.tobyInEngineStrip) toby,
+              Expanded(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(child: notationContent),
+                    // Subtle overlay when preview is active - only covers main variant area
+                    if (widget.state.isPvPreviewActive)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0, // Will be covered by PV cards naturally
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            // Tap anywhere on overlay to exit preview
+                            ref
+                                .read(
+                                  chessBoardScreenProviderNew(params).notifier,
+                                )
+                                .clearPvPreview();
+                          },
+                          child: _PvPreviewVeil(
+                            radius: 12.sp,
+                            // Scrolls only when larger text outgrows a short
+                            // notation panel.
+                            child: SingleChildScrollView(
+                              primary: false,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 18.sp,
+                                vertical: 16.sp,
                               ),
-                              SizedBox(height: 8.sp),
-                              Text(
-                                'Preview mode',
-                                textAlign: TextAlign.center,
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.textPrimary,
-                                  letterSpacing: 0.4,
-                                ),
-                              ),
-                              SizedBox(height: 4.sp),
-                              Text(
-                                'Tap anywhere to exit or swipe the hero card up to apply.',
-                                textAlign: TextAlign.center,
-                                style: AppTypography.textXsRegular.copyWith(
-                                  color: context.textInk(0.85),
-                                ),
-                              ),
-                              SizedBox(height: 12.sp),
-                              // Promote main variant button
-                              Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () async {
-                                    // Prevent tap from propagating to parent GestureDetector
-                                    HapticFeedback.mediumImpact();
-
-                                    final lockedLine =
-                                        widget.state.lockedPvLine;
-                                    if (lockedLine == null) return;
-
-                                    // Confirm before promoting
-                                    final confirmed =
-                                        await showSmoothConfirmDialog(
-                                          context: context,
-                                          title: 'Promote to main variant?',
-                                          message:
-                                              'This will replace the main variant with this preview line.',
-                                          confirmText: 'Promote',
-                                        ) ??
-                                        false;
-
-                                    if (!confirmed) return;
-                                    if (!context.mounted) return;
-
-                                    notifier.promotePreviewToMainVariant();
-                                  },
-                                  borderRadius: BorderRadius.circular(8.sp),
-                                  splashColor: kPrimaryColor.withValues(
-                                    alpha: 0.3,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    color: context.isLightTheme
+                                        ? context.colors.iconPrimary
+                                        : Colors.white.withValues(alpha: 0.95),
+                                    size: 20.sp,
                                   ),
-                                  highlightColor: kPrimaryColor.withValues(
-                                    alpha: 0.2,
-                                  ),
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 20.sp,
-                                      vertical: 10.sp,
+                                  SizedBox(height: 8.sp),
+                                  Text(
+                                    'Preview mode',
+                                    textAlign: TextAlign.center,
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: context.colors.textPrimary,
+                                      letterSpacing: 0.4,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: kPrimaryColor.withValues(
-                                        alpha: 0.15,
-                                      ),
+                                  ),
+                                  SizedBox(height: 4.sp),
+                                  Text(
+                                    'Tap anywhere to exit or swipe the hero card up to apply.',
+                                    textAlign: TextAlign.center,
+                                    style: AppTypography.textXsRegular.copyWith(
+                                      color: context.textInk(0.85),
+                                    ),
+                                  ),
+                                  SizedBox(height: 12.sp),
+                                  // Promote main variant button
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () async {
+                                        // Prevent tap from propagating to parent GestureDetector
+                                        HapticFeedback.mediumImpact();
+
+                                        final lockedLine =
+                                            widget.state.lockedPvLine;
+                                        if (lockedLine == null) return;
+
+                                        // Confirm before promoting
+                                        final confirmed =
+                                            await showSmoothConfirmDialog(
+                                              context: context,
+                                              title: 'Promote to main variant?',
+                                              message:
+                                                  'This will replace the main variant with this preview line.',
+                                              confirmText: 'Promote',
+                                            ) ??
+                                            false;
+
+                                        if (!confirmed) return;
+                                        if (!context.mounted) return;
+
+                                        notifier.promotePreviewToMainVariant();
+                                      },
                                       borderRadius: BorderRadius.circular(8.sp),
-                                      border: Border.all(
-                                        color: context.isLightTheme
-                                            ? context.colors.accentText
-                                            : kPrimaryColor.withValues(
-                                                alpha: 0.4,
-                                              ),
-                                        width: 1.5,
+                                      splashColor: kPrimaryColor.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      highlightColor: kPrimaryColor.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 20.sp,
+                                          vertical: 10.sp,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: kPrimaryColor.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8.sp,
+                                          ),
+                                          border: Border.all(
+                                            color: context.isLightTheme
+                                                ? context.colors.accentText
+                                                : kPrimaryColor.withValues(
+                                                    alpha: 0.4,
+                                                  ),
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.upgrade_rounded,
+                                              color: context.colors.textPrimary,
+                                              size: 16.sp,
+                                            ),
+                                            SizedBox(width: 8.sp),
+                                            Text(
+                                              'Promote main variant',
+                                              style: AppTypography.textSmMedium
+                                                  .copyWith(
+                                                    color: context
+                                                        .colors
+                                                        .textPrimary,
+                                                    letterSpacing: 0.2,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.upgrade_rounded,
-                                          color: context.colors.textPrimary,
-                                          size: 16.sp,
-                                        ),
-                                        SizedBox(width: 8.sp),
-                                        Text(
-                                          'Promote main variant',
-                                          style: AppTypography.textSmMedium
-                                              .copyWith(
-                                                color:
-                                                    context.colors.textPrimary,
-                                                letterSpacing: 0.2,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+              if (showNextMovePanel)
+                _NextMoveOptionsPanel(
+                  options: nextMoveOptions,
+                  useFigurine: useFigurine,
+                  pieceAssets: pieceAssets,
+                  onSelect: (option) {
+                    HapticFeedback.selectionClick();
+                    notifier.goToMovePointer(option.pointer);
+                  },
+                ),
+            ],
           ),
-          if (showNextMovePanel)
-            _NextMoveOptionsPanel(
-              options: nextMoveOptions,
-              useFigurine: useFigurine,
-              pieceAssets: pieceAssets,
-              onSelect: (option) {
-                HapticFeedback.selectionClick();
-                notifier.goToMovePointer(option.pointer);
-              },
-            ),
-        ],
-      ),
+        );
+      },
     );
-
-    return content;
   }
 
   Widget _buildMoveChip(
@@ -14244,6 +14334,65 @@ class _DirectCommentSheet extends ConsumerWidget {
 const int _variationCommentPreviewChars = 80;
 const int _variationCommentMaxChars = 1000;
 
+class _PhoneEngineToggle extends StatelessWidget {
+  const _PhoneEngineToggle({
+    required this.tobySelected,
+    required this.onSelected,
+    required this.onSettingsLongPress,
+  });
+
+  final bool tobySelected;
+  final ValueChanged<EngineSource> onSelected;
+  final VoidCallback onSettingsLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    Widget choice(String label, EngineSource source, bool selected) => Expanded(
+      flex: source == EngineSource.stockfish ? 3 : 2,
+      child: Semantics(
+        label: label,
+        button: true,
+        selected: selected,
+        hint: 'Long press for Engine settings',
+        child: InkWell(
+          key: ValueKey('board-engine-${source.name}'),
+          borderRadius: BorderRadius.circular(5),
+          onTap: () => onSelected(source),
+          onLongPress: onSettingsLongPress,
+          child: Center(
+            child: Container(
+              margin: const EdgeInsets.all(2),
+              alignment: Alignment.center,
+              height: 26,
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  style: AppTypography.textSmMedium.copyWith(
+                    fontSize: 12,
+                    color: selected ? colors.textPrimary : context.textInk(.68),
+                    decoration: selected ? TextDecoration.underline : null,
+                    decorationColor: colors.textPrimary.withValues(alpha: .45),
+                    decorationThickness: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Row(
+      children: [
+        choice('Stockfish', EngineSource.stockfish, !tobySelected),
+        choice('Toby', EngineSource.toby, tobySelected),
+      ],
+    );
+  }
+}
+
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -14484,8 +14633,92 @@ class _PrincipalVariationListState
     super.dispose();
   }
 
+  bool _requestingTobyAccess = false;
+
+  Future<void> _selectEngine(EngineSource source) async {
+    HapticFeedback.selectionClick();
+    Future<void> select() async {
+      if (!mounted) return;
+      await ref
+          .read(engineSettingsProviderNew.notifier)
+          .setEngineSource(source);
+    }
+
+    if (source != EngineSource.toby || ref.read(tobyReaderHasPremiumProvider)) {
+      await select();
+      return;
+    }
+    if (_requestingTobyAccess) return;
+    _requestingTobyAccess = true;
+    try {
+      await showPremiumPaywallSheet(
+        context: context,
+        featureId: 'toby_engine',
+        returnTo: 'broadcast/board',
+        onEntitled: select,
+      );
+    } finally {
+      _requestingTobyAccess = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final showSwitch = _supportsPhoneEngineSwitch(context, widget.game);
+    final tobySelected = ref.watch(boardUsesTobyProvider);
+    final realTobyLines = tobySelected && _hasTobyStrip(widget.state);
+    final useTobyTable =
+        realTobyLines ||
+        (showSwitch && _showPhoneTobyStrip(widget.state, tobySelected));
+    final selector = showSwitch
+        ? _PhoneEngineToggle(
+            tobySelected: tobySelected,
+            onSettingsLongPress: () => _openPhoneEngineSettings(context),
+            onSelected: (source) => unawaited(_selectEngine(source)),
+          )
+        : null;
+    final body = _buildEngineLines(
+      context,
+      engineSettings: engineSettings,
+      selector: selector,
+      useTobyTable: useTobyTable,
+      realTobyLines: realTobyLines,
+      hideTobyLines: !tobySelected,
+    );
+    if (selector == null || useTobyTable) return body;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.sp),
+          child: LayoutBuilder(
+            builder: (context, constraints) => Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: TobyPredictsLine.engineSelectorWidth(
+                  constraints.maxWidth,
+                ),
+                height: TobyPredictsLine.engineHeaderHeight,
+                child: selector,
+              ),
+            ),
+          ),
+        ),
+        body,
+      ],
+    );
+  }
+
+  Widget _buildEngineLines(
+    BuildContext context, {
+    required EngineSettings? engineSettings,
+    required Widget? selector,
+    required bool useTobyTable,
+    required bool realTobyLines,
+    required bool hideTobyLines,
+  }) {
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.index,
@@ -14498,8 +14731,69 @@ class _PrincipalVariationListState
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
     // Get user's PV count setting (caps at 5)
-    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final multiPV = engineSettings?.multiPvForLichess() ?? 3;
+    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
+    final compactList = selector != null && linesView == EngineLinesView.list;
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+
+    if (useTobyTable) {
+      final lines = realTobyLines
+          ? widget.state.principalVariations.take(math.min(3, multiPV)).toList()
+          : const <AnalysisLine>[];
+      return Padding(
+        padding: EdgeInsets.fromLTRB(12.sp, 0, 12.sp, 4.h),
+        child: TobyPredictsLine(
+          engineToggle: selector,
+          outcomeLegendPieces: pieceAssets,
+          phoneRowCount: compactList ? multiPV.clamp(1, 3) : null,
+          waiting: widget.state.isEvaluating,
+          note: lines.isNotEmpty
+              ? null
+              : (position?.isGameOver ?? false)
+              ? 'Game over'
+              : '—',
+          tokens: [
+            if (position != null)
+              for (final (index, line) in lines.indexed)
+                TobyPredictionToken(
+                  rank: index,
+                  uci: line.moves.first.uci,
+                  chance: line.evalLabel!,
+                  san: line.sanMoves.first,
+                  move: tobyNumberedMove(position.fen, line.sanMoves.first),
+                  hue: tobyCandidateHue(index),
+                  sideToMove: position.turn,
+                  wdl: line.tobyWdl,
+                  quality: line.tobyQuality,
+                ),
+          ],
+          playOnMoveTap: true,
+          onMoveTap: (token) {
+            HapticFeedback.lightImpact();
+            notifier.clearPvPreview();
+            notifier.playPrincipalVariationMove(lines[token.rank]);
+          },
+          onMoveLongPress: (token) {
+            HapticFeedback.mediumImpact();
+            _showPvMoveActionSheet(
+              context,
+              token.san,
+              lines[token.rank],
+              0,
+              notifier,
+            );
+          },
+          onSettingsTap: selector == null
+              ? () => _openPhoneEngineSettings(context)
+              : null,
+        ),
+      );
+    }
 
     // Get figurine notation setting and piece assets for PV card rendering
     final useFigurine = ref.watch(
@@ -14508,43 +14802,34 @@ class _PrincipalVariationListState
             s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
-    final pieceAssets = ref.watch(
-      boardSettingsProviderNew.select(
-        (s) =>
-            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
-      ),
-    );
-
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
     const double basePvHeight = 78;
     final double pvCardHeight = math.max(64.0, basePvHeight.h);
 
-    // Clamp PVs to user preference
-    final clampedLines = (widget.state.principalVariations.length > multiPV)
-        ? widget.state.principalVariations.take(multiPV).toList(growable: false)
-        : widget.state.principalVariations.toList(growable: false);
-
+    // Keep cached Toby percentages out of the Stockfish strip on a switch.
+    List<AnalysisLine> activeEngineLines(List<AnalysisLine> lines) =>
+        (hideTobyLines ? lines.where((line) => line.evalLabel == null) : lines)
+            .take(multiPV)
+            .toList(growable: false);
+    final clampedLines = activeEngineLines(widget.state.principalVariations);
     final hasActivePvs = clampedLines.isNotEmpty;
-    final fallbackLines = (!hasActivePvs && _lastNonEmptyLines.isNotEmpty)
-        ? (_lastNonEmptyLines.length > multiPV
-              ? _lastNonEmptyLines.take(multiPV).toList(growable: false)
-              : _lastNonEmptyLines.toList(growable: false))
-        : const <AnalysisLine>[];
+    final cachedLines = activeEngineLines(_lastNonEmptyLines);
+    final fallbackLines = !hasActivePvs ? cachedLines : const <AnalysisLine>[];
     final displayLines = hasActivePvs ? clampedLines : fallbackLines;
     // Determine loading state for PV cards
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
     final showSkeleton =
         !showEndOfGame &&
         !hasActivePvs &&
-        _lastNonEmptyLines.isEmpty &&
+        cachedLines.isEmpty &&
         widget.state.isEvaluating;
     final showEmptyState =
         !showEndOfGame &&
         displayLines.isEmpty &&
         !widget.state.isEvaluating &&
-        _lastNonEmptyLines.isEmpty;
+        cachedLines.isEmpty;
     // Add 1 to pageCount when in preview mode for the static PV card
     final hasLockedPv =
         widget.state.isPvPreviewActive && widget.state.lockedPvLine != null;
@@ -15005,7 +15290,6 @@ class _PrincipalVariationListState
 
     // Traditional layout: stack the engine lines vertically instead of the
     // swipeable cards. Reuses the same tokens/spans/interactions.
-    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
     if (linesView == EngineLinesView.list) {
       return _buildPvListLayout(
         context: context,
@@ -15018,6 +15302,7 @@ class _PrincipalVariationListState
         multiPV: multiPV,
         showEndOfGame: showEndOfGame,
         isEvaluating: widget.state.isEvaluating,
+        compact: compactList,
       );
     }
 
@@ -15119,8 +15404,8 @@ class _PrincipalVariationListState
                       if (showSkeleton) {
                         final placeholderLine = displayLines.isNotEmpty
                             ? displayLines.first
-                            : _lastNonEmptyLines.isNotEmpty
-                            ? _lastNonEmptyLines.first
+                            : cachedLines.isNotEmpty
+                            ? cachedLines.first
                             : const AnalysisLine(
                                 sanMoves: ['...'],
                                 evaluation: 0,
@@ -15461,6 +15746,7 @@ class _PrincipalVariationListState
     required int multiPV,
     required bool showEndOfGame,
     required bool isEvaluating,
+    required bool compact,
   }) {
     if (showEndOfGame) {
       return Padding(
@@ -15570,10 +15856,13 @@ class _PrincipalVariationListState
     // own row rhythm is the structure; boxing them added a container the
     // layout never needed.
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
+      padding: EdgeInsets.fromLTRB(16.sp, compact ? 0 : 8.sp, 16.sp, 4.h),
       child: EnginePvListView(
         items: items,
-        slotCount: isEvaluating ? multiPV : math.max(1, items.length),
+        slotCount: compact || isEvaluating
+            ? multiPV
+            : math.max(1, items.length),
+        rowExtent: compact ? TobyPredictsLine.engineRowHeight(context) : null,
         isEvaluating: isEvaluating,
         trailingDivider: false,
       ),
