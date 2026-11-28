@@ -40,6 +40,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool showEngineAnalysis;
+  final bool showEngineDepth;
   final bool usesToby;
   final bool showUnseenMoveBadge;
   final VoidCallback? onGamebaseToggle;
@@ -67,6 +68,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
     required this.canMoveForward,
     required this.canMoveBackward,
     required this.showEngineAnalysis,
+    this.showEngineDepth = true,
     this.usesToby = false,
     required this.showUnseenMoveBadge,
     this.toggleEngineVisibility,
@@ -454,7 +456,9 @@ class _ChessBoardBottomNavBarState extends ConsumerState<ChessBoardBottomNavBar>
             onPressed: widget.toggleEngineVisibility,
             onLongPress: widget.onEngineSettingsLongPress,
             isActive: widget.showEngineAnalysis,
-            depthText: widget.showEngineAnalysis ? depthText : null,
+            depthText: widget.showEngineAnalysis && widget.showEngineDepth
+                ? depthText
+                : null,
           ),
         ),
 

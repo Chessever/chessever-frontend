@@ -1,4 +1,3 @@
-import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
@@ -4957,13 +4956,6 @@ class ChessBoardScreenNotifierNew
               ),
             );
     state = AsyncValue.data(currentState.copyWith(game: updatedGame));
-  }
-
-  void toggleEngineVisibility() {
-    final lines = ref.read(boardEngineLinesVisibleProvider);
-    if (!lines.hasValue) return;
-    unawaited(ref.read(boardEngineLinesVisibleProvider.notifier)
-        .setVisible(!lines.requireValue));
   }
 
   bool _usesToby(EngineSettings? settings, bool entitled) =>
