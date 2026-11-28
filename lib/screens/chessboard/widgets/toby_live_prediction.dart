@@ -687,8 +687,8 @@ String _candidateOutcomeMessage(TobyWdl outcome, Side mover) {
       '${isWhite ? 'White' : 'Black'} expected score ${percent(score)}';
 }
 
-/// A shared position/candidate palette. The vertical position gauge never
-/// prints a pawn score; candidate labels are shown only when they can fit.
+/// Candidate bars show move outcomes; the vertical gauge shows the current
+/// position's W/D/L. Both omit labels that cannot fit inside their segment.
 class TobyOutcomeBar extends StatelessWidget {
   const TobyOutcomeBar({
     super.key,
@@ -719,8 +719,10 @@ class TobyOutcomeBar extends StatelessWidget {
             ),
             (
               share: split.draw,
-              fill: const Color(0xFF4D6694),
-              ink: const Color(0xFFFFFFFF),
+              fill: vertical
+                  ? const Color(0xFF4C5D77)
+                  : const Color(0xFF4D6694),
+              ink: Colors.white,
               label: percentages.draw,
             ),
             (
@@ -756,42 +758,54 @@ class TobyOutcomeBar extends StatelessWidget {
                       flex: math.max(1, (piece.share * 10000).round()),
                       child: ColoredBox(
                         color: piece.fill,
-                        child: vertical
-                            ? null
-                            : _TobySegmentValue(
-                                percent: piece.label,
-                                color: piece.ink,
-                              ),
+                        child: _TobySegmentValue(
+                          percent: piece.label,
+                          color: piece.ink,
+                          vertical: vertical,
+                        ),
                       ),
                     ),
               ],
             ),
     );
     if (!vertical) return bar;
+    final label = percentages == null
+        ? 'Toby position: outcome unavailable'
+        : 'Toby position: White wins ${percentages.white}%, draw ${percentages.draw}%, Black wins ${percentages.black}%';
     return Semantics(
       container: true,
-      label: percentages == null
-          ? 'Toby position: outcome unavailable'
-          : 'Toby position: White wins ${percentages.white}%, draw ${percentages.draw}%, Black wins ${percentages.black}%',
+      label: label,
       excludeSemantics: true,
-      child: bar,
+      child: percentages == null
+          ? bar
+          : Tooltip(
+              message: label,
+              triggerMode: TooltipTriggerMode.tap,
+              excludeFromSemantics: true,
+              child: bar,
+            ),
     );
   }
 }
 
 class _TobySegmentValue extends StatelessWidget {
-  const _TobySegmentValue({required this.percent, required this.color});
+  const _TobySegmentValue({
+    required this.percent,
+    required this.color,
+    required this.vertical,
+  });
 
   final int percent;
   final Color color;
+  final bool vertical;
 
   @override
   Widget build(BuildContext context) {
     if (percent == 0) return const SizedBox.shrink();
-    final value = '$percent%';
+    final value = vertical ? '$percent' : '$percent%';
     final style = AppTypography.textXsMedium.copyWith(
       color: color,
-      fontSize: 10,
+      fontSize: vertical ? 9 : 10,
       height: 1,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
@@ -804,8 +818,8 @@ class _TobySegmentValue extends StatelessWidget {
           maxLines: 1,
         )..layout();
         final fits =
-            painter.width + 6 <= constraints.maxWidth &&
-            painter.height + 2 <= constraints.maxHeight;
+            painter.width + (vertical ? 2 : 6) <= constraints.maxWidth &&
+            painter.height + (vertical ? 4 : 2) <= constraints.maxHeight;
         painter.dispose();
         return fits
             ? Center(child: Text(value, style: style, maxLines: 1))

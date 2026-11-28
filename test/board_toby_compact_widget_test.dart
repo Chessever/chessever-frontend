@@ -27,6 +27,7 @@ import 'support/chessboard_surfaces_harness.dart';
 const _captureKey = ValueKey('toby_compact_capture');
 const _capturePath = String.fromEnvironment('TOBY_BOARD_CAPTURE');
 const _badgeCapturePath = String.fromEnvironment('TOBY_BADGE_CAPTURE');
+const _bothBarsCapturePath = String.fromEnvironment('TOBY_BOTH_BARS_CAPTURE');
 
 class _FixtureReading extends TobyReadingNotifier {
   _FixtureReading(this.reading);
@@ -103,7 +104,9 @@ void main() {
             as Map<String, dynamic>;
     reading = TobyReading.fromJson(fixture['body'])!;
 
-    if (_capturePath.isNotEmpty || _badgeCapturePath.isNotEmpty) {
+    if (_capturePath.isNotEmpty ||
+        _badgeCapturePath.isNotEmpty ||
+        _bothBarsCapturePath.isNotEmpty) {
       Future<void> family(String name, Iterable<String> paths) async {
         final loader = FontLoader(name);
         for (final path in paths) {
@@ -679,6 +682,12 @@ void main() {
           tester.widget<TobyOutcomeBar>(bar).outcome,
           same(reading.positionWdl),
         );
+        final draw = reading.positionWdl!.percentages.draw;
+        expect(
+          find.descendant(of: bar, matching: find.text('$draw')),
+          findsOneWidget,
+        );
+        await _captureBoard(tester, _bothBarsCapturePath);
         await tester.tap(engineIcon);
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.byKey(const ValueKey('board-engine-stack')), findsNothing);
