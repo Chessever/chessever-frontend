@@ -306,6 +306,13 @@ abstract final class StoryFrameLayout {
   static double boardBeside(BoxConstraints constraints) =>
       math.max(minBoard, constraints.maxHeight - besideAir).floorToDouble();
 
+  /// Around a board the reader plays on, how far out a finger still counts
+  /// as on it: the page's gutter, so upright the room runs from one edge of
+  /// the screen to the other at the board's height, and half way into the
+  /// players' rows above and below. A finger aimed at an edge square that
+  /// lands just off it is still the reader at the board.
+  static double get boardRoom => _gutter;
+
   /// The width of the words beside a board of [board] and its bar [bar].
   static double sideWidth(
     BoxConstraints constraints,
@@ -437,7 +444,7 @@ enum StoryPuzzleOutcome {
 
 /// The viewer's side of a position that asks for a move: what the reader
 /// did on it before, the story waiting while they think, and where the
-/// board that takes their move is (the viewer's taps leave it alone).
+/// board they play on is (the viewer's taps and holds leave it alone).
 abstract class StoryPuzzleHost {
   StoryPuzzleOutcome? outcomeOf(String frameId);
 
@@ -451,14 +458,17 @@ abstract class StoryPuzzleHost {
   /// before it moves on; a tap moves on sooner.
   void settle(String frameId, StoryPuzzleOutcome outcome, {Duration? hold});
 
-  /// The board taking a move, on screen; null when none does.
-  ValueNotifier<Rect?> get zone;
+  /// A board that asks for a move, for as long as its page lives. [area]
+  /// is asked as each finger comes down: where on the screen a touch is the
+  /// board's just then (the board and the room around it,
+  /// [StoryFrameLayout.boardRoom]), or null while the reader is not playing
+  /// on it. A finger that comes down there never moves the story on and
+  /// never holds it: an empty square, an opponent's piece and a near miss
+  /// beside an edge square are all the reader at the board.
+  void addBoard(Rect? Function() area);
 
-  /// A finger came down on [frameId]'s board: [takes] when the touch is the
-  /// board's ([storyBoardTap]), false when it is the story's, a tap that
-  /// moves on like one anywhere else on the page. The board hears a touch
-  /// before the viewer does, so this arrives first.
-  void boardTouch(String frameId, {required bool takes});
+  /// The board's page is gone.
+  void removeBoard(Rect? Function() area);
 
   /// A touch that belongs to the annotations rather than the story.
   void wordsTouch(String frameId, int pointer);
@@ -466,43 +476,6 @@ abstract class StoryPuzzleHost {
   /// Holds playback while the reader browses or reads a scrollable comment.
   /// [moveIndex] is the selected mainline move or the start of its branch.
   void reading(String frameId, {required bool paused, int? moveIndex});
-}
-
-/// What a touch on [square] of a board asking for a move is, as the board
-/// itself handles it (tap two squares, no premoves):
-///
-/// * the board's when it picks up a piece of the side to move; with a
-///   piece up ([selected]), any touch is the board's: it plays the piece to
-///   a legal square, puts it down, or picks up another; so is the touch
-///   that answers a promotion's choice ([promoting]);
-/// * the story's otherwise: an empty square or an opponent's piece with
-///   nothing picked up moves the story on, exactly as a tap anywhere else.
-///
-/// Returns that, and what is picked up and whether a promotion's choice is
-/// open after the touch, for the next one.
-({bool takes, Square? selected, bool promoting}) storyBoardTap(
-  Square square, {
-  required Position position,
-  required ValidMoves validMoves,
-  Square? selected,
-  bool promoting = false,
-}) {
-  if (promoting) return (takes: true, selected: null, promoting: false);
-  final piece = position.board.pieceAt(square);
-  final own = piece != null && piece.color == position.turn;
-  if (selected != null) {
-    if (square == selected) {
-      return (takes: true, selected: null, promoting: false);
-    }
-    if (validMoves[selected]?.contains(square) ?? false) {
-      final pawn = position.board.roleAt(selected) == Role.pawn;
-      final last = square.rank == Rank.first || square.rank == Rank.eighth;
-      return (takes: true, selected: null, promoting: pawn && last);
-    }
-    return (takes: true, selected: own ? square : null, promoting: false);
-  }
-  if (own) return (takes: true, selected: square, promoting: false);
-  return (takes: false, selected: null, promoting: false);
 }
 
 /// A story puzzle's sounds: the Feed puzzle's own ([FeedPuzzleSounds]: the
@@ -1218,12 +1191,14 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   /// ([ClassificationLanding]): a find or a miss, never a shown answer.
   int _landingSeq = 0;
   Timer? _timer;
-  final GlobalKey _boardKey = GlobalKey(debugLabel: 'story_puzzle_board');
 
-  /// What the board has picked up, and whether a promotion's choice is
-  /// open, as [storyBoardTap] follows it from touch to touch.
-  Square? _selected;
-  bool _promoting = false;
+  /// The board block: the eval bar and the board that takes the move.
+  final GlobalKey _blockKey = GlobalKey(debugLabel: 'story_puzzle_block');
+
+  /// A find keeps the board the reader's this long ([_playing]): a second
+  /// tap on the square just played is never a skip.
+  static const Duration _findBeat = Duration(milliseconds: 800);
+  Timer? _findTimer;
 
   /// Moves tried that were not it.
   int _misses = 0;
@@ -1277,6 +1252,16 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
 
   bool get _answered => _phase == _Phase.found || _phase == _Phase.revealed;
 
+  /// The reader is at the board: the question stands (a miss included), or
+  /// their find has just landed ([_findBeat]). After that, and once an
+  /// answer is shown, it is a still board again: a tap on it moves the
+  /// story on.
+  bool get _playing =>
+      _waiting ||
+      (_phase == _Phase.found &&
+          widget.active &&
+          (_findTimer?.isActive ?? false));
+
   @override
   void initState() {
     super.initState();
@@ -1294,6 +1279,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
       };
       if (_phase == _Phase.found) _tint = _Tint.found;
       _board = ChessboardController(game: _boardData());
+      widget.puzzles?.addBoard(_boardArea);
       if (_answered) _markAnswer(settle: false, celebrate: false);
       _afterFrame(_report);
       if (_asking) _warmSounds();
@@ -1308,12 +1294,14 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
       widget.progress.addListener(_onProgress);
     }
     _landed = widget.progress.value >= kStorySlideAt;
+    if (oldWidget.puzzles != widget.puzzles && _board != null) {
+      oldWidget.puzzles?.removeBoard(_boardArea);
+      widget.puzzles?.addBoard(_boardArea);
+    }
     if (widget.active && !oldWidget.active && _reading) {
       _afterFrame(_reportReading);
     }
     if (_puzzle != null && oldWidget.active != widget.active) {
-      _selected = null;
-      _promoting = false;
       widget.active ? _resumeBeats() : _pauseBeats();
       if (_asking) _warmSounds();
       if (_phase == _Phase.prompt) {
@@ -1327,11 +1315,9 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   void dispose() {
     widget.progress.removeListener(_onProgress);
     _timer?.cancel();
+    _findTimer?.cancel();
     _board?.dispose();
-    final zone = widget.puzzles?.zone;
-    if (zone != null && _publishedZone && zone.value == _zoneRect) {
-      zone.value = null;
-    }
+    widget.puzzles?.removeBoard(_boardArea);
     super.dispose();
   }
 
@@ -1348,24 +1334,26 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
 
   // ------------------------------------------------------------ puzzle
 
-  bool _publishedZone = false;
-  Rect? _zoneRect;
-
-  /// Tells the viewer whether this position waits for a move, and where
-  /// the board taking it is.
+  /// Tells the viewer whether this position waits for a move.
   void _report() {
     final host = widget.puzzles;
     if (host == null || !widget.active) return;
     host.prompting(widget.frame.id, _waiting);
-    final box = _boardKey.currentContext?.findRenderObject();
-    if (_waiting && box is RenderBox && box.attached && box.hasSize) {
-      _zoneRect = box.localToGlobal(Offset.zero) & box.size;
-      _publishedZone = true;
-      host.zone.value = _zoneRect;
-    } else if (_publishedZone) {
-      if (host.zone.value == _zoneRect) host.zone.value = null;
-      _publishedZone = false;
-    }
+  }
+
+  /// Where on the screen a touch is the board's while the reader plays on
+  /// it ([_playing]): the eval bar and the board, and
+  /// [StoryFrameLayout.boardRoom] around them. Measured as the finger comes
+  /// down, never remembered: it is right however the page stands just then
+  /// (still growing, mid-turn, dragged).
+  Rect? _boardArea() {
+    if (!mounted || !_playing) return null;
+    final box = _blockKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return null;
+    return MatrixUtils.transformRect(
+      box.getTransformTo(null),
+      (Offset.zero & box.size).inflate(StoryFrameLayout.boardRoom),
+    );
   }
 
   /// The face turned away: a beat that is running (a miss standing, the
@@ -1456,52 +1444,16 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
     return normal(a).uci == normal(b).uci;
   }
 
-  /// A finger on the board: the board's when it plays the puzzle, the
-  /// story's otherwise ([storyBoardTap]). Told to the viewer, which hears
-  /// the same touch next. A finger back on the board while a miss stands
-  /// takes it back at once, so a quick second try is never held up, and
-  /// never moves the story on.
+  /// A finger back on the board while a miss stands takes it back at once,
+  /// so a quick second try is never held up. The board goes on to handle
+  /// this same touch on the position given back: a piece of the reader's
+  /// under the finger is picked up. Whose touch it is, the board's or the
+  /// story's, the viewer reads off [_boardArea].
   void _onTouchedSquare(Square square) {
-    final host = widget.puzzles;
-    if (_phase == _Phase.wrong && widget.active) {
-      _takeBack();
-      // The board goes on to handle this same touch on the position given
-      // back, so a piece of the reader's under the finger is now picked up:
-      // follow it as the board does, or the next touch (the piece's move)
-      // would read as the story's and move it on.
-      final position = _before();
-      if (_asking && position != null) {
-        final tap = storyBoardTap(
-          square,
-          position: position,
-          validMoves: makeLegalMoves(position),
-        );
-        _selected = tap.selected;
-        _promoting = tap.promoting;
-      }
-      host?.boardTouch(widget.frame.id, takes: true);
-      return;
-    }
-    final position = _before();
-    if (!_asking || position == null) {
-      host?.boardTouch(widget.frame.id, takes: false);
-      return;
-    }
-    final tap = storyBoardTap(
-      square,
-      position: position,
-      validMoves: makeLegalMoves(position),
-      selected: _selected,
-      promoting: _promoting,
-    );
-    _selected = tap.selected;
-    _promoting = tap.promoting;
-    host?.boardTouch(widget.frame.id, takes: tap.takes);
+    if (_phase == _Phase.wrong && widget.active) _takeBack();
   }
 
   void _onMove(Move move, {bool? viaDragAndDrop}) {
-    _selected = null;
-    _promoting = false;
     final puzzle = _puzzle;
     final position = _before();
     if (puzzle == null || _board == null || position == null || !_asking) {
@@ -1520,6 +1472,8 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
   void _find() {
     final puzzle = _puzzle!;
     _timer?.cancel();
+    _findTimer?.cancel();
+    _findTimer = Timer(_findBeat, () {});
     setState(() {
       _phase = _Phase.found;
       _outcome = StoryPuzzleOutcome.solved;
@@ -1602,8 +1556,6 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
     final puzzle = _puzzle!;
     unawaited(HapticFeedbackService.buttonPress());
     _timer?.cancel();
-    _selected = null;
-    _promoting = false;
     setState(() {
       _phase = _Phase.revealed;
       _outcome = StoryPuzzleOutcome.shown;
@@ -1775,6 +1727,7 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
         revealed: revealed,
       ),
       board: (side, bar) => Row(
+        key: _puzzle == null ? null : _blockKey,
         children: [
           _evalBar(bar, side, orientation, shown),
           if (_puzzle == null)
@@ -1963,7 +1916,6 @@ class _StoryFrameViewState extends ConsumerState<StoryFrameView> {
     final markClass = _markClass;
     if (_waiting) _afterFrame(_report);
     return SizedBox.square(
-      key: _boardKey,
       dimension: side,
       child: Stack(
         clipBehavior: Clip.none,

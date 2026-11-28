@@ -598,7 +598,6 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _chrome.dispose();
     _caughtUpHold.dispose();
     _flightOn.dispose();
-    zone.dispose();
     widget.route?.onUncovered = null;
     super.dispose();
   }
@@ -817,9 +816,6 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   final _wordsPointers = <int>{};
   bool _downOnWords = false;
 
-  @override
-  final ValueNotifier<Rect?> zone = ValueNotifier<Rect?>(null);
-
   /// The page on screen, as [StoryFrame.id].
   String? get _activeFrameId {
     final index = _story[_activeSlug];
@@ -864,24 +860,32 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
     _readingMoveIndex = null;
     _clockFrame = null;
     _shortBuffering = false;
-    zone.value = null;
   }
 
-  /// The last finger came down on the board taking the reader's move and
-  /// the board took it (a piece picked up, played or put down): its tap or
-  /// hold is the reader's, never the story's, even once the move it made
-  /// has answered the question. A finger on an empty square (or an
-  /// opponent's piece) with nothing picked up is the story's: it moves on
-  /// like a tap anywhere else ([storyBoardTap]).
-  bool _downOnBoard = false;
-
-  /// What the board said of the finger now coming down ([boardTouch]): it
-  /// hears every touch before the viewer does. Read once, by that touch.
-  bool? _boardTook;
+  /// The boards that ask for a move, each saying where the reader plays on
+  /// it just now, if they do ([StoryPuzzleHost.addBoard]). Only the face in
+  /// view ever does.
+  final _boards = <Rect? Function()>{};
 
   @override
-  void boardTouch(String frameId, {required bool takes}) {
-    _boardTook = frameId == _activeFrameId && takes;
+  void addBoard(Rect? Function() area) => _boards.add(area);
+
+  @override
+  void removeBoard(Rect? Function() area) => _boards.remove(area);
+
+  /// The last finger came down on a board the reader is playing on, or in
+  /// the room around it: its tap or hold is the reader's, never the
+  /// story's. Whatever is under it, a piece, an empty square or the edge
+  /// beside one, it is a move being made, tried or aimed, and the story
+  /// stays where it is. Decided as the finger comes down, so it holds even
+  /// once the move it made has answered the question.
+  bool _downOnBoard = false;
+
+  bool _onPlayedBoard(Offset position) {
+    for (final area in _boards) {
+      if (area()?.contains(position) ?? false) return true;
+    }
+    return false;
   }
 
   @override
@@ -1100,9 +1104,7 @@ class _CollectionStoryViewerState extends ConsumerState<CollectionStoryViewer>
   void _onPointerDown(PointerDownEvent event) {
     _downOnWords = _wordsPointers.contains(event.pointer);
     if (_downOnWords) _sync();
-    final took = _boardTook ?? false;
-    _boardTook = null;
-    _downOnBoard = took && (zone.value?.contains(event.position) ?? false);
+    _downOnBoard = _onPlayedBoard(event.position);
     final toLocal = event.transform;
     if (toLocal == null) {
       _touchScale = 1;

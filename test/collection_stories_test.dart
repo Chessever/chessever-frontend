@@ -33,7 +33,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart'
     show Arrow, Chessboard, ChessboardController, PlayerSide;
 import 'package:dartchess/dartchess.dart'
-    show NormalMove, Position, Rule, Setup, Side, Square, makeLegalMoves;
+    show NormalMove, Position, Rule, Setup, Side, Square;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart'
     show CustomSemanticsAction, SemanticsAction;
@@ -2246,80 +2246,6 @@ void main() {
     });
   });
 
-  group('a tap on a board that asks for a move', () {
-    final position = _fen(_mateFen);
-    final legal = makeLegalMoves(position);
-
-    test('nothing picked up: an empty square or an opponent\'s piece is the '
-        'story\'s, a piece of the side to move is the board\'s', () {
-      expect(storyBoardTap(Square.a3, position: position, validMoves: legal), (
-        takes: false,
-        selected: null,
-        promoting: false,
-      ));
-      expect(storyBoardTap(Square.c6, position: position, validMoves: legal), (
-        takes: false,
-        selected: null,
-        promoting: false,
-      ));
-      expect(storyBoardTap(Square.h5, position: position, validMoves: legal), (
-        takes: true,
-        selected: Square.h5,
-        promoting: false,
-      ));
-    });
-
-    test('a piece picked up: every touch is the board\'s (play it, put it '
-        'down, pick up another)', () {
-      Square? tapFrom(Square square) => storyBoardTap(
-        square,
-        position: position,
-        validMoves: legal,
-        selected: Square.h5,
-      ).selected;
-      final play = storyBoardTap(
-        Square.f7,
-        position: position,
-        validMoves: legal,
-        selected: Square.h5,
-      );
-      expect(play, (takes: true, selected: null, promoting: false));
-      expect(
-        storyBoardTap(
-          Square.a3,
-          position: position,
-          validMoves: legal,
-          selected: Square.h5,
-        ).takes,
-        isTrue,
-      );
-      expect(tapFrom(Square.a3), isNull);
-      expect(tapFrom(Square.h5), isNull);
-      expect(tapFrom(Square.c4), Square.c4);
-    });
-
-    test('a promotion\'s choice is the board\'s too', () {
-      final pawn = _fen('8/P7/8/8/8/8/8/k6K w - - 0 1');
-      final moves = makeLegalMoves(pawn);
-      final promote = storyBoardTap(
-        Square.a8,
-        position: pawn,
-        validMoves: moves,
-        selected: Square.a7,
-      );
-      expect(promote, (takes: true, selected: null, promoting: true));
-      expect(
-        storyBoardTap(
-          Square.d4,
-          position: pawn,
-          validMoves: moves,
-          promoting: true,
-        ),
-        (takes: true, selected: null, promoting: false),
-      );
-    });
-  });
-
   group('polish', () {
     StoryBatch missedBatch(String pgn) => StoryBatch(
       games: [
@@ -2502,7 +2428,16 @@ void main() {
         batches: {
           'a': StoryBatch(
             games: [
-              buildStoryGame(games[0], pgn: _operaPgn),
+              // Still boards only: one that asks for a move keeps the taps
+              // on it for the move.
+              buildStoryGame(
+                games[0],
+                pgn: _operaPgn,
+                segments: pickStorySegments(
+                  parseStoryPgn(_operaPgn)!,
+                  maxPuzzles: 0,
+                ),
+              ),
               buildStoryGame(games[1], pgn: _pgn),
             ],
             ordered: [for (final g in games) g.game],
@@ -2518,63 +2453,166 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
       expect(find.byKey(const ValueKey('story_frame_a0#1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('story_board')), findsOneWidget);
       await tester.tapAt(Offset(board.left + 20, board.center.dy));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
       expect(find.byKey(const ValueKey('story_frame_a0#0')), findsOneWidget);
     });
 
-    testWidgets('on a board asking for a move, an empty square skips; a '
-        'piece and its square play the puzzle, never a skip', (tester) async {
+    testWidgets('on a board asking for a move, no tap on the board moves the '
+        'story: an empty square on either side, an opponent\'s piece, the '
+        'edge beside an edge square; a tap clear of the board still does', (
+      tester,
+    ) async {
       await _pumpRow(
         tester,
         collections: [_collection('a')],
         batches: {'a': _batch('a', 3, pgn: _puzzlePgn)},
       );
       await _open(tester, 'a');
-      expect(_story('a0'), findsOneWidget);
+      // The middle story: a tap that went back or on would show.
+      await _tapAside(tester, 0.8);
+      expect(_story('a1'), findsOneWidget);
       expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
-      // An empty square on the right: the next story.
-      await tester.tapAt(_square(tester, 'f3'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
-      expect(_story('a1'), findsOneWidget);
-      // An empty square on the left: back.
-      await tester.tapAt(_square(tester, 'a3'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
+      final board = tester.getRect(
+        find.byKey(const ValueKey('story_puzzle_board')),
+      );
+      final bar = tester.getRect(find.byKey(const ValueKey('story_eval_bar')));
+      final touches = {
+        // Empty squares, where the story's taps go on and back, and on both
+        // edge files.
+        'f3': _square(tester, 'f3'),
+        'a3': _square(tester, 'a3'),
+        'h3': _square(tester, 'h3'),
+        'a6': _square(tester, 'a6'),
+        'h6': _square(tester, 'h6'),
+        // An opponent's piece.
+        'f6': _square(tester, 'f6'),
+        // Aimed at the a-file, landing on the eval bar beside it; at the
+        // h-file, landing in the page's gutter.
+        'left of a4': Offset(bar.center.dx, _square(tester, 'a4').dy),
+        'left of the bar': Offset(bar.left - 6, _square(tester, 'a4').dy),
+        'right of h4': Offset(board.right + 6, _square(tester, 'h4').dy),
+        // Aimed at the back ranks, landing on the gap beside them.
+        'over e8': Offset(board.center.dx, board.top - 6),
+        'under a1': Offset(board.left + 10, board.bottom + 6),
+      };
+      for (final MapEntry(key: name, value: at) in touches.entries) {
+        await tester.tapAt(at);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(_story('a1'), findsOneWidget, reason: name);
+        expect(
+          find.byKey(const ValueKey('story_prompt')),
+          findsOneWidget,
+          reason: name,
+        );
+      }
+      // Clear of the board a tap is the story's, as on any page.
+      await _tapAside(tester, 0.1);
       expect(_story('a0'), findsOneWidget);
-      // An opponent's piece with nothing picked up: the story's too.
-      await tester.tapAt(_square(tester, 'f6'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
+      await _tapAside(tester, 0.8);
       expect(_story('a1'), findsOneWidget);
-      await tester.tapAt(_square(tester, 'a3'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 16));
-      expect(_story('a0'), findsOneWidget);
-      // The queen picked up, then an empty square: the board's (it puts
-      // the queen down), not a skip.
+      // The queen picked up, then put down on d3, no square it reaches.
       await tester.tapAt(_square(tester, 'h5'));
       await tester.pump(const Duration(milliseconds: 80));
-      expect(_story('a0'), findsOneWidget);
-      // d3: no square the queen reaches.
       await tester.tapAt(_square(tester, 'd3'));
       await tester.pump(const Duration(milliseconds: 80));
-      expect(_story('a0'), findsOneWidget);
+      expect(_story('a1'), findsOneWidget);
       expect(find.byKey(const ValueKey('story_prompt')), findsOneWidget);
       // Picked up and played: the puzzle's move.
       await _play(tester, 'h5', 'f7');
       await tester.pump(const Duration(milliseconds: 300));
-      expect(_story('a0'), findsOneWidget);
+      expect(_story('a1'), findsOneWidget);
       expect(_headline(tester), 'You found it · 4. Qxf7#!!');
+      // A second tap on the square just played, the find still landing: the
+      // reader's, never a skip.
+      await tester.tapAt(_square(tester, 'f7'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a1'), findsOneWidget);
+      // Landed, it is a still board again: a tap on it moves on.
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.tapAt(_square(tester, 'f3'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(_story('a2'), findsOneWidget);
       await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('a board turned for Black is the reader\'s too, edge to '
+        'edge: every square of the edge files and the files next to them', (
+      tester,
+    ) async {
+      final games = [
+        for (final id in ['m0', 'm1', 'm2']) _game(id).game,
+      ];
+      await _pumpRow(
+        tester,
+        collections: [_collection('a')],
+        batches: {
+          'a': _batch('a', 1),
+          kMissedChancesSlug: StoryBatch(
+            games: [
+              for (final game in games)
+                StoryGame(
+                  game: game,
+                  segments: pickMissedChanceSegments(
+                    parseStoryPgn(_blackMissPgn)!,
+                  ),
+                  caption: 'Myvatn OI Open 2026',
+                ),
+            ],
+            ordered: games,
+            signature: 'v:missed:2026-11-21',
+          ),
+        },
+      );
+      await _open(tester, kMissedChancesSlug);
+      await tester.pump(const Duration(milliseconds: 400));
+      // The middle story: a tap that went back or on would show.
+      await _tapAside(tester, 0.8);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_story('m1'), findsOneWidget);
+      expect(find.text('Black missed a win here'), findsOneWidget);
+      final board = tester.getRect(
+        find.byKey(const ValueKey('story_puzzle_board')),
+      );
+      final cell = board.width / 8;
+      for (final column in [0, 1, 6, 7]) {
+        for (var row = 0; row < 8; row++) {
+          await tester.tapAt(
+            Offset(
+              board.left + (column + 0.5) * cell,
+              board.top + (row + 0.5) * cell,
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(
+            _story('m1'),
+            findsOneWidget,
+            reason: 'column $column, row $row',
+          );
+          // A move tried on the way stands its beat and goes back before
+          // the next touch: the question still stands.
+          await tester.pump(const Duration(milliseconds: 700));
+          expect(
+            find.byKey(const ValueKey('story_show_answer')),
+            findsOneWidget,
+            reason: 'column $column, row $row',
+          );
+        }
+      }
+      await tester.pump(const Duration(seconds: 2));
     });
   });
 
   group('polish, over the board', () {
-    testWidgets('a hold on an empty square of an asking board pauses, and a '
-        'drag down from it closes the stories', (tester) async {
+    testWidgets('a finger resting on a board that asks for a move holds '
+        'nothing: the header and bars stay; a drag down from the board '
+        'still closes the stories', (tester) async {
       await _pumpRow(
         tester,
         collections: [_collection('a')],
@@ -2595,16 +2633,37 @@ void main() {
           .opacity
           .value;
       expect(chrome(), 1);
-      final hold = await tester.startGesture(_square(tester, 'f3'));
+      // The reader thinks with a finger on the board: nothing goes.
+      final rest = await tester.startGesture(_square(tester, 'f3'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(chrome(), 1);
+      await rest.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(chrome(), 1);
+      expect(_story('a0'), findsOneWidget);
+      // Off the board a hold is the story's, as on any page.
+      final frame = tester.getRect(find.byType(StoryFrameView));
+      final header = tester.getRect(find.byKey(const ValueKey('story_close')));
+      final hold = await tester.startGesture(
+        Offset(393 * 0.5, (header.bottom + frame.top) / 2),
+      );
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 400));
       expect(chrome(), lessThan(0.05));
-      // The hold turns into a drag down: the stories close.
+      await hold.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(chrome(), greaterThan(0.99));
+      expect(_story('a0'), findsOneWidget);
+      // A drag down from the board: the stories close.
+      final drag = await tester.startGesture(_square(tester, 'f3'));
       for (var i = 0; i < 14; i++) {
-        await hold.moveBy(const Offset(0, 25));
+        await drag.moveBy(const Offset(0, 25));
         await tester.pump(const Duration(milliseconds: 16));
       }
-      await hold.up();
+      await drag.up();
       await _settleClose(tester);
       expect(find.byType(CollectionStoryViewer), findsNothing);
     });
