@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/providers/board_engine_lines_visibility_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -137,6 +138,12 @@ void main() {
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
 
   final engineIcon = find.byKey(e2eKey(E2eIds.boardEngineToggle)).first;
+  Future<void> tapEngine(WidgetTester tester) async {
+    await tester.tap(engineIcon);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
   Future<void> openEngineSettings(WidgetTester tester) async {
     await tester.longPress(engineIcon);
     await tester.pump();
@@ -507,7 +514,7 @@ void main() {
   });
 
   testWidgets(
-    'Engine Experience swaps engine and gauge without moving the board',
+    'Engine power hides the Toby-only gauge and preserves position',
     (tester) async {
       final board = await pumpEngineBoard(tester, const Size(393, 852));
       final params = ChessBoardProviderParams(
@@ -528,6 +535,13 @@ void main() {
             .fen;
         expect(positionBar, findsOneWidget);
         expect(stockfishBar, findsNothing);
+        await tapEngine(tester);
+        expect(positionBar, findsNothing);
+        expect(find.byKey(e2eKey(E2eIds.boardPvList)), findsNothing);
+        expect(panel, findsNothing);
+        await tapEngine(tester);
+        expect(positionBar, findsOneWidget);
+        expect(engineStrip, findsOneWidget);
         await openEngineSettings(tester);
         await tester.tap(stockfish);
         await closeEngineSettings(tester);
@@ -634,7 +648,7 @@ void main() {
       await tester.tap(engineIcon);
       await tester.pump(const Duration(milliseconds: 300));
       expect(stack, findsNothing);
-      expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsOneWidget);
+      expect(find.byKey(e2eKey(E2eIds.boardEvalBar)), findsNothing);
       await tester.tap(engineIcon);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -646,7 +660,7 @@ void main() {
   });
 
   testWidgets(
-    'Both offers a right-side Toby gauge independently of engine lines',
+    'Engine power restores the enabled lines and rails independently',
     (tester) async {
       final board = await pumpEngineBoard(
         tester,
@@ -679,18 +693,38 @@ void main() {
           tester.widget<TobyOutcomeBar>(bar).outcome,
           same(reading.positionWdl),
         );
-        await tester.tap(engineIcon);
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.byKey(const ValueKey('board-engine-stack')), findsNothing);
-        expect(left, findsOneWidget);
-        expect(tester.widget<TobyOutcomeBar>(bar).outcome, isNotNull);
-        await openEngineSettings(tester);
-        await tester.tap(
-          find.byKey(const ValueKey('evaluation-bar-board-switch')),
+        final stack = find.byKey(const ValueKey('board-engine-stack'));
+        final boardBarSwitch = find.byKey(
+          const ValueKey('evaluation-bar-board-switch'),
         );
+        void expectVisible({required bool lines, required bool bars}) {
+          expect(stack, lines ? findsOneWidget : findsNothing);
+          expect(left, bars ? findsOneWidget : findsNothing);
+          expect(right, bars ? findsOneWidget : findsNothing);
+        }
+
+        Future<void> powerCycle({required bool lines, required bool bars}) async {
+          expectVisible(lines: lines, bars: bars);
+          await tapEngine(tester);
+          expectVisible(lines: false, bars: false);
+          await tapEngine(tester);
+          expectVisible(lines: lines, bars: bars);
+        }
+
+        await powerCycle(lines: true, bars: true);
+        await openEngineSettings(tester);
+        await tester.tap(find.text('Off'));
         await closeEngineSettings(tester);
-        expect(left, findsNothing);
-        expect(right, findsNothing);
+        await powerCycle(lines: false, bars: true);
+
+        await board.container
+            .read(boardEngineLinesVisibleProvider.notifier)
+            .setVisible(true);
+        await tester.pump();
+        await openEngineSettings(tester);
+        await tester.tap(boardBarSwitch);
+        await closeEngineSettings(tester);
+        await powerCycle(lines: true, bars: false);
         expect(tester.takeException(), isNull);
       } finally {
         await board.dispose();

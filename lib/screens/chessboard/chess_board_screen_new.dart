@@ -308,6 +308,10 @@ class _BoardZoomScope extends InheritedNotifier<ValueNotifier<double?>> {
 /// stay faintly visible — not the persisted gamebase toggle preference.
 final boardExplorerPanelVisibleProvider = StateProvider<bool>((_) => false);
 
+// The board button pauses engine display for this app session without
+// changing the saved lines or gauge choices (or stopping evaluation).
+final _boardEngineDisplayEnabledProvider = StateProvider<bool>((_) => true);
+
 // Board-local command: stored standalone Explorer preferences do not choose
 // the opening surface of a game. Only an explicit book-button tap toggles it.
 final boardExplorerToggleRequestProvider = StateProvider.autoDispose
@@ -8008,6 +8012,7 @@ class _BottomNavBar extends ConsumerWidget {
 
     final video = EventVideoLayoutScope.maybeOf(context);
     final hasVideo = video != null && video.isActive(game.gameId);
+    final engineDisplayEnabled = ref.watch(_boardEngineDisplayEnabledProvider);
 
     // Its own layer: page repaints (the clock, engine lines) skip it.
     return RepaintBoundary(
@@ -8026,7 +8031,9 @@ class _BottomNavBar extends ConsumerWidget {
         showGamebaseButton: showGamebaseButton,
         explorerPanelVisible: explorerPanelVisible,
         onFlip: () => notifier.flipBoard(),
-        toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
+        toggleEngineVisibility: () => ref
+            .read(_boardEngineDisplayEnabledProvider.notifier)
+            .update((enabled) => !enabled),
         onEngineSettingsLongPress: () => _openPhoneEngineSettings(
           context,
           bothAvailable: game.source == GameSource.supabase,
@@ -8039,8 +8046,11 @@ class _BottomNavBar extends ConsumerWidget {
         onLongPressForwardEnd: arrows.onLongPressForwardEnd,
         canMoveForward: arrows.canMoveForward,
         canMoveBackward: arrows.canMoveBackward,
-        showEngineAnalysis: state.showEngineAnalysis && ref.watch(
-          boardEngineLinesVisibleProvider.select((value) => value.valueOrNull ?? true),
+        showEngineAnalysis: state.showEngineAnalysis && engineDisplayEnabled,
+        showEngineDepth: ref.watch(
+          boardEngineLinesVisibleProvider.select(
+            (value) => value.valueOrNull ?? true,
+          ),
         ),
         usesToby: notifier.usesTobyOnBoard,
         showUnseenMoveBadge: state.hasUnseenMoves,
@@ -8413,9 +8423,10 @@ class _AnalysisGameBody extends ConsumerWidget {
       explorerPanelVisible: explorerVisible,
       gamesPinned: gamesPinned,
     );
-    // Presentation only: do not disable the engine or change eval/arrows/depth.
-    // No preference read is needed when the panel is already ineligible.
+    // Pause the display, not the engine or its saved per-surface preferences.
+    final engineDisplayEnabled = ref.watch(_boardEngineDisplayEnabledProvider);
     final showPv =
+        engineDisplayEnabled &&
         state.isAnalysisMode &&
         state.showEngineAnalysis &&
         state.showPrincipalVariations &&
@@ -8452,6 +8463,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         final supportsBoth = game.source == GameSource.supabase;
         final both = supportsBoth && wantsBoth && entitled;
         final rightTobyGauge =
+            engineDisplayEnabled &&
             both &&
             !hideEvaluation &&
             state.showEngineAnalysis &&
@@ -9232,6 +9244,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
+        ref.watch(_boardEngineDisplayEnabledProvider) &&
         engineGaugeEnabled &&
         state.showEngineAnalysis &&
         !hideEventEvaluation;
@@ -9407,6 +9420,7 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     final tobyGauge =
         _isPhoneBroadcast(widget.game) && !widget.stockfishPrimary && ref.watch(boardUsesTobyProvider);
     final showEngineGauge =
+        ref.watch(_boardEngineDisplayEnabledProvider) &&
         engineGaugeEnabled &&
         widget.state.showEngineAnalysis &&
         !hideEventEvaluation;
