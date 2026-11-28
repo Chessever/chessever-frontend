@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 39.8.8+3991
+version: 39.9.0+3992
 environment:
   sdk: ^3.12.0
   flutter: '>=3.44.0'
@@ -120,10 +120,10 @@ dependencies:
   #for launching url
   url_launcher: ^6.3.1
 
-  # Event stream embeds (YouTube, Twitch, Kick).
+  # Event stream embeds (YouTube, Twitch, Kick) and the Feed's Shorts players.
   webview_flutter: ^4.14.1
   webview_flutter_android: ^4.14.1
-  webview_flutter_wkwebview: ^3.26.1
+  webview_flutter_wkwebview: ^3.27.2
 
   # Native playback for uploaded story videos.
   video_player: ^2.14.1

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/open_collection_game.dart';
 import 'package:chessever2/screens/feed/models/feed_collection.dart';
+import 'package:chessever2/screens/feed/widgets/feed_drag_handoff.dart';
 import 'package:chessever2/screens/stories/story_models.dart';
 import 'package:chessever2/screens/stories/story_pages.dart';
 import 'package:chessever2/screens/stories/story_row_prefs.dart'
@@ -249,12 +250,17 @@ class _FeedCollectionPageState extends ConsumerState<FeedCollectionPage> {
           Expanded(
             child: Center(
               child: frame != null
-                  ? StoryFrameView(
-                      key: ValueKey(frame.id),
-                      frame: frame,
-                      progress: const AlwaysStoppedAnimation(1.0),
-                      active: false,
-                      showPuzzle: false,
+                  // The annotation under the board scrolls in its own room,
+                  // which takes every vertical drag that starts on it: one
+                  // it cannot use turns the Feed's page instead.
+                  ? FeedDragHandoff(
+                      child: StoryFrameView(
+                        key: ValueKey(frame.id),
+                        frame: frame,
+                        progress: const AlwaysStoppedAnimation(1.0),
+                        active: false,
+                        showPuzzle: false,
+                      ),
                     )
                   : read.hasError
                   ? TextButton(

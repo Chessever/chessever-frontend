@@ -1,70 +1,156 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:chessever2/screens/chessboard/video/video_player.dart';
-import 'package:chessever2/screens/chessboard/video/video_repository.dart';
-import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 import 'package:chessever2/screens/feed/models/feed_short.dart';
-import 'package:flutter/foundation.dart';
+import 'package:chessever2/screens/feed/widgets/feed_short_player.dart';
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+import 'package:flutter/scheduler.dart';
 
+/// A Short's page: its cover where the video will play, and over it the
+/// player that holds this Short ([FeedShortPlayers]), let through once its
+/// picture moves.
+///
+/// The page owns no web view. The Feed's players outlive it, so a Short is
+/// cued before its page is built and is still there, where it stopped, when
+/// the viewer comes back up.
 class FeedShortPage extends StatefulWidget {
   const FeedShortPage({
     super.key,
     required this.short,
-    required this.active,
-    required this.preload,
+    required this.players,
     required this.onOpened,
   });
 
   final FeedShort short;
-  final bool active;
-  final bool preload;
+  final FeedShortPlayers players;
+
+  /// The Short has played in view for [watchedAfter]: once per page.
   final VoidCallback onOpened;
+
+  /// How long a Short plays in view before it counts as watched.
+  static const Duration watchedAfter = Duration(seconds: 4);
 
   @override
   State<FeedShortPage> createState() => _FeedShortPageState();
 }
 
 class _FeedShortPageState extends State<FeedShortPage> {
-  bool _reported = false;
+  /// The web view is let through over this long once the picture moves.
+  static const Duration _fadeIn = Duration(milliseconds: 160);
 
-  void _reportOpened() {
-    if (!mounted || _reported) return;
-    _reported = true;
-    widget.onOpened();
+  /// A web view waiting under its cover is still drawn, only unseen: one
+  /// that is not drawn at all is taken off the screen, and a player off the
+  /// screen does not start.
+  static const double _unseen = 0.01;
+
+  bool _reported = false;
+  Timer? _watch;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.players.addListener(_onPlayers);
+    _syncWatch();
+  }
+
+  @override
+  void didUpdateWidget(covariant FeedShortPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.players != widget.players) {
+      oldWidget.players.removeListener(_onPlayers);
+      widget.players.addListener(_onPlayers);
+    }
+    if (oldWidget.short.id != widget.short.id) {
+      _watch?.cancel();
+      _watch = null;
+    }
+    _syncWatch();
+  }
+
+  @override
+  void dispose() {
+    widget.players.removeListener(_onPlayers);
+    _watch?.cancel();
+    super.dispose();
+  }
+
+  void _onPlayers() {
+    if (!mounted) return;
+    // The players are told the Feed is no longer seen the moment a route
+    // lands on it, which can be while this tree is building.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onPlayers();
+      });
+      return;
+    }
+    _syncWatch();
+    setState(() {});
+  }
+
+  /// Whether this Short is the one in view and its picture is moving.
+  bool get _watching {
+    final player = widget.players.playerFor(widget.short.id);
+    return player != null && player.active && player.playing;
+  }
+
+  /// Counts the Short as watched once it has played in view long enough.
+  /// A stop, or the page left, starts the count over.
+  void _syncWatch() {
+    if (_reported || !_watching) {
+      _watch?.cancel();
+      _watch = null;
+      return;
+    }
+    _watch ??= Timer(FeedShortPage.watchedAfter, () {
+      _watch = null;
+      if (!mounted || _reported || !_watching) return;
+      _reported = true;
+      widget.onOpened();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final players = widget.players;
     final short = widget.short;
-    final origin = EventVideoConfiguration.fromEnvironment()?.embedOrigin;
-    final inlineSupported =
-        !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.iOS ||
-            defaultTargetPlatform == TargetPlatform.android);
     return ColoredBox(
       color: Colors.black,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (!widget.active && !widget.preload) return const SizedBox.expand();
-          if (!inlineSupported ||
-              origin == null ||
+          final player = players.playerFor(short.id);
+          if (!players.supported ||
+              players.cannotPlay(short.id) ||
+              (player?.down ?? false) ||
               constraints.maxHeight < 200 ||
               constraints.maxWidth < 200) {
             return const _ShortUnavailable();
           }
-          return SizedBox.expand(
-            child: _InlineFeedShort(
-              key: ValueKey(short.id),
-              short: short,
-              origin: origin,
-              active: widget.active,
-              onWatched: _reportOpened,
-            ),
+          final view = player?.view;
+          final active = player?.active ?? false;
+          final showing = player?.showing ?? false;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              FeedShortCover(
+                image: players.coverOf(short.id),
+                fallback: players.fallbackCoverOf(short.id),
+              ),
+              if (view != null)
+                // Only the Short in view takes a touch, and only once its
+                // player is seen: a tap on the cover must not reach a play
+                // button nobody can see.
+                IgnorePointer(
+                  ignoring: !active || !showing,
+                  child: AnimatedOpacity(
+                    opacity: showing ? 1 : _unseen,
+                    duration: _fadeIn,
+                    curve: Curves.easeOut,
+                    child: view,
+                  ),
+                ),
+              if (active && !showing) const _ShortWaiting(),
+            ],
           );
         },
       ),
@@ -72,175 +158,110 @@ class _FeedShortPageState extends State<FeedShortPage> {
   }
 }
 
-class _InlineFeedShort extends StatefulWidget {
-  const _InlineFeedShort({
+/// A Short's cover, upright (9:16) and as large as the page allows: where
+/// its video plays, so the first frame takes the cover's place without a
+/// jump.
+class FeedShortCover extends StatelessWidget {
+  const FeedShortCover({
     super.key,
-    required this.short,
-    required this.origin,
-    required this.active,
-    required this.onWatched,
+    required this.image,
+    required this.fallback,
   });
 
-  final FeedShort short;
-  final Uri origin;
-  final bool active;
-  final VoidCallback onWatched;
+  final ImageProvider image;
+
+  /// Drawn when [image] cannot be loaded.
+  final ImageProvider fallback;
+
+  /// A cover that was read ahead is there with its page; one that arrives
+  /// late comes up over a moment instead of cutting in.
+  static Widget _arrive(
+    BuildContext context,
+    Widget child,
+    int? frame,
+    bool wasSynchronouslyLoaded,
+  ) {
+    if (wasSynchronouslyLoaded) return child;
+    return AnimatedOpacity(
+      opacity: frame == null ? 0 : 1,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOut,
+      child: child,
+    );
+  }
 
   @override
-  State<_InlineFeedShort> createState() => _InlineFeedShortState();
+  Widget build(BuildContext context) {
+    return Center(
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: Image(
+          image: image,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          excludeFromSemantics: true,
+          frameBuilder: _arrive,
+          errorBuilder: (context, _, _) => Image(
+            image: fallback,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            excludeFromSemantics: true,
+            frameBuilder: _arrive,
+            errorBuilder: (context, _, _) => const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _InlineFeedShortState extends State<_InlineFeedShort> {
-  WebViewController? _player;
-  Timer? _watchTimer;
-  bool _watched = false;
-  bool _failed = false;
+/// The Short in view has not started: after a beat, a quiet spinner over
+/// its cover. A Short that starts at once never shows it.
+class _ShortWaiting extends StatefulWidget {
+  const _ShortWaiting();
+
+  @override
+  State<_ShortWaiting> createState() => _ShortWaitingState();
+}
+
+class _ShortWaitingState extends State<_ShortWaiting> {
+  static const Duration _after = Duration(milliseconds: 900);
+
+  Timer? _timer;
+  bool _shown = false;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_initialize());
-  }
-
-  Future<void> _initialize() async {
-    try {
-      final params = WebViewPlatform.instance is WebKitWebViewPlatform
-          ? WebKitWebViewControllerCreationParams(
-              allowsInlineMediaPlayback: true,
-              mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
-            )
-          : const PlatformWebViewControllerCreationParams();
-      final controller = WebViewController.fromPlatformCreationParams(params);
-      if (controller.platform case final AndroidWebViewController android) {
-        await android.setMediaPlaybackRequiresUserGesture(false);
-      }
-      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await controller.setBackgroundColor(Colors.black);
-      await controller.addJavaScriptChannel(
-        'ChessVideo',
-        onMessageReceived: _onPlayerMessage,
-      );
-      final baseUrl = widget.origin.replace(path: '/').toString();
-      await controller.setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) =>
-              !request.isMainFrame ||
-                  request.url == baseUrl ||
-                  request.url == widget.origin.toString() ||
-                  request.url == 'about:blank'
-              ? NavigationDecision.navigate
-              : NavigationDecision.prevent,
-          onWebResourceError: (error) {
-            if (error.isForMainFrame == true && error.errorCode != -999) {
-              _fail();
-            }
-          },
-        ),
-      );
-      if (!mounted) return;
-      setState(() => _player = controller);
-      await controller.loadHtmlString(
-        videoPlayerHtml(
-          VideoSource(
-            VideoPlatform.youtube,
-            widget.short.id,
-            widget.short.watchUrl,
-          ),
-          widget.origin,
-          revision: 0,
-          play: false,
-          deferYouTubePlayback: true,
-          muted: false,
-          nativeFullscreen: false,
-          showCaptionsByDefault: false,
-        ),
-        baseUrl: baseUrl,
-      );
-    } catch (_) {
-      _fail();
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _InlineFeedShort oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.active != widget.active) {
-      if (!widget.active) {
-        _watchTimer?.cancel();
-        _watchTimer = null;
-      }
-      _syncPlayback();
-    }
-  }
-
-  void _syncPlayback() {
-    final player = _player;
-    if (player == null) return;
-    unawaited(
-      player
-          .runJavaScript(
-            'window.chessVideoSetActive && window.chessVideoSetActive(${widget.active})',
-          )
-          .catchError((Object _) {}),
-    );
-  }
-
-  void _fail() {
-    _watchTimer?.cancel();
-    if (mounted && !_failed) setState(() => _failed = true);
-  }
-
-  void _onPlayerMessage(JavaScriptMessage message) {
-    if (!mounted || _failed) return;
-    try {
-      final data = jsonDecode(message.message);
-      if (data is! Map) return;
-      if (data['type'] == 'ready') {
-        _syncPlayback();
-      } else if (data['type'] == 'error') {
-        _fail();
-      } else if (data['type'] == 'playback' && widget.active && !_watched) {
-        if (data['playing'] == true) {
-          _watchTimer ??= Timer(const Duration(seconds: 4), () {
-            if (!mounted || !widget.active) return;
-            _watched = true;
-            widget.onWatched();
-          });
-        } else {
-          _watchTimer?.cancel();
-          _watchTimer = null;
-        }
-      }
-    } on FormatException {
-      // Ignore unrelated WebView messages.
-    }
+    _timer = Timer(_after, () {
+      if (mounted) setState(() => _shown = true);
+    });
   }
 
   @override
   void dispose() {
-    _watchTimer?.cancel();
-    final player = _player;
-    if (player != null) {
-      unawaited(
-        player
-            .loadHtmlString('<!doctype html><html></html>')
-            .catchError((Object _) {}),
-      );
-    }
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_failed) return const _ShortUnavailable();
-    final player = _player;
-    if (player == null) return const Center(child: CircularProgressIndicator());
-    return IgnorePointer(
-      ignoring: !widget.active,
-      child: WebViewWidget(
-        controller: player,
-        // The vertical Feed swipe keeps ownership of vertical drags.
-        gestureRecognizers: eventVideoGestureRecognizers,
+    if (!_shown) return const SizedBox.shrink();
+    return const IgnorePointer(
+      child: Center(
+        child: SizedBox.square(
+          dimension: 26,
+          child: CircularProgressIndicator(
+            key: ValueKey('feed_short_waiting'),
+            strokeWidth: 2.4,
+            strokeCap: StrokeCap.round,
+            color: Colors.white,
+            // A dark track under the white arc: it reads on a bright cover
+            // as well as on a dark one.
+            backgroundColor: Color(0x66000000),
+            semanticsLabel: 'Loading Short',
+          ),
+        ),
       ),
     );
   }

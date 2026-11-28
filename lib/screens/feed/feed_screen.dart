@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/screens/chessboard/video/video_repository.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
@@ -23,6 +24,7 @@ import 'package:chessever2/screens/feed/widgets/feed_page_viewport.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_short_page.dart';
+import 'package:chessever2/screens/feed/widgets/feed_short_player.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/home/widget/home_nav_dock.dart';
@@ -36,6 +38,7 @@ import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search_mode/search_mode.dart'
     show PageBackButton;
 import 'package:chessever2/widgets/scroll_chrome.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -128,6 +131,16 @@ class FeedScreen extends ConsumerStatefulWidget {
 /// ad page is never the place to come back to.
 final feedCurrentEntryKeyProvider = StateProvider<String?>((ref) => null);
 
+/// Makes a Feed screen's Shorts players ([FeedShortPlayers]): each screen
+/// holds its own for as long as it stands. A provider so a test can hand in
+/// players that draw no web view.
+final feedShortPlayersBuilderProvider = Provider<FeedShortPlayers Function()>(
+  (ref) =>
+      () => FeedShortPlayers(
+        origin: EventVideoConfiguration.fromEnvironment()?.embedOrigin,
+      ),
+);
+
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
   late final PageController _pages;
@@ -154,6 +167,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   /// This screen is in [_screens]' count (from its first frame).
   bool _counted = false;
   late final FeedSfx _sfx;
+
+  /// The warm players every Short on this screen plays in.
+  late final FeedShortPlayers _shorts;
+
+  /// What [_shorts] was last told to hold, the Short in view, and whether
+  /// Feed was seen: they are told again only when one of these changes.
+  List<String> _shortsNear = const [];
+  String? _shortInView;
+  bool? _shortsSeen;
 
   /// The page of the post Watch opened Feed on ([FeedScreen.lead]), until a
   /// refresh draws a new first page. Told apart from Feed's own pages by
@@ -206,6 +228,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _screens = ref.read(feedScreenCountProvider);
     _resume = ref.read(feedClipResumeProvider);
     _sfx = ref.read(feedSfxProvider);
+    _shorts = ref.read(feedShortPlayersBuilderProvider)();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _counted = true;
@@ -372,6 +395,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     // The pages have unmounted (children first) and stopped their own
     // timers; the draw chime is the one sound that could still be waiting.
     feedSfxSafely(_sfx.hush);
+    _shorts.dispose();
     _seen.dispose();
     _pages.dispose();
     // After this frame, and only while the provider still lives: closing
@@ -463,8 +487,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final seen = _isSeen;
     if (_seen.value == seen) return;
     _seen.value = seen;
+    // A Short stops with the route change, not at the next frame (in the
+    // background there is none).
+    _shortsSeen = seen;
+    _shorts.seen = seen;
     if (!seen) feedSfxSafely(_sfx.hush);
   }
+
+  /// The system is short of memory: only the Short playing keeps its web
+  /// view. The others come back as their pages are reached.
+  @override
+  void didHaveMemoryPressure() => _shorts.trim();
 
   /// setState, or right after the frame when a route change lands mid-build.
   void _rebuildSoon() {
@@ -832,6 +865,39 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     unawaited(_loadMore());
   }
 
+  /// Keeps the Shorts players with the pages around the viewer: the Short
+  /// in view plays, the ones next to it are cued, and their covers are
+  /// read ahead. Told after the frame, never while the pages build.
+  void _holdShorts(List<FeedEntry> entries, {required bool seen}) {
+    final near = feedShortsNear(entries, _index);
+    final inView = _index < entries.length
+        ? switch (entries[_index]) {
+            FeedShortEntry(:final short) => short.id,
+            _ => null,
+          }
+        : null;
+    if (seen == _shortsSeen &&
+        inView == _shortInView &&
+        listEquals(near, _shortsNear)) {
+      return;
+    }
+    _shortsNear = near;
+    _shortInView = inView;
+    _shortsSeen = seen;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _shorts
+        ..seen = _shortsSeen ?? true
+        ..hold(_shortsNear, current: _shortInView);
+      if (!_shorts.supported) return;
+      for (final id in _shortsNear) {
+        unawaited(
+          precacheImage(_shorts.coverOf(id), context, onError: (_, _) {}),
+        );
+      }
+    });
+  }
+
   /// Page [i]: a post or an ad, then the tail ([FeedTail]).
   Widget _page(
     int i, {
@@ -901,8 +967,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       FeedShortEntry(:final short) => FeedShortPage(
         key: ValueKey(entry.key),
         short: short,
-        active: isCurrent && visible,
-        preload: visible && i == _index + 1,
+        players: _shorts,
         onOpened: () =>
             ref.read(feedProvider.notifier).noteShortOpened(short.id),
       ),
@@ -916,6 +981,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final feedPages = ref.watch(feedPagesProvider);
     final entries = _pagesOf(feedPages);
     final visible = _isSeen;
+    _holdShorts(entries, seen: visible);
     var more = ref.read(feedProvider.notifier).more;
     // Under Watch's lead there is always a page, so the tail stands in for
     // Feed's own first-page states: its skeleton while the first page loads,

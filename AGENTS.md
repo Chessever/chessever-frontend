@@ -544,6 +544,48 @@ also app.chessever.com) and notifications. Change one, change all.
   "Notifications in match-play knockout rounds" below (`match_play.ts`). A
   0-move board is never announced as live.
 
+## Feed Shorts: warm players, never a web view per page
+
+A Short in Feed plays in one of at most three YouTube players the Feed screen
+holds (`FeedShortPlayers`, `lib/screens/feed/widgets/feed_short_player.dart`).
+Its page (`FeedShortPage`) owns no web view. Before 39.9.0 each page made its
+own and dropped it the moment it was left, so every Short opened black and
+loaded again on the way back up.
+
+- **Which Shorts hold a player** is `feedShortsNear`: the page in view, the
+  next, the last, then further on. Only the Short in view plays, and only
+  while Feed is seen (`FeedShortPlayers.seen`, set in `_syncSeen` without
+  waiting for a frame: in the background there is none).
+- **One page, many Shorts.** A player's page takes one Short after another
+  (`window.chessShort(id, on, sound)`). Never load a page per Short.
+- **An order is given once.** The same order again would start a Short the
+  viewer paused; the player and its page both drop a repeat.
+- **The cover stands until the picture moves.** The web view under it is drawn
+  at 0.01 opacity, never 0: an undrawn platform view is taken off the screen
+  and its player does not start.
+- **Autoplay is the page's own job.** Its script asks again when a play is not
+  taken, plays muted when sound is refused, then asks for the sound back.
+  `test/feed_short_page_script_test.dart` runs that script under Node against
+  a stand-in for YouTube's player; change the script and that test together.
+- **Feed's record of Shorts is unchanged:** `noteShortVisible` on reaching the
+  page, `noteShortOpened` after four seconds of playing in view, once per
+  page. Which cards come and in what order is the server's; nothing here
+  touches it.
+- Covers are `i.ytimg.com/vi/<id>/oar2.jpg` (upright), `hqdefault.jpg` when
+  that is missing. The feed's own `thumbnailUrl` is empty today: YouTube's RSS
+  names `i1`-`i4.ytimg.com`, which the ingest (`chessever-admin-portal`
+  `worker/youtube-shorts.ts`) and `FeedShort.fromJson` both refuse.
+
+## A scroll inside a Feed page hands its drag to the pages
+
+A scrollable inside a Feed page wins every vertical drag that starts on it,
+so one with nowhere to go holds the finger and the Feed does not turn. Wrap
+it in `FeedDragHandoff` (`lib/screens/feed/widgets/feed_drag_handoff.dart`):
+the same drag carries on on the PageView. A short window's post
+(`FeedPageViewport`) and the collection card's annotation use it. Until
+39.9.0 the collection card's lower half, the annotation's room down to the
+two buttons, did not turn the Feed.
+
 ## Commits and delivery
 
 - Commit completed changes on `stable` after validation, including the required

@@ -182,6 +182,125 @@ void main() {
     expect(server.playableReads, 0);
   });
 
+  // A phone: the annotation's room runs from under the move down to the
+  // card's two buttons, the part of the card a thumb reaches for.
+  Future<PageController> pumpAnnotated(
+    WidgetTester tester,
+    String comment,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(390, 844)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final collection = Collection(
+      id: 'collection',
+      slug: 'collection',
+      kind: CollectionKind.book,
+      title: 'Twenty games',
+      gameCount: 20,
+      access: CollectionAccess.premium,
+      contentLocked: true,
+    );
+    final server = _FeedCollectionServer(collection)
+      ..cards[0] = storyCard(
+        'game-1',
+        'White 1',
+        '[Result "*"]\n\n1. e4 {$comment} e5 2. Nf3 Nc6 *',
+      );
+    final pages = PageController();
+    addTearDown(pages.dispose);
+    final cards = [
+      for (var index = 0; index < 2; index++)
+        FeedCollection(collection, null, gameIndex: index),
+    ];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          collectionsRepositoryProvider.overrideWithValue(server),
+          boardSettingsProviderNew.overrideWith(DefaultBoard.new),
+          premiumAccessProvider.overrideWithValue(false),
+          storyAnalyzerProvider.overrideWithValue(
+            (jobs) async => analyzeStoryJobs(jobs),
+          ),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: PageView.builder(
+                  controller: pages,
+                  scrollDirection: Axis.vertical,
+                  itemCount: cards.length,
+                  itemBuilder: (context, index) => FeedCollectionPage(
+                    key: ValueKey(cards[index].feedKey),
+                    card: cards[index],
+                    active: true,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return pages;
+  }
+
+  // A slow drag, let go at rest: the page turns only when it was carried
+  // past its middle, never on a fling.
+  Future<void> swipeUp(WidgetTester tester, Offset from, double by) async {
+    final gesture = await tester.startGesture(from);
+    for (var i = 0; i < 20; i++) {
+      await gesture.moveBy(Offset(0, -by / 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a swipe that starts on a collection card\'s annotation turns '
+      'the Feed', (tester) async {
+    final pages = await pumpAnnotated(tester, 'A quiet move.');
+    final annotation = find.byKey(const ValueKey('story_annotation_scroll'));
+    expect(find.text('A quiet move.'), findsOneWidget);
+    // The words fit their room: there is nothing to scroll there.
+    final room = tester.state<ScrollableState>(
+      find.descendant(of: annotation, matching: find.byType(Scrollable)),
+    );
+    expect(room.position.maxScrollExtent, 0);
+
+    // The lower right of the room, in the empty space under the words.
+    final corner = tester.getBottomRight(annotation) - const Offset(24, 12);
+    await swipeUp(tester, corner, 560);
+    expect(pages.page, closeTo(1, 0.01));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a long annotation on a collection card scrolls first, then '
+      'its end turns the Feed', (tester) async {
+    final comment = List.filled(90, 'The pawn controls the centre.').join(' ');
+    final pages = await pumpAnnotated(tester, comment);
+    final annotation = find.byKey(const ValueKey('story_annotation_scroll'));
+    final room = tester
+        .state<ScrollableState>(
+          find.descendant(of: annotation, matching: find.byType(Scrollable)),
+        )
+        .position;
+    expect(room.maxScrollExtent, greaterThan(200));
+
+    await swipeUp(tester, tester.getCenter(annotation), 120);
+    expect(room.pixels, greaterThan(60));
+    expect(pages.page, closeTo(0, 0.01));
+
+    room.jumpTo(room.maxScrollExtent);
+    await tester.pump();
+    await swipeUp(tester, tester.getCenter(annotation), 560);
+    expect(pages.page, closeTo(1, 0.01));
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'keeps board-only compatibility but respects an empty mixed response',
     () {
