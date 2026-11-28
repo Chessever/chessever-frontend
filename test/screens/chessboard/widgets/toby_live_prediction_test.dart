@@ -143,6 +143,99 @@ void main() {
     });
   });
 
+  group('Toby vertical evaluation bar', () {
+    final gauge = find.byType(TobyOutcomeBar);
+
+    Future<void> pumpGauge(
+      WidgetTester tester, {
+      double width = 34,
+      double textScale = 1,
+      bool whiteFirst = false,
+      TobyWdl? outcome = const TobyWdl(white: .75, draw: .23, black: .02),
+    }) async {
+      ResponsiveHelper.initFromSize(const Size(390, 844));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Scaffold(
+            body: Center(
+              child: MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+                child: SizedBox(
+                  width: width,
+                  height: 200,
+                  child: TobyOutcomeBar(
+                    axis: Axis.vertical,
+                    outcome: outcome,
+                    whiteFirst: whiteFirst,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'prints fitting outcomes with a slate draw fill and light ink',
+      (tester) async {
+        await pumpGauge(tester);
+        expect(find.text('75'), findsOneWidget);
+        expect(find.text('23'), findsOneWidget);
+        expect(find.text('2'), findsNothing);
+        final segments = tester.widgetList<ColoredBox>(
+          find.descendant(of: gauge, matching: find.byType(ColoredBox)),
+        );
+        final colors = segments.map((box) => box.color).toList();
+        expect(colors, const [
+          Color(0xFF151619),
+          Color(0xFF4C5D77),
+          Color(0xFFE9E9E9),
+        ]);
+        expect(tester.widget<Text>(find.text('23')).style?.color, Colors.white);
+        expect(
+          tester.getCenter(find.text('23')).dy,
+          lessThan(tester.getCenter(find.text('75')).dy),
+        );
+        await pumpGauge(tester, whiteFirst: true);
+        expect(
+          tester.getCenter(find.text('23')).dy,
+          greaterThan(tester.getCenter(find.text('75')).dy),
+        );
+        expect(tester.getSize(gauge), const Size(34, 200));
+      },
+    );
+
+    testWidgets('hides labels at large text scale without widening the rail', (
+      tester,
+    ) async {
+      await pumpGauge(tester, width: 20, textScale: 3);
+      expect(find.text('75'), findsNothing);
+      expect(find.text('23'), findsNothing);
+      expect(tester.getSize(gauge), const Size(20, 200));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tap reveals all outcomes including the unlabeled sliver', (
+      tester,
+    ) async {
+      await pumpGauge(tester);
+      await tester.tap(gauge);
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+          RegExp(
+            r'White wins 75%.*Draw 23%.*Black wins 2%',
+            caseSensitive: false,
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('tobyArrowShape', () {
     final start = Chess.initial.fen;
     test('draws the tapped move on its own position', () {
